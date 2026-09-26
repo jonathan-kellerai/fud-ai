@@ -22,18 +22,14 @@ final class StepsTrackingService {
     
     private let healthStore = HKHealthStore()
     private let stepsType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-    private let calendar = Calendar(identifier: .gregorian)
-    private var observerQuery: HKObserverQuery?
-    
-    private init() {
-        setupTimeZone()
-    }
-    
-    private func setupTimeZone() {
-        // Use America/New_York timezone for calendar days per spec
+    private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
-    }
+        return cal
+    }()
+    private var observerQuery: HKObserverQuery?
+    
+    private init() {}
     
     // MARK: - HealthKit Authorization
     
@@ -234,15 +230,11 @@ final class StepsTrackingService {
     // MARK: - Helpers
     
     private func startOfToday() -> Date {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
-        return cal.startOfDay(for: Date())
+        calendar.startOfDay(for: Date())
     }
     
     private func formatDate(_ date: Date) -> String {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
-        let components = cal.dateComponents([.year, .month, .day], from: date)
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 }

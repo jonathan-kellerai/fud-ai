@@ -79,6 +79,31 @@ final class NeonBridgeService {
         return listResponse.workouts
     }
     
+    func getWorkout(id: String) async throws -> WorkoutDetailResponse {
+        let url = try makeURL(path: "/api/workouts/\(id)")
+        let request = makeRequest(url: url, method: "GET")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+
+        return try JSONDecoder().decode(WorkoutDetailResponse.self, from: data)
+    }
+
+    func updateWorkout(id: String, payload: WorkoutPayload) async throws -> WorkoutResponse {
+        let url = try makeURL(path: "/api/workouts/\(id)")
+        var request = makeRequest(url: url, method: "PUT")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response)
+
+        if data.isEmpty {
+            return WorkoutResponse(id: id, ok: true, message: nil, deduped: nil, action: "updated", contentHash: nil)
+        }
+        return try JSONDecoder().decode(WorkoutResponse.self, from: data)
+    }
+
     func deleteWorkout(id: String) async throws {
         let url = try makeURL(path: "/api/workouts/\(id)")
         let request = makeRequest(url: url, method: "DELETE")

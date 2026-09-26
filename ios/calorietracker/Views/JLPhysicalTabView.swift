@@ -288,18 +288,24 @@ struct WorkoutHistoryListView: View {
             } else {
                 List {
                     ForEach(workouts) { workout in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(workout.title)
-                                .font(.headline)
-                            
-                            Text(workout.sessionDate)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            
-                            if let conditioning = workout.conditioning {
-                                Text("Conditioning: \(conditioning)")
-                                    .font(.caption2)
+                        NavigationLink {
+                            WorkoutHistoryEditView(workoutID: workout.id, onChanged: {
+                                Task { await loadWorkouts() }
+                            })
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(workout.title)
+                                    .font(.headline)
+                                
+                                Text(workout.sessionDate)
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
+                                
+                                if let conditioning = workout.conditioning {
+                                    Text("Conditioning: \(conditioning)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

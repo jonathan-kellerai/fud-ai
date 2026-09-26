@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import AVFoundation
+import AudioToolbox
 import UserNotifications
 
 @Observable
@@ -31,8 +32,8 @@ final class RestTimerService: NSObject {
     
     private func configureAudioSession() {
         do {
-            // .ambient + .mixWithOthers: play over music without pausing it
-            try AVAudioSession.sharedInstance().setCategory(.playback, options: [.mixWithOthers])
+            // .ambient + .mixWithOthers: cues play over music without pausing it
+            try AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Failed to configure audio session: \(error)")
@@ -136,20 +137,20 @@ final class RestTimerService: NSObject {
     }
     
     private func playSound(named name: String) {
-        // Try to find sound in bundle
+        let systemFallback: SystemSoundID = name == "boxing_clack" ? 1104 : 1005
         guard let url = Bundle.main.url(forResource: name, withExtension: "mp3") ??
                         Bundle.main.url(forResource: name, withExtension: "wav") ??
                         Bundle.main.url(forResource: name, withExtension: "m4a") else {
-            print("Sound file not found: \(name)")
+            AudioServicesPlaySystemSound(systemFallback)
             return
         }
-        
+
         do {
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
         } catch {
-            print("Failed to play sound: \(error)")
+            AudioServicesPlaySystemSound(systemFallback)
         }
     }
     

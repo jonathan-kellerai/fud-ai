@@ -94,6 +94,33 @@ struct ListWorkoutsResponse: Codable {
     let workouts: [RemoteWorkout]
 }
 
+struct WorkoutDetailResponse: Codable {
+    let workout: RemoteWorkout
+    let sets: [RemoteWorkoutSet]
+}
+
+struct RemoteWorkoutSet: Codable, Identifiable, Equatable {
+    let id: String
+    let workoutId: String?
+    let setOrder: Int
+    let exercise: String
+    let loadLb: Double
+    let reps: Int
+    let rir: Int?
+    let rpe: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutId = "workout_id"
+        case setOrder = "set_order"
+        case exercise
+        case loadLb = "load_lb"
+        case reps
+        case rir
+        case rpe
+    }
+}
+
 struct RemoteWorkout: Codable, Identifiable {
     let id: String
     let kind: String

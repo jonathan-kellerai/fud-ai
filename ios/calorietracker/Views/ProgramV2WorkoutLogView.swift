@@ -21,9 +21,10 @@ struct ProgramV2WorkoutLogView: View {
     @State private var conditioningCompleted = false
     @State private var showingRestTimer = false
     @State private var restDuration = 90
-    @State private var currentExercise: ProgramV2Exercise?
+    @State private var suggestedLoads: [String: Double] = [:]
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false
+    @State private var saveError: String?
     
     private var neonBridge = NeonBridgeService.shared
     
@@ -51,9 +52,10 @@ struct ProgramV2WorkoutLogView: View {
                 }
             }
             .sheet(isPresented: $showingRestTimer) {
-                if let exercise = currentExercise {
-                    RestTimerSheet(defaultSeconds: exercise.restSeconds.lowerBound)
-                }
+                RestTimerSheet(defaultSeconds: restDuration)
+            }
+            .task {
+                await loadLastSessionLoads()
             }
             .alert("Workout Saved", isPresented: $showingSaveConfirmation) {
                 Button("OK") {
@@ -62,6 +64,14 @@ struct ProgramV2WorkoutLogView: View {
                 }
             } message: {
                 Text("Your workout has been logged and synced.")
+            }
+            .alert("Could Not Save", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button("OK") { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
             }
         }
     }
@@ -181,17 +191,26 @@ struct ProgramV2WorkoutLogView: View {
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
             .frame(width: 40)
-            
-            if set.weight > 0 && set.reps > 0 {
-                Button {
-                    currentExercise = exercise
-                    showingRestTimer = true
-                } label: {
-                    Image(systemName: "timer")
-                        .foregroundStyle(.orange)
-                }
-                .buttonStyle(.plain)
+            .onSubmit {
+                logSet(exercise, setIndex: setIndex)
             }
+
+            TextField("RPE", text: Binding(
+                get: { set.rpeText },
+                set: { workoutSets[exercise.name]?[setIndex].rpeText = $0 }
+            ))
+            .keyboardType(.decimalPad)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 44)
+
+            Button {
+                logSet(exercise, setIndex: setIndex)
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(set.reps > 0 ? .orange : .gray)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Log set")
             
             Button {
                 workoutSets[exercise.name]?.remove(at: setIndex)
@@ -204,19 +223,51 @@ struct ProgramV2WorkoutLogView: View {
         .padding(.vertical, 4)
     }
     
+    private func logSet(_ exercise: ProgramV2Exercise, setIndex: Int) {
+        guard let set = workoutSets[exercise.name]?[setIndex], set.reps > 0 else { return }
+        restDuration = exercise.restSeconds.lowerBound
+        showingRestTimer = true
+    }
+
     private func addSet(for exercise: ProgramV2Exercise) {
-        let suggestedLoad = exercise.startLoadLb ?? 0
+        let suggestedLoad = suggestedLoad(for: exercise)
         
         let newSet = LoggedSet(
             weight: suggestedLoad,
             reps: 0,
-            rir: 2
+            rir: 2,
+            rpeText: ""
         )
         
         if workoutSets[exercise.name] == nil {
             workoutSets[exercise.name] = []
         }
         workoutSets[exercise.name]?.append(newSet)
+    }
+
+    private func suggestedLoad(for exercise: ProgramV2Exercise) -> Double {
+        let key = exercise.name.lowercased()
+        if let match = suggestedLoads.first(where: { $0.key.lowercased() == key }) {
+            return match.value
+        }
+        return exercise.startLoadLb ?? 0
+    }
+
+    private func loadLastSessionLoads() async {
+        do {
+            let workouts = try await neonBridge.listWorkouts(limit: 50)
+            guard let previous = workouts.first(where: { $0.programDay == day.id }) else { return }
+            let detail = try await neonBridge.getWorkout(id: previous.id)
+            var loads: [String: Double] = [:]
+            for set in detail.sets.sorted(by: { $0.setOrder < $1.setOrder }) {
+                loads[set.exercise] = set.loadLb
+            }
+            await MainActor.run {
+                suggestedLoads = loads
+            }
+        } catch {
+            suggestedLoads = [:]
+        }
     }
     
     private var saveButton: some View {
@@ -260,12 +311,13 @@ struct ProgramV2WorkoutLogView: View {
         for exercise in day.exercises {
             if let sets = workoutSets[exercise.name] {
                 for set in sets {
+                    let rpe = Double(set.rpeText.replacingOccurrences(of: ",", with: "."))
                     allSets.append(WorkoutSet(
                         exercise: exercise.name,
                         load: set.weight,
                         reps: set.reps,
                         rir: set.rir,
-                        rpe: nil,
+                        rpe: rpe,
                         order: order
                     ))
                     order += 1
@@ -283,8 +335,8 @@ struct ProgramV2WorkoutLogView: View {
         let timestamp = formatter.string(from: now)
         
         let workout = WorkoutPayload(
-            kind: "strength",
-            programVersion: "v2",
+            kind: "COMPLETED",
+            programVersion: "program-v2",
             programDay: day.id,
             title: day.title,
             units: "lb",
@@ -293,7 +345,7 @@ struct ProgramV2WorkoutLogView: View {
             notes: [],
             recordedAtUtc: timestamp,
             openedAtUtc: timestamp,
-            source: "jl-physical-ios",
+            source: "jl-fud-native",
             sets: allSets
         )
         
@@ -304,7 +356,9 @@ struct ProgramV2WorkoutLogView: View {
                 showingSaveConfirmation = true
             }
         } catch {
-            print("Failed to save workout: \(error)")
+            await MainActor.run {
+                saveError = error.localizedDescription
+            }
         }
     }
 }
@@ -313,4 +367,5 @@ struct LoggedSet {
     var weight: Double
     var reps: Int
     var rir: Int
+    var rpeText: String
 }
