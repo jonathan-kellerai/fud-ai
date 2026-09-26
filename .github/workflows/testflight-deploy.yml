@@ -1,0 +1,71 @@
+name: TestFlight Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Build number (leave empty for auto-increment)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    name: Build and Upload to TestFlight
+    runs-on: macos-14
+    
+    # Only run if required secrets are configured
+    if: >
+      github.event.repository.private == true &&
+      secrets.APP_STORE_CONNECT_API_KEY_ID != '' &&
+      secrets.APP_STORE_CONNECT_ISSUER_ID != ''
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+      
+    - name: Install fastlane
+      run: |
+        sudo gem install fastlane -NV
+        
+    - name: Create App Store Connect API Key
+      env:
+        API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      run: |
+        mkdir -p ~/private_keys
+        echo "$API_KEY_CONTENT" > ~/private_keys/AuthKey_${API_KEY_ID}.p8
+        
+    - name: Set build number
+      run: |
+        cd ios
+        if [ -n "${{ github.event.inputs.build_number }}" ]; then
+          BUILD_NUMBER="${{ github.event.inputs.build_number }}"
+        else
+          BUILD_NUMBER=$(date +%Y%m%d%H%M)
+        fi
+        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" calorietracker/Info.plist
+        
+    - name: Build and upload to TestFlight
+      env:
+        APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        FASTLANE_APPLE_ID: ${{ secrets.FASTLANE_APPLE_ID }}
+        BUNDLE_IDENTIFIER: ${{ secrets.BUNDLE_IDENTIFIER }}
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+      run: |
+        cd ios
+        fastlane ios beta \
+          app_identifier:"$BUNDLE_IDENTIFIER" \
+          team_id:"$TEAM_ID" \
+          api_key_path:"~/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
+          api_key_id:"$APP_STORE_CONNECT_API_KEY_ID" \
+          api_issuer_id:"$APP_STORE_CONNECT_ISSUER_ID"
+        
+    - name: Clean up API key
+      if: always()
+      run: rm -rf ~/private_keys
