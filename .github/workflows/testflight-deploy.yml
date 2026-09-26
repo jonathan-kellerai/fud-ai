@@ -12,27 +12,60 @@ jobs:
     - name: Check required secrets
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
-        ISSUER_ID: ${{ secrets.ISSUER_ID }}
         AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
-        missing=0
-        if [ -z "${KEY_ID}" ]; then
-          echo "ERROR: KEY_ID secret is empty or not set"
-          missing=1
+        # Admin key when both new secrets are set. Otherwise the original key.
+        # Log the label only. Do not print key ids or .p8 contents.
+        admin_id="$(printf '%s' "${ADMIN_KEY_ID}" | tr -d '[:space:]')"
+        fallback_id="$(printf '%s' "${KEY_ID}" | tr -d '[:space:]')"
+        admin_key_present=0
+        fallback_key_present=0
+        if [ -n "$(printf '%s' "${ADMIN_AUTH_KEY}" | tr -d '[:space:]')" ]; then
+          admin_key_present=1
+        fi
+        if [ -n "$(printf '%s' "${AUTH_KEY}" | tr -d '[:space:]')" ]; then
+          fallback_key_present=1
+        fi
+        if [ -n "${admin_id}" ] && [ "${admin_key_present}" -eq 1 ]; then
+          chosen_id="${admin_id}"
+          label="admin"
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        elif [ -n "${fallback_id}" ] && [ "${fallback_key_present}" -eq 1 ]; then
+          chosen_id="${fallback_id}"
+          label="default"
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        else
+          echo "ERROR: Set ADMIN_KEY_ID and ADMIN_AUTH_KEY, or KEY_ID and AUTH_KEY."
+          exit 1
         fi
         if [ -z "${ISSUER_ID}" ]; then
           echo "ERROR: ISSUER_ID secret is empty or not set"
-          missing=1
-        fi
-        if [ -z "${AUTH_KEY}" ]; then
-          echo "ERROR: AUTH_KEY secret is empty or not set"
-          missing=1
-        fi
-        if [ "${missing}" -ne 0 ]; then
-          echo "ERROR: Set KEY_ID, ISSUER_ID, and AUTH_KEY repository secrets, then re-run."
           exit 1
         fi
-        echo "Required App Store Connect API secrets are present."
+        if ! printf '%s' "${chosen_id}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: The selected API key id must be 10 letters or digits."
+          echo "Selected key id length=$(printf '%s' "${chosen_id}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        if ! printf '%s' "${ISSUER_ID}" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+          echo "ERROR: ISSUER_ID must be the Issuer ID UUID from App Store Connect → Users and Access → Integrations → Keys."
+          echo "It is not Team ID 2UMNXHG36N and not the Key ID."
+          echo "ISSUER_ID length=$(printf '%s' "${ISSUER_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        echo "Selected API key id shape ok (10 alphanumeric). ISSUER_ID shape ok (UUID)."
+        {
+          echo "KEY_ID<<ASC_KEY_EOF"
+          printf '%s\n' "${chosen_id}"
+          echo "ASC_KEY_EOF"
+          echo "ASC_KEY_ID<<ASC_KEY_EOF"
+          printf '%s\n' "${chosen_id}"
+          echo "ASC_KEY_EOF"
+          echo "ASC_KEY_LABEL=${label}"
+        } >> "$GITHUB_ENV"
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -60,22 +93,25 @@ jobs:
     - name: Create API Key file
       env:
         AUTH_KEY: ${{ secrets.AUTH_KEY }}
-        KEY_ID: ${{ secrets.KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
-        # altool and xcodebuild both read ~/private_keys/AuthKey_<KEY_ID>.p8
+        # KEY_ID and ASC_KEY_LABEL were selected in the previous step.
+        # altool reads ~/private_keys/AuthKey_<selected key id>.p8
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          export AUTH_KEY="${ADMIN_AUTH_KEY}"
+          export ASC_KEY_SECRET_NAME="ADMIN_AUTH_KEY"
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          export ASC_KEY_SECRET_NAME="AUTH_KEY"
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
+        unset ADMIN_AUTH_KEY
         if ! printf '%s' "${KEY_ID}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
-          echo "ERROR: KEY_ID must be the 10-character App Store Connect Key ID."
-          echo "KEY_ID length=$(printf '%s' "${KEY_ID}" | wc -c | tr -d ' ')"
+          echo "ERROR: The selected API key id must be 10 letters or digits."
+          echo "Selected key id length=$(printf '%s' "${KEY_ID}" | wc -c | tr -d ' ')"
           exit 1
         fi
-        if ! printf '%s' "${ISSUER_ID}" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
-          echo "ERROR: ISSUER_ID must be the Issuer ID UUID from App Store Connect → Users and Access → Integrations → Keys."
-          echo "It is not Team ID 2UMNXHG36N and not the Key ID."
-          echo "ISSUER_ID length=$(printf '%s' "${ISSUER_ID}" | wc -c | tr -d ' ')"
-          exit 1
-        fi
-        echo "KEY_ID shape ok (10 alphanumeric). ISSUER_ID shape ok (UUID)."
 
         mkdir -p "${HOME}/private_keys"
         key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
@@ -119,19 +155,20 @@ jobs:
             f"PEM nonempty_lines={len(nonempty)} begin_ok={str(begin_ok).lower()} "
             f"end_ok={str(end_ok).lower()} body_lines={len(body)}"
         )
+        secret_name = os.environ.get("ASC_KEY_SECRET_NAME", "AUTH_KEY")
         if not (begin_ok and end_ok and body_ok):
-            print("ERROR: AUTH_KEY is not a PEM private key.")
-            print("Paste the .p8 file into the AUTH_KEY secret, including the BEGIN and END lines.")
+            print(f"ERROR: {secret_name} is not a PEM private key.")
+            print(f"Paste the .p8 file into the {secret_name} secret, including the BEGIN and END lines.")
             print("Do not add quotes around the secret, and do not paste only the base64 body.")
             sys.exit(1)
         PY
         chmod 600 "${key_file}"
         if ! openssl pkey -in "${key_file}" -noout 2>"${RUNNER_TEMP}/pkey.err"; then
-          echo "ERROR: AUTH_KEY has PEM headers but OpenSSL could not read a private key."
+          echo "ERROR: ${ASC_KEY_SECRET_NAME} has PEM headers but OpenSSL could not read a private key."
           sed 's/.*PRIVATE KEY.*/[redacted]/' "${RUNNER_TEMP}/pkey.err" || true
           exit 1
         fi
-        echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<KEY_ID>.p8"
+        echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<selected key id>.p8"
         # xcodebuild and altool also search these directories by AuthKey_<KEY_ID>.p8 name.
         mkdir -p "${HOME}/.private_keys" "${HOME}/.appstoreconnect/private_keys"
         cp "${key_file}" "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8"
@@ -142,10 +179,15 @@ jobs:
 
     - name: Check App Store Connect API authentication
       env:
-        KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
         # --list-providers does not accept API keys. Sign an ES256 JWT and call the API.
+        # KEY_ID is the selected key id from the secrets step, not a fresh secrets.KEY_ID.
         python3 -m venv "${RUNNER_TEMP}/asc-venv"
         "${RUNNER_TEMP}/asc-venv/bin/pip" install --disable-pip-version-check pyjwt cryptography
         "${RUNNER_TEMP}/asc-venv/bin/python" - << 'PY'
@@ -307,7 +349,7 @@ jobs:
                 print(f"{label} HTTP {status}")
             if status == 401:
                 print(
-                    "ERROR: Apple rejected the token (401). KEY_ID does not match this .p8, "
+                    "ERROR: Apple rejected the token (401). The selected key id does not match this .p8, "
                     "ISSUER_ID is not that key's issuer, or the key was revoked."
                 )
                 failed = True
@@ -401,11 +443,19 @@ jobs:
     - name: Export IPA for App Store
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
         set -o pipefail
         cd ios
         mkdir -p build
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
 
         # destination=export writes a local IPA. altool performs the upload.
         # Do not pass -allowProvisioningUpdates. Run 39 had HTTP 200 for certificates
@@ -440,7 +490,6 @@ jobs:
 
     - name: Upload to TestFlight
       env:
-        KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
         cd ios
@@ -451,11 +500,16 @@ jobs:
         fi
 
         # --upload-app accepts --apiKey/--apiIssuer. --list-providers does not.
-        # altool loads ~/private_keys/AuthKey_<KEY_ID>.p8
+        # altool loads ~/private_keys/AuthKey_<selected key id>.p8
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
         xcrun altool --upload-app \
           --type ios \
           --file "${IPA_PATH}" \
-          --apiKey "${KEY_ID}" \
+          --apiKey "${ASC_KEY_ID}" \
           --apiIssuer "${ISSUER_ID}" \
           --verbose
 

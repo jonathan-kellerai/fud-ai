@@ -116,10 +116,31 @@ def run(args, secret_values=()):
     return result
 
 
+def resolve_api_key_id(environ=None):
+    """Prefer the Admin API key when both of its secrets are non-empty.
+
+    Returns (key id, label). The label names the secret pair and never includes
+    key material. Issuer stays ISSUER_ID either way.
+    """
+    env = os.environ if environ is None else environ
+    admin_key_id = (env.get("ADMIN_KEY_ID") or "").strip()
+    admin_auth_key = (env.get("ADMIN_AUTH_KEY") or "").strip()
+    fallback_key_id = (env.get("KEY_ID") or "").strip()
+    if admin_key_id and admin_auth_key:
+        return admin_key_id, "admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+    return fallback_key_id, "default (KEY_ID / AUTH_KEY)"
+
+
 def sign_token():
     import jwt
 
-    key_id = os.environ["KEY_ID"]
+    key_id, key_label = resolve_api_key_id()
+    print(f"Using App Store Connect API key: {key_label}")
+    if not key_id:
+        fail(
+            "No App Store Connect API key is available. "
+            "Set ADMIN_KEY_ID and ADMIN_AUTH_KEY, or KEY_ID and AUTH_KEY."
+        )
     issuer_id = os.environ["ISSUER_ID"]
     key_path = Path.home() / "private_keys" / f"AuthKey_{key_id}.p8"
     if not key_path.is_file():
@@ -952,6 +973,32 @@ def self_check():
             fail("invalid settings 409 was treated as success")
     finally:
         globals()["api"] = original_api
+
+    admin_material = "-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----\n"
+    selected_id, selected_label = resolve_api_key_id(
+        {
+            "ADMIN_KEY_ID": " ADMINKEY01 ",
+            "ADMIN_AUTH_KEY": admin_material,
+            "KEY_ID": "FALLBACK01",
+            "AUTH_KEY": "fallback-material",
+        }
+    )
+    if selected_id != "ADMINKEY01" or not selected_label.startswith("admin "):
+        fail("admin API key was not selected when both admin secrets are set")
+    if admin_material.strip() in selected_label or "not-a-real-key" in selected_label:
+        fail("API key label included key contents")
+    fallback_id, fallback_label = resolve_api_key_id(
+        {
+            "ADMIN_KEY_ID": "ADMINKEY01",
+            "ADMIN_AUTH_KEY": " \n\t",
+            "KEY_ID": " FALLBACK01 ",
+        }
+    )
+    if fallback_id != "FALLBACK01" or not fallback_label.startswith("default "):
+        fail("incomplete admin API key did not fall back to KEY_ID")
+    absent_id, absent_label = resolve_api_key_id({})
+    if absent_id != "" or not absent_label.startswith("default "):
+        fail("missing API keys did not resolve to the default label")
     print("self-check ok")
 
 
