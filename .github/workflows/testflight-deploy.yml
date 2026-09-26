@@ -7,75 +7,95 @@ jobs:
   deploy:
     name: Build and Upload to TestFlight
     runs-on: macos-15  # Latest macOS runner for Xcode 26
-    
-    # Only run if required secrets are configured
-    if: >
-      github.event_name == 'workflow_dispatch' &&
-      secrets.KEY_ID != '' &&
-      secrets.ISSUER_ID != '' &&
-      secrets.AUTH_KEY != ''
-    
+
     steps:
+    - name: Check required secrets
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+      run: |
+        missing=0
+        if [ -z "${KEY_ID}" ]; then
+          echo "ERROR: KEY_ID secret is empty or not set"
+          missing=1
+        fi
+        if [ -z "${ISSUER_ID}" ]; then
+          echo "ERROR: ISSUER_ID secret is empty or not set"
+          missing=1
+        fi
+        if [ -z "${AUTH_KEY}" ]; then
+          echo "ERROR: AUTH_KEY secret is empty or not set"
+          missing=1
+        fi
+        if [ "${missing}" -ne 0 ]; then
+          echo "ERROR: Set KEY_ID, ISSUER_ID, and AUTH_KEY repository secrets, then re-run."
+          exit 1
+        fi
+        echo "Required App Store Connect API secrets are present."
+
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: List available Xcode versions
-      run: ls -la /Applications/ | grep Xcode
-      
+      run: find /Applications -maxdepth 1 -name 'Xcode*.app' -exec ls -ld {} +
+
     - name: Select latest Xcode 26
       run: |
-        # Find and select the latest Xcode 26.x
-        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
-        if [ -z "$LATEST_XCODE" ]; then
+        shopt -s nullglob
+        candidates=(/Applications/Xcode_26*.app)
+        if [ "${#candidates[@]}" -eq 0 ]; then
           echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
           exit 1
         fi
-        echo "Selected: $LATEST_XCODE"
-        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
-      
+        LATEST_XCODE=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)
+        echo "Selected: ${LATEST_XCODE}"
+        sudo xcode-select -s "${LATEST_XCODE}/Contents/Developer"
+
     - name: Show Xcode version
       run: |
         xcodebuild -version
         swift --version
-      
+
     - name: Create API Key file
       env:
         AUTH_KEY: ${{ secrets.AUTH_KEY }}
         KEY_ID: ${{ secrets.KEY_ID }}
       run: |
-        # Create private_keys directory
-        mkdir -p ~/private_keys
-        
-        # Write AUTH_KEY to file preserving newlines
-        # Never echo the key itself
-        echo "$AUTH_KEY" > ~/private_keys/AuthKey_${KEY_ID}.p8
-        
-        # Verify file was created (without showing contents)
-        if [ -f ~/private_keys/AuthKey_${KEY_ID}.p8 ]; then
-          echo "✓ API key file created at ~/private_keys/AuthKey_${KEY_ID}.p8"
-          wc -l ~/private_keys/AuthKey_${KEY_ID}.p8
-        else
+        # altool --apiKey looks up ~/private_keys/AuthKey_<KEY_ID>.p8
+        mkdir -p "${HOME}/private_keys"
+        key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
+
+        # Write AUTH_KEY to file preserving newlines. Never echo the key.
+        printf '%s\n' "$AUTH_KEY" > "${key_file}"
+        chmod 600 "${key_file}"
+
+        if [ ! -s "${key_file}" ]; then
           echo "ERROR: Failed to create API key file"
           exit 1
         fi
-        
+        echo "API key file created at ~/private_keys/AuthKey_<KEY_ID>.p8"
+        wc -l < "${key_file}"
+
     - name: Set build number
       run: |
-        cd ios
-        # Auto-increment build number from GitHub run number
+        # github.run_number becomes CFBundleVersion via CURRENT_PROJECT_VERSION
+        # on the archive command, so the app and extensions stay in sync.
         BUILD_NUMBER="${{ github.run_number }}"
-        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
-        echo "Setting build number to $BUILD_NUMBER"
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" calorietracker/Info.plist
-        
+        echo "BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
+        echo "Setting build number to ${BUILD_NUMBER}"
+
     - name: Build and archive for App Store
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
+        set -o pipefail
         cd ios
-        
-        # Build and archive with automatic signing
+        mkdir -p build
+
+        # Bundle IDs stay on the per-target values in project.pbxproj.
+        # A command-line PRODUCT_BUNDLE_IDENTIFIER would apply to every target.
         xcodebuild archive \
           -project calorietracker.xcodeproj \
           -scheme calorietracker \
@@ -83,92 +103,99 @@ jobs:
           -archivePath build/JLPhysical.xcarchive \
           -destination 'generic/platform=iOS' \
           -allowProvisioningUpdates \
-          -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
-          -authenticationKeyID ${KEY_ID} \
-          -authenticationKeyIssuerID ${ISSUER_ID} \
+          -authenticationKeyPath "${HOME}/private_keys/AuthKey_${KEY_ID}.p8" \
+          -authenticationKeyID "${KEY_ID}" \
+          -authenticationKeyIssuerID "${ISSUER_ID}" \
           DEVELOPMENT_TEAM=2UMNXHG36N \
-          PRODUCT_BUNDLE_IDENTIFIER=com.jonathanbowe.jlphysical \
+          CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
           CODE_SIGN_STYLE=Automatic \
           | tee build_archive.log
-        
-        # Check if archive was created
+
         if [ ! -d "build/JLPhysical.xcarchive" ]; then
           echo "ERROR: Archive was not created"
           exit 1
         fi
-        
-        echo "✓ Archive created successfully"
-        
+
+        echo "Archive created successfully"
+
     - name: Export IPA for App Store
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
+        set -o pipefail
         cd ios
-        
-        # Create export options plist
-        cat > build/ExportOptions.plist << EOF
+        mkdir -p build
+
+        # destination=export writes a local IPA. altool performs the upload.
+        cat > build/ExportOptions.plist << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
             <string>2UMNXHG36N</string>
             <key>uploadSymbols</key>
             <true/>
-            <key>uploadBitcode</key>
-            <false/>
             <key>signingStyle</key>
             <string>automatic</string>
             <key>destination</key>
-            <string>upload</string>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
         </dict>
         </plist>
         EOF
-        
-        # Export the archive to IPA
+
         xcodebuild -exportArchive \
           -archivePath build/JLPhysical.xcarchive \
           -exportPath build/output \
           -exportOptionsPlist build/ExportOptions.plist \
           -allowProvisioningUpdates \
-          -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
-          -authenticationKeyID ${KEY_ID} \
-          -authenticationKeyIssuerID ${ISSUER_ID} \
+          -authenticationKeyPath "${HOME}/private_keys/AuthKey_${KEY_ID}.p8" \
+          -authenticationKeyID "${KEY_ID}" \
+          -authenticationKeyIssuerID "${ISSUER_ID}" \
           | tee build_export.log
-        
-        # Check if IPA was created
-        if [ ! -f "build/output/calorietracker.ipa" ]; then
-          echo "ERROR: IPA was not created"
-          ls -la build/output/
+
+        # IPA filename follows PRODUCT_NAME ($(TARGET_NAME) -> calorietracker).
+        shopt -s nullglob
+        ipa_files=(build/output/*.ipa)
+        if [ "${#ipa_files[@]}" -ne 1 ]; then
+          echo "ERROR: Expected exactly one IPA in build/output, found ${#ipa_files[@]}"
+          ls -la build/output/ || true
           exit 1
         fi
-        
-        echo "✓ IPA exported successfully"
-        ls -lh build/output/*.ipa
-        
+        echo "IPA_PATH=${ipa_files[0]}" >> "$GITHUB_ENV"
+        echo "IPA exported successfully"
+        ls -lh "${ipa_files[0]}"
+
     - name: Upload to TestFlight
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
         cd ios
-        
-        # Upload using altool with App Store Connect API key
+
+        if [ -z "${IPA_PATH:-}" ] || [ ! -f "${IPA_PATH}" ]; then
+          echo "ERROR: IPA was not found for upload"
+          exit 1
+        fi
+
+        # --apiKey/--apiIssuer load ~/private_keys/AuthKey_<KEY_ID>.p8
         xcrun altool --upload-app \
           --type ios \
-          --file build/output/calorietracker.ipa \
-          --apiKey ${KEY_ID} \
-          --apiIssuer ${ISSUER_ID} \
+          --file "${IPA_PATH}" \
+          --apiKey "${KEY_ID}" \
+          --apiIssuer "${ISSUER_ID}" \
           --verbose
-        
-        echo "✓ Upload to TestFlight initiated"
+
+        echo "Upload to TestFlight initiated"
         echo ""
         echo "The build will appear in App Store Connect → TestFlight within 5-15 minutes."
         echo "You will receive an email when processing is complete."
-        
+
     - name: Upload build logs as artifacts
       if: always()
       uses: actions/upload-artifact@v4
@@ -178,9 +205,9 @@ jobs:
           ios/build_archive.log
           ios/build_export.log
         retention-days: 30
-        
+
     - name: Clean up API key
       if: always()
       run: |
-        rm -rf ~/private_keys
-        echo "✓ API key file removed"
+        rm -rf "${HOME}/private_keys"
+        echo "API key file removed"

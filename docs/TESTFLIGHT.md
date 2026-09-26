@@ -75,10 +75,11 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
 
 3. **Build Process:**
    - Runs on `macos-15` with Xcode 26.3 (Swift 6.2)
-   - Auto-increments build number from `${{ github.run_number }}`
-   - Archives with automatic signing (`-allowProvisioningUpdates`)
-   - Creates App Store IPA
-   - Uploads to TestFlight via `xcrun altool`
+   - Fails the job immediately if `KEY_ID`, `ISSUER_ID`, or `AUTH_KEY` is empty (the values are not printed)
+   - Sets `CFBundleVersion` from `${{ github.run_number }}` by passing `CURRENT_PROJECT_VERSION` to `xcodebuild`, so the app and embedded extensions share one build number
+   - Archives with automatic signing (`-allowProvisioningUpdates`). Bundle IDs stay on the per-target values in the Xcode project; the workflow does not pass `PRODUCT_BUNDLE_IDENTIFIER`
+   - Exports a local App Store IPA (`destination` = `export`; the filename follows `PRODUCT_NAME`, checked with `build/output/*.ipa`)
+   - Uploads that IPA to TestFlight via `xcrun altool --upload-app` (`--apiKey` / `--apiIssuer`, key file `~/private_keys/AuthKey_<KEY_ID>.p8`)
 
 4. **Post-Upload:**
    - Build appears in App Store Connect → TestFlight within 5-15 minutes
@@ -111,10 +112,12 @@ Both builds must succeed before triggering the TestFlight workflow.
 - Check build logs for signing or entitlement errors
 - Verify all extensions have correct bundle ID prefixes
 - Ensure `ITSAppUsesNonExemptEncryption = NO` in `Info.plist`
+- Do not pass `PRODUCT_BUNDLE_IDENTIFIER` on the `xcodebuild` command line. That setting is applied to every target. Release IDs in the project are already `com.jonathanbowe.jlphysical`, `com.jonathanbowe.jlphysical.FudAIWidgetsExtension`, and `com.jonathanbowe.jlphysical.calorietrackerShare`
 
 ### "Processing Failed" in App Store Connect
 - App icon must be 1024x1024 RGB (no alpha channel)
 - All required `NSUsageDescription` keys must be in `Info.plist`
+- The uploaded build number is `github.run_number` (`CURRENT_PROJECT_VERSION`). App Store Connect rejects it when that number is not higher than the newest build already uploaded for marketing version 7.1
 - Check email for specific rejection reasons
 
 ## App Icon
