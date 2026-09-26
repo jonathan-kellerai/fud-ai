@@ -213,6 +213,7 @@ jobs:
             result = subprocess.run(
                 [
                     "curl",
+                    "--globoff",
                     "-sS",
                     "-H",
                     f"@{header_file}",

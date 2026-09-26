@@ -78,7 +78,7 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
    - Fails the job immediately if `KEY_ID`, `ISSUER_ID`, or `AUTH_KEY` is empty (the values are not printed). Secrets are not referenced from a job `if:`
    - Checks that `AUTH_KEY` is a PEM private key (`-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----`) and that OpenSSL can read it, without printing the key
    - Checks that `KEY_ID` is 10 letters/digits and `ISSUER_ID` is a UUID (not the Team ID)
-   - Signs an ES256 App Store Connect JWT and GETs `/v1/bundleIds` and `/v1/apps` for `com.jonathanbowe.jlphysical` before archive. `altool --list-providers` cannot authenticate with an API key
+   - Signs an ES256 App Store Connect JWT and GETs `/v1/bundleIds` and `/v1/apps` for `com.jonathanbowe.jlphysical` before archive. Those curls use `--globoff` so `filter[identifier]` and `filter[bundleId]` are not treated as curl globs. `altool --list-providers` cannot authenticate with an API key
    - Sets `CFBundleVersion` from `${{ github.run_number }}` by passing `CURRENT_PROJECT_VERSION` to `xcodebuild`, so the app and embedded extensions share one build number
    - Archives with automatic signing (`-allowProvisioningUpdates`). Bundle IDs stay on the per-target values in the Xcode project; the workflow does not pass `PRODUCT_BUNDLE_IDENTIFIER`
    - Exports a local App Store IPA (`destination` = `export`; the filename follows `PRODUCT_NAME`, checked with `build/output/*.ipa`)
