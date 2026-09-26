@@ -15,7 +15,7 @@ jobs:
     
     # Only run if required secrets are configured
     if: >
-      github.event.repository.private == true &&
+      github.event_name == 'workflow_dispatch' &&
       secrets.APP_STORE_CONNECT_API_KEY_ID != '' &&
       secrets.APP_STORE_CONNECT_ISSUER_ID != ''
     
