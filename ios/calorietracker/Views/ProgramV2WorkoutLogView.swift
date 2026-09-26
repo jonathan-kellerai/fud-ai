@@ -184,27 +184,27 @@ struct ProgramV2WorkoutLogView: View {
         }
     }
     
-    private func addSet(for movement: ProgramV2Movement) {
+    private func addSet(for exercise: ProgramV2Exercise) {
         let suggestedLoad: Double
         
-        if let lastSession = getLastSession(for: movement.name) {
+        if let lastSession = getLastSession(for: exercise.name) {
             suggestedLoad = lastSession
-        } else if let starting = movement.starting_load {
-            suggestedLoad = starting.amount
+        } else if let starting = exercise.startLoadLb {
+            suggestedLoad = starting
         } else {
             suggestedLoad = 0
         }
         
-        let newSet = WorkoutSet(
+        let newSet = LoggedSet(
             weight: suggestedLoad,
             reps: 0,
             rir: 2
         )
         
-        if workoutSets[movement.name] == nil {
-            workoutSets[movement.name] = []
+        if workoutSets[exercise.name] == nil {
+            workoutSets[exercise.name] = []
         }
-        workoutSets[movement.name]?.append(newSet)
+        workoutSets[exercise.name]?.append(newSet)
     }
     
     private func getLastSession(for exerciseName: String) -> Double? {
