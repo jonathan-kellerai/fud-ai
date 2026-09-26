@@ -9,15 +9,15 @@ import SwiftUI
 
 struct ProgramV2WorkoutLogView: View {
     let day: ProgramV2Day
-    let program: ProgramV2Template?
+    let program: String?
     
     @Environment(StrengthWorkoutStore.self) private var workoutStore
     @Environment(\.dismiss) private var dismiss
-    @State private var workoutSets: [String: [WorkoutSet]] = [:]
+    @State private var workoutSets: [String: [LoggedSet]] = [:]
     @State private var conditioningCompleted = false
     @State private var showingRestTimer = false
     @State private var restDuration = 90
-    @State private var currentExercise: ProgramV2Movement?
+    @State private var currentExercise: ProgramV2Exercise?
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false
     

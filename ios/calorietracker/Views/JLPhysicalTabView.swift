@@ -10,14 +10,13 @@ import SwiftUI
 struct JLPhysicalTabView: View {
     @Environment(StrengthWorkoutStore.self) private var workoutStore
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selectedProgram: ProgramV2Template?
+    @State private var selectedDay: ProgramV2Day?
     @State private var showingTemplatePicker = false
     @State private var showingWorkoutLog = false
-    @State private var selectedDay: ProgramV2Day?
     @State private var currentDate = Date()
     
     private var nextUnfinishedDay: ProgramV2Day? {
-        guard let program = selectedProgram else { return nil }
+        guard selectedDay != nil else { return nil }
         let calendar = Calendar.current
         let dayOfWeek = calendar.component(.weekday, from: currentDate)
         

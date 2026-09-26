@@ -35,6 +35,17 @@ struct WorkoutLoggingSettingsSection: View {
                 selection: $draft.rpeScale
             )
 
+            NavigationLink {
+                BridgeSettingsView()
+            } label: {
+                Label {
+                    Text("Neon Bridge Sync")
+                } icon: {
+                    Image(systemName: "server.rack")
+                        .foregroundStyle(.blue)
+                }
+            }
+
             rpeScaleGuide
         } header: {
             Text("Workout")
