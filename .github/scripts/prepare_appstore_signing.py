@@ -735,6 +735,14 @@ def install_profile(profile, profiles_dir):
     return decoded
 
 
+APP_ENTITLEMENTS_PATH = (
+    Path(__file__).resolve().parents[2] / "ios" / "calorietracker" / "calorietracker.entitlements"
+)
+ICLOUD_SERVICES_KEY = "com.apple.developer.icloud-services"
+ICLOUD_CONTAINERS_KEY = "com.apple.developer.icloud-container-identifiers"
+ICLOUD_ENVIRONMENT_KEY = "com.apple.developer.icloud-container-environment"
+
+
 def values_of(entitlements, key):
     value = entitlements.get(key)
     if value is None:
@@ -748,7 +756,77 @@ def is_enabled(value):
     return value is True or value == 1
 
 
-def profile_problems(entitlements, kind):
+def expand_build_settings(value, substitutions):
+    if isinstance(value, str):
+        expanded = value
+        for name, replacement in substitutions.items():
+            expanded = expanded.replace(f"$({name})", replacement)
+        return expanded
+    if isinstance(value, list):
+        return [expand_build_settings(item, substitutions) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: expand_build_settings(item, substitutions) for key, item in value.items()
+        }
+    return value
+
+
+def app_signing_requirements(bundle_id):
+    """Entitlements the App Store profile must cover, with build settings expanded."""
+    if not APP_ENTITLEMENTS_PATH.is_file():
+        fail(f"App entitlements file is missing at {APP_ENTITLEMENTS_PATH}")
+    with APP_ENTITLEMENTS_PATH.open("rb") as entitlements_file:
+        raw = plistlib.load(entitlements_file)
+    return expand_build_settings(
+        raw,
+        {
+            "PRODUCT_BUNDLE_IDENTIFIER": bundle_id,
+            "APP_GROUP_IDENTIFIER": APP_GROUP,
+        },
+    )
+
+
+def icloud_services_satisfied(profile_services, required_services):
+    """Apple distribution profiles use '*' for CloudKit and CloudDocuments."""
+    if "*" in profile_services:
+        return True
+    return all(service in profile_services for service in required_services)
+
+
+def containers_satisfied(profile_containers, required_containers):
+    if not required_containers:
+        return True
+    if "*" in profile_containers or "iCloud.*" in profile_containers:
+        return True
+    return all(container in profile_containers for container in required_containers)
+
+
+def distribution_entitlement_problems(bundle_id):
+    """The signed app keeps an explicit CloudKit service list.
+
+    A wildcard profile still accepts com.apple.developer.icloud-services =
+    ['CloudKit']. icloud-container-environment is checked only when the app
+    sets it; distribution must then be Production.
+    """
+    required = app_signing_requirements(bundle_id)
+    problems = []
+    services = values_of(required, ICLOUD_SERVICES_KEY)
+    if services != ["CloudKit"]:
+        problems.append(
+            "app entitlements com.apple.developer.icloud-services must stay "
+            f"['CloudKit'] (wildcard profiles still accept that). Found {services or 'missing'}."
+        )
+    if ICLOUD_ENVIRONMENT_KEY in required:
+        environments = values_of(required, ICLOUD_ENVIRONMENT_KEY)
+        if environments != ["Production"]:
+            problems.append(
+                "app entitlements set icloud-container-environment to "
+                f"{environments}. Distribution must set it to ['Production']."
+            )
+    return problems
+
+
+def profile_problems(entitlements, kind, bundle_id="com.jonathanbowe.jlphysical"):
     problems = []
     groups = values_of(entitlements, "com.apple.security.application-groups")
     if APP_GROUP not in groups:
@@ -761,13 +839,19 @@ def profile_problems(entitlements, kind):
         problems.append("HealthKit entitlement is missing")
     if not is_enabled(entitlements.get("com.apple.developer.healthkit.background-delivery")):
         problems.append("HealthKit background-delivery entitlement is missing")
-    icloud_services = values_of(entitlements, "com.apple.developer.icloud-services")
-    if "CloudKit" not in icloud_services:
-        problems.append(f"iCloud services {icloud_services or 'missing'} does not include CloudKit")
-    containers = values_of(entitlements, "com.apple.developer.icloud-container-identifiers")
-    if ICLOUD_CONTAINER not in containers and "*" not in containers and "iCloud.*" not in containers:
+    required = app_signing_requirements(bundle_id)
+    required_services = values_of(required, ICLOUD_SERVICES_KEY)
+    profile_services = values_of(entitlements, ICLOUD_SERVICES_KEY)
+    if not icloud_services_satisfied(profile_services, required_services):
         problems.append(
-            f"iCloud containers {containers or 'missing'} does not include {ICLOUD_CONTAINER}"
+            f"iCloud services {profile_services or 'missing'} does not include {required_services}"
+        )
+    required_containers = values_of(required, ICLOUD_CONTAINERS_KEY)
+    profile_containers = values_of(entitlements, ICLOUD_CONTAINERS_KEY)
+    if not containers_satisfied(profile_containers, required_containers):
+        problems.append(
+            "iCloud containers "
+            f"{profile_containers or 'missing'} does not include {required_containers}"
         )
     if "com.apple.developer.associated-domains" not in entitlements:
         problems.append("associated-domains entitlement is missing")
@@ -807,6 +891,34 @@ def self_check():
     }
     if profile_problems(app_ok, "app"):
         fail("complete app profile was rejected")
+    wildcard_profile = {
+        "com.apple.security.application-groups": [APP_GROUP],
+        "com.apple.developer.healthkit": True,
+        "com.apple.developer.healthkit.background-delivery": True,
+        "com.apple.developer.icloud-services": "*",
+        "com.apple.developer.icloud-container-environment": ["Production", "Development"],
+        "com.apple.developer.icloud-container-identifiers": [ICLOUD_CONTAINER],
+        "com.apple.developer.associated-domains": "*",
+    }
+    if profile_problems(wildcard_profile, "app"):
+        fail("string wildcard iCloud services profile was rejected")
+    wildcard_list = dict(wildcard_profile)
+    wildcard_list["com.apple.developer.icloud-services"] = ["*"]
+    if profile_problems(wildcard_list, "app"):
+        fail("list wildcard iCloud services profile was rejected")
+    missing_container = dict(wildcard_profile)
+    missing_container["com.apple.developer.icloud-container-identifiers"] = [
+        "iCloud.com.other.app"
+    ]
+    if not profile_problems(missing_container, "app"):
+        fail("profile missing the app container was accepted")
+    documents_only = dict(app_ok)
+    documents_only["com.apple.developer.icloud-services"] = ["CloudDocuments"]
+    if not profile_problems(documents_only, "app"):
+        fail("profile without CloudKit or * was accepted")
+    entitlement_problems = distribution_entitlement_problems("com.jonathanbowe.jlphysical")
+    if entitlement_problems:
+        fail("; ".join(entitlement_problems))
     if not profile_problems(
         {"com.apple.security.application-groups": [APP_GROUP]},
         "app",
@@ -1023,6 +1135,12 @@ def main():
         if name.startswith(PROFILE_PREFIX):
             delete_profile(token, profile)
 
+    app_entitlement_problems = distribution_entitlement_problems(
+        "com.jonathanbowe.jlphysical"
+    )
+    if app_entitlement_problems:
+        fail("; ".join(app_entitlement_problems))
+
     profiles_by_bundle_id = {}
     for target, bundle_resource_id in resolved:
         profile = create_profile(
@@ -1032,7 +1150,9 @@ def main():
             certificate["id"],
         )
         decoded = install_profile(profile, work_dir)
-        problems = profile_problems(decoded.get("Entitlements") or {}, target["kind"])
+        problems = profile_problems(
+            decoded.get("Entitlements") or {}, target["kind"], target["bundle_id"]
+        )
         if problems:
             print(
                 "Profile entitlements are not ready yet ("
@@ -1048,7 +1168,9 @@ def main():
                 certificate["id"],
             )
             decoded = install_profile(profile, work_dir)
-            problems = profile_problems(decoded.get("Entitlements") or {}, target["kind"])
+            problems = profile_problems(
+                decoded.get("Entitlements") or {}, target["kind"], target["bundle_id"]
+            )
         if problems:
             rendered = json.dumps(decoded.get("Entitlements") or {}, default=str)[:2000]
             fail(
