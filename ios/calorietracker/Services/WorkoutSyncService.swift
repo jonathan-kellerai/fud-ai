@@ -57,10 +57,10 @@ final class WorkoutSyncService {
         
         if response.deduped == true {
             // Server already has this workout, no need to retry
-            removeFromQueue(session.id)
+            removeFromQueue(sessionID: session.id)
         } else if response.ok == true {
             // Successfully synced
-            removeFromQueue(session.id)
+            removeFromQueue(sessionID: session.id)
         }
         
         return response
@@ -76,7 +76,7 @@ final class WorkoutSyncService {
         for sessionID in syncQueue {
             guard let session = sessions.first(where: { $0.id == sessionID }) else {
                 // Session not found, remove from queue
-                removeFromQueue(sessionID)
+                removeFromQueue(sessionID: sessionID)
                 continue
             }
             
