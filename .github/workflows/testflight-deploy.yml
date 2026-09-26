@@ -132,6 +132,13 @@ jobs:
           exit 1
         fi
         echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<KEY_ID>.p8"
+        # xcodebuild and altool also search these directories by AuthKey_<KEY_ID>.p8 name.
+        mkdir -p "${HOME}/.private_keys" "${HOME}/.appstoreconnect/private_keys"
+        cp "${key_file}" "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8"
+        cp "${key_file}" "${HOME}/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+        chmod 600 \
+          "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8" \
+          "${HOME}/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
 
     - name: Check App Store Connect API authentication
       env:
@@ -172,14 +179,39 @@ jobs:
         header_file.chmod(0o600)
         print("Signed ES256 JWT for App Store Connect (token not printed).")
 
+        # GET /v1/apps succeeding does not mean this key can cloud-sign.
+        # Archive used to request an iOS App Development profile. Export requests
+        # an App Store profile, which needs Certificates, Identifiers & Profiles.
         requests = (
             (
-                "bundleIds",
-                "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=com.jonathanbowe.jlphysical",
+                "bundleIds-app",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=10&filter[identifier]=com.jonathanbowe.jlphysical",
+                True,
+            ),
+            (
+                "bundleIds-widgets",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=5&filter[identifier]=com.jonathanbowe.jlphysical.FudAIWidgetsExtension",
+                False,
+            ),
+            (
+                "bundleIds-share",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=5&filter[identifier]=com.jonathanbowe.jlphysical.calorietrackerShare",
+                False,
             ),
             (
                 "apps",
-                "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.jonathanbowe.jlphysical",
+                "https://api.appstoreconnect.apple.com/v1/apps?limit=5&filter[bundleId]=com.jonathanbowe.jlphysical",
+                True,
+            ),
+            (
+                "certificates",
+                "https://api.appstoreconnect.apple.com/v1/certificates?limit=20",
+                False,
+            ),
+            (
+                "profiles",
+                "https://api.appstoreconnect.apple.com/v1/profiles?limit=20",
+                False,
             ),
         )
 
@@ -207,8 +239,39 @@ jobs:
                 )
             return parts
 
+        def resource_summary(body):
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                return "unparsed"
+            resources = payload.get("data")
+            if not isinstance(resources, list):
+                return "resources=0"
+            parts = []
+            for item in resources:
+                if not isinstance(item, dict):
+                    continue
+                attributes = item.get("attributes")
+                if not isinstance(attributes, dict):
+                    attributes = {}
+                name = (
+                    attributes.get("identifier")
+                    or attributes.get("certificateType")
+                    or attributes.get("profileType")
+                    or attributes.get("bundleId")
+                    or attributes.get("name")
+                    or item.get("type")
+                    or "resource"
+                )
+                parts.append(str(name))
+            shown = ", ".join(parts[:12])
+            extra = ""
+            if len(parts) > 12:
+                extra = f" (+{len(parts) - 12} more)"
+            return f"resources={len(resources)} [{shown}]{extra}"
+
         failed = False
-        for label, url in requests:
+        for label, url, require_resources in requests:
             body_path = Path(os.environ["RUNNER_TEMP"]) / f"asc-{label}.json"
             result = subprocess.run(
                 [
@@ -251,11 +314,13 @@ jobs:
                 continue
             if status == 403:
                 print(
-                    "ERROR: Apple refused this key (403). The role is insufficient. "
-                    "xcodebuild -allowProvisioningUpdates cloud signing with an API key "
-                    "requires the Admin role (Account Holder or Admin) and "
-                    "Access to Certificates, Identifiers & Profiles. "
-                    "App Manager can upload a build but cannot create certificates or profiles."
+                    "ERROR: Apple refused this key (403). The role is insufficient for cloud signing. "
+                    "GET /v1/apps and GET /v1/bundleIds can succeed for App Manager while "
+                    "GET /v1/certificates and GET /v1/profiles return 403. "
+                    "xcodebuild -allowProvisioningUpdates then reports "
+                    "'Authentication failed: Make sure a bearer token was provided'. "
+                    "The key needs the Admin role (Account Holder or Admin) and "
+                    "Access to Certificates, Identifiers & Profiles."
                 )
                 failed = True
                 continue
@@ -263,19 +328,26 @@ jobs:
                 print(f"ERROR: {label} returned HTTP {status}.")
                 failed = True
                 continue
-            try:
-                payload = json.loads(body)
-                resources = payload.get("data")
-                count = len(resources) if isinstance(resources, list) else 0
-            except json.JSONDecodeError:
-                count = 0
-            print(f"{label} resources={count}")
-            if count < 1:
+            summary = resource_summary(body)
+            print(f"{label} {summary}")
+            if require_resources and "resources=0" in summary:
                 print(
-                    f"ERROR: App Store Connect returned no {label} for com.jonathanbowe.jlphysical. "
+                    f"ERROR: App Store Connect returned no {label} records. "
                     "The token was accepted. Register that bundle ID and app on team 2UMNXHG36N."
                 )
                 failed = True
+                continue
+            if label in ("bundleIds-widgets", "bundleIds-share") and "resources=0" in summary:
+                print(
+                    f"WARNING: {label} is not registered yet. Export cloud signing will "
+                    "try to register it. That requires Admin and Access to Certificates, "
+                    "Identifiers & Profiles, plus App Group group.com.jonathanbowe.jlphysical."
+                )
+            if label == "certificates" and "resources=0" in summary:
+                print(
+                    "certificates: none listed. Export can still cloud-sign with an Admin key; "
+                    "it reuses or creates an Apple Distribution certificate on Apple's servers."
+                )
 
         header_file.unlink(missing_ok=True)
         if failed:
@@ -292,9 +364,6 @@ jobs:
         echo "Setting build number to ${BUILD_NUMBER}"
 
     - name: Build and archive for App Store
-      env:
-        KEY_ID: ${{ secrets.KEY_ID }}
-        ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
         set -o pipefail
         cd ios
@@ -302,19 +371,24 @@ jobs:
 
         # Bundle IDs stay on the per-target values in project.pbxproj.
         # A command-line PRODUCT_BUNDLE_IDENTIFIER would apply to every target.
+        #
+        # Archive unsigned. Automatic signing here asks for an iOS App Development
+        # profile (GatherProvisioningInputs). A fresh runner has no development
+        # certificate, so Xcode tries to mint one and then reports
+        # "Authentication failed: bearer token" plus "No profiles for
+        # com.jonathanbowe.jlphysical". Distribution signing happens at export,
+        # which uses the App Store profile and the API key.
         xcodebuild archive \
           -project calorietracker.xcodeproj \
           -scheme calorietracker \
           -configuration Release \
           -archivePath build/JLPhysical.xcarchive \
           -destination 'generic/platform=iOS' \
-          -allowProvisioningUpdates \
-          -authenticationKeyPath "${HOME}/private_keys/AuthKey_${KEY_ID}.p8" \
-          -authenticationKeyID "${KEY_ID}" \
-          -authenticationKeyIssuerID "${ISSUER_ID}" \
           DEVELOPMENT_TEAM=2UMNXHG36N \
           CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
-          CODE_SIGN_STYLE=Automatic \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
           | tee build_archive.log
 
         if [ ! -d "build/JLPhysical.xcarchive" ]; then
@@ -347,6 +421,8 @@ jobs:
             <true/>
             <key>signingStyle</key>
             <string>automatic</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
             <key>destination</key>
             <string>export</string>
             <key>manageAppVersionAndBuildNumber</key>
@@ -417,4 +493,6 @@ jobs:
       if: always()
       run: |
         rm -rf "${HOME}/private_keys"
+        rm -f "${HOME}/.private_keys"/AuthKey_*.p8
+        rm -f "${HOME}/.appstoreconnect/private_keys"/AuthKey_*.p8
         echo "API key file removed"
