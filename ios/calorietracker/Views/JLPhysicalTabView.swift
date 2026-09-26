@@ -206,9 +206,9 @@ struct JLPhysicalTabView: View {
         defer { isLoadingRecent = false }
         
         do {
-            let response = try await neonBridge.getWorkouts(limit: 5)
+            let workouts = try await neonBridge.listWorkouts(limit: 5)
             await MainActor.run {
-                recentWorkouts = response.workouts
+                recentWorkouts = workouts
             }
         } catch {
             print("Failed to load recent workouts: \(error)")
@@ -326,9 +326,9 @@ struct WorkoutHistoryListView: View {
         defer { isLoading = false }
         
         do {
-            let response = try await neonBridge.getWorkouts(limit: 50)
+            let workouts = try await neonBridge.listWorkouts(limit: 50)
             await MainActor.run {
-                workouts = response.workouts
+                self.workouts = workouts
             }
         } catch {
             print("Failed to load workouts: \(error)")
