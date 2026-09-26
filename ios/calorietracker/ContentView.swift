@@ -198,6 +198,13 @@ struct ContentView: View {
                     Text("Home")
                 }
 
+            JLPhysicalTabView()
+                .tag(AppTab.train)
+                .tabItem {
+                    Image(systemName: "figure.strengthtraining.traditional")
+                    Text("Train")
+                }
+            
             ProgressTabView()
                 .tag(AppTab.progress)
                 .tabItem {
@@ -236,6 +243,7 @@ struct ContentView: View {
 
     private enum AppTab: String, Hashable {
         case home
+        case train
         case progress
         case coach
         case settings
