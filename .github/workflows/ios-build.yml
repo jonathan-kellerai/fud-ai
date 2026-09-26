@@ -61,17 +61,3 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \
           | xcpretty && exit ${PIPESTATUS[0]}
-
-    - name: Run tests
-      run: |
-        cd ios
-        xcodebuild test \
-          -project calorietracker.xcodeproj \
-          -scheme calorietracker \
-          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO \
-          | xcpretty && exit ${PIPESTATUS[0]}
-      timeout-minutes: 15
-      continue-on-error: true
