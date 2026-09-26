@@ -70,8 +70,8 @@ struct WidgetSnapshot: Codable, Equatable {
     var themeStartHex: UInt?
     var themeEndHex: UInt?
 
-    private static let productionAppGroupID = "group.com.apoorvdarshan.calorietracker"
-    private static let debugAppGroupID = "group.com.apoorvdarshan.calorietracker.debug"
+    private static let productionAppGroupID = "group.com.jonathanbowe.jlphysical"
+    private static let debugAppGroupID = "group.com.jonathanbowe.jlphysical.debug"
     private static let key = "widget_snapshot_v1"
     private static let fileName = "widget_snapshot_v1.json"
     static let watchPayloadKey = "widget_snapshot_data_v1"
