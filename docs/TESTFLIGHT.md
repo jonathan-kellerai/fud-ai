@@ -169,23 +169,20 @@ AUTH_KEY=<Full contents of the .p8 file including BEGIN/END lines>
 - Preserve all newlines when copying the key
 - Do not add quotes or extra formatting
 
-### Setting Up Fastlane Match
+### Code Signing
 
-Match manages your code signing certificates and provisioning profiles in a private git repository:
+The TestFlight workflow uses **Automatic Signing** with `-allowProvisioningUpdates`:
 
-1. Create a private GitHub repository (e.g., `jlphysical-certificates`)
-2. Run locally:
-   ```bash
-   cd ios
-   bundle exec fastlane match init
-   # Choose 'git' and enter your certificates repo URL
-   bundle exec fastlane match appstore
-   ```
-3. This will:
-   - Create distribution certificates
-   - Create provisioning profiles for all bundle IDs
-   - Encrypt and store them in the git repo
-   - Ask you to set a password (save this as `MATCH_PASSWORD` secret)
+- Xcode will automatically create/download provisioning profiles during the build
+- No Fastlane Match required
+- Distribution certificate will be managed by Xcode
+- Provisioning profiles are created on-demand for all bundle IDs
+
+**Requirements:**
+- Your Apple Developer account must have Admin or App Manager role
+- All 5 bundle IDs must be registered (see above)
+- Capabilities must be configured for each bundle ID
+- The API key must have "App Manager" access in App Store Connect
 
 ## Deployment Workflow
 
