@@ -8,40 +8,13 @@
 import SwiftUI
 
 struct JLPhysicalTabView: View {
-    @Environment(StrengthWorkoutStore.self) private var workoutStore
-    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedDay: ProgramV2Day?
     @State private var showingTemplatePicker = false
     @State private var showingWorkoutLog = false
-    @State private var currentDate = Date()
+    @State private var recentWorkouts: [RemoteWorkout] = []
+    @State private var isLoadingRecent = false
     
-    private var nextUnfinishedDay: ProgramV2Day? {
-        guard selectedDay != nil else { return nil }
-        let calendar = Calendar.current
-        let dayOfWeek = calendar.component(.weekday, from: currentDate)
-        
-        let hasWorkout = workoutStore.plannedExercises.contains {
-            calendar.isDate($0.date, inSameDayAs: currentDate)
-        }
-        if !hasWorkout {
-            return selectedDay
-        }
-        return nil
-    }
-    
-    private func matchesWeekday(_ day: ProgramV2Day, _ weekday: Int) -> Bool {
-        let dayName = day.name.lowercased()
-        switch weekday {
-        case 1: return dayName.contains("sun")
-        case 2: return dayName.contains("mon") || dayName.contains("lower")
-        case 3: return dayName.contains("tue") || dayName.contains("upper")
-        case 4: return dayName.contains("wed") || dayName.contains("pull")
-        case 5: return dayName.contains("thu") || dayName.contains("push")
-        case 6: return dayName.contains("fri") || dayName.contains("legs")
-        case 7: return dayName.contains("sat")
-        default: return false
-        }
-    }
+    private var neonBridge = NeonBridgeService.shared
     
     var body: some View {
         NavigationView {
@@ -49,7 +22,7 @@ struct JLPhysicalTabView: View {
                 VStack(spacing: 20) {
                     if selectedDay == nil {
                         programSelectionPrompt
-                    } else if let day = nextUnfinishedDay {
+                    } else if let day = selectedDay {
                         todaysWorkoutCard(day: day)
                     }
                     
@@ -77,13 +50,15 @@ struct JLPhysicalTabView: View {
             }
             .sheet(isPresented: $showingWorkoutLog) {
                 if let day = selectedDay {
-                    ProgramV2WorkoutLogView(day: day, program: "Program V2")
+                    ProgramV2WorkoutLogView(day: day, onSaved: {
+                        Task {
+                            await loadRecentWorkouts()
+                        }
+                    })
                 }
             }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    currentDate = Date()
-                }
+            .task {
+                await loadRecentWorkouts()
             }
         }
     }
@@ -97,7 +72,7 @@ struct JLPhysicalTabView: View {
             Text("Choose Your Program")
                 .font(.title2.bold())
             
-            Text("Select a Program V2 template to start tracking your workouts")
+            Text("Select a Program V2 day template to start tracking your workouts")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -127,14 +102,13 @@ struct JLPhysicalTabView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     
-                    Text(day.name)
+                    Text(day.title)
                         .font(.title2.bold())
                 }
                 
                 Spacer()
                 
                 Button {
-                    selectedDay = day
                     showingWorkoutLog = true
                 } label: {
                     Label("Start", systemImage: "play.fill")
@@ -150,18 +124,16 @@ struct JLPhysicalTabView: View {
             Divider()
             
             VStack(alignment: .leading, spacing: 8) {
-                if let conditioning = day.conditioning {
-                    HStack {
-                        Image(systemName: "heart.fill")
-                            .foregroundStyle(.red)
-                        Text("Conditioning: \(conditioning)")
-                            .font(.subheadline)
-                    }
+                HStack {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(.red)
+                    Text("Conditioning: \(day.conditioning)")
+                        .font(.subheadline)
                 }
                 
                 HStack {
                     Image(systemName: "dumbbell.fill")
-                    Text("\(day.movements.count) exercises")
+                    Text("\(day.exercises.count) exercises")
                         .font(.subheadline)
                 }
             }
@@ -211,21 +183,35 @@ struct JLPhysicalTabView: View {
                 }
             }
             
-            let recentWorkouts = workoutStore.plannedExercises
-                .sorted { $0.date > $1.date }
-                .prefix(3)
-            
-            if recentWorkouts.isEmpty {
+            if isLoadingRecent {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else if recentWorkouts.isEmpty {
                 Text("No workouts logged yet")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
-                ForEach(Array(recentWorkouts), id: \.id) { workout in
+                ForEach(recentWorkouts.prefix(3), id: \.id) { workout in
                     RecentWorkoutRow(workout: workout)
                 }
             }
+        }
+    }
+    
+    private func loadRecentWorkouts() async {
+        isLoadingRecent = true
+        defer { isLoadingRecent = false }
+        
+        do {
+            let response = try await neonBridge.getWorkouts(limit: 5)
+            await MainActor.run {
+                recentWorkouts = response.workouts
+            }
+        } catch {
+            print("Failed to load recent workouts: \(error)")
         }
     }
 }
@@ -253,25 +239,25 @@ struct QuickActionButton: View {
 }
 
 struct RecentWorkoutRow: View {
-    let workout: StrengthPlannedExercise
+    let workout: RemoteWorkout
     
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(workout.exercise.name)
+                Text(workout.programDay)
                     .font(.subheadline.bold())
                 
-                Text(workout.date, style: .date)
+                Text(workout.sessionDate)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             
             Spacer()
             
-            if let lastSet = workout.sets.last {
-                Text("\(lastSet.reps) × \(Int(lastSet.weight))lb")
+            if let conditioning = workout.conditioning {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(.red)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .padding()
@@ -281,23 +267,80 @@ struct RecentWorkoutRow: View {
 }
 
 struct WorkoutHistoryListView: View {
-    @Environment(StrengthWorkoutStore.self) private var workoutStore
+    @State private var workouts: [RemoteWorkout] = []
+    @State private var isLoading = false
+    
+    private var neonBridge = NeonBridgeService.shared
     
     var body: some View {
-        List {
-            ForEach(workoutStore.plannedExercises.sorted { $0.date > $1.date }, id: \.id) { workout in
-                NavigationLink(destination: Text("Workout detail")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(workout.exercise.name)
-                            .font(.headline)
-                        
-                        Text(workout.date, style: .date)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+        Group {
+            if isLoading {
+                ProgressView()
+            } else if workouts.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "figure.strengthtraining.traditional")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("No workouts yet")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                List {
+                    ForEach(workouts) { workout in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(workout.title)
+                                .font(.headline)
+                            
+                            Text(workout.sessionDate)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            if let conditioning = workout.conditioning {
+                                Text("Conditioning: \(conditioning)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                Task {
+                                    await deleteWorkout(workout.id)
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
         }
         .navigationTitle("Workout History")
+        .task {
+            await loadWorkouts()
+        }
+    }
+    
+    private func loadWorkouts() async {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let response = try await neonBridge.getWorkouts(limit: 50)
+            await MainActor.run {
+                workouts = response.workouts
+            }
+        } catch {
+            print("Failed to load workouts: \(error)")
+        }
+    }
+    
+    private func deleteWorkout(_ id: String) async {
+        do {
+            try await neonBridge.deleteWorkout(id)
+            await loadWorkouts()
+        } catch {
+            print("Failed to delete workout: \(error)")
+        }
     }
 }
