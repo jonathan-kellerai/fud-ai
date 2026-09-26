@@ -11,6 +11,11 @@ struct ProgramV2WorkoutLogView: View {
     let day: ProgramV2Day
     let onSaved: () -> Void
     
+    init(day: ProgramV2Day, onSaved: @escaping () -> Void = {}) {
+        self.day = day
+        self.onSaved = onSaved
+    }
+    
     @Environment(\.dismiss) private var dismiss
     @State private var workoutSets: [String: [LoggedSet]] = [:]
     @State private var conditioningCompleted = false
