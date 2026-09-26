@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     name: Build iOS App
-    runs-on: macos-14
+    runs-on: macos-15  # Latest macOS runner for Xcode 26
     
     steps:
     - name: Checkout code
@@ -18,20 +18,23 @@ jobs:
     - name: List available Xcode versions
       run: ls -la /Applications/ | grep Xcode
       
-    - name: Select Xcode version
+    - name: Select latest Xcode 26
       run: |
-        # Project uses objectVersion 77, requires Xcode 16+
-        if [ -d "/Applications/Xcode_16.1.app" ]; then
-          sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
-        elif [ -d "/Applications/Xcode_16.2.app" ]; then
-          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-        else
-          echo "ERROR: No Xcode 16+ found, project requires objectVersion 77"
+        # Find and select the latest Xcode 26.x
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          echo "Available Xcode versions:"
+          ls -d /Applications/Xcode*.app
           exit 1
         fi
+        echo "Selected: $LATEST_XCODE"
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
       
     - name: Show Xcode version
-      run: xcodebuild -version
+      run: |
+        xcodebuild -version
+        swift --version
       
     - name: Build for iOS Simulator
       run: |
@@ -59,7 +62,7 @@ jobs:
           | xcpretty && exit ${PIPESTATUS[0]}
       continue-on-error: true
       
-    - name: Build for Generic iOS Device
+    - name: Build for Generic iOS Device (Release)
       run: |
         cd ios
         xcodebuild clean build \
