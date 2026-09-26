@@ -206,131 +206,215 @@ def post_capability(token, bundle_resource_id, capability_type, settings):
     return api(token, "POST", f"{API_ROOT}/v1/bundleIdCapabilities", body)
 
 
-def ensure_capability(token, bundle_resource_id, capability_type, settings_attempts, needle):
-    existing = list_capabilities(token, bundle_resource_id)
-    current = None
-    for capability in existing:
+# Apple's bundleIdCapabilities schema accepts only these setting and option keys.
+# Run 41 rejected APP_GROUP_IDS with HTTP 409 ENTITY_ERROR.ATTRIBUTE.TYPE and
+# listed exactly these setting keys. XCODE_13, ASSOCIATED_DOMAIN_IDS, and
+# APP_GROUPS-as-a-setting-key are not in the schema. A 409 of that class is a
+# rejected payload, not "capability already exists".
+ALLOWED_SETTING_KEYS = frozenset(
+    {
+        "ICLOUD_VERSION",
+        "DATA_PROTECTION_PERMISSION_LEVEL",
+        "APPLE_ID_AUTH_APP_CONSENT",
+    }
+)
+ALLOWED_OPTION_KEYS = frozenset(
+    {
+        "XCODE_5",
+        "XCODE_6",
+        "COMPLETE_PROTECTION",
+        "PROTECTED_UNLESS_OPEN",
+        "PROTECTED_UNTIL_FIRST_USER_AUTH",
+        "PRIMARY_APP_CONSENT",
+    }
+)
+
+# XCODE_6 enables CloudKit. XCODE_5 is iCloud Documents and does not put
+# CloudKit on the profile. The public API has no setting for a container id;
+# CloudKit uses the default container iCloud.<bundle id>.
+ICLOUD_CLOUDKIT_SETTINGS = [
+    {
+        "key": "ICLOUD_VERSION",
+        "options": [{"key": "XCODE_6", "enabled": True}],
+    }
+]
+
+
+def capability_plan(kind):
+    """Capabilities to enable. None means capabilityType only, with no settings.
+
+    App group identifiers and associated-domain strings are not capability
+    settings. The App Group is already attached to these bundle IDs and is
+    checked on the profile. Associated Domains with no settings puts
+    com.apple.developer.associated-domains on the profile; the applinks value
+    stays in the entitlements file.
+    """
+    plan = [("APP_GROUPS", None)]
+    if kind == "app":
+        plan.extend(
+            [
+                ("ASSOCIATED_DOMAINS", None),
+                ("ICLOUD", ICLOUD_CLOUDKIT_SETTINGS),
+                ("HEALTHKIT", None),
+            ]
+        )
+    return plan
+
+
+def assert_settings_allowed(settings):
+    if settings is None:
+        return
+    if not isinstance(settings, list) or not settings:
+        fail("capability settings must be a non-empty list or omitted")
+    for setting in settings:
+        if not isinstance(setting, dict):
+            fail("capability setting must be an object")
+        key = setting.get("key")
+        if key not in ALLOWED_SETTING_KEYS:
+            fail(
+                f"refusing to send capability setting key {key!r}. "
+                f"Apple accepts only {sorted(ALLOWED_SETTING_KEYS)}."
+            )
+        options = setting.get("options") or []
+        if not isinstance(options, list) or not options:
+            fail(f"capability setting {key} needs at least one option")
+        for option in options:
+            if not isinstance(option, dict):
+                fail(f"capability option for {key} must be an object")
+            option_key = option.get("key")
+            if option_key not in ALLOWED_OPTION_KEYS:
+                fail(
+                    f"refusing to send capability option key {option_key!r}. "
+                    f"Apple accepts only {sorted(ALLOWED_OPTION_KEYS)}."
+                )
+
+
+def is_invalid_settings_error(payload):
+    text = error_text(payload).lower()
+    markers = (
+        "not a valid value",
+        "expected one of",
+        "attribute.type",
+        "wrong type",
+        "entity_error.attribute.type",
+    )
+    return any(marker in text for marker in markers)
+
+
+def is_duplicate_conflict(status, payload):
+    if status != 409:
+        return False
+    return not is_invalid_settings_error(payload)
+
+
+def find_capability(capabilities, capability_type):
+    for capability in capabilities:
         attributes = capability.get("attributes") or {}
         if attributes.get("capabilityType") == capability_type:
-            current = capability
-            break
-    if current is not None:
-        blob = json.dumps(capability_settings(current))
-        if needle is None or needle in blob:
-            print(f"capability {capability_type} already enabled on {bundle_resource_id}")
-            return
-        print(f"capability {capability_type} is enabled without {needle}; updating it")
-        updated = list(capability_settings(current))
-        if settings_attempts and settings_attempts[0]:
-            updated = settings_attempts[0]
-        status, payload = api(
-            token,
-            "PATCH",
-            f"{API_ROOT}/v1/bundleIdCapabilities/{current['id']}",
-            {
-                "data": {
-                    "type": "bundleIdCapabilities",
-                    "id": current["id"],
-                    "attributes": {
-                        "capabilityType": capability_type,
-                        "settings": updated,
-                    },
-                }
-            },
-        )
-        if status in (200, 201):
-            print(f"updated {capability_type}")
-            return
-        print(f"WARNING: could not update {capability_type} HTTP {status}: {error_text(payload)}")
-        return
+            return capability
+    return None
 
-    errors = []
-    for settings in settings_attempts:
-        status, payload = post_capability(token, bundle_resource_id, capability_type, settings)
+
+def describe_capability(capability):
+    attributes = capability.get("attributes") or {}
+    pieces = []
+    for setting in capability_settings(capability):
+        if not isinstance(setting, dict):
+            continue
+        option_bits = []
+        for option in setting.get("options") or []:
+            if isinstance(option, dict):
+                option_bits.append(f"{option.get('key')}:enabled={option.get('enabled')}")
+        pieces.append(f"{setting.get('key')}[{', '.join(option_bits)}]")
+    rendered = ", ".join(pieces) if pieces else "no settings"
+    print(
+        f"existing capability type={attributes.get('capabilityType')} "
+        f"id={capability.get('id')} {rendered}"
+    )
+
+
+def icloud_cloudkit_enabled(capability):
+    for setting in capability_settings(capability):
+        if not isinstance(setting, dict) or setting.get("key") != "ICLOUD_VERSION":
+            continue
+        for option in setting.get("options") or []:
+            if (
+                isinstance(option, dict)
+                and option.get("key") == "XCODE_6"
+                and option.get("enabled") is True
+            ):
+                return True
+    return False
+
+
+def patch_capability(token, capability, capability_type, settings):
+    assert_settings_allowed(settings)
+    capability_id = capability["id"]
+    status, payload = api(
+        token,
+        "PATCH",
+        f"{API_ROOT}/v1/bundleIdCapabilities/{capability_id}",
+        {
+            "data": {
+                "type": "bundleIdCapabilities",
+                "id": capability_id,
+                "attributes": {
+                    "capabilityType": capability_type,
+                    "settings": settings,
+                },
+            }
+        },
+    )
+    if status not in (200, 201):
+        fail(
+            f"Could not update {capability_type} {capability_id} "
+            f"HTTP {status}: {error_text(payload)}"
+        )
+    print(f"updated {capability_type} id={capability_id}")
+
+
+def ensure_capability(token, bundle_resource_id, capability_type, settings):
+    assert_settings_allowed(settings)
+    existing = list_capabilities(token, bundle_resource_id)
+    for capability in existing:
+        describe_capability(capability)
+    current = find_capability(existing, capability_type)
+    if current is None:
+        status, payload = post_capability(
+            token, bundle_resource_id, capability_type, settings
+        )
         if status in (200, 201):
             print(f"enabled {capability_type} on {bundle_resource_id}")
             return
-        if status == 409:
-            print(f"capability {capability_type} already exists (409)")
-            return
-        errors.append(f"HTTP {status}: {error_text(payload)}")
-        if status == 403:
-            break
-    fail(
-        f"Could not enable {capability_type} on {bundle_resource_id}. "
-        + " | ".join(errors)
-    )
+        if not is_duplicate_conflict(status, payload):
+            fail(
+                f"Could not enable {capability_type} on {bundle_resource_id} "
+                f"HTTP {status}: {error_text(payload)}"
+            )
+        print(
+            f"capability {capability_type} reported a duplicate "
+            f"HTTP {status}: {error_text(payload)}"
+        )
+        existing = list_capabilities(token, bundle_resource_id)
+        current = find_capability(existing, capability_type)
+        if current is None:
+            fail(
+                f"{capability_type} returned HTTP {status} but is not listed "
+                f"on {bundle_resource_id}. Apple said: {error_text(payload)}"
+            )
+    if capability_type == "ICLOUD" and not icloud_cloudkit_enabled(current):
+        print(
+            f"capability ICLOUD on {bundle_resource_id} is missing CloudKit "
+            "(XCODE_6); updating it"
+        )
+        patch_capability(token, current, capability_type, ICLOUD_CLOUDKIT_SETTINGS)
+        return
+    print(f"capability {capability_type} already enabled on {bundle_resource_id}")
 
 
 def enable_target_capabilities(token, bundle_resource_id, kind):
-    group_settings = (
-        [
-            {
-                "key": "APP_GROUP_IDS",
-                "options": [{"key": APP_GROUP, "enabled": True}],
-            }
-        ],
-        [
-            {
-                "key": "APP_GROUPS",
-                "options": [{"key": APP_GROUP, "enabled": True}],
-            }
-        ],
-    )
-    ensure_capability(token, bundle_resource_id, "APP_GROUPS", group_settings, APP_GROUP)
-    if kind != "app":
-        return
-    ensure_capability(
-        token,
-        bundle_resource_id,
-        "ASSOCIATED_DOMAINS",
-        (
-            [
-                {
-                    "key": "ASSOCIATED_DOMAIN_IDS",
-                    "options": [{"key": ASSOCIATED_DOMAIN, "enabled": True}],
-                }
-            ],
-            None,
-        ),
-        None,
-    )
-    ensure_capability(
-        token,
-        bundle_resource_id,
-        "ICLOUD",
-        (
-            [
-                {
-                    "key": "ICLOUD_VERSION",
-                    "options": [{"key": "XCODE_13", "enabled": True}],
-                }
-            ],
-            [
-                {
-                    "key": "ICLOUD_VERSION",
-                    "options": [{"key": "XCODE_6", "enabled": True}],
-                }
-            ],
-        ),
-        None,
-    )
-    ensure_capability(token, bundle_resource_id, "HEALTHKIT", (None,), None)
-    status, payload = api(
-        token,
-        "GET",
-        f"{API_ROOT}/v1/capabilities?limit=200&filter[bundleId]={bundle_resource_id}",
-    )
-    if status != 200 or not isinstance(payload, dict):
-        print(f"WARNING: could not list capability templates HTTP {status}")
-        return
-    for item in payload.get("data") or []:
-        cap_id = str(item.get("id") or "")
-        name = str((item.get("attributes") or {}).get("name") or "")
-        label = f"{cap_id} {name}".upper()
-        if "HEALTH" in label and "BACKGROUND" in label and cap_id:
-            print(f"enabling health background capability {cap_id}")
-            ensure_capability(token, bundle_resource_id, cap_id, (None,), None)
+    for capability_type, settings in capability_plan(kind):
+        ensure_capability(token, bundle_resource_id, capability_type, settings)
 
 
 def list_certificates(token):
@@ -724,6 +808,150 @@ def self_check():
         fail(f"capabilities relationship request was {recorded}")
     if listed != []:
         fail("capabilities relationship should return the data array")
+
+    app_plan = capability_plan("app")
+    extension_plan = capability_plan("extension")
+    if [item[0] for item in app_plan] != [
+        "APP_GROUPS",
+        "ASSOCIATED_DOMAINS",
+        "ICLOUD",
+        "HEALTHKIT",
+    ]:
+        fail(f"app capability plan was {app_plan}")
+    if extension_plan != [("APP_GROUPS", None)]:
+        fail(f"extension capability plan was {extension_plan}")
+    illegal_fragments = (
+        "APP_GROUP_IDS",
+        "ASSOCIATED_DOMAIN_IDS",
+        "XCODE_13",
+        '"key": "APP_GROUPS"',
+    )
+    for capability_type, settings in app_plan:
+        assert_settings_allowed(settings)
+        rendered = json.dumps(settings)
+        for fragment in illegal_fragments:
+            if fragment in rendered:
+                fail(f"{capability_type} payload contains {fragment}")
+        if capability_type == "ICLOUD":
+            options = [
+                option.get("key")
+                for setting in settings
+                for option in setting["options"]
+            ]
+            if options != ["XCODE_6"] or settings[0]["key"] != "ICLOUD_VERSION":
+                fail(f"iCloud payload must be ICLOUD_VERSION/XCODE_6, got {settings}")
+        elif settings is not None:
+            fail(f"{capability_type} must be enabled with no settings")
+
+    invalid_settings = {
+        "errors": [
+            {
+                "code": "ENTITY_ERROR.ATTRIBUTE.TYPE",
+                "status": "409",
+                "title": "An attribute in the provided entity has the wrong type",
+                "detail": (
+                    "'APP_GROUP_IDS' is not a valid value for the attribute "
+                    "'settings/0/key'. Expected one of: 'ICLOUD_VERSION', "
+                    "'DATA_PROTECTION_PERMISSION_LEVEL', 'APPLE_ID_AUTH_APP_CONSENT'"
+                ),
+            }
+        ]
+    }
+    if is_duplicate_conflict(409, invalid_settings):
+        fail("invalid settings 409 was treated as already enabled")
+    if not is_duplicate_conflict(
+        409, {"errors": [{"detail": "The bundleIdCapability already exists."}]}
+    ):
+        fail("duplicate 409 was not recognized")
+    if is_duplicate_conflict(400, invalid_settings):
+        fail("HTTP 400 was treated as a duplicate capability")
+
+    posts = []
+    patches = []
+
+    def recording_api(token, method, url, body=None):
+        if method == "POST":
+            posts.append(body)
+            return 201, {"data": {"id": "NEW", "attributes": {}}}
+        if method == "PATCH":
+            patches.append((url, body))
+            return 200, {"data": {"id": "ICAP"}}
+        if "bundleIdCapabilities" in url:
+            return 200, {"data": [], "links": {}}
+        fail(f"self-check saw unexpected {method} {url}")
+
+    globals()["api"] = recording_api
+    try:
+        enable_target_capabilities("token", "24674R8P55", "app")
+    finally:
+        globals()["api"] = original_api
+    posted_types = [
+        (body["data"]["attributes"].get("capabilityType"), body["data"]["attributes"].get("settings"))
+        for body in posts
+    ]
+    if posted_types != app_plan:
+        fail(f"enable posted {posted_types}")
+    if patches:
+        fail(f"fresh capabilities should not be patched, got {patches}")
+    joined = json.dumps(posts)
+    if "/v1/capabilities?" in joined or "limit=200" in joined:
+        fail("capability template lookup was issued")
+
+    def patching_api(token, method, url, body=None):
+        if method == "GET" and url == bundle_id_capabilities_url("24674R8P55"):
+            return 200, {
+                "data": [
+                    {
+                        "type": "bundleIdCapabilities",
+                        "id": "ICAP",
+                        "attributes": {
+                            "capabilityType": "ICLOUD",
+                            "settings": [
+                                {
+                                    "key": "ICLOUD_VERSION",
+                                    "options": [{"key": "XCODE_5", "enabled": True}],
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "links": {},
+            }
+        if method == "PATCH":
+            patches.append((url, body))
+            return 200, {"data": {"id": "ICAP"}}
+        fail(f"self-check saw unexpected {method} {url}")
+
+    globals()["api"] = patching_api
+    try:
+        ensure_capability("token", "24674R8P55", "ICLOUD", ICLOUD_CLOUDKIT_SETTINGS)
+    finally:
+        globals()["api"] = original_api
+    if len(patches) != 1:
+        fail(f"expected one iCloud patch, got {patches}")
+    patch_url, patch_body = patches[0]
+    patch_settings = patch_body["data"]["attributes"]["settings"]
+    if patch_url != f"{API_ROOT}/v1/bundleIdCapabilities/ICAP":
+        fail(f"iCloud patch URL was {patch_url}")
+    if patch_settings != ICLOUD_CLOUDKIT_SETTINGS:
+        fail(f"iCloud patch settings were {patch_settings}")
+
+    def rejecting_api(token, method, url, body=None):
+        if method == "GET":
+            return 200, {"data": [], "links": {}}
+        return 409, invalid_settings
+
+    globals()["api"] = rejecting_api
+    try:
+        try:
+            print("self-check expects the next capability enable to fail")
+            ensure_capability("token", "24674R8P55", "ASSOCIATED_DOMAINS", None)
+        except SystemExit:
+            pass
+        else:
+            fail("invalid settings 409 was treated as success")
+    finally:
+        globals()["api"] = original_api
     print("self-check ok")
 
 
