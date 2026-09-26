@@ -337,7 +337,7 @@ struct WorkoutHistoryListView: View {
     
     private func deleteWorkout(_ id: String) async {
         do {
-            try await neonBridge.deleteWorkout(id)
+            try await neonBridge.deleteWorkout(id: id)
             await loadWorkouts()
         } catch {
             print("Failed to delete workout: \(error)")
