@@ -20,13 +20,14 @@ jobs:
       
     - name: Select Xcode version
       run: |
-        # Try Xcode 15.4, 15.3, or fall back to default
-        if [ -d "/Applications/Xcode_15.4.app" ]; then
-          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-        elif [ -d "/Applications/Xcode_15.3.app" ]; then
-          sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+        # Project uses objectVersion 77, requires Xcode 16+
+        if [ -d "/Applications/Xcode_16.1.app" ]; then
+          sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+        elif [ -d "/Applications/Xcode_16.2.app" ]; then
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
         else
-          echo "Using default Xcode"
+          echo "ERROR: No Xcode 16+ found, project requires objectVersion 77"
+          exit 1
         fi
       
     - name: Show Xcode version
