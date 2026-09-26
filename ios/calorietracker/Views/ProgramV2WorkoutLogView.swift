@@ -31,8 +31,8 @@ struct ProgramV2WorkoutLogView: View {
                         conditioningCard(conditioning)
                     }
                     
-                    ForEach(day.movements, id: \.name) { movement in
-                        exerciseCard(movement)
+                    ForEach(day.exercises) { exercise in
+                        exerciseCard(exercise)
                     }
                     
                     saveButton
@@ -86,24 +86,22 @@ struct ProgramV2WorkoutLogView: View {
         .cornerRadius(12)
     }
     
-    private func exerciseCard(_ movement: ProgramV2Movement) -> some View {
+    private func exerciseCard(_ exercise: ProgramV2Exercise) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading) {
-                    Text(movement.name)
+                    Text(exercise.name)
                         .font(.headline)
                     
-                    if let mechanics = movement.mechanics {
-                        Text("Mechanics: \(mechanics)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("\(exercise.sets) sets × \(exercise.reps) reps")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 
                 Spacer()
                 
-                if let starting = movement.starting_load {
-                    Text("\(starting.amount)\(starting.unit)")
+                if let starting = exercise.startLoadLb {
+                    Text("\(Int(starting))lb")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
@@ -113,14 +111,14 @@ struct ProgramV2WorkoutLogView: View {
                 }
             }
             
-            let sets = workoutSets[movement.name] ?? []
+            let sets = workoutSets[exercise.name] ?? []
             
             ForEach(Array(sets.enumerated()), id: \.offset) { index, set in
-                setRow(movement: movement, setIndex: index, set: set)
+                setRow(exercise: exercise, setIndex: index, set: set)
             }
             
             Button {
-                addSet(for: movement)
+                addSet(for: exercise)
             } label: {
                 Label("Add Set", systemImage: "plus.circle.fill")
                     .font(.subheadline)
@@ -133,7 +131,7 @@ struct ProgramV2WorkoutLogView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 8, y: 2)
     }
     
-    private func setRow(movement: ProgramV2Movement, setIndex: Int, set: WorkoutSet) -> some View {
+    private func setRow(exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
         HStack(spacing: 12) {
             Text("Set \(setIndex + 1)")
                 .font(.caption)
@@ -142,7 +140,7 @@ struct ProgramV2WorkoutLogView: View {
             
             TextField("Load", value: Binding(
                 get: { set.weight },
-                set: { workoutSets[movement.name]?[setIndex].weight = $0 }
+                set: { workoutSets[exercise.name]?[setIndex].weight = $0 }
             ), format: .number)
             .keyboardType(.decimalPad)
             .textFieldStyle(.roundedBorder)
@@ -153,7 +151,7 @@ struct ProgramV2WorkoutLogView: View {
             
             TextField("Reps", value: Binding(
                 get: { set.reps },
-                set: { workoutSets[movement.name]?[setIndex].reps = $0 }
+                set: { workoutSets[exercise.name]?[setIndex].reps = $0 }
             ), format: .number)
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
@@ -161,7 +159,7 @@ struct ProgramV2WorkoutLogView: View {
             
             TextField("RIR", value: Binding(
                 get: { set.rir },
-                set: { workoutSets[movement.name]?[setIndex].rir = $0 }
+                set: { workoutSets[exercise.name]?[setIndex].rir = $0 }
             ), format: .number)
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
@@ -169,7 +167,7 @@ struct ProgramV2WorkoutLogView: View {
             
             if set.weight > 0 && set.reps > 0 {
                 Button {
-                    currentExercise = movement
+                    currentExercise = exercise
                     showingRestTimer = true
                 } label: {
                     Image(systemName: "timer")
@@ -178,7 +176,7 @@ struct ProgramV2WorkoutLogView: View {
             }
             
             Button {
-                workoutSets[movement.name]?.remove(at: setIndex)
+                workoutSets[exercise.name]?.remove(at: setIndex)
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.red)
@@ -249,33 +247,36 @@ struct ProgramV2WorkoutLogView: View {
     private func saveWorkout() async {
         isSaving = true
         
-        let workout = NeonWorkout(
-            id: nil,
-            userId: "jl-physical-user",
-            date: ISO8601DateFormatter().string(from: Date()),
-            programName: program?.name ?? "Program V2",
-            dayName: day.name,
-            conditioningCompleted: conditioningCompleted,
-            conditioningDescription: day.conditioning,
-            exercises: workoutSets.compactMap { exerciseName, sets in
-                guard !sets.isEmpty else { return nil }
-                return NeonExercise(
-                    name: exerciseName,
-                    sets: sets.map { set in
-                        NeonSet(
-                            weight: set.weight,
-                            weightUnit: "lb",
-                            reps: set.reps,
-                            rir: set.rir,
-                            rpe: nil
-                        )
-                    }
+        let allSets = workoutSets.flatMap { exerciseName, sets -> [WorkoutSet] in
+            sets.enumerated().map { index, set in
+                WorkoutSet(
+                    exercise: exerciseName,
+                    load: set.weight,
+                    reps: set.reps,
+                    rir: set.rir,
+                    rpe: set.rpe.map(Double.init),
+                    order: index
                 )
             }
+        }
+        
+        let workout = WorkoutPayload(
+            kind: "strength",
+            programVersion: "v2",
+            programDay: day.id,
+            title: day.title,
+            units: "lb",
+            sessionDate: ISO8601DateFormatter().string(from: Date()),
+            conditioning: conditioningCompleted ? day.conditioning : nil,
+            notes: [],
+            recordedAtUtc: ISO8601DateFormatter().string(from: Date()),
+            openedAtUtc: ISO8601DateFormatter().string(from: Date()),
+            source: "jl-physical-ios",
+            sets: allSets
         )
         
         do {
-            try await neonBridge.saveWorkout(workout)
+            _ = try await neonBridge.postWorkout(workout)
             
             for (exerciseName, sets) in workoutSets {
                 guard !sets.isEmpty else { continue }
@@ -315,7 +316,7 @@ struct ProgramV2WorkoutLogView: View {
     }
 }
 
-struct WorkoutSet {
+struct LoggedSet {
     var weight: Double
     var reps: Int
     var rir: Int

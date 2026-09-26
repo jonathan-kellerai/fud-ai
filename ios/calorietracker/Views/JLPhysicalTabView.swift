@@ -20,22 +20,13 @@ struct JLPhysicalTabView: View {
         let calendar = Calendar.current
         let dayOfWeek = calendar.component(.weekday, from: currentDate)
         
-        for offset in 0..<7 {
-            let checkDate = calendar.date(byAdding: .day, value: offset, to: currentDate) ?? currentDate
-            let checkDayOfWeek = calendar.component(.weekday, from: checkDate)
-            
-            for day in program.days {
-                if matchesWeekday(day, checkDayOfWeek) {
-                    let hasWorkout = workoutStore.plannedExercises.contains {
-                        calendar.isDate($0.date, inSameDayAs: checkDate)
-                    }
-                    if !hasWorkout || offset == 0 {
-                        return day
-                    }
-                }
-            }
+        let hasWorkout = workoutStore.plannedExercises.contains {
+            calendar.isDate($0.date, inSameDayAs: currentDate)
         }
-        return program.days.first
+        if !hasWorkout {
+            return selectedDay
+        }
+        return nil
     }
     
     private func matchesWeekday(_ day: ProgramV2Day, _ weekday: Int) -> Bool {
@@ -56,7 +47,7 @@ struct JLPhysicalTabView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    if selectedProgram == nil {
+                    if selectedDay == nil {
                         programSelectionPrompt
                     } else if let day = nextUnfinishedDay {
                         todaysWorkoutCard(day: day)
@@ -74,20 +65,19 @@ struct JLPhysicalTabView: View {
                     Button {
                         showingTemplatePicker = true
                     } label: {
-                        Image(systemName: selectedProgram == nil ? "plus.circle" : "list.bullet")
+                        Image(systemName: selectedDay == nil ? "plus.circle" : "list.bullet")
                     }
                 }
             }
             .sheet(isPresented: $showingTemplatePicker) {
-                ProgramV2TemplatePickerView { template in
-                    selectedProgram = template
-                    selectedDay = nextUnfinishedDay
+                ProgramV2TemplatePickerView { day in
+                    selectedDay = day
                     showingTemplatePicker = false
                 }
             }
             .sheet(isPresented: $showingWorkoutLog) {
                 if let day = selectedDay {
-                    ProgramV2WorkoutLogView(day: day, program: selectedProgram)
+                    ProgramV2WorkoutLogView(day: day, program: "Program V2")
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -197,12 +187,10 @@ struct JLPhysicalTabView: View {
                     QuickActionButton(icon: "server.rack", title: "Bridge", color: .blue)
                 }
                 
-                if selectedProgram != nil {
-                    Button {
-                        showingTemplatePicker = true
-                    } label: {
-                        QuickActionButton(icon: "list.bullet", title: "Program", color: .orange)
-                    }
+                Button {
+                    showingTemplatePicker = true
+                } label: {
+                    QuickActionButton(icon: "list.bullet", title: "Program", color: .orange)
                 }
             }
         }
