@@ -2,11 +2,6 @@ name: TestFlight Deploy
 
 on:
   workflow_dispatch:
-    inputs:
-      build_number:
-        description: 'Build number (leave empty for auto-increment)'
-        required: false
-        default: ''
 
 jobs:
   deploy:
@@ -16,56 +11,176 @@ jobs:
     # Only run if required secrets are configured
     if: >
       github.event_name == 'workflow_dispatch' &&
-      secrets.APP_STORE_CONNECT_API_KEY_ID != '' &&
-      secrets.APP_STORE_CONNECT_ISSUER_ID != ''
+      secrets.KEY_ID != '' &&
+      secrets.ISSUER_ID != '' &&
+      secrets.AUTH_KEY != ''
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Select Xcode version
-      run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+    - name: List available Xcode versions
+      run: ls -la /Applications/ | grep Xcode
       
-    - name: Install fastlane
+    - name: Select Xcode version
       run: |
-        sudo gem install fastlane -NV
-        
-    - name: Create App Store Connect API Key
+        # Project uses objectVersion 77, requires Xcode 16+
+        if [ -d "/Applications/Xcode_16.1.app" ]; then
+          sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+        elif [ -d "/Applications/Xcode_16.2.app" ]; then
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+        else
+          echo "ERROR: No Xcode 16+ found, project requires objectVersion 77"
+          exit 1
+        fi
+      
+    - name: Show Xcode version
+      run: xcodebuild -version
+      
+    - name: Create API Key file
       env:
-        API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
-        API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        KEY_ID: ${{ secrets.KEY_ID }}
       run: |
+        # Create private_keys directory
         mkdir -p ~/private_keys
-        echo "$API_KEY_CONTENT" > ~/private_keys/AuthKey_${API_KEY_ID}.p8
+        
+        # Write AUTH_KEY to file preserving newlines
+        # Never echo the key itself
+        echo "$AUTH_KEY" > ~/private_keys/AuthKey_${KEY_ID}.p8
+        
+        # Verify file was created (without showing contents)
+        if [ -f ~/private_keys/AuthKey_${KEY_ID}.p8 ]; then
+          echo "✓ API key file created at ~/private_keys/AuthKey_${KEY_ID}.p8"
+          wc -l ~/private_keys/AuthKey_${KEY_ID}.p8
+        else
+          echo "ERROR: Failed to create API key file"
+          exit 1
+        fi
         
     - name: Set build number
       run: |
         cd ios
-        if [ -n "${{ github.event.inputs.build_number }}" ]; then
-          BUILD_NUMBER="${{ github.event.inputs.build_number }}"
-        else
-          BUILD_NUMBER=$(date +%Y%m%d%H%M)
-        fi
+        # Auto-increment build number from GitHub run number
+        BUILD_NUMBER="${{ github.run_number }}"
         echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+        echo "Setting build number to $BUILD_NUMBER"
         /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" calorietracker/Info.plist
         
-    - name: Build and upload to TestFlight
+    - name: Build and archive for App Store
       env:
-        APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-        APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-        MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-        FASTLANE_APPLE_ID: ${{ secrets.FASTLANE_APPLE_ID }}
-        BUNDLE_IDENTIFIER: ${{ secrets.BUNDLE_IDENTIFIER }}
-        TEAM_ID: ${{ secrets.TEAM_ID }}
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
         cd ios
-        fastlane ios beta \
-          app_identifier:"$BUNDLE_IDENTIFIER" \
-          team_id:"$TEAM_ID" \
-          api_key_path:"~/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
-          api_key_id:"$APP_STORE_CONNECT_API_KEY_ID" \
-          api_issuer_id:"$APP_STORE_CONNECT_ISSUER_ID"
+        
+        # Build and archive with automatic signing
+        xcodebuild archive \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -configuration Release \
+          -archivePath build/JLPhysical.xcarchive \
+          -destination 'generic/platform=iOS' \
+          -allowProvisioningUpdates \
+          -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
+          -authenticationKeyID ${KEY_ID} \
+          -authenticationKeyIssuerID ${ISSUER_ID} \
+          DEVELOPMENT_TEAM=2UMNXHG36N \
+          PRODUCT_BUNDLE_IDENTIFIER=com.jonathanbowe.jlphysical \
+          CODE_SIGN_STYLE=Automatic \
+          | tee build_archive.log
+        
+        # Check if archive was created
+        if [ ! -d "build/JLPhysical.xcarchive" ]; then
+          echo "ERROR: Archive was not created"
+          exit 1
+        fi
+        
+        echo "✓ Archive created successfully"
+        
+    - name: Export IPA for App Store
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        cd ios
+        
+        # Create export options plist
+        cat > build/ExportOptions.plist << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>2UMNXHG36N</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>destination</key>
+            <string>upload</string>
+        </dict>
+        </plist>
+        EOF
+        
+        # Export the archive to IPA
+        xcodebuild -exportArchive \
+          -archivePath build/JLPhysical.xcarchive \
+          -exportPath build/output \
+          -exportOptionsPlist build/ExportOptions.plist \
+          -allowProvisioningUpdates \
+          -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
+          -authenticationKeyID ${KEY_ID} \
+          -authenticationKeyIssuerID ${ISSUER_ID} \
+          | tee build_export.log
+        
+        # Check if IPA was created
+        if [ ! -f "build/output/calorietracker.ipa" ]; then
+          echo "ERROR: IPA was not created"
+          ls -la build/output/
+          exit 1
+        fi
+        
+        echo "✓ IPA exported successfully"
+        ls -lh build/output/*.ipa
+        
+    - name: Upload to TestFlight
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        cd ios
+        
+        # Upload using notarytool (Xcode 13+)
+        # This uploads to App Store Connect and submits for TestFlight
+        xcrun altool --upload-app \
+          --type ios \
+          --file build/output/calorietracker.ipa \
+          --apiKey ${KEY_ID} \
+          --apiIssuer ${ISSUER_ID} \
+          --verbose
+        
+        echo "✓ Upload to TestFlight initiated"
+        echo ""
+        echo "The build will appear in App Store Connect → TestFlight within 5-15 minutes."
+        echo "You will receive an email when processing is complete."
+        
+    - name: Upload build logs as artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          ios/build_archive.log
+          ios/build_export.log
+        retention-days: 30
         
     - name: Clean up API key
       if: always()
-      run: rm -rf ~/private_keys
+      run: |
+        rm -rf ~/private_keys
+        echo "✓ API key file removed"

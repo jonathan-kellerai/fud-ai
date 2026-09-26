@@ -147,19 +147,27 @@ For TestFlight deployment, you need distribution provisioning profiles:
 
 ## GitHub Actions Secrets
 
-Configure these secrets in your repository settings:
+Configure these secrets in your repository settings (**Settings** → **Secrets and variables** → **Actions** → **New repository secret**):
 
-### Required Secrets
+### Required Secrets (EXACT names)
 
 ```
-APP_STORE_CONNECT_API_KEY_ID=<Your Key ID from step 2>
-APP_STORE_CONNECT_ISSUER_ID=<Your Issuer ID from step 2>
-APP_STORE_CONNECT_API_KEY_CONTENT=<Contents of the .p8 file>
-MATCH_PASSWORD=<Password for Fastlane Match certificate encryption>
-FASTLANE_APPLE_ID=<Your Apple ID email>
-BUNDLE_IDENTIFIER=com.jonathanbowe.jlphysical
-TEAM_ID=2UMNXHG36N
+KEY_ID=<Your Key ID from App Store Connect API>
+ISSUER_ID=<Your Issuer ID from App Store Connect API>
+AUTH_KEY=<Full contents of the .p8 file including BEGIN/END lines>
 ```
+
+**Important:**
+- Secret names must be **exactly** `KEY_ID`, `ISSUER_ID`, and `AUTH_KEY`
+- `AUTH_KEY` must include the full `.p8` file contents:
+  ```
+  -----BEGIN PRIVATE KEY-----
+  MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHk...
+  ...your key content...
+  -----END PRIVATE KEY-----
+  ```
+- Preserve all newlines when copying the key
+- Do not add quotes or extra formatting
 
 ### Setting Up Fastlane Match
 
@@ -181,14 +189,43 @@ Match manages your code signing certificates and provisioning profiles in a priv
 
 ## Deployment Workflow
 
-Once all secrets are configured:
+### Prerequisites
+1. **Build CI must be green** - Ensure the iOS Build CI workflow passes on your branch
+2. **App Store Connect app record exists** - Create the app record in App Store Connect (see step 1 above)
+3. **All bundle IDs registered** - All 5 bundle IDs must be created in Apple Developer portal
+4. **Capabilities enabled** - HealthKit, App Groups, iCloud configured for main app
+5. **Secrets configured** - `KEY_ID`, `ISSUER_ID`, `AUTH_KEY` set in GitHub repository secrets
+
+### Running the Deployment
+
+Once prerequisites are met:
 
 1. Go to **Actions** tab in GitHub
 2. Select **TestFlight Deploy** workflow
 3. Click **Run workflow**
-4. Choose your branch (typically `main` or release branch)
-5. Monitor the build (takes ~15-20 minutes)
-6. Once complete, the build will appear in App Store Connect → TestFlight
+4. Choose your branch (e.g., `cursor/jl-physical-neon-bridge-366e` or `main`)
+5. Click the green **Run workflow** button
+6. Monitor the build:
+   - Archive: ~5-10 minutes
+   - Export IPA: ~2-3 minutes
+   - Upload to TestFlight: ~2-5 minutes
+   - **Total: ~10-20 minutes**
+7. Build logs are uploaded as artifacts even if the workflow fails
+
+### After Upload
+
+1. You'll receive an email when processing completes (5-15 minutes after upload)
+2. The build appears in App Store Connect → **TestFlight** → **iOS Builds**
+3. Status changes from "Processing" → "Ready to Submit" → "Ready to Test"
+4. For first build only, submit for **Beta App Review** before external testing
+5. Internal testers can install immediately once "Ready to Test"
+
+### Build Numbering
+
+- Build number auto-increments using GitHub run number
+- Format: GitHub run number (e.g., run #42 → build 42)
+- Version number stays at `1.0.0` (change in `Config.xcconfig` to bump version)
+- Each workflow run gets a unique build number automatically
 
 ## Testing
 
