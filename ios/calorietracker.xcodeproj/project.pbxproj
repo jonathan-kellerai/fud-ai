@@ -82,7 +82,7 @@
 			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
 			dstSubfolderSpec = 16;
 			files = (
-				F00D10000000000000000001 /* FudAIWatchApp.app in Embed Watch Content */,
+				/* Removed for JL Physical - keep Watch app in project but don't embed */
 			);
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
