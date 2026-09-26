@@ -9,9 +9,8 @@ import SwiftUI
 
 struct ProgramV2WorkoutLogView: View {
     let day: ProgramV2Day
-    let program: String?
+    let onSaved: () -> Void
     
-    @Environment(StrengthWorkoutStore.self) private var workoutStore
     @Environment(\.dismiss) private var dismiss
     @State private var workoutSets: [String: [LoggedSet]] = [:]
     @State private var conditioningCompleted = false
@@ -27,9 +26,7 @@ struct ProgramV2WorkoutLogView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    if let conditioning = day.conditioning {
-                        conditioningCard(conditioning)
-                    }
+                    conditioningCard(day.conditioning)
                     
                     ForEach(day.exercises) { exercise in
                         exerciseCard(exercise)
@@ -39,7 +36,7 @@ struct ProgramV2WorkoutLogView: View {
                 }
                 .padding()
             }
-            .navigationTitle(day.name)
+            .navigationTitle(day.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -49,15 +46,13 @@ struct ProgramV2WorkoutLogView: View {
                 }
             }
             .sheet(isPresented: $showingRestTimer) {
-                RestTimerSheet(
-                    duration: restDuration,
-                    onComplete: {
-                        showingRestTimer = false
-                    }
-                )
+                if let exercise = currentExercise {
+                    RestTimerSheet(defaultSeconds: exercise.restSeconds.lowerBound)
+                }
             }
             .alert("Workout Saved", isPresented: $showingSaveConfirmation) {
                 Button("OK") {
+                    onSaved()
                     dismiss()
                 }
             } message: {
@@ -71,18 +66,22 @@ struct ProgramV2WorkoutLogView: View {
             HStack {
                 Image(systemName: "heart.fill")
                     .foregroundStyle(.red)
-                Text("Conditioning")
+                Text("Conditioning (Do First!)")
                     .font(.headline)
             }
             
             Text(conditioning)
                 .font(.subheadline)
             
+            Text("Minimum: \(day.conditioningMinimum)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
             Toggle("Completed", isOn: $conditioningCompleted)
                 .toggleStyle(.switch)
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
+        .background(Color.red.opacity(0.1))
         .cornerRadius(12)
     }
     
@@ -93,22 +92,30 @@ struct ProgramV2WorkoutLogView: View {
                     Text(exercise.name)
                         .font(.headline)
                     
-                    Text("\(exercise.sets) sets × \(exercise.reps) reps")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 16) {
+                        Text("\(exercise.sets) sets × \(exercise.reps)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        if let starting = exercise.startLoadLb {
+                            Text("Start: \(Int(starting))lb")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                    }
                 }
                 
                 Spacer()
-                
-                if let starting = exercise.startLoadLb {
-                    Text("\(Int(starting))lb")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.2))
-                        .cornerRadius(4)
-                }
+            }
+            
+            if !exercise.rirTarget.isEmpty {
+                Text("RIR Target: \(exercise.rirTarget)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             
             let sets = workoutSets[exercise.name] ?? []
@@ -132,11 +139,11 @@ struct ProgramV2WorkoutLogView: View {
     }
     
     private func setRow(exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
-        HStack(spacing: 12) {
-            Text("Set \(setIndex + 1)")
-                .font(.caption)
+        HStack(spacing: 8) {
+            Text("\(setIndex + 1)")
+                .font(.caption.bold())
                 .foregroundStyle(.secondary)
-                .frame(width: 50, alignment: .leading)
+                .frame(width: 20)
             
             TextField("Load", value: Binding(
                 get: { set.weight },
@@ -144,9 +151,10 @@ struct ProgramV2WorkoutLogView: View {
             ), format: .number)
             .keyboardType(.decimalPad)
             .textFieldStyle(.roundedBorder)
-            .frame(width: 70)
+            .frame(width: 60)
             
-            Text("×")
+            Text("lb ×")
+                .font(.caption)
                 .foregroundStyle(.secondary)
             
             TextField("Reps", value: Binding(
@@ -155,15 +163,19 @@ struct ProgramV2WorkoutLogView: View {
             ), format: .number)
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
-            .frame(width: 60)
+            .frame(width: 50)
             
-            TextField("RIR", value: Binding(
+            Text("RIR")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            TextField("", value: Binding(
                 get: { set.rir },
                 set: { workoutSets[exercise.name]?[setIndex].rir = $0 }
             ), format: .number)
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
-            .frame(width: 50)
+            .frame(width: 40)
             
             if set.weight > 0 && set.reps > 0 {
                 Button {
@@ -173,6 +185,7 @@ struct ProgramV2WorkoutLogView: View {
                     Image(systemName: "timer")
                         .foregroundStyle(.orange)
                 }
+                .buttonStyle(.plain)
             }
             
             Button {
@@ -181,19 +194,13 @@ struct ProgramV2WorkoutLogView: View {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.red)
             }
+            .buttonStyle(.plain)
         }
+        .padding(.vertical, 4)
     }
     
     private func addSet(for exercise: ProgramV2Exercise) {
-        let suggestedLoad: Double
-        
-        if let lastSession = getLastSession(for: exercise.name) {
-            suggestedLoad = lastSession
-        } else if let starting = exercise.startLoadLb {
-            suggestedLoad = starting
-        } else {
-            suggestedLoad = 0
-        }
+        let suggestedLoad = exercise.startLoadLb ?? 0
         
         let newSet = LoggedSet(
             weight: suggestedLoad,
@@ -205,16 +212,6 @@ struct ProgramV2WorkoutLogView: View {
             workoutSets[exercise.name] = []
         }
         workoutSets[exercise.name]?.append(newSet)
-    }
-    
-    private func getLastSession(for exerciseName: String) -> Double? {
-        workoutStore.plannedExercises
-            .filter { $0.exercise.name == exerciseName }
-            .sorted { $0.date > $1.date }
-            .first?
-            .sets
-            .last?
-            .weight
     }
     
     private var saveButton: some View {
@@ -246,19 +243,39 @@ struct ProgramV2WorkoutLogView: View {
     
     private func saveWorkout() async {
         isSaving = true
-        
-        let allSets = workoutSets.flatMap { exerciseName, sets -> [WorkoutSet] in
-            sets.enumerated().map { index, set in
-                WorkoutSet(
-                    exercise: exerciseName,
-                    load: set.weight,
-                    reps: set.reps,
-                    rir: set.rir,
-                    rpe: set.rpe.map(Double.init),
-                    order: index
-                )
+        defer {
+            Task { @MainActor in
+                isSaving = false
             }
         }
+        
+        var allSets: [WorkoutSet] = []
+        var order = 0
+        
+        for exercise in day.exercises {
+            if let sets = workoutSets[exercise.name] {
+                for set in sets {
+                    allSets.append(WorkoutSet(
+                        exercise: exercise.name,
+                        load: set.weight,
+                        reps: set.reps,
+                        rir: set.rir,
+                        rpe: nil,
+                        order: order
+                    ))
+                    order += 1
+                }
+            }
+        }
+        
+        let now = Date()
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents([.year, .month, .day], from: now)
+        let sessionDate = String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let timestamp = formatter.string(from: now)
         
         let workout = WorkoutPayload(
             kind: "strength",
@@ -266,11 +283,11 @@ struct ProgramV2WorkoutLogView: View {
             programDay: day.id,
             title: day.title,
             units: "lb",
-            sessionDate: ISO8601DateFormatter().string(from: Date()),
+            sessionDate: sessionDate,
             conditioning: conditioningCompleted ? day.conditioning : nil,
             notes: [],
-            recordedAtUtc: ISO8601DateFormatter().string(from: Date()),
-            openedAtUtc: ISO8601DateFormatter().string(from: Date()),
+            recordedAtUtc: timestamp,
+            openedAtUtc: timestamp,
             source: "jl-physical-ios",
             sets: allSets
         )
@@ -278,40 +295,11 @@ struct ProgramV2WorkoutLogView: View {
         do {
             _ = try await neonBridge.postWorkout(workout)
             
-            for (exerciseName, sets) in workoutSets {
-                guard !sets.isEmpty else { continue }
-                
-                guard let exercise = workoutStore.exerciseLibrary.allExercises
-                    .first(where: { $0.name == exerciseName })
-                else { continue }
-                
-                let planned = StrengthPlannedExercise(
-                    id: UUID(),
-                    date: Date(),
-                    exercise: exercise,
-                    sets: sets.map { set in
-                        StrengthPerformedSet(
-                            id: UUID(),
-                            weight: set.weight,
-                            reps: set.reps,
-                            isWarmup: false
-                        )
-                    },
-                    notes: "RIR: \(sets.map { String($0.rir) }.joined(separator: ", "))"
-                )
-                
-                workoutStore.addPlannedExercise(planned)
-            }
-            
             await MainActor.run {
-                isSaving = false
                 showingSaveConfirmation = true
             }
         } catch {
             print("Failed to save workout: \(error)")
-            await MainActor.run {
-                isSaving = false
-            }
         }
     }
 }
@@ -320,5 +308,4 @@ struct LoggedSet {
     var weight: Double
     var reps: Int
     var rir: Int
-    var rpe: Int? = nil
 }
