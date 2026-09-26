@@ -165,14 +165,21 @@ def find_bundle_resource_id(token, identifier):
     return matches[0]["id"]
 
 
+def bundle_id_capabilities_url(bundle_resource_id):
+    # This relationship rejects ?limit (PARAMETER_ERROR.ILLEGAL). Do not add it.
+    return f"{API_ROOT}/v1/bundleIds/{bundle_resource_id}/bundleIdCapabilities"
+
+
 def list_capabilities(token, bundle_resource_id):
-    status, payload = api(
-        token,
-        "GET",
-        f"{API_ROOT}/v1/bundleIds/{bundle_resource_id}/bundleIdCapabilities?limit=50",
-    )
-    require_ok(status, payload, (200,), f"GET capabilities for {bundle_resource_id}")
-    return payload.get("data") or []
+    collected = []
+    url = bundle_id_capabilities_url(bundle_resource_id)
+    while url:
+        status, payload = api(token, "GET", url)
+        require_ok(status, payload, (200,), f"GET capabilities for {bundle_resource_id}")
+        collected.extend(payload.get("data") or [])
+        links = payload.get("links") if isinstance(payload, dict) else None
+        url = links.get("next") if isinstance(links, dict) else None
+    return collected
 
 
 def capability_settings(capability):
@@ -700,6 +707,23 @@ def self_check():
         "app",
     ):
         fail("app profile missing HealthKit was accepted")
+    recorded = []
+    original_api = api
+
+    def fake_api(token, method, url, body=None):
+        recorded.append((method, url))
+        return 200, {"data": [], "links": {}}
+
+    globals()["api"] = fake_api
+    try:
+        listed = list_capabilities("token", "24674R8P55")
+    finally:
+        globals()["api"] = original_api
+    expected = bundle_id_capabilities_url("24674R8P55")
+    if recorded != [("GET", expected)] or "limit" in expected or "?" in expected:
+        fail(f"capabilities relationship request was {recorded}")
+    if listed != []:
+        fail("capabilities relationship should return the data array")
     print("self-check ok")
 
 
