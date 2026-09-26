@@ -47,13 +47,6 @@
 			remoteGlobalIDString = BA8E0E392F33F198007DD537;
 			remoteInfo = calorietrackerShare;
 		};
-		F00D10000000000000000003 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BA8E0DEB2F33F197007DD537 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = F00D1000000000000000000F;
-			remoteInfo = FudAIWatchApp;
-		};
 		F00D10000000000000000004 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BA8E0DEB2F33F197007DD537 /* Project object */;
@@ -309,7 +302,6 @@
 			dependencies = (
 				BA8E0E2E2F33F198007DD537 /* PBXTargetDependency */,
 				BA8E0E3D2F33F198007DD537 /* PBXTargetDependency */,
-				F00D10000000000000000015 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				BA8E0DF52F33F197007DD537 /* calorietracker */,
@@ -714,12 +706,6 @@
 			isa = PBXTargetDependency;
 			target = BA8E0E392F33F198007DD537 /* calorietrackerShare */;
 			targetProxy = BA8E0E3C2F33F198007DD537 /* PBXContainerItemProxy */;
-		};
-		F00D10000000000000000015 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			platformFilter = ios;
-			target = F00D1000000000000000000F /* FudAIWatchApp */;
-			targetProxy = F00D10000000000000000003 /* PBXContainerItemProxy */;
 		};
 		F00D10000000000000000016 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;

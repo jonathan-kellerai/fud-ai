@@ -61,21 +61,105 @@ jobs:
       env:
         AUTH_KEY: ${{ secrets.AUTH_KEY }}
         KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
-        # altool --apiKey looks up ~/private_keys/AuthKey_<KEY_ID>.p8
-        mkdir -p "${HOME}/private_keys"
-        key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
-
-        # Write AUTH_KEY to file preserving newlines. Never echo the key.
-        printf '%s\n' "$AUTH_KEY" > "${key_file}"
-        chmod 600 "${key_file}"
-
-        if [ ! -s "${key_file}" ]; then
-          echo "ERROR: Failed to create API key file"
+        # altool and xcodebuild both read ~/private_keys/AuthKey_<KEY_ID>.p8
+        if ! printf '%s' "${KEY_ID}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: KEY_ID must be the 10-character App Store Connect Key ID."
+          echo "KEY_ID length=$(printf '%s' "${KEY_ID}" | wc -c | tr -d ' ')"
           exit 1
         fi
-        echo "API key file created at ~/private_keys/AuthKey_<KEY_ID>.p8"
-        wc -l < "${key_file}"
+        if ! printf '%s' "${ISSUER_ID}" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+          echo "ERROR: ISSUER_ID must be the Issuer ID UUID from App Store Connect → Users and Access → Integrations → Keys."
+          echo "It is not Team ID 2UMNXHG36N and not the Key ID."
+          echo "ISSUER_ID length=$(printf '%s' "${ISSUER_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        echo "KEY_ID shape ok (10 alphanumeric). ISSUER_ID shape ok (UUID)."
+
+        mkdir -p "${HOME}/private_keys"
+        key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
+        export KEY_FILE="${key_file}"
+        python3 - << 'PY'
+        import os
+        import re
+        import sys
+        from pathlib import Path
+
+        raw = os.environ.get("AUTH_KEY", "")
+        text = raw.replace("\r\n", "\n").replace("\r", "\n")
+        if text.startswith("\ufeff"):
+            text = text.lstrip("\ufeff")
+        text = text.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+            inner = text[1:-1]
+            if "BEGIN" in inner:
+                text = inner.strip()
+        # A one-line GitHub secret sometimes stores the PEM with literal \n.
+        if "-----BEGIN" in text and text.count("\n") == 0 and "\\n" in text:
+            text = text.replace("\\n", "\n").strip()
+        if text and not text.endswith("\n"):
+            text += "\n"
+
+        Path(os.environ["KEY_FILE"]).write_text(text)
+        nonempty = [line for line in text.splitlines() if line.strip()]
+        begin = nonempty[0] if nonempty else ""
+        end = nonempty[-1] if nonempty else ""
+        begin_ok = begin in (
+            "-----BEGIN PRIVATE KEY-----",
+            "-----BEGIN EC PRIVATE KEY-----",
+        )
+        end_ok = end in (
+            "-----END PRIVATE KEY-----",
+            "-----END EC PRIVATE KEY-----",
+        )
+        body = nonempty[1:-1] if len(nonempty) >= 2 else []
+        body_ok = bool(body) and all(re.fullmatch(r"[A-Za-z0-9+/=]+", line) for line in body)
+        print(
+            f"PEM nonempty_lines={len(nonempty)} begin_ok={str(begin_ok).lower()} "
+            f"end_ok={str(end_ok).lower()} body_lines={len(body)}"
+        )
+        if not (begin_ok and end_ok and body_ok):
+            print("ERROR: AUTH_KEY is not a PEM private key.")
+            print("Paste the .p8 file into the AUTH_KEY secret, including the BEGIN and END lines.")
+            print("Do not add quotes around the secret, and do not paste only the base64 body.")
+            sys.exit(1)
+        PY
+        chmod 600 "${key_file}"
+        if ! openssl pkey -in "${key_file}" -noout 2>"${RUNNER_TEMP}/pkey.err"; then
+          echo "ERROR: AUTH_KEY has PEM headers but OpenSSL could not read a private key."
+          sed 's/.*PRIVATE KEY.*/[redacted]/' "${RUNNER_TEMP}/pkey.err" || true
+          exit 1
+        fi
+        echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<KEY_ID>.p8"
+
+    - name: Check App Store Connect API authentication
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        # Fail here, before archive, when Apple rejects the API token.
+        set +e
+        xcrun altool --list-providers --apiKey "${KEY_ID}" --apiIssuer "${ISSUER_ID}" >"${RUNNER_TEMP}/asc-providers.txt" 2>&1
+        status=$?
+        set -e
+        grep -Ev 'PRIVATE KEY|^-----BEGIN |^-----END ' "${RUNNER_TEMP}/asc-providers.txt" || true
+        if [ "${status}" -ne 0 ]; then
+          echo "ERROR: App Store Connect rejected this API key before archive."
+          echo "The .p8 parsed as a private key, and KEY_ID / ISSUER_ID have the expected shape."
+          echo "In App Store Connect → Users and Access → Integrations → App Store Connect API:"
+          echo "  - KEY_ID must be this key's Key ID"
+          echo "  - ISSUER_ID must be the Issuer ID shown above the keys table"
+          echo "  - Role must be Admin or App Manager"
+          echo "  - Access to Certificates, Identifiers & Profiles must be enabled"
+          echo "  - The key must not be revoked"
+          echo "Team ID is 2UMNXHG36N. iPhone bundle IDs that must exist:"
+          echo "  com.jonathanbowe.jlphysical"
+          echo "  com.jonathanbowe.jlphysical.FudAIWidgetsExtension"
+          echo "  com.jonathanbowe.jlphysical.calorietrackerShare"
+          exit 1
+        fi
+        echo "App Store Connect API authentication succeeded."
 
     - name: Set build number
       run: |

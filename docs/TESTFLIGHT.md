@@ -45,11 +45,11 @@ You must register these 3 bundle IDs in your Apple Developer account (team 2UMNX
 
 ## Watch App (Not Shipped in Current Build)
 
-The following targets exist in the project but are **NOT included** in the TestFlight build:
+The following targets exist in the project but are **not dependencies of the iPhone app**, so the TestFlight archive does not build or sign them:
 - `com.jonathanbowe.jlphysical.watchkitapp` (Apple Watch app)
-- `com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgetsExtension` (Watch widget)
+- `com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgets` (Watch widget)
 
-These are kept in the source tree for future development but won't be built or signed.
+The `calorietracker` scheme already archives only the iPhone app. The iPhone target must not keep an explicit target dependency on `FudAIWatchApp`, or Xcode still builds and signs the watch targets. The watch embed phase is empty.
 
 ## App Store Connect API Setup
 
@@ -76,6 +76,9 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
 3. **Build Process:**
    - Runs on `macos-15` with Xcode 26.3 (Swift 6.2)
    - Fails the job immediately if `KEY_ID`, `ISSUER_ID`, or `AUTH_KEY` is empty (the values are not printed)
+   - Checks that `AUTH_KEY` is a PEM private key (`-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----`) and that OpenSSL can read it, without printing the key
+   - Checks that `KEY_ID` is 10 letters/digits and `ISSUER_ID` is a UUID (not the Team ID)
+   - Calls `xcrun altool --list-providers` before archive so a bad API token fails in that step instead of during signing
    - Sets `CFBundleVersion` from `${{ github.run_number }}` by passing `CURRENT_PROJECT_VERSION` to `xcodebuild`, so the app and embedded extensions share one build number
    - Archives with automatic signing (`-allowProvisioningUpdates`). Bundle IDs stay on the per-target values in the Xcode project; the workflow does not pass `PRODUCT_BUNDLE_IDENTIFIER`
    - Exports a local App Store IPA (`destination` = `export`; the filename follows `PRODUCT_NAME`, checked with `build/output/*.ipa`)
@@ -107,6 +110,13 @@ Both builds must succeed before triggering the TestFlight workflow.
 - Verify `DEVELOPMENT_TEAM = 2UMNXHG36N` in `project.pbxproj`
 - Check that `-allowProvisioningUpdates` is in the archive command
 - Confirm App Store Connect API key has Admin or App Manager role
+- Enable **Access to Certificates, Identifiers & Profiles** on that key. Xcode uses it to create signing profiles
+
+### "Authentication failed" / bearer token
+- The workflow checks this with `xcrun altool --list-providers` before archive
+- `AUTH_KEY` must be the `.p8` file contents, including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----`. A normal key is about 6 lines. Do not wrap the secret in extra quotes
+- `KEY_ID` is the 10-character Key ID. `ISSUER_ID` is the Issuer ID UUID on the Keys page, not Team ID `2UMNXHG36N`
+- The key must not be revoked. It has to belong to team `2UMNXHG36N`
 
 ### "Export Failed"
 - Check build logs for signing or entitlement errors
