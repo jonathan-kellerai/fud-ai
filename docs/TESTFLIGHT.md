@@ -45,11 +45,11 @@ You must register these 3 bundle IDs in your Apple Developer account (team 2UMNX
 
 ## Watch App (Not Shipped in Current Build)
 
-The following targets exist in the project but are **NOT included** in the TestFlight build:
+The following targets exist in the project but are **not dependencies of the iPhone app**, so the TestFlight archive does not build or sign them:
 - `com.jonathanbowe.jlphysical.watchkitapp` (Apple Watch app)
-- `com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgetsExtension` (Watch widget)
+- `com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgets` (Watch widget)
 
-These are kept in the source tree for future development but won't be built or signed.
+The `calorietracker` scheme archives the iPhone app. The iPhone target has no explicit target dependency on `FudAIWatchApp`, so Xcode does not build or sign the watch targets. The watch embed phase is empty. Watch source stays in the repo.
 
 ## App Store Connect API Setup
 
@@ -75,12 +75,14 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
 
 3. **Build Process:**
    - Runs on `macos-15` with Xcode 26.3 (Swift 6.2)
-   - First step fails if `KEY_ID`, `ISSUER_ID`, or `AUTH_KEY` is empty. Secrets are not referenced from a job `if:` (GitHub rejects `secrets` there).
-   - Bundle IDs come from each target in `project.pbxproj`. The archive command does not pass `PRODUCT_BUNDLE_IDENTIFIER`, which would force every extension onto the app id.
-   - Build number is `${{ github.run_number }}`, passed as `CURRENT_PROJECT_VERSION` so the app and extensions share one `CFBundleVersion`.
-   - Archives with automatic signing (`-allowProvisioningUpdates`) and the App Store Connect API key.
-   - Exports an IPA and accepts `build/output/*.ipa` (one file).
-   - Uploads that IPA to TestFlight via `xcrun altool`.
+   - Fails the job immediately if `KEY_ID`, `ISSUER_ID`, or `AUTH_KEY` is empty (the values are not printed). Secrets are not referenced from a job `if:`
+   - Checks that `AUTH_KEY` is a PEM private key (`-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----`) and that OpenSSL can read it, without printing the key
+   - Checks that `KEY_ID` is 10 letters/digits and `ISSUER_ID` is a UUID (not the Team ID)
+   - Signs an ES256 App Store Connect JWT and GETs `/v1/bundleIds` and `/v1/apps` for `com.jonathanbowe.jlphysical` before archive. `altool --list-providers` cannot authenticate with an API key
+   - Sets `CFBundleVersion` from `${{ github.run_number }}` by passing `CURRENT_PROJECT_VERSION` to `xcodebuild`, so the app and embedded extensions share one build number
+   - Archives with automatic signing (`-allowProvisioningUpdates`). Bundle IDs stay on the per-target values in the Xcode project; the workflow does not pass `PRODUCT_BUNDLE_IDENTIFIER`
+   - Exports a local App Store IPA (`destination` = `export`; the filename follows `PRODUCT_NAME`, checked with `build/output/*.ipa`)
+   - Uploads that IPA to TestFlight via `xcrun altool --upload-app` (`--apiKey` / `--apiIssuer`, key file `~/private_keys/AuthKey_<KEY_ID>.p8`)
 
 4. **Post-Upload:**
    - Build appears in App Store Connect → TestFlight within 5-15 minutes
@@ -107,16 +109,26 @@ Both builds must succeed before triggering the TestFlight workflow.
 ### "Invalid Provisioning Profile"
 - Verify `DEVELOPMENT_TEAM = 2UMNXHG36N` in `project.pbxproj`
 - Check that `-allowProvisioningUpdates` is in the archive command
-- Confirm App Store Connect API key has Admin or App Manager role
+- Cloud signing (`xcodebuild -allowProvisioningUpdates` with an API key) requires an **Admin** key (Account Holder or Admin) with **Access to Certificates, Identifiers & Profiles**. App Manager can upload a build and cannot create certificates or profiles
+
+### "Authentication failed" / bearer token
+- The workflow signs an ES256 JWT (`kid` = Key ID, `iss` = Issuer ID, `aud` = `appstoreconnect-v1`) and calls the App Store Connect API. It prints the HTTP status and Apple's error code, title, and detail. It does not print the token or the key
+- HTTP 401 means the Key ID, Issuer ID, and `.p8` do not match, or the key was revoked
+- HTTP 403 means the key's role is too low for that call. Cloud signing still needs Admin
+- `AUTH_KEY` must be the `.p8` file contents, including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----`. A normal key is about 6 lines. Do not wrap the secret in extra quotes
+- `KEY_ID` is the 10-character Key ID. `ISSUER_ID` is the Issuer ID UUID on the Keys page, not Team ID `2UMNXHG36N`
+- The key must not be revoked. It has to belong to team `2UMNXHG36N`
 
 ### "Export Failed"
 - Check build logs for signing or entitlement errors
 - Verify all extensions have correct bundle ID prefixes
 - Ensure `ITSAppUsesNonExemptEncryption = NO` in `Info.plist`
+- Do not pass `PRODUCT_BUNDLE_IDENTIFIER` on the `xcodebuild` command line. That setting is applied to every target. Release IDs in the project are already `com.jonathanbowe.jlphysical`, `com.jonathanbowe.jlphysical.FudAIWidgetsExtension`, and `com.jonathanbowe.jlphysical.calorietrackerShare`
 
 ### "Processing Failed" in App Store Connect
 - App icon must be 1024x1024 RGB (no alpha channel)
 - All required `NSUsageDescription` keys must be in `Info.plist`
+- The uploaded build number is `github.run_number` (`CURRENT_PROJECT_VERSION`). App Store Connect rejects it when that number is not higher than the newest build already uploaded for marketing version 7.1
 - Check email for specific rejection reasons
 
 ## App Icon

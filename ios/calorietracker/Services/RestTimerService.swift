@@ -129,18 +129,17 @@ final class RestTimerService: NSObject {
     // MARK: - Audio Playback
     
     private func playWarningSound() {
-        playSound(named: "boxing_clack")
+        playBundledCue(named: "clack", systemFallback: 1104)
     }
     
     private func playCompletionSound() {
-        playSound(named: "gym_bell")
+        playBundledCue(named: "bell", systemFallback: 1005)
     }
     
-    private func playSound(named name: String) {
-        let systemFallback: SystemSoundID = name == "boxing_clack" ? 1104 : 1005
-        guard let url = Bundle.main.url(forResource: name, withExtension: "mp3") ??
-                        Bundle.main.url(forResource: name, withExtension: "wav") ??
-                        Bundle.main.url(forResource: name, withExtension: "m4a") else {
+    private func playBundledCue(named name: String, systemFallback: SystemSoundID) {
+        let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Sounds")
+            ?? Bundle.main.url(forResource: name, withExtension: "wav")
+        guard let url else {
             AudioServicesPlaySystemSound(systemFallback)
             return
         }
