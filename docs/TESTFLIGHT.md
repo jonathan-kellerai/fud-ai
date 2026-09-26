@@ -81,7 +81,7 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
    - Signs an ES256 App Store Connect JWT and GETs `/v1/bundleIds`, `/v1/apps`, `/v1/certificates`, and `/v1/profiles`. Those curls use `--globoff` so `filter[identifier]` and `filter[bundleId]` are not treated as curl globs. `altool --list-providers` cannot authenticate with an API key. A 200 from `/v1/apps` does not prove the key can create profiles
    - Sets `CFBundleVersion` from `${{ github.run_number }}` by passing `CURRENT_PROJECT_VERSION` to `xcodebuild`, so the app and embedded extensions share one build number
    - Archives **unsigned** (`CODE_SIGNING_ALLOWED=NO`). Automatic signing during `xcodebuild archive` requests an iOS App Development profile. CI has no development certificate, so that step fails with "Authentication failed: bearer token" and "No profiles for com.jonathanbowe.jlphysical" even when the JWT preflight succeeded. Bundle IDs stay on the per-target values in the Xcode project; the workflow does not pass `PRODUCT_BUNDLE_IDENTIFIER`
-   - Exports a local App Store IPA with automatic cloud signing (`signingStyle` automatic, `signingCertificate` Apple Distribution, `-allowProvisioningUpdates`, and the API key). The filename follows `PRODUCT_NAME`, checked with `build/output/*.ipa`. The `.p8` is written to `~/private_keys`, `~/.private_keys`, and `~/.appstoreconnect/private_keys`
+   - Exports a local App Store IPA with **manual** signing. The export step creates an Apple Distribution certificate (type `DISTRIBUTION`) and an `IOS_APP_STORE` profile for `com.jonathanbowe.jlphysical`, `com.jonathanbowe.jlphysical.FudAIWidgetsExtension`, and `com.jonathanbowe.jlphysical.calorietrackerShare`, installs them on the runner, and does **not** pass `-allowProvisioningUpdates`. Xcode cloud signing is a separate permission ("Access to Cloud Managed Distribution Certificate"). Run 39 could read certificates and profiles and still failed with `Cloud signing permission error`. The filename follows `PRODUCT_NAME`, checked with `build/output/*.ipa`. The `.p8` is written to `~/private_keys`, `~/.private_keys`, and `~/.appstoreconnect/private_keys`
    - Uploads that IPA to TestFlight via `xcrun altool --upload-app` (`--apiKey` / `--apiIssuer`, key file `~/private_keys/AuthKey_<KEY_ID>.p8`)
 
 4. **Post-Upload:**
@@ -106,18 +106,24 @@ Both builds must succeed before triggering the TestFlight workflow.
 - Check that App Group ID matches exactly: `group.com.jonathanbowe.jlphysical`
 - Ensure HealthKit is enabled with both Read and Write permissions
 
+### "Cloud signing permission error" / "No signing certificate iOS Distribution" / "No profiles"
+- That is the export failure from run 39. Listing `/v1/certificates` and `/v1/profiles` can return HTTP 200 while Xcode cloud signing is still denied. Cloud-managed distribution certificates require a separate "Access to Cloud Managed Distribution Certificate" grant
+- Export does not use cloud signing. `.github/scripts/prepare_appstore_signing.py` creates a `DISTRIBUTION` certificate, enables App Groups (and, for the app, HealthKit, iCloud, and Associated Domains), creates an App Store profile for each shipping bundle ID, and writes a manual `ExportOptions.plist`
+- The existing `IOS_DISTRIBUTION` certificate is not deleted. If Apple refuses another `DISTRIBUTION` certificate, the oldest `DISTRIBUTION` certificate is removed and creation is retried once
+- Profiles are checked for `group.com.jonathanbowe.jlphysical`. The app profile is also checked for HealthKit, HealthKit background delivery, CloudKit container `iCloud.com.jonathanbowe.jlphysical`, and associated domains
+
 ### "Invalid Provisioning Profile"
 - Verify `DEVELOPMENT_TEAM = 2UMNXHG36N` in `project.pbxproj`
-- `-allowProvisioningUpdates` and the API key belong on `-exportArchive`, not on `xcodebuild archive`
-- Cloud signing (`xcodebuild -exportArchive -allowProvisioningUpdates` with an API key) requires an **Admin** key (Account Holder or Admin) with **Access to Certificates, Identifiers & Profiles**. App Manager can upload a build and cannot create certificates or profiles
+- Manual App Store profiles are created in the export step. `-allowProvisioningUpdates` is not used; it asks Xcode to cloud-sign
+- Creating those profiles requires an API key that can POST `/v1/certificates` and `/v1/profiles` (Admin or Account Holder, with Access to Certificates, Identifiers & Profiles)
 
 ### "Authentication failed" / bearer token / "No iOS App Development provisioning profiles"
 - That pair of errors comes from `GatherProvisioningInputs` during **archive**, not from a bad JWT. `xcodebuild archive` with `CODE_SIGN_STYLE=Automatic` looks up an **iOS App Development** profile. The runner has no Apple Development certificate, so Xcode tries to create one and then reports a bearer-token failure. The REST preflight can still be HTTP 200
-- The workflow archives unsigned and applies the **Apple Distribution** profile only in `-exportArchive`
+- The workflow archives unsigned and signs at export with a certificate and App Store profiles created by the API key
 - The workflow signs an ES256 JWT (`kid` = Key ID, `iss` = Issuer ID, `aud` = `appstoreconnect-v1`) and calls the App Store Connect API. It prints the HTTP status and Apple's error code, title, and detail. It does not print the token or the key
 - HTTP 401 means the Key ID, Issuer ID, and `.p8` do not match, or the key was revoked
-- HTTP 403 on `/v1/certificates` or `/v1/profiles` means the key's role is too low. Cloud signing at export needs **Admin** (Account Holder or Admin) and **Access to Certificates, Identifiers & Profiles**. App Manager can read the app and upload a build, and cannot create the App Store profile
-- Widget `com.jonathanbowe.jlphysical.FudAIWidgetsExtension` and share `com.jonathanbowe.jlphysical.calorietrackerShare` need the App Group `group.com.jonathanbowe.jlphysical`. The app also needs HealthKit, iCloud (CloudKit container `iCloud.com.jonathanbowe.jlphysical`), and associated domain `applinks:jl-physical.app`. Export creates or updates those App Store profiles when the key is allowed to
+- HTTP 403 on `/v1/certificates` or `/v1/profiles` means the key cannot create the distribution certificate or the App Store profiles. That is separate from the cloud-managed distribution certificate checkbox
+- Widget `com.jonathanbowe.jlphysical.FudAIWidgetsExtension` and share `com.jonathanbowe.jlphysical.calorietrackerShare` need the App Group `group.com.jonathanbowe.jlphysical`. The app also needs HealthKit, iCloud (CloudKit container `iCloud.com.jonathanbowe.jlphysical`), and associated domain `applinks:jl-physical.app`
 - `AUTH_KEY` must be the `.p8` file contents, including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----`. A normal key is about 6 lines. Do not wrap the secret in extra quotes
 - `KEY_ID` is the 10-character Key ID. `ISSUER_ID` is the Issuer ID UUID on the Keys page, not Team ID `2UMNXHG36N`
 - The key must not be revoked. It has to belong to team `2UMNXHG36N`

@@ -339,14 +339,14 @@ jobs:
                 continue
             if label in ("bundleIds-widgets", "bundleIds-share") and "resources=0" in summary:
                 print(
-                    f"WARNING: {label} is not registered yet. Export cloud signing will "
-                    "try to register it. That requires Admin and Access to Certificates, "
-                    "Identifiers & Profiles, plus App Group group.com.jonathanbowe.jlphysical."
+                    f"WARNING: {label} is not registered yet. "
+                    "Register that bundle ID on team 2UMNXHG36N before export."
                 )
             if label == "certificates" and "resources=0" in summary:
                 print(
-                    "certificates: none listed. Export can still cloud-sign with an Admin key; "
-                    "it reuses or creates an Apple Distribution certificate on Apple's servers."
+                    "certificates: none listed yet. Export creates an Apple Distribution "
+                    "certificate with this API key and installs it on the runner. "
+                    "It does not use Xcode cloud-managed certificates."
                 )
 
         header_file.unlink(missing_ok=True)
@@ -408,37 +408,22 @@ jobs:
         mkdir -p build
 
         # destination=export writes a local IPA. altool performs the upload.
-        cat > build/ExportOptions.plist << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>2UMNXHG36N</string>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>signingStyle</key>
-            <string>automatic</string>
-            <key>signingCertificate</key>
-            <string>Apple Distribution</string>
-            <key>destination</key>
-            <string>export</string>
-            <key>manageAppVersionAndBuildNumber</key>
-            <false/>
-        </dict>
-        </plist>
-        EOF
+        # Do not pass -allowProvisioningUpdates. Run 39 had HTTP 200 for certificates
+        # and profiles, then export failed with "Cloud signing permission error"
+        # because cloud-managed distribution certificates are a separate permission.
+        # prepare_appstore_signing.py creates a DISTRIBUTION certificate and
+        # IOS_APP_STORE profiles for the app, widget, and share extension.
+        if [ ! -x "${RUNNER_TEMP}/asc-venv/bin/python" ]; then
+          python3 -m venv "${RUNNER_TEMP}/asc-venv"
+          "${RUNNER_TEMP}/asc-venv/bin/pip" install --disable-pip-version-check pyjwt cryptography
+        fi
+        export EXPORT_OPTIONS_PLIST="${PWD}/build/ExportOptions.plist"
+        "${RUNNER_TEMP}/asc-venv/bin/python" "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py"
 
         xcodebuild -exportArchive \
           -archivePath build/JLPhysical.xcarchive \
           -exportPath build/output \
           -exportOptionsPlist build/ExportOptions.plist \
-          -allowProvisioningUpdates \
-          -authenticationKeyPath "${HOME}/private_keys/AuthKey_${KEY_ID}.p8" \
-          -authenticationKeyID "${KEY_ID}" \
-          -authenticationKeyIssuerID "${ISSUER_ID}" \
           | tee build_export.log
 
         # IPA filename follows PRODUCT_NAME ($(TARGET_NAME) -> calorietracker).
@@ -495,4 +480,7 @@ jobs:
         rm -rf "${HOME}/private_keys"
         rm -f "${HOME}/.private_keys"/AuthKey_*.p8
         rm -f "${HOME}/.appstoreconnect/private_keys"/AuthKey_*.p8
+        if [ -f "${RUNNER_TEMP}/jl-appstore-signing/jl-keychain-path" ]; then
+          security delete-keychain "$(cat "${RUNNER_TEMP}/jl-appstore-signing/jl-keychain-path")" || true
+        fi
         echo "API key file removed"
