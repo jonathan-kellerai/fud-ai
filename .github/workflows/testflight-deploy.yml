@@ -7,75 +7,300 @@ jobs:
   deploy:
     name: Build and Upload to TestFlight
     runs-on: macos-15  # Latest macOS runner for Xcode 26
-    
-    # Only run if required secrets are configured
-    if: >
-      github.event_name == 'workflow_dispatch' &&
-      secrets.KEY_ID != '' &&
-      secrets.ISSUER_ID != '' &&
-      secrets.AUTH_KEY != ''
-    
+
     steps:
+    - name: Check required secrets
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+      run: |
+        missing=0
+        if [ -z "${KEY_ID}" ]; then
+          echo "ERROR: KEY_ID secret is empty or not set"
+          missing=1
+        fi
+        if [ -z "${ISSUER_ID}" ]; then
+          echo "ERROR: ISSUER_ID secret is empty or not set"
+          missing=1
+        fi
+        if [ -z "${AUTH_KEY}" ]; then
+          echo "ERROR: AUTH_KEY secret is empty or not set"
+          missing=1
+        fi
+        if [ "${missing}" -ne 0 ]; then
+          echo "ERROR: Set KEY_ID, ISSUER_ID, and AUTH_KEY repository secrets, then re-run."
+          exit 1
+        fi
+        echo "Required App Store Connect API secrets are present."
+
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: List available Xcode versions
-      run: ls -la /Applications/ | grep Xcode
-      
+      run: find /Applications -maxdepth 1 -name 'Xcode*.app' -exec ls -ld {} +
+
     - name: Select latest Xcode 26
       run: |
-        # Find and select the latest Xcode 26.x
-        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
-        if [ -z "$LATEST_XCODE" ]; then
+        shopt -s nullglob
+        candidates=(/Applications/Xcode_26*.app)
+        if [ "${#candidates[@]}" -eq 0 ]; then
           echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
           exit 1
         fi
-        echo "Selected: $LATEST_XCODE"
-        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
-      
+        LATEST_XCODE=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)
+        echo "Selected: ${LATEST_XCODE}"
+        sudo xcode-select -s "${LATEST_XCODE}/Contents/Developer"
+
     - name: Show Xcode version
       run: |
         xcodebuild -version
         swift --version
-      
+
     - name: Create API Key file
       env:
         AUTH_KEY: ${{ secrets.AUTH_KEY }}
         KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
-        # Create private_keys directory
-        mkdir -p ~/private_keys
-        
-        # Write AUTH_KEY to file preserving newlines
-        # Never echo the key itself
-        echo "$AUTH_KEY" > ~/private_keys/AuthKey_${KEY_ID}.p8
-        
-        # Verify file was created (without showing contents)
-        if [ -f ~/private_keys/AuthKey_${KEY_ID}.p8 ]; then
-          echo "✓ API key file created at ~/private_keys/AuthKey_${KEY_ID}.p8"
-          wc -l ~/private_keys/AuthKey_${KEY_ID}.p8
-        else
-          echo "ERROR: Failed to create API key file"
+        # altool and xcodebuild both read ~/private_keys/AuthKey_<KEY_ID>.p8
+        if ! printf '%s' "${KEY_ID}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: KEY_ID must be the 10-character App Store Connect Key ID."
+          echo "KEY_ID length=$(printf '%s' "${KEY_ID}" | wc -c | tr -d ' ')"
           exit 1
         fi
-        
+        if ! printf '%s' "${ISSUER_ID}" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+          echo "ERROR: ISSUER_ID must be the Issuer ID UUID from App Store Connect → Users and Access → Integrations → Keys."
+          echo "It is not Team ID 2UMNXHG36N and not the Key ID."
+          echo "ISSUER_ID length=$(printf '%s' "${ISSUER_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        echo "KEY_ID shape ok (10 alphanumeric). ISSUER_ID shape ok (UUID)."
+
+        mkdir -p "${HOME}/private_keys"
+        key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
+        export KEY_FILE="${key_file}"
+        python3 - << 'PY'
+        import os
+        import re
+        import sys
+        from pathlib import Path
+
+        raw = os.environ.get("AUTH_KEY", "")
+        text = raw.replace("\r\n", "\n").replace("\r", "\n")
+        if text.startswith("\ufeff"):
+            text = text.lstrip("\ufeff")
+        text = text.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+            inner = text[1:-1]
+            if "BEGIN" in inner:
+                text = inner.strip()
+        # A one-line GitHub secret sometimes stores the PEM with literal \n.
+        if "-----BEGIN" in text and text.count("\n") == 0 and "\\n" in text:
+            text = text.replace("\\n", "\n").strip()
+        if text and not text.endswith("\n"):
+            text += "\n"
+
+        Path(os.environ["KEY_FILE"]).write_text(text)
+        nonempty = [line for line in text.splitlines() if line.strip()]
+        begin = nonempty[0] if nonempty else ""
+        end = nonempty[-1] if nonempty else ""
+        begin_ok = begin in (
+            "-----BEGIN PRIVATE KEY-----",
+            "-----BEGIN EC PRIVATE KEY-----",
+        )
+        end_ok = end in (
+            "-----END PRIVATE KEY-----",
+            "-----END EC PRIVATE KEY-----",
+        )
+        body = nonempty[1:-1] if len(nonempty) >= 2 else []
+        body_ok = bool(body) and all(re.fullmatch(r"[A-Za-z0-9+/=]+", line) for line in body)
+        print(
+            f"PEM nonempty_lines={len(nonempty)} begin_ok={str(begin_ok).lower()} "
+            f"end_ok={str(end_ok).lower()} body_lines={len(body)}"
+        )
+        if not (begin_ok and end_ok and body_ok):
+            print("ERROR: AUTH_KEY is not a PEM private key.")
+            print("Paste the .p8 file into the AUTH_KEY secret, including the BEGIN and END lines.")
+            print("Do not add quotes around the secret, and do not paste only the base64 body.")
+            sys.exit(1)
+        PY
+        chmod 600 "${key_file}"
+        if ! openssl pkey -in "${key_file}" -noout 2>"${RUNNER_TEMP}/pkey.err"; then
+          echo "ERROR: AUTH_KEY has PEM headers but OpenSSL could not read a private key."
+          sed 's/.*PRIVATE KEY.*/[redacted]/' "${RUNNER_TEMP}/pkey.err" || true
+          exit 1
+        fi
+        echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<KEY_ID>.p8"
+
+    - name: Check App Store Connect API authentication
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        # --list-providers does not accept API keys. Sign an ES256 JWT and call the API.
+        python3 -m venv "${RUNNER_TEMP}/asc-venv"
+        "${RUNNER_TEMP}/asc-venv/bin/pip" install --disable-pip-version-check pyjwt cryptography
+        "${RUNNER_TEMP}/asc-venv/bin/python" - << 'PY'
+        import json
+        import os
+        import subprocess
+        import time
+        from pathlib import Path
+
+        import jwt
+
+        key_id = os.environ["KEY_ID"]
+        issuer_id = os.environ["ISSUER_ID"]
+        private_key = Path.home().joinpath("private_keys", f"AuthKey_{key_id}.p8").read_text()
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "iss": issuer_id,
+                "iat": now,
+                "exp": now + 15 * 60,
+                "aud": "appstoreconnect-v1",
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": key_id, "typ": "JWT"},
+        )
+        if isinstance(token, bytes):
+            token = token.decode()
+        header_file = Path(os.environ["RUNNER_TEMP"]) / "asc-auth-header"
+        header_file.write_text(f"Authorization: Bearer {token}\n")
+        header_file.chmod(0o600)
+        print("Signed ES256 JWT for App Store Connect (token not printed).")
+
+        requests = (
+            (
+                "bundleIds",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=com.jonathanbowe.jlphysical",
+            ),
+            (
+                "apps",
+                "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.jonathanbowe.jlphysical",
+            ),
+        )
+
+        def redact(text):
+            return text.replace(token, "[redacted]")
+
+        def error_parts(body):
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                return None
+            errors = payload.get("errors")
+            if not isinstance(errors, list):
+                return None
+            parts = []
+            for item in errors:
+                if not isinstance(item, dict):
+                    continue
+                parts.append(
+                    "code={code} title={title} detail={detail}".format(
+                        code=item.get("code") or "",
+                        title=item.get("title") or "",
+                        detail=item.get("detail") or "",
+                    )
+                )
+            return parts
+
+        failed = False
+        for label, url in requests:
+            body_path = Path(os.environ["RUNNER_TEMP"]) / f"asc-{label}.json"
+            result = subprocess.run(
+                [
+                    "curl",
+                    "-sS",
+                    "-H",
+                    f"@{header_file}",
+                    "-o",
+                    str(body_path),
+                    "-w",
+                    "%{http_code}",
+                    "--url",
+                    url,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            status_text = result.stdout.strip()
+            if result.returncode != 0 or not status_text.isdigit():
+                print(f"ERROR: {label} request failed before Apple returned a status.")
+                print(redact(result.stderr.strip()))
+                failed = True
+                continue
+            status = int(status_text)
+            body = body_path.read_text()
+            parts = error_parts(body) or []
+            if parts:
+                for part in parts:
+                    print(f"{label} HTTP {status} {redact(part)}")
+            else:
+                print(f"{label} HTTP {status}")
+            if status == 401:
+                print(
+                    "ERROR: Apple rejected the token (401). KEY_ID does not match this .p8, "
+                    "ISSUER_ID is not that key's issuer, or the key was revoked."
+                )
+                failed = True
+                continue
+            if status == 403:
+                print(
+                    "ERROR: Apple refused this key (403). The role is insufficient. "
+                    "xcodebuild -allowProvisioningUpdates cloud signing with an API key "
+                    "requires the Admin role (Account Holder or Admin) and "
+                    "Access to Certificates, Identifiers & Profiles. "
+                    "App Manager can upload a build but cannot create certificates or profiles."
+                )
+                failed = True
+                continue
+            if status != 200:
+                print(f"ERROR: {label} returned HTTP {status}.")
+                failed = True
+                continue
+            try:
+                payload = json.loads(body)
+                resources = payload.get("data")
+                count = len(resources) if isinstance(resources, list) else 0
+            except json.JSONDecodeError:
+                count = 0
+            print(f"{label} resources={count}")
+            if count < 1:
+                print(
+                    f"ERROR: App Store Connect returned no {label} for com.jonathanbowe.jlphysical. "
+                    "The token was accepted. Register that bundle ID and app on team 2UMNXHG36N."
+                )
+                failed = True
+
+        header_file.unlink(missing_ok=True)
+        if failed:
+            raise SystemExit(1)
+        print("App Store Connect API authentication succeeded.")
+        PY
+
     - name: Set build number
       run: |
-        cd ios
-        # Auto-increment build number from GitHub run number
+        # github.run_number becomes CFBundleVersion via CURRENT_PROJECT_VERSION
+        # on the archive command, so the app and extensions stay in sync.
         BUILD_NUMBER="${{ github.run_number }}"
-        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
-        echo "Setting build number to $BUILD_NUMBER"
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" calorietracker/Info.plist
-        
+        echo "BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
+        echo "Setting build number to ${BUILD_NUMBER}"
+
     - name: Build and archive for App Store
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
+        set -o pipefail
         cd ios
-        
-        # Build and archive with automatic signing
+        mkdir -p build
+
+        # Bundle IDs stay on the per-target values in project.pbxproj.
+        # A command-line PRODUCT_BUNDLE_IDENTIFIER would apply to every target.
         xcodebuild archive \
           -project calorietracker.xcodeproj \
           -scheme calorietracker \
@@ -83,92 +308,100 @@ jobs:
           -archivePath build/JLPhysical.xcarchive \
           -destination 'generic/platform=iOS' \
           -allowProvisioningUpdates \
-          -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
-          -authenticationKeyID ${KEY_ID} \
-          -authenticationKeyIssuerID ${ISSUER_ID} \
+          -authenticationKeyPath "${HOME}/private_keys/AuthKey_${KEY_ID}.p8" \
+          -authenticationKeyID "${KEY_ID}" \
+          -authenticationKeyIssuerID "${ISSUER_ID}" \
           DEVELOPMENT_TEAM=2UMNXHG36N \
-          PRODUCT_BUNDLE_IDENTIFIER=com.jonathanbowe.jlphysical \
+          CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
           CODE_SIGN_STYLE=Automatic \
           | tee build_archive.log
-        
-        # Check if archive was created
+
         if [ ! -d "build/JLPhysical.xcarchive" ]; then
           echo "ERROR: Archive was not created"
           exit 1
         fi
-        
-        echo "✓ Archive created successfully"
-        
+
+        echo "Archive created successfully"
+
     - name: Export IPA for App Store
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
+        set -o pipefail
         cd ios
-        
-        # Create export options plist
-        cat > build/ExportOptions.plist << EOF
+        mkdir -p build
+
+        # destination=export writes a local IPA. altool performs the upload.
+        cat > build/ExportOptions.plist << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
             <string>2UMNXHG36N</string>
             <key>uploadSymbols</key>
             <true/>
-            <key>uploadBitcode</key>
-            <false/>
             <key>signingStyle</key>
             <string>automatic</string>
             <key>destination</key>
-            <string>upload</string>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
         </dict>
         </plist>
         EOF
-        
-        # Export the archive to IPA
+
         xcodebuild -exportArchive \
           -archivePath build/JLPhysical.xcarchive \
           -exportPath build/output \
           -exportOptionsPlist build/ExportOptions.plist \
           -allowProvisioningUpdates \
-          -authenticationKeyPath ~/private_keys/AuthKey_${KEY_ID}.p8 \
-          -authenticationKeyID ${KEY_ID} \
-          -authenticationKeyIssuerID ${ISSUER_ID} \
+          -authenticationKeyPath "${HOME}/private_keys/AuthKey_${KEY_ID}.p8" \
+          -authenticationKeyID "${KEY_ID}" \
+          -authenticationKeyIssuerID "${ISSUER_ID}" \
           | tee build_export.log
-        
-        # Check if IPA was created
-        if [ ! -f "build/output/calorietracker.ipa" ]; then
-          echo "ERROR: IPA was not created"
-          ls -la build/output/
+
+        # IPA filename follows PRODUCT_NAME ($(TARGET_NAME) -> calorietracker).
+        shopt -s nullglob
+        ipa_files=(build/output/*.ipa)
+        if [ "${#ipa_files[@]}" -ne 1 ]; then
+          echo "ERROR: Expected exactly one IPA in build/output, found ${#ipa_files[@]}"
+          ls -la build/output/ || true
           exit 1
         fi
-        
-        echo "✓ IPA exported successfully"
-        ls -lh build/output/*.ipa
-        
+        echo "IPA_PATH=${ipa_files[0]}" >> "$GITHUB_ENV"
+        echo "IPA exported successfully"
+        ls -lh "${ipa_files[0]}"
+
     - name: Upload to TestFlight
       env:
         KEY_ID: ${{ secrets.KEY_ID }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
         cd ios
-        
-        # Upload using altool with App Store Connect API key
+
+        if [ -z "${IPA_PATH:-}" ] || [ ! -f "${IPA_PATH}" ]; then
+          echo "ERROR: IPA was not found for upload"
+          exit 1
+        fi
+
+        # --upload-app accepts --apiKey/--apiIssuer. --list-providers does not.
+        # altool loads ~/private_keys/AuthKey_<KEY_ID>.p8
         xcrun altool --upload-app \
           --type ios \
-          --file build/output/calorietracker.ipa \
-          --apiKey ${KEY_ID} \
-          --apiIssuer ${ISSUER_ID} \
+          --file "${IPA_PATH}" \
+          --apiKey "${KEY_ID}" \
+          --apiIssuer "${ISSUER_ID}" \
           --verbose
-        
-        echo "✓ Upload to TestFlight initiated"
+
+        echo "Upload to TestFlight initiated"
         echo ""
         echo "The build will appear in App Store Connect → TestFlight within 5-15 minutes."
         echo "You will receive an email when processing is complete."
-        
+
     - name: Upload build logs as artifacts
       if: always()
       uses: actions/upload-artifact@v4
@@ -178,9 +411,9 @@ jobs:
           ios/build_archive.log
           ios/build_export.log
         retention-days: 30
-        
+
     - name: Clean up API key
       if: always()
       run: |
-        rm -rf ~/private_keys
-        echo "✓ API key file removed"
+        rm -rf "${HOME}/private_keys"
+        echo "API key file removed"

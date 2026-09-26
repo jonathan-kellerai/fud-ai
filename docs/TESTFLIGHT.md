@@ -75,10 +75,12 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
 
 3. **Build Process:**
    - Runs on `macos-15` with Xcode 26.3 (Swift 6.2)
-   - Auto-increments build number from `${{ github.run_number }}`
-   - Archives with automatic signing (`-allowProvisioningUpdates`)
-   - Creates App Store IPA
-   - Uploads to TestFlight via `xcrun altool`
+   - First step fails if `KEY_ID`, `ISSUER_ID`, or `AUTH_KEY` is empty. Secrets are not referenced from a job `if:` (GitHub rejects `secrets` there).
+   - Bundle IDs come from each target in `project.pbxproj`. The archive command does not pass `PRODUCT_BUNDLE_IDENTIFIER`, which would force every extension onto the app id.
+   - Build number is `${{ github.run_number }}`, passed as `CURRENT_PROJECT_VERSION` so the app and extensions share one `CFBundleVersion`.
+   - Archives with automatic signing (`-allowProvisioningUpdates`) and the App Store Connect API key.
+   - Exports an IPA and accepts `build/output/*.ipa` (one file).
+   - Uploads that IPA to TestFlight via `xcrun altool`.
 
 4. **Post-Upload:**
    - Build appears in App Store Connect → TestFlight within 5-15 minutes
