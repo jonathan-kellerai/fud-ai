@@ -1,244 +1,265 @@
 # TestFlight Deployment Guide
 
-This guide explains how to build JL Physical for TestFlight distribution.
+This document lists all bundle identifiers, capabilities, and App Store Connect configuration required to deploy JL Physical to TestFlight.
 
-## Prerequisites
+## Apple Developer Team
 
-### 1. Apple Developer Account
-- Enroll in the Apple Developer Program ($99/year)
-- Access: https://developer.apple.com
+**Team ID:** `2UMNXHG36N`  
+**Team Name:** Jonathan Bowe
 
-### 2. App Store Connect Setup
+## Bundle Identifiers
 
-#### Create App Record
+All bundle IDs must be registered in your Apple Developer account under team `2UMNXHG36N`:
+
+### Main App
+- **Bundle ID:** `com.jonathanbowe.jlphysical`
+- **Name:** JL Physical
+- **Platform:** iOS
+
+### App Extensions
+
+#### 1. Widget Extension
+- **Bundle ID:** `com.jonathanbowe.jlphysical.FudAIWidgetsExtension`
+- **Name:** JL Physical Widgets
+- **Type:** Widget Extension
+- **Platform:** iOS
+
+#### 2. Share Extension
+- **Bundle ID:** `com.jonathanbowe.jlphysical.calorietrackerShare`
+- **Name:** JL Physical Import
+- **Type:** Share Extension
+- **Platform:** iOS
+
+#### 3. Watch App
+- **Bundle ID:** `com.jonathanbowe.jlphysical.watchkitapp`
+- **Name:** JL Physical Watch
+- **Type:** WatchKit App
+- **Platform:** watchOS
+
+#### 4. Watch Widget Extension
+- **Bundle ID:** `com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgetsExtension`
+- **Name:** JL Physical Watch Widgets
+- **Type:** Widget Extension
+- **Platform:** watchOS
+
+## Required Capabilities
+
+Configure these capabilities for each bundle ID in App Store Connect:
+
+### Main App (`com.jonathanbowe.jlphysical`)
+
+#### HealthKit
+- **Required:** Yes
+- **Background Delivery:** Yes
+- **Clinical Health Records:** No
+- **Health Records:** Read/Write
+  - Dietary Energy (Calories)
+  - Dietary Protein
+  - Dietary Carbohydrates
+  - Dietary Fat
+  - Water
+  - Body Mass
+  - Height
+  - Active Energy Burned
+  - Exercise Time
+  - Step Count (with background delivery)
+  - Workouts (Read/Write)
+
+#### App Groups
+- **Group ID:** `group.com.jonathanbowe.jlphysical`
+- **Purpose:** Share data between main app, widgets, share extension, and watch app
+- **Required for:** Widget updates, share extension, watch sync
+
+#### iCloud
+- **iCloud Containers:** `iCloud.com.jonathanbowe.jlphysical`
+- **Services:** CloudKit
+- **Purpose:** Optional cloud backup of diary, workouts, photos
+
+#### Associated Domains
+- **Domain:** `applinks:jl-physical.app`
+- **Purpose:** Universal links for deep linking (optional)
+
+#### Background Modes
+- **Background fetch:** For periodic sync
+- **Background processing:** For data processing
+- **HealthKit background delivery:** For step count updates
+
+### Widget Extension (`com.jonathanbowe.jlphysical.FudAIWidgetsExtension`)
+
+#### App Groups
+- **Group ID:** `group.com.jonathanbowe.jlphysical`
+- **Purpose:** Read data from main app to display in widget
+
+### Share Extension (`com.jonathanbowe.jlphysical.calorietrackerShare`)
+
+#### App Groups
+- **Group ID:** `group.com.jonathanbowe.jlphysical`
+- **Purpose:** Share imported photos with main app
+
+### Watch App (`com.jonathanbowe.jlphysical.watchkitapp`)
+
+#### App Groups
+- **Group ID:** `group.com.jonathanbowe.jlphysical`
+- **Purpose:** Sync data with iPhone app
+
+#### HealthKit (Watch)
+- **Required:** Yes (same read/write permissions as main app)
+
+### Watch Widget Extension (`com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgetsExtension`)
+
+#### App Groups
+- **Group ID:** `group.com.jonathanbowe.jlphysical`
+
+## App Store Connect Configuration
+
+### 1. Create App Record
 1. Log in to [App Store Connect](https://appstoreconnect.apple.com)
-2. Go to "My Apps" → "+" → "New App"
+2. Go to **My Apps** → **+** → **New App**
 3. Fill in:
-   - **Platform**: iOS
-   - **Name**: JL Physical (or your preferred name)
-   - **Primary Language**: English (US)
-   - **Bundle ID**: Select/create your bundle ID (e.g., `com.jlphysical.app`)
-   - **SKU**: A unique identifier (e.g., `jlphysical-ios-001`)
-   - **User Access**: Full Access
+   - **Platform:** iOS
+   - **Name:** JL Physical
+   - **Primary Language:** English (U.S.)
+   - **Bundle ID:** Select `com.jonathanbowe.jlphysical`
+   - **SKU:** `jlphysical` (or your preference)
+   - **User Access:** Full Access
 
-#### Enable HealthKit Capability
-1. Go to [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources)
-2. Select "Identifiers"
-3. Find your app's Bundle ID
-4. Scroll to "HealthKit" and check the box
-5. Click "Save"
+### 2. Create API Key for CI/CD
 
-### 3. App Store Connect API Key
+1. Go to **Users and Access** → **Keys** → **App Store Connect API**
+2. Click **+** to generate a new key
+3. **Name:** JL Physical CI
+4. **Access:** App Manager (or Developer if building only)
+5. Download the `.p8` file (you can only download once!)
+6. Note the **Key ID** and **Issuer ID**
 
-#### Create API Key
-1. In App Store Connect, go to "Users and Access" → "Keys" tab
-2. Click "+" to generate a new key
-3. Give it a name (e.g., "JL Physical CI/CD")
-4. Set **Access**: "App Manager" or "Admin"
-5. Click "Generate"
-6. **Download the .p8 file immediately** (you can only download it once)
-7. Note the **Key ID** and **Issuer ID** shown on the page
+### 3. Set Up Provisioning Profiles
 
-### 4. Required Configuration Values
+For TestFlight deployment, you need distribution provisioning profiles:
 
-You'll need these values for building:
+1. Go to [Apple Developer → Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources)
+2. Create **App Store** provisioning profiles for:
+   - `com.jonathanbowe.jlphysical` (main app)
+   - `com.jonathanbowe.jlphysical.FudAIWidgetsExtension`
+   - `com.jonathanbowe.jlphysical.calorietrackerShare`
+   - `com.jonathanbowe.jlphysical.watchkitapp`
+   - `com.jonathanbowe.jlphysical.watchkitapp.FudAIWatchWidgetsExtension`
+3. Or use Fastlane Match (recommended) - see below
+
+## GitHub Actions Secrets
+
+Configure these secrets in your repository settings:
+
+### Required Secrets
 
 ```
-BUNDLE_IDENTIFIER=com.jlphysical.app  # Your chosen bundle ID
-TEAM_ID=XXXXXXXXXX                     # Find in Apple Developer account → Membership
-APP_STORE_CONNECT_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # From API key page
-APP_STORE_CONNECT_API_KEY_ID=XXXXXXXXXX  # From API key page
-APP_STORE_CONNECT_API_KEY_CONTENT=<.p8 file contents>  # The downloaded .p8 file
+APP_STORE_CONNECT_API_KEY_ID=<Your Key ID from step 2>
+APP_STORE_CONNECT_ISSUER_ID=<Your Issuer ID from step 2>
+APP_STORE_CONNECT_API_KEY_CONTENT=<Contents of the .p8 file>
+MATCH_PASSWORD=<Password for Fastlane Match certificate encryption>
+FASTLANE_APPLE_ID=<Your Apple ID email>
+BUNDLE_IDENTIFIER=com.jonathanbowe.jlphysical
+TEAM_ID=2UMNXHG36N
 ```
 
-## Build Methods
+### Setting Up Fastlane Match
 
-### Option A: Automated GitHub Actions (Recommended)
+Match manages your code signing certificates and provisioning profiles in a private git repository:
 
-#### Setup Repository Secrets
-1. Go to your GitHub repository → Settings → Secrets and variables → Actions
-2. Add these secrets:
-   - `BUNDLE_IDENTIFIER`: Your bundle ID (e.g., `com.jlphysical.app`)
-   - `TEAM_ID`: Your Apple Developer Team ID
-   - `APP_STORE_CONNECT_ISSUER_ID`: From App Store Connect API key
-   - `APP_STORE_CONNECT_API_KEY_ID`: From App Store Connect API key
-   - `APP_STORE_CONNECT_API_KEY_CONTENT`: Full contents of the .p8 file
+1. Create a private GitHub repository (e.g., `jlphysical-certificates`)
+2. Run locally:
+   ```bash
+   cd ios
+   bundle exec fastlane match init
+   # Choose 'git' and enter your certificates repo URL
+   bundle exec fastlane match appstore
+   ```
+3. This will:
+   - Create distribution certificates
+   - Create provisioning profiles for all bundle IDs
+   - Encrypt and store them in the git repo
+   - Ask you to set a password (save this as `MATCH_PASSWORD` secret)
 
-#### Trigger Build
-1. Go to Actions tab in your repository
-2. Select "TestFlight Deploy" workflow
-3. Click "Run workflow"
-4. The build will automatically upload to TestFlight when complete
+## Deployment Workflow
 
-### Option B: Local Build with Fastlane
+Once all secrets are configured:
 
-#### Install Fastlane
-```bash
-sudo gem install fastlane -NV
-```
+1. Go to **Actions** tab in GitHub
+2. Select **TestFlight Deploy** workflow
+3. Click **Run workflow**
+4. Choose your branch (typically `main` or release branch)
+5. Monitor the build (takes ~15-20 minutes)
+6. Once complete, the build will appear in App Store Connect → TestFlight
 
-#### Configure Fastlane
-Create `ios/fastlane/Appfile`:
-```ruby
-app_identifier("com.jlphysical.app")  # Your bundle ID
-apple_id("your-apple-id@email.com")
-team_id("YOUR_TEAM_ID")
-```
+## Testing
 
-Create `ios/fastlane/Fastfile`:
-```ruby
-default_platform(:ios)
+### Internal Testing
+1. In App Store Connect, go to your app → **TestFlight** → **Internal Testing**
+2. Add internal testers (up to 100, must have App Store Connect access)
+3. Select the uploaded build
+4. Testers receive email and can install via TestFlight app
 
-platform :ios do
-  desc "Build and upload to TestFlight"
-  lane :beta do
-    # Increment build number
-    increment_build_number(
-      build_number: latest_testflight_build_number + 1,
-      xcodeproj: "calorietracker.xcodeproj"
-    )
-    
-    # Build
-    build_app(
-      scheme: "calorietracker",
-      export_method: "app-store",
-      export_options: {
-        provisioningProfiles: {
-          "com.jlphysical.app" => "match AppStore com.jlphysical.app"
-        }
-      }
-    )
-    
-    # Upload to TestFlight
-    upload_to_testflight(
-      skip_waiting_for_build_processing: true
-    )
-  end
-end
-```
+### External Testing
+1. Requires App Review (first build only)
+2. Go to **TestFlight** → **External Testing**
+3. Create a test group, add external testers (up to 10,000)
+4. Submit for Beta App Review
+5. Once approved, external testers can install
 
-#### Run Build
-```bash
-cd ios
-fastlane ios beta
-```
+## Required App Store Metadata (for Public Release)
 
-### Option C: Manual Build with Xcode
+When ready to submit to App Store:
 
-#### Configure Xcode
-1. Open `ios/calorietracker.xcodeproj` in Xcode
-2. Select the project in the navigator
-3. In the "Signing & Capabilities" tab:
-   - Set **Team** to your Apple Developer team
-   - Set **Bundle Identifier** to your chosen ID
-   - Ensure "Automatically manage signing" is checked
-   - Verify HealthKit capability is present
+- App Name: JL Physical
+- Subtitle: Personal Strength & Diet Tracker
+- Category: Health & Fitness
+- Keywords: workout, strength training, diet, calories, nutrition, fitness
+- Screenshots: iPhone 6.7", iPhone 6.5", iPhone 5.5" (required)
+- App Preview Video: Optional
+- Description: [Your app description]
+- Privacy Policy URL: Required
+- Support URL: Required
+- Marketing URL: Optional
 
-#### Build Archive
-1. In Xcode menu: Product → Archive
-2. Wait for build to complete
-3. In the Organizer window:
-   - Select your archive
-   - Click "Distribute App"
-   - Choose "App Store Connect"
-   - Follow the wizard to upload
+## Privacy Manifest
 
-## Post-Upload Steps
-
-### 1. Configure TestFlight
-1. Go to App Store Connect → TestFlight
-2. Wait for the build to finish processing (10-30 minutes)
-3. Add "Test Information" and "What to Test" notes
-4. Submit for beta review (if required)
-
-### 2. Invite Testers
-#### Internal Testing (instant)
-- Add up to 100 internal testers (must have App Store Connect access)
-- They can install immediately after build processing
-
-#### External Testing (requires review)
-- Create an external test group
-- Add testers by email
-- Submit the build for beta review
-- After approval (1-2 days), testers receive invites
-
-### 3. Distribute to Yourself
-1. Install the TestFlight app on your iPhone
-2. Accept the TestFlight invitation email
-3. Open TestFlight and install JL Physical
-4. Grant HealthKit permissions when prompted
+The app includes a privacy manifest (`PrivacyInfo.xcprivacy`) declaring:
+- HealthKit data usage (nutrition, workouts, steps)
+- Optional iCloud backup
+- No data sold to third parties
+- Optional hosted AI API usage (if using Plus/Pro subscriptions)
 
 ## Troubleshooting
 
-### Build Fails with Code Signing Error
-- Verify your Team ID is correct
-- Ensure Bundle ID matches App Store Connect
-- Check that capabilities (HealthKit) are enabled on the Bundle ID
+### Build Fails: "No signing identity found"
+- Ensure Fastlane Match has run successfully
+- Check `MATCH_PASSWORD` is set correctly
+- Verify certificates haven't expired (1 year for development, valid until renewal for distribution)
 
-### "Invalid Provisioning Profile" Error
-- Bundle ID must match exactly
-- Ensure HealthKit is enabled on the identifier
-- Try regenerating provisioning profiles in Xcode
+### TestFlight Upload Fails
+- Verify all bundle IDs are registered in App Store Connect
+- Check that API key has "App Manager" access
+- Ensure build number is incremented (can't re-upload same build number)
 
-### TestFlight Upload Hangs
-- Check App Store Connect API key has correct permissions
-- Verify the .p8 file content is complete and not corrupted
-- Try uploading with Xcode Organizer instead
+### HealthKit Rejected
+- Ensure HealthKit usage description in `Info.plist` explains why each data type is needed
+- Screenshots must show HealthKit integration
+- Don't request unused HealthKit permissions
 
-### Missing HealthKit Permission
-- Update Info.plist usage descriptions
-- Ensure `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` are present
-- Rebuild and re-upload
+## CI Build Status (Development)
 
-## Audio Files
+The iOS Build CI workflow runs on every push to build and test the app **unsigned** for development validation. It does not deploy to TestFlight.
 
-The rest timer requires two audio files to be added to the Xcode project before building:
+- Simulator build validates code compiles
+- Generic device build validates for release configuration
+- Tests run on simulator
 
-### Required Files
-1. `boxing_clack.mp3` (or .wav/.m4a) — boxing stick clack sound (plays at 10s remaining)
-2. `gym_bell.mp3` (or .wav/.m4a) — round/gym bell sound (plays at 0s)
+TestFlight deployment is **manual only** via `workflow_dispatch` on the **TestFlight Deploy** workflow.
 
-### Sourcing Sounds
-Use royalty-free or CC0 sounds from:
-- **Freesound**: https://freesound.org (CC0/CC-BY licensed)
-- **Zapsplat**: https://www.zapsplat.com (free with attribution)
-- **BBC Sound Effects**: https://sound-effects.bbcrewind.co.uk (CC-BY-NC licensed)
+## Notes
 
-### Adding to Xcode
-1. Download the sound files
-2. In Xcode, right-click `calorietracker/Resources` → "Add Files to calorietracker"
-3. Select both files
-4. Ensure "Copy items if needed" is checked
-5. Add to target: `calorietracker`
-6. Document the source and license in `THIRD_PARTY_NOTICES.md`
-
-Example entry for `THIRD_PARTY_NOTICES.md`:
-```
-Boxing stick clack sound
-Source: Freesound user "InspectorJ"
-URL: https://freesound.org/people/InspectorJ/sounds/XXXXX/
-License: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
-
-Gym bell sound  
-Source: Freesound user "unfa"
-URL: https://freesound.org/people/unfa/sounds/XXXXX/
-License: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
-```
-
-## CI Status
-
-The automated iOS build runs on every push and PR. Check the Actions tab to verify:
-- ✅ App compiles for iOS Simulator
-- ✅ App compiles for Generic iOS Device
-- ✅ Tests pass
-
-A green build means the app is ready to archive and upload to TestFlight.
-
-## Support
-
-For issues specific to JL Physical, open an issue in this repository.
-
-For general iOS/TestFlight help:
-- [Apple Developer Documentation](https://developer.apple.com/documentation/)
-- [App Store Connect Help](https://developer.apple.com/help/app-store-connect/)
-- [Fastlane Documentation](https://docs.fastlane.tools/)
+- Development team is hardcoded in `Config.xcconfig`: `DEVELOPMENT_TEAM = 2UMNXHG36N`
+- Bundle IDs are also set in `Config.xcconfig`
+- Xcode project uses automatic file management (PBXFileSystemSynchronizedRootGroup)
+- Minimum iOS version: 17.0
+- Minimum watchOS version: 10.0
+- Swift 6 language mode enabled (strict concurrency)

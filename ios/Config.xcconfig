@@ -2,12 +2,12 @@
 // Copy this file and customize for your build
 
 // REQUIRED: Set these values before building
-PRODUCT_BUNDLE_IDENTIFIER = com.jlphysical.app
-DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE
+PRODUCT_BUNDLE_IDENTIFIER = com.jonathanbowe.jlphysical
+DEVELOPMENT_TEAM = 2UMNXHG36N
 APP_DISPLAY_NAME = JL Physical
 
 // App Group for widget/extensions (update to match your bundle ID)
-APP_GROUP_IDENTIFIER = group.com.jlphysical.app
+APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical
 
 // Version and build
 MARKETING_VERSION = 1.0.0
