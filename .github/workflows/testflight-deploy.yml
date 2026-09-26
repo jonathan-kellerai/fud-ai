@@ -175,11 +175,11 @@ jobs:
         requests = (
             (
                 "bundleIds",
-                "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=com.jonathanbowe.jlphysical",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?filter%5Bidentifier%5D=com.jonathanbowe.jlphysical",
             ),
             (
                 "apps",
-                "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.jonathanbowe.jlphysical",
+                "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=com.jonathanbowe.jlphysical",
             ),
         )
 
@@ -213,6 +213,7 @@ jobs:
             result = subprocess.run(
                 [
                     "curl",
+                    "--globoff",
                     "-sS",
                     "-H",
                     f"@{header_file}",
