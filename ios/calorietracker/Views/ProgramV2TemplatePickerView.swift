@@ -12,7 +12,7 @@ struct ProgramV2TemplatePickerView: View {
     let onSelect: (ProgramV2Day) -> Void
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List(ProgramV2Templates.allDays) { day in
                 Button {
                     onSelect(day)

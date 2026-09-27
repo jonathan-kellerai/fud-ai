@@ -2,6 +2,8 @@ import SwiftUI
 import UIKit
 
 struct WorkoutsView: View {
+    var presentedAsSheet = false
+    @Environment(\.dismiss) private var dismiss
     @AppStorage(WorkoutTabMode.storageKey) private var selectedModeRaw = WorkoutTabMode.defaultMode.rawValue
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
     @State private var workoutLogSession = WorkoutLogSessionState()
@@ -27,8 +29,15 @@ struct WorkoutsView: View {
                     .background(WorkoutsScreenBackground())
                     .navigationTitle("Workouts")
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbar(.hidden, for: .navigationBar)
+                    .toolbar(presentedAsSheet ? .visible : .hidden, for: .navigationBar)
                     .transition(.opacity)
+                }
+            }
+            .toolbar {
+                if presentedAsSheet {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
         }

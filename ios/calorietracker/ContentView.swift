@@ -116,7 +116,6 @@ struct ContentView: View {
     @Environment(NotificationManager.self) private var notificationManager
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
-    @AppStorage(WorkoutTabMode.storageKey) private var workoutTabModeRaw = WorkoutTabMode.defaultMode.rawValue
     @State private var appUpdateState: AppUpdateState = .idle
     @State private var selectedTab: AppTab = .home
     @State private var quickActionRequest: QuickActionRequest?
@@ -125,10 +124,6 @@ struct ContentView: View {
     @State private var showHostedUpsellPrompt = false
     @State private var showHostedUpsellPaywall = false
     @State private var showMeetDeveloperPrompt = false
-
-    private var workoutsTabIcon: String {
-        WorkoutTabMode.mode(for: workoutTabModeRaw).tabIcon
-    }
 
     var body: some View {
         standardTabView
@@ -227,17 +222,10 @@ struct ContentView: View {
             )
                 .tag(AppTab.settings)
                 .tabItem {
-                    Image(systemName: "gearshape.fill")
-                    Text("Settings")
+                    Image(systemName: "ellipsis")
+                    Text("More")
                 }
                 .badge(appUpdateState.isUpdateAvailable ? "!" : nil)
-
-            WorkoutsView()
-                .tag(AppTab.workouts)
-                .tabItem {
-                    Image(systemName: workoutsTabIcon)
-                    Text("Workouts")
-                }
         }
     }
 
@@ -247,7 +235,6 @@ struct ContentView: View {
         case progress
         case coach
         case settings
-        case workouts
     }
 
     private func consumePendingLaunchRoutes() {
@@ -4483,6 +4470,7 @@ struct ProfileView: View {
     @State private var selectedSpeechFallbackLanguage: SpeechLanguage = SpeechSettings.selectedLanguage(for: SpeechSettings.selectedFallbackProvider)
     @State private var speechFallbackApiKeyText: String = SpeechSettings.apiKey(for: SpeechSettings.selectedFallbackProvider) ?? ""
     @State private var showSpeechFallbackAPIKey = false
+    @State private var showExerciseLibrary = false
 
     private var heightMetric: Bool { heightUnitRaw == "cm" }
     private var weightMetric: Bool { weightUnitRaw == "kg" }
@@ -4569,6 +4557,23 @@ struct ProfileView: View {
     private var settingsHub: some View {
         List {
             Section {
+                Button {
+                    showExerciseLibrary = true
+                } label: {
+                    Label {
+                        Text("Exercise Library")
+                            .font(.system(.body, design: .rounded, weight: .medium))
+                    } icon: {
+                        Image(systemName: "dumbbell.fill")
+                            .foregroundStyle(AppColors.calorie)
+                            .frame(width: 24)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .listRowBackground(AppColors.appCard)
+
+            Section {
                 ForEach(ProfileSettingsCategory.preferenceCases) { category in
                     ProfileSettingsCategoryRow(category: category)
                 }
@@ -4592,6 +4597,9 @@ struct ProfileView: View {
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showExerciseLibrary) {
+            WorkoutsView(presentedAsSheet: true)
+        }
     }
 
     private var settingsList: some View {

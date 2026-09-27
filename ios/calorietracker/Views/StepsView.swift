@@ -16,8 +16,7 @@ struct StepsView: View {
     @State private var showingPermission = false
     
     var body: some View {
-        NavigationView {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 20) {
                     // Today's Progress Card
                     todayCard
@@ -49,7 +48,7 @@ struct StepsView: View {
                     Text(error)
                 }
             }
-        }
+            .navigationBarTitleDisplayMode(.inline)
     }
     
     private var todayCard: some View {

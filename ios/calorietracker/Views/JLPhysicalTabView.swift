@@ -8,26 +8,24 @@
 import SwiftUI
 
 struct JLPhysicalTabView: View {
-    @State private var selectedDay: ProgramV2Day?
-    @State private var showingTemplatePicker = false
-    @State private var showingWorkoutLog = false
+    @State private var programBody = TrainingProgramBody.bundledV2()
+    @State private var bridgeNotice: String?
+    @State private var showingPrograms = false
+    @State private var loggingDay: ProgramV2Day?
     @State private var recentWorkouts: [RemoteWorkout] = []
     @State private var isLoadingRecent = false
     
     private var neonBridge = NeonBridgeService.shared
+    private var todayPlan: ResolvedTrainingDay {
+        TrainingProgramSchedule.resolve(programBody, on: Date())
+    }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    if selectedDay == nil {
-                        programSelectionPrompt
-                    } else if let day = selectedDay {
-                        todaysWorkoutCard(day: day)
-                    }
-                    
+                    todaysWorkoutCard
                     quickActionsCard
-                    
                     recentWorkoutsSection
                 }
                 .padding()
@@ -36,101 +34,114 @@ struct JLPhysicalTabView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        showingTemplatePicker = true
+                        showingPrograms = true
                     } label: {
-                        Image(systemName: selectedDay == nil ? "plus.circle" : "list.bullet")
+                        Image(systemName: "list.bullet")
                     }
+                    .accessibilityLabel("Programs")
                 }
             }
-            .sheet(isPresented: $showingTemplatePicker) {
-                ProgramV2TemplatePickerView { day in
-                    selectedDay = day
-                    showingTemplatePicker = false
+            .sheet(isPresented: $showingPrograms, onDismiss: {
+                Task { await loadActiveProgram() }
+            }) {
+                NavigationStack {
+                    ProgramLibraryView()
                 }
             }
-            .sheet(isPresented: $showingWorkoutLog) {
-                if let day = selectedDay {
-                    ProgramV2WorkoutLogView(day: day, onSaved: {
-                        Task {
-                            await loadRecentWorkouts()
-                        }
-                    })
-                }
+            .sheet(item: $loggingDay) { day in
+                ProgramV2WorkoutLogView(day: day, onSaved: {
+                    Task { await loadRecentWorkouts() }
+                })
             }
             .task {
+                await loadActiveProgram()
                 await loadRecentWorkouts()
             }
         }
     }
-    
-    private var programSelectionPrompt: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "figure.strengthtraining.traditional")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            
-            Text("Choose Your Program")
-                .font(.title2.bold())
-            
-            Text("Select a Program V2 day template to start tracking your workouts")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button {
-                showingTemplatePicker = true
-            } label: {
-                Label("Browse Programs", systemImage: "list.bullet.rectangle")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.accentColor)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-            }
-            .padding(.horizontal, 40)
-        }
-        .padding(.vertical, 40)
-    }
-    
-    private func todaysWorkoutCard(day: ProgramV2Day) -> some View {
+
+    private var todaysWorkoutCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Today's Workout")
+            switch todayPlan {
+            case .session(let dayIndex, let name, _):
+                sessionCard(dayIndex: dayIndex, name: name)
+            case .rest(let stepsTarget, _, _):
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Rest Day")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    
-                    Text(day.title)
+                    Text("\(stepsTarget.formatted()) steps")
                         .font(.title2.bold())
+                    if let nextLabel = todayPlan.nextLabel {
+                        Text(nextLabel)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                
-                Spacer()
-                
+            case .upcoming(let name, let weekday, let stepsTarget):
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Upcoming")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(name)
+                        .font(.title2.bold())
+                    Text(weekday)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("\(stepsTarget.formatted()) steps")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let bridgeNotice {
+                Text(bridgeNotice)
+                    .font(.caption)
+                    .foregroundStyle(AppColors.calorie)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.appCard)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func sessionCard(dayIndex: Int, name: String) -> some View {
+        let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
+            ?? programBody.days.first { $0.dayIndex == dayIndex }
+        HStack {
+            VStack(alignment: .leading) {
+                Text("Today's Workout")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(name)
+                    .font(.title2.bold())
+            }
+            Spacer()
+            if let day {
                 Button {
-                    showingWorkoutLog = true
+                    loggingDay = day.asProgramV2Day()
                 } label: {
                     Label("Start", systemImage: "play.fill")
                         .font(.headline)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .background(Color.accentColor)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
+                        .background(AppColors.calorie)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
             }
-            
+        }
+        if let day {
             Divider()
-            
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "heart.fill")
-                        .foregroundStyle(.red)
-                    Text("Conditioning: \(day.conditioning)")
+                        .foregroundStyle(AppColors.calorie)
+                    Text("Conditioning: \(day.conditioningSummary)")
                         .font(.subheadline)
                 }
-                
                 HStack {
                     Image(systemName: "dumbbell.fill")
                     Text("\(day.exercises.count) exercises")
@@ -139,10 +150,6 @@ struct JLPhysicalTabView: View {
             }
             .foregroundStyle(.secondary)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 8, y: 2)
     }
     
     private var quickActionsCard: some View {
@@ -160,7 +167,7 @@ struct JLPhysicalTabView: View {
                 }
                 
                 Button {
-                    showingTemplatePicker = true
+                    showingPrograms = true
                 } label: {
                     QuickActionButton(icon: "list.bullet", title: "Program", color: .orange)
                 }
@@ -214,6 +221,29 @@ struct JLPhysicalTabView: View {
             print("Failed to load recent workouts: \(error)")
         }
     }
+
+    private func loadActiveProgram() async {
+        do {
+            let record = try await neonBridge.activeProgram()
+            if let body = record.body {
+                ActiveProgramCache.save(record)
+                programBody = body
+                bridgeNotice = nil
+                return
+            }
+        } catch let error as NeonBridgeError where error.isNotFound {
+            bridgeNotice = nil
+        } catch {
+            bridgeNotice = "Bridge unavailable"
+        }
+
+        if let cached = ActiveProgramCache.load(), let body = cached.body {
+            programBody = body
+            bridgeNotice = nil
+        } else if bridgeNotice != nil {
+            programBody = .bundledV2()
+        }
+    }
 }
 
 struct QuickActionButton: View {
@@ -247,7 +277,7 @@ struct RecentWorkoutRow: View {
                 Text(workout.programDay)
                     .font(.subheadline.bold())
                 
-                Text(workout.sessionDate)
+                Text(SessionDateFormatting.displayString(from: workout.sessionDate))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -297,7 +327,7 @@ struct WorkoutHistoryListView: View {
                                 Text(workout.title)
                                     .font(.headline)
                                 
-                                Text(workout.sessionDate)
+                                Text(SessionDateFormatting.displayString(from: workout.sessionDate))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 

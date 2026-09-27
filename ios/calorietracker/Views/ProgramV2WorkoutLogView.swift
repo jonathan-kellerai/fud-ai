@@ -29,7 +29,7 @@ struct ProgramV2WorkoutLogView: View {
     private var neonBridge = NeonBridgeService.shared
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     conditioningCard(day.conditioning)
@@ -87,10 +87,12 @@ struct ProgramV2WorkoutLogView: View {
             
             Text(conditioning)
                 .font(.subheadline)
-            
-            Text("Minimum: \(day.conditioningMinimum)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+            if !day.conditioningMinimum.isEmpty {
+                Text("Minimum: \(day.conditioningMinimum)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             
             Toggle("Completed", isOn: $conditioningCompleted)
                 .toggleStyle(.switch)
