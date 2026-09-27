@@ -413,10 +413,19 @@ class HealthKitManager {
     private func fullAuthorizationNeedsRequest() async -> Bool {
         if needsReauthorization { return true }
         do {
-            let status = try await healthStore.getRequestStatusForAuthorization(
-                toShare: shareTypes,
-                read: readTypes
-            )
+            // This SDK only has the completion form. There is no async overload.
+            let status = try await withCheckedThrowingContinuation { continuation in
+                healthStore.getRequestStatusForAuthorization(
+                    toShare: shareTypes,
+                    read: readTypes
+                ) { status, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: status)
+                    }
+                }
+            }
             return status == .shouldRequest
         } catch {
             return true
