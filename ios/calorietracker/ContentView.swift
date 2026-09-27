@@ -1146,6 +1146,136 @@ struct HomeView: View {
         // so SwiftUI invalidates this view on every profile mutation.
         let _ = profileStore.profile
         return NavigationStack {
+            homeCoveredDiary
+            .interactiveDismissDisabled(foodLogPhase.isLoading && (
+                activeSheet == .analyzing || activeSheet == .analyzingText || activeSheet == .lookingUpBarcode
+            ))
+            .photosPicker(
+                isPresented: $showPhotoPicker,
+                selection: $selectedPhotoItems,
+                maxSelectionCount: 10,
+                selectionBehavior: .ordered,
+                matching: .images
+            )
+            .onChange(of: selectedPhotoItems) { oldValue, newValue in
+                guard !newValue.isEmpty else { return }
+                selectedPhotoItems = []
+                Task {
+                    var imported: [UIImage] = []
+                    for item in newValue.prefix(10 - captureImages.count) {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            imported.append(image)
+                        }
+                    }
+                    if !imported.isEmpty {
+                        captureImages = Array((captureImages + imported).prefix(10))
+                        currentImage = captureImages.first
+                        currentImages = captureImages
+                        currentEmoji = nil
+                        currentFoodSource = .snapFood
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            showMultiPhotoCaptureSheet = true
+                        }
+                    }
+                }
+            }
+            .alert("Error", isPresented: $showError) {
+                Button("Retry") { retryLastRequest() }
+                Button("Cancel", role: .cancel) { retryRequest = nil }
+            } message: {
+                Text(errorMessage)
+            }
+            .sheet(isPresented: $showHostedQuotaPaywall) {
+                HostedQuotaSoftPaywall(
+                    onBuyCreditsOrUpgrade: {
+                        if RevenueCatManager.shared.hasHostedEntitlement {
+                            showHostedCredits = true
+                        } else {
+                            showHostedPaywall = true
+                        }
+                    },
+                    onSwitchBYOK: {}
+                )
+            }
+            .sheet(isPresented: $showHostedPaywall) {
+                HostedPaywallView()
+            }
+            .sheet(isPresented: $showHostedCredits) {
+                HostedCreditsSheet()
+            }
+            .alert("Food logging paused", isPresented: $showFoodLoggingBlocked) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("End or cancel your active fast before logging food.")
+            }
+            .alert("Fasting Tracking off", isPresented: $showFastingQuickActionDisabled) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Enable Fasting Tracking in Settings to use this shortcut.")
+            }
+            .sheet(isPresented: $showNutritionDetail) {
+                NutritionDetailView(date: selectedDate, homeTopNutrientsRaw: $homeTopNutrientsRaw)
+            }
+            .sheet(isPresented: $showCustomWaterLog) {
+                WaterCustomAmountSheet(unit: waterUnit, onAdd: logWater)
+            }
+            .onOpenURL { url in
+                if url.scheme == "fudai", url.host == "import-share-image" {
+                    checkAndConsumeSharedImage()
+                } else if MealShare.handles(url) {
+                    // Shared meal — custom scheme or https Universal Link (issue #107).
+                    // Universal Links open the app directly (no browser). Confirm before adding.
+                    guard canBeginFoodLogging() else { return }
+                    guard let meals = MealShare.meals(from: url) else { return }
+                    activeSheet = nil
+                    pendingSharedMeals = meals
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        activeSheet = .importSharedMeal
+                    }
+                }
+            }
+            .onAppear {
+                checkAndConsumeSharedImage()
+                prewarmFoodDestinations()
+            }
+            .task(id: quickActionRequest?.id) {
+                presentQuickActionIfPossible()
+            }
+            .task(id: foodLogMethodRequest?.id) {
+                presentFoodLogMethodIfPossible()
+            }
+            .onChange(of: activeSheet) { oldValue, newValue in
+                if oldValue != nil && newValue == nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        presentQuickActionIfPossible()
+                        presentFoodLogMethodIfPossible()
+                    }
+                } else {
+                    presentQuickActionIfPossible()
+                    presentFoodLogMethodIfPossible()
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    checkAndConsumeSharedImage()
+                    homeRefreshToken += 1
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in
+                retryRequest = nil
+                openCameraForNutritionLabel()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertRetry)) { _ in
+                retryLastRequest()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertCancel)) { _ in
+                retryRequest = nil
+            }
+        }
+    }
+
+    private var homeDiaryList: some View {
             List {
                 HomeV2Cards(selectedDate: $selectedDate, refreshToken: homeRefreshToken) {
                     showNutritionDetail = true
@@ -1359,6 +1489,10 @@ struct HomeView: View {
                         .monospacedDigit()
                 }
             }
+    }
+
+    private var homeAddOverlay: some View {
+        homeDiaryList
             .overlay(alignment: .bottomTrailing) {
                 Menu {
                     if fastingTrackingEnabled {
@@ -1458,6 +1592,10 @@ struct HomeView: View {
                         }
                         .padding(24)
             }
+    }
+
+    private var homeCoveredDiary: some View {
+        homeAddOverlay
             .fullScreenCover(isPresented: $showCamera) {
                 CameraView(
                     image: $capturedImage,
@@ -1743,133 +1881,8 @@ struct HomeView: View {
                         }
                 }
             }
-            .interactiveDismissDisabled(foodLogPhase.isLoading && (
-                activeSheet == .analyzing || activeSheet == .analyzingText || activeSheet == .lookingUpBarcode
-            ))
-            .photosPicker(
-                isPresented: $showPhotoPicker,
-                selection: $selectedPhotoItems,
-                maxSelectionCount: 10,
-                selectionBehavior: .ordered,
-                matching: .images
-            )
-            .onChange(of: selectedPhotoItems) { oldValue, newValue in
-                guard !newValue.isEmpty else { return }
-                selectedPhotoItems = []
-                Task {
-                    var imported: [UIImage] = []
-                    for item in newValue.prefix(10 - captureImages.count) {
-                        if let data = try? await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            imported.append(image)
-                        }
-                    }
-                    if !imported.isEmpty {
-                        captureImages = Array((captureImages + imported).prefix(10))
-                        currentImage = captureImages.first
-                        currentImages = captureImages
-                        currentEmoji = nil
-                        currentFoodSource = .snapFood
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            showMultiPhotoCaptureSheet = true
-                        }
-                    }
-                }
-            }
-            .alert("Error", isPresented: $showError) {
-                Button("Retry") { retryLastRequest() }
-                Button("Cancel", role: .cancel) { retryRequest = nil }
-            } message: {
-                Text(errorMessage)
-            }
-            .sheet(isPresented: $showHostedQuotaPaywall) {
-                HostedQuotaSoftPaywall(
-                    onBuyCreditsOrUpgrade: {
-                        if RevenueCatManager.shared.hasHostedEntitlement {
-                            showHostedCredits = true
-                        } else {
-                            showHostedPaywall = true
-                        }
-                    },
-                    onSwitchBYOK: {}
-                )
-            }
-            .sheet(isPresented: $showHostedPaywall) {
-                HostedPaywallView()
-            }
-            .sheet(isPresented: $showHostedCredits) {
-                HostedCreditsSheet()
-            }
-            .alert("Food logging paused", isPresented: $showFoodLoggingBlocked) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("End or cancel your active fast before logging food.")
-            }
-            .alert("Fasting Tracking off", isPresented: $showFastingQuickActionDisabled) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Enable Fasting Tracking in Settings to use this shortcut.")
-            }
-            .sheet(isPresented: $showNutritionDetail) {
-                NutritionDetailView(date: selectedDate, homeTopNutrientsRaw: $homeTopNutrientsRaw)
-            }
-            .sheet(isPresented: $showCustomWaterLog) {
-                WaterCustomAmountSheet(unit: waterUnit, onAdd: logWater)
-            }
-            .onOpenURL { url in
-                if url.scheme == "fudai", url.host == "import-share-image" {
-                    checkAndConsumeSharedImage()
-                } else if MealShare.handles(url) {
-                    // Shared meal — custom scheme or https Universal Link (issue #107).
-                    // Universal Links open the app directly (no browser). Confirm before adding.
-                    guard canBeginFoodLogging() else { return }
-                    guard let meals = MealShare.meals(from: url) else { return }
-                    activeSheet = nil
-                    pendingSharedMeals = meals
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        activeSheet = .importSharedMeal
-                    }
-                }
-            }
-            .onAppear {
-                checkAndConsumeSharedImage()
-                prewarmFoodDestinations()
-            }
-            .task(id: quickActionRequest?.id) {
-                presentQuickActionIfPossible()
-            }
-            .task(id: foodLogMethodRequest?.id) {
-                presentFoodLogMethodIfPossible()
-            }
-            .onChange(of: activeSheet) { oldValue, newValue in
-                if oldValue != nil && newValue == nil {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        presentQuickActionIfPossible()
-                        presentFoodLogMethodIfPossible()
-                    }
-                } else {
-                    presentQuickActionIfPossible()
-                    presentFoodLogMethodIfPossible()
-                }
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    checkAndConsumeSharedImage()
-                    homeRefreshToken += 1
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in
-                retryRequest = nil
-                openCameraForNutritionLabel()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertRetry)) { _ in
-                retryLastRequest()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertCancel)) { _ in
-                retryRequest = nil
-            }
-        }
     }
+
 
     @MainActor
     private func presentQuickActionIfPossible() {

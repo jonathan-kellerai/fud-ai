@@ -176,7 +176,7 @@ struct ProgramV2WorkoutLogView: View {
         let currentIndex = (workoutSets[exercise.name] ?? []).firstIndex { $0.reps == 0 }
         let previous = previousSessionLoad(for: exercise)
         let isPersonalRecord = set.reps > 0 && previous.map { set.weight > $0 && $0 > 0 } == true
-        HStack(spacing: 8) {
+        return HStack(spacing: 8) {
             Text("\(setIndex + 1)")
                 .font(.caption.bold().monospacedDigit())
                 .foregroundStyle(IronTheme.textSecondary)

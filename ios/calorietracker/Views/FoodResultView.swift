@@ -1369,7 +1369,7 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
             }
 
             let doneItem = UIBarButtonItem(title: "Done", style: .plain, target: self, action: #selector(doneTapped))
-            doneItem.tintColor = Self.calorieTint
+            doneItem.tintColor = Self.accentText
 
             let toolbar = UIToolbar()
             toolbar.items = [flexibleSpace(), doneItem]
@@ -1386,7 +1386,7 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
             let material: UIVisualEffect
             if #available(iOS 26.0, *) {
                 let glass = UIGlassEffect(style: .regular)
-                glass.tintColor = Self.calorieTint.withAlphaComponent(0.08)
+                glass.tintColor = Self.accentFill.withAlphaComponent(0.08)
                 material = glass
             } else {
                 material = UIBlurEffect(style: .systemChromeMaterial)
