@@ -414,7 +414,7 @@ class HealthKitManager {
         if needsReauthorization { return true }
         do {
             // This SDK only has the completion form. There is no async overload.
-            let status = try await withCheckedThrowingContinuation { continuation in
+            let status = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKAuthorizationRequestStatus, Error>) in
                 healthStore.getRequestStatusForAuthorization(
                     toShare: shareTypes,
                     read: readTypes
