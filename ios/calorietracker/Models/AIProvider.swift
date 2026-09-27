@@ -107,7 +107,7 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
 
     var supportsVision: Bool {
         switch self {
-        case .appleIntelligence, .deepseek, .cerebras:
+        case .appleIntelligence, .cerebras:
             false
         default:
             true
@@ -157,6 +157,16 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
             return "claude-sonnet-5"
         case (.anthropic, "claude-opus-4-7"):
             return "claude-opus-5"
+        case (.groq, "qwen/qwen3.6-27b"):
+            return "qwen/qwen3.8-27b"
+        case (.groq, "llama-3.1-8b-instant"):
+            return "openai/gpt-oss-20b"
+        case (.groq, "llama-3.3-70b-versatile"):
+            return "openai/gpt-oss-120b"
+        case (.cerebras, "gemma-4-31b"):
+            return "gpt-oss-120b"
+        case (.deepseek, "deepseek-v4-flash"):
+            return "deepseek-flash"
         default:
             return nil
         }
@@ -180,9 +190,16 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
         return textModels.contains(normalized) ? normalized : defaultTextModel
     }
 
-    /// Only models that are currently in service AND accept image input + return structured text.
-    /// Text-only and deprecated models are excluded since this app needs vision for food photos.
-    /// Lineups verified against provider docs on 2026-09-07.
+    /// Vision presets for food photos. Live discovery can add every other model the key can see.
+    /// Lineups checked against each provider's docs or models page on 2026-09-27.
+    /// OpenAI: https://platform.openai.com/docs/models
+    /// Anthropic: https://docs.anthropic.com/en/docs/about-claude/models/overview
+    /// Gemini: https://ai.google.dev/gemini-api/docs/models
+    /// xAI: https://docs.x.ai/developers/models
+    /// Groq: https://console.groq.com/docs/models and https://console.groq.com/docs/deprecations
+    /// DeepSeek: https://api-docs.deepseek.com/quick_start/pricing
+    /// Cerebras: https://inference-docs.cerebras.ai/models/overview
+    /// Mistral Small 4 remains `mistral-small-2603`: https://docs.mistral.ai/models/mistral-small-4-0-26-03
     var models: [String] {
         switch self {
         case .appleIntelligence: [] // text-only system model; never offered for image requests
@@ -196,26 +213,33 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
             "gemini-3.1-pro-preview",        // vision, current flagship (preview)
         ]
         case .openai: [
-            "gpt-5.4-mini",              // vision, best price/perf
-            "gpt-5.6-sol",               // vision, latest flagship
+            "gpt-6-luna",                // vision, cheapest current flagship family
+            "gpt-6-sol",                 // vision, balanced GPT-6
+            "gpt-6-astra",               // vision, most capable GPT-6
+            "gpt-5.4-mini",              // vision, prior price/perf
+            "gpt-5.6-sol",               // vision, GPT-5.6 flagship
             "gpt-5.6-terra",             // vision, balanced
             "gpt-5.6-luna",              // vision, lowest-cost 5.6 model
-            "gpt-5.5",                   // vision, current flagship
-            "gpt-5.4-nano",              // vision, cheapest
+            "gpt-5.5",                   // vision, prior flagship
+            "gpt-5.4-nano",              // vision, cheapest 5.4
             "gpt-4.1",                   // vision, legacy
             "gpt-4.1-mini",              // vision, legacy cheap
             "gpt-4o-mini",               // vision, legacy cheap
         ]
         case .anthropic: [
-            "claude-sonnet-5",             // vision, current Sonnet (default)
-            "claude-opus-5",               // vision, latest flagship
-            "claude-fable-5",              // vision, latest efficient model
-            "claude-opus-4-8",             // vision, prior flagship
+            "claude-sonnet-5",             // vision, speed and intelligence (default)
+            "claude-opus-5-5",             // vision, current flagship
+            "claude-fable-5-1",            // vision, current demanding-reasoning model
+            "claude-opus-5",               // vision, previous flagship, still available
+            "claude-fable-5",              // vision, previous Fable, still available
+            "claude-opus-4-8",             // vision, prior flagship, still available
             "claude-haiku-4-5",            // vision, current Haiku, fastest
         ]
         case .xai: [
-            "grok-4.6",                  // vision, latest
-            "grok-4.3",                  // vision, prior (grok-4 and grok-2-vision retired)
+            "grok-4.7",                  // vision, current recommendation
+            "grok-4.6",                  // vision, prior frontier
+            "grok-4.5",                  // vision, text and image
+            "grok-4.3",                  // vision, prior
         ]
         case .openrouter: [
             "openrouter/free",           // free tier, vision, no credits required
@@ -236,7 +260,7 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
             "MiniMaxAI/MiniMax-M3",                               // vision
         ]
         case .groq: [
-            "qwen/qwen3.6-27b",                                   // vision (llama-4-scout shutdown 2026-07-17)
+            "qwen/qwen3.8-27b",                                   // vision; qwen3.6-27b shut down 2026-09-14
         ]
         case .huggingface: [
             "google/gemma-4-31B-it",                              // vision, widest provider coverage
@@ -273,14 +297,17 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
             "llava",
             "moondream",
         ]
-        case .deepseek, .cerebras: [] // text-only; never offered for image requests
+        case .deepseek: [
+            "deepseek-flash",                                     // vision; deepseek-v4-flash is retired
+        ]
+        case .cerebras: [] // no public image model; text presets live in textModels
         case .customOpenAI: []  // user types model name in Settings
         }
     }
 
     /// Text-capable presets. Existing image models remain valid for text, while
     /// providers with broader text catalogs expose those additional choices here.
-    /// Current hosted IDs verified against provider docs on 2026-09-07.
+    /// Hosted IDs checked against provider docs on 2026-09-27.
     var textModels: [String] {
         switch self {
         case .appleIntelligence:
@@ -289,9 +316,6 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
             return [
                 "openai/gpt-oss-20b",
                 "openai/gpt-oss-120b",
-                "llama-3.3-70b-versatile",
-                "llama-3.1-8b-instant",
-                "qwen/qwen3.6-27b",
                 "qwen/qwen3.8-27b",
             ]
         case .togetherai:
@@ -309,9 +333,9 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
                 "deepseek-ai/DeepSeek-V4-Pro",
             ]
         case .deepseek:
-            return ["deepseek-v4-flash", "deepseek-v4-pro"]
+            return ["deepseek-flash", "deepseek-v4-pro"]
         case .cerebras:
-            return ["gpt-oss-120b", "gemma-4-31b"]
+            return ["gpt-oss-120b", "qwen-3.8-27b"]
         case .ollama:
             return ["qwen3.8", "gemma4", "llama3.2", "qwen3", "mistral-small3.2"] + models
         case .customOpenAI:
@@ -341,10 +365,20 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
         self == .ollama || self == .customOpenAI
     }
 
-    /// True for providers where free-form input is allowed in addition to the preset list
-    /// (e.g., OpenRouter / Hugging Face — user can pick a preset OR type any model ID).
+    /// Hosted providers accept a typed model id in addition to the preset list.
+    /// On-device models stay fixed.
+    var acceptsCustomModelID: Bool {
+        switch self {
+        case .appleIntelligence, .gemma4Local:
+            false
+        default:
+            true
+        }
+    }
+
+    /// True for providers where free-form input is allowed in addition to the preset list.
     var supportsCustomModelName: Bool {
-        self == .openrouter || self == .huggingface || self == .customOpenAI
+        acceptsCustomModelID
     }
 
     /// API format grouping
@@ -413,6 +447,7 @@ extension AIProvider {
             .map(String.init) ?? model.lowercased()
 
         return normalized.hasPrefix("gpt-5")
+            || normalized.hasPrefix("gpt-6")
             || normalized.hasPrefix("o1")
             || normalized.hasPrefix("o3")
             || normalized.hasPrefix("o4")
@@ -469,7 +504,7 @@ struct AIProviderSettings {
     private static let fallbackBaseURLMigrationVersionKey = "fallbackBaseURLMigrationVersion"
     private static let geminiModelMigrationVersionKey = "geminiModelMigrationVersion"
     private static let modelRegistryMigrationVersionKey = "aiModelRegistryMigrationVersion"
-    private static let currentModelRegistryMigrationVersion = 2
+    private static let currentModelRegistryMigrationVersion = 3
     private static let maxResponseTokensKey = "aiMaxResponseTokens"
     private static let requestTimeoutSecondsKey = "aiRequestTimeoutSeconds"
 
@@ -598,6 +633,22 @@ struct AIProviderSettings {
                model: defaults.string(forKey: fallbackModelKey)
            ) {
             defaults.set(upgraded, forKey: fallbackModelKey)
+        }
+
+        if let textProvider = storedProvider(in: defaults, key: textProviderKey),
+           let upgraded = AIProvider.upgradedLegacyModel(
+               for: textProvider,
+               model: defaults.string(forKey: textModelKey)
+           ) {
+            defaults.set(upgraded, forKey: textModelKey)
+        }
+
+        if let textFallbackProvider = storedProvider(in: defaults, key: textFallbackProviderKey),
+           let upgraded = AIProvider.upgradedLegacyModel(
+               for: textFallbackProvider,
+               model: defaults.string(forKey: textFallbackModelKey)
+           ) {
+            defaults.set(upgraded, forKey: textFallbackModelKey)
         }
 
         defaults.set(currentModelRegistryMigrationVersion, forKey: modelRegistryMigrationVersionKey)

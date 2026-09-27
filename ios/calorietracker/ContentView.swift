@@ -4996,66 +4996,16 @@ struct ProfileView: View {
                             customBaseURL = AIProviderSettings.customBaseURL(for: newProvider) ?? ""
                         }
 
-                        if selectedProvider.supportsCustomModelName {
-                            // Free-form TextField for any model ID, with optional preset suggestions menu
-                            // (e.g., OpenRouter has presets but lets user type any of openrouter.ai/models).
-                            HStack {
-                                Label {
-                                    Text("Model")
-                                } icon: {
-                                    Image(systemName: "brain")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                TextField(
-                                    primaryModelPlaceholder,
-                                    text: $selectedModel
-                                )
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: selectedModel) { _, newModel in
-                                        AIProviderSettings.selectedModel = newModel
-                                    }
-                                if !selectedProvider.models.isEmpty {
-                                    Menu {
-                                        ForEach(selectedProvider.models, id: \.self) { model in
-                                            Button(model) {
-                                                selectedModel = model
-                                                AIProviderSettings.selectedModel = model
-                                            }
-                                        }
-                                    } label: {
-                                        Image(systemName: "list.bullet.circle")
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                }
-                            }
-                        } else {
-                            Picker(selection: $selectedModel) {
-                                ForEach(selectedProvider.models, id: \.self) { model in
-                                    Text(model).tag(model)
-                                }
-                            } label: {
-                                Label {
-                                    Text("Model")
-                                } icon: {
-                                    Image(systemName: "brain")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(.secondary)
-                            .onAppear {
-                                if !selectedProvider.models.contains(selectedModel) {
-                                    selectedModel = selectedProvider.defaultModel
-                                    AIProviderSettings.selectedModel = selectedModel
-                                }
-                            }
-                            .onChange(of: selectedModel) { _, newModel in
-                                AIProviderSettings.selectedModel = newModel
-                            }
+                        AIModelPickerRow(
+                            provider: selectedProvider,
+                            presets: selectedProvider.models,
+                            model: $selectedModel,
+                            baseURL: resolvedPrimaryBaseURL,
+                            apiKey: apiKeyText,
+                            visionOnly: true
+                        )
+                        .onChange(of: selectedModel) { _, newModel in
+                            AIProviderSettings.selectedModel = newModel
                         }
 
                         if selectedProvider.requiresAPIKey {
@@ -5081,6 +5031,11 @@ struct ProfileView: View {
                                 .onChange(of: apiKeyText) { _, newValue in
                                     let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                     AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
+                                    ModelCatalogService.shared.scheduleRefresh(
+                                        provider: selectedProvider,
+                                        baseURL: resolvedPrimaryBaseURL,
+                                        apiKey: t
+                                    )
                                 }
                                 Button {
                                     showAPIKey.toggle()
@@ -5118,6 +5073,11 @@ struct ProfileView: View {
                                         AIProviderSettings.setCustomBaseURL(t.isEmpty ? nil : t, for: selectedProvider)
                                         reconcileImageFallbackModelIfDuplicate()
                                         reconcileTextFallbackModelIfDuplicate()
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedProvider,
+                                            baseURL: t.isEmpty ? selectedProvider.baseURL : t,
+                                            apiKey: apiKeyText
+                                        )
                                     }
                             }
 
@@ -5247,48 +5207,15 @@ struct ProfileView: View {
                             }
 
                             appleIntelligenceAvailabilityRow
-                        } else if selectedTextProvider.supportsCustomModelName {
-                            HStack {
-                                Label("Model", systemImage: "brain")
-                                Spacer()
-                                TextField(textModelPlaceholder, text: $selectedTextModel)
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: selectedTextModel) { _, newModel in
-                                        AIProviderSettings.selectedTextModel = newModel
-                                    }
-                                if !selectedTextProvider.textModels.isEmpty {
-                                    Menu {
-                                        ForEach(selectedTextProvider.textModels, id: \.self) { model in
-                                            Button(model) {
-                                                selectedTextModel = model
-                                                AIProviderSettings.selectedTextModel = model
-                                            }
-                                        }
-                                    } label: {
-                                        Image(systemName: "list.bullet.circle")
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                }
-                            }
                         } else {
-                            Picker(selection: $selectedTextModel) {
-                                ForEach(selectedTextProvider.textModels, id: \.self) { model in
-                                    Text(model).tag(model)
-                                }
-                            } label: {
-                                Label("Model", systemImage: "brain")
-                            }
-                            .pickerStyle(.menu)
-                            .tint(.secondary)
-                            .onAppear {
-                                if !selectedTextProvider.textModels.contains(selectedTextModel) {
-                                    selectedTextModel = selectedTextProvider.defaultTextModel
-                                    AIProviderSettings.selectedTextModel = selectedTextModel
-                                }
-                            }
+                            AIModelPickerRow(
+                                provider: selectedTextProvider,
+                                presets: selectedTextProvider.textModels,
+                                model: $selectedTextModel,
+                                baseURL: textBaseURL.isEmpty ? selectedTextProvider.baseURL : textBaseURL,
+                                apiKey: textApiKeyText,
+                                visionOnly: false
+                            )
                             .onChange(of: selectedTextModel) { _, newModel in
                                 AIProviderSettings.selectedTextModel = newModel
                             }
@@ -5312,6 +5239,11 @@ struct ProfileView: View {
                                 .onChange(of: textApiKeyText) { _, newValue in
                                     let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                     AIProviderSettings.setAPIKey(trimmed.isEmpty ? nil : trimmed, for: selectedTextProvider)
+                                    ModelCatalogService.shared.scheduleRefresh(
+                                        provider: selectedTextProvider,
+                                        baseURL: textBaseURL.isEmpty ? selectedTextProvider.baseURL : textBaseURL,
+                                        apiKey: trimmed
+                                    )
                                 }
                                 Button {
                                     showTextAPIKey.toggle()
@@ -5345,6 +5277,11 @@ struct ProfileView: View {
                                     let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                     AIProviderSettings.setCustomBaseURL(trimmed.isEmpty ? nil : trimmed, for: selectedTextProvider)
                                     reconcileTextFallbackModelIfDuplicate()
+                                    ModelCatalogService.shared.scheduleRefresh(
+                                        provider: selectedTextProvider,
+                                        baseURL: trimmed.isEmpty ? selectedTextProvider.baseURL : trimmed,
+                                        apiKey: textApiKeyText
+                                    )
                                 }
                             }
 
@@ -5414,77 +5351,17 @@ struct ProfileView: View {
                                 selectFallbackProvider(newProvider)
                             }
 
-                            if selectedFallbackProvider.supportsCustomModelName {
-                                // Free-form TextField + preset Menu, mirrors primary AI Provider section.
-                                // When fallback provider == primary, the preset menu hides the primary's model.
-                                HStack {
-                                    Label {
-                                        Text("Model")
-                                    } icon: {
-                                        Image(systemName: "brain")
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                    Spacer()
-                                    TextField(
-                                        fallbackModelPlaceholder,
-                                        text: $selectedFallbackModel
-                                    )
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: selectedFallbackModel) { _, newModel in
-                                        AIProviderSettings.selectedFallbackModel = newModel
-                                    }
-                                    if !fallbackModelPresetOptions.isEmpty {
-                                        Menu {
-                                            ForEach(fallbackModelPresetOptions, id: \.self) { model in
-                                                Button(model) {
-                                                    selectedFallbackModel = model
-                                                    AIProviderSettings.selectedFallbackModel = model
-                                                }
-                                            }
-                                        } label: {
-                                            Image(systemName: "list.bullet.circle")
-                                                .foregroundStyle(AppColors.calorie)
-                                        }
-                                    }
-                                }
-                            } else {
-                                // Same provider + same server → exclude the primary's model so
-                                // user can't accidentally pick an identical config.
-                                let modelOptions: [String] = {
-                                    if fallbackSharesPrimaryServer {
-                                        return selectedFallbackProvider.models.filter { $0 != selectedModel }
-                                    }
-                                    return selectedFallbackProvider.models
-                                }()
-                                if !modelOptions.isEmpty {
-                                    Picker(selection: $selectedFallbackModel) {
-                                        ForEach(modelOptions, id: \.self) { model in
-                                            Text(model).tag(model)
-                                        }
-                                    } label: {
-                                        Label {
-                                            Text("Model")
-                                        } icon: {
-                                            Image(systemName: "brain")
-                                                .foregroundStyle(AppColors.calorie)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .tint(.secondary)
-                                    .onChange(of: selectedFallbackModel) { _, newModel in
-                                        AIProviderSettings.selectedFallbackModel = newModel
-                                    }
-                                    .onAppear {
-                                        if !modelOptions.contains(selectedFallbackModel),
-                                           let first = modelOptions.first {
-                                            selectedFallbackModel = first
-                                            AIProviderSettings.selectedFallbackModel = first
-                                        }
-                                    }
-                                }
+                            AIModelPickerRow(
+                                provider: selectedFallbackProvider,
+                                presets: selectedFallbackProvider.models,
+                                model: $selectedFallbackModel,
+                                baseURL: resolvedFallbackBaseURL,
+                                apiKey: fallbackApiKeyText,
+                                visionOnly: true,
+                                excludedModelIDs: fallbackSharesPrimaryServer ? [selectedModel] : []
+                            )
+                            .onChange(of: selectedFallbackModel) { _, newModel in
+                                AIProviderSettings.selectedFallbackModel = newModel
                             }
 
                             if selectedFallbackProvider.requiresAPIKey {
@@ -5508,7 +5385,13 @@ struct ProfileView: View {
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
                                     .onChange(of: fallbackApiKeyText) { _, newValue in
-                                        AIProviderSettings.setAPIKey(newValue.isEmpty ? nil : newValue, for: selectedFallbackProvider)
+                                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        AIProviderSettings.setAPIKey(trimmed.isEmpty ? nil : trimmed, for: selectedFallbackProvider)
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedFallbackProvider,
+                                            baseURL: resolvedFallbackBaseURL,
+                                            apiKey: trimmed
+                                        )
                                     }
                                     Button {
                                         showFallbackAPIKey.toggle()
@@ -5545,6 +5428,11 @@ struct ProfileView: View {
                                         let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                         AIProviderSettings.setFallbackCustomBaseURL(t.isEmpty ? nil : t, for: selectedFallbackProvider)
                                         reconcileImageFallbackModelIfDuplicate()
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedFallbackProvider,
+                                            baseURL: t.isEmpty ? selectedFallbackProvider.baseURL : t,
+                                            apiKey: fallbackApiKeyText
+                                        )
                                     }
                                 }
 
@@ -6125,51 +6013,18 @@ struct ProfileView: View {
                         .foregroundStyle(.secondary)
                 }
                 appleIntelligenceAvailabilityRow
-            } else if selectedTextFallbackProvider.supportsCustomModelName {
-                HStack {
-                    Label("Model", systemImage: "brain")
-                    Spacer()
-                    TextField(textFallbackModelPlaceholder, text: $selectedTextFallbackModel)
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.trailing)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: selectedTextFallbackModel) { _, newModel in
-                            AIProviderSettings.selectedTextFallbackModel = newModel
-                        }
-                    if !textFallbackModelPresetOptions.isEmpty {
-                        Menu {
-                            ForEach(textFallbackModelPresetOptions, id: \.self) { model in
-                                Button(model) {
-                                    selectedTextFallbackModel = model
-                                    AIProviderSettings.selectedTextFallbackModel = model
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "list.bullet.circle")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-                }
-            } else if !textFallbackModelPresetOptions.isEmpty {
-                Picker(selection: $selectedTextFallbackModel) {
-                    ForEach(textFallbackModelPresetOptions, id: \.self) { model in
-                        Text(model).tag(model)
-                    }
-                } label: {
-                    Label("Model", systemImage: "brain")
-                }
-                .pickerStyle(.menu)
-                .tint(.secondary)
+            } else {
+                AIModelPickerRow(
+                    provider: selectedTextFallbackProvider,
+                    presets: selectedTextFallbackProvider.textModels,
+                    model: $selectedTextFallbackModel,
+                    baseURL: resolvedTextFallbackBaseURL,
+                    apiKey: textFallbackApiKeyText,
+                    visionOnly: false,
+                    excludedModelIDs: textFallbackSharesPrimaryServer ? [separateTextProviderEnabled ? selectedTextModel : selectedModel] : []
+                )
                 .onChange(of: selectedTextFallbackModel) { _, newModel in
                     AIProviderSettings.selectedTextFallbackModel = newModel
-                }
-                .onAppear {
-                    if !textFallbackModelPresetOptions.contains(selectedTextFallbackModel),
-                       let first = textFallbackModelPresetOptions.first {
-                        selectedTextFallbackModel = first
-                        AIProviderSettings.selectedTextFallbackModel = first
-                    }
                 }
             }
 
@@ -6189,7 +6044,13 @@ struct ProfileView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .onChange(of: textFallbackApiKeyText) { _, newValue in
-                        AIProviderSettings.setAPIKey(newValue.isEmpty ? nil : newValue, for: selectedTextFallbackProvider)
+                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        AIProviderSettings.setAPIKey(trimmed.isEmpty ? nil : trimmed, for: selectedTextFallbackProvider)
+                        ModelCatalogService.shared.scheduleRefresh(
+                            provider: selectedTextFallbackProvider,
+                            baseURL: resolvedTextFallbackBaseURL,
+                            apiKey: trimmed
+                        )
                     }
                     Button {
                         showTextFallbackAPIKey.toggle()
@@ -6220,6 +6081,11 @@ struct ProfileView: View {
                         let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                         AIProviderSettings.setFallbackCustomBaseURL(t.isEmpty ? nil : t, for: selectedTextFallbackProvider)
                         reconcileTextFallbackModelIfDuplicate()
+                        ModelCatalogService.shared.scheduleRefresh(
+                            provider: selectedTextFallbackProvider,
+                            baseURL: t.isEmpty ? selectedTextFallbackProvider.baseURL : t,
+                            apiKey: textFallbackApiKeyText
+                        )
                     }
                 }
             }
@@ -6377,13 +6243,6 @@ struct ProfileView: View {
         selectedFallbackProvider == selectedProvider && resolvedPrimaryBaseURL == resolvedFallbackBaseURL
     }
 
-    private var fallbackModelPresetOptions: [String] {
-        guard fallbackSharesPrimaryServer else {
-            return selectedFallbackProvider.models
-        }
-        return selectedFallbackProvider.models.filter { $0 != selectedModel }
-    }
-
     private var resolvedTextPrimaryBaseURL: String {
         let provider = separateTextProviderEnabled ? selectedTextProvider : selectedProvider
         let url = separateTextProviderEnabled ? textBaseURL : customBaseURL
@@ -6402,40 +6261,8 @@ struct ProfileView: View {
             resolvedTextPrimaryBaseURL == resolvedTextFallbackBaseURL
     }
 
-    private var textFallbackModelPresetOptions: [String] {
-        guard textFallbackSharesPrimaryServer else {
-            return selectedTextFallbackProvider.textModels
-        }
-        let primaryModel = separateTextProviderEnabled ? selectedTextModel : selectedModel
-        return selectedTextFallbackProvider.textModels.filter { $0 != primaryModel }
-    }
-
     private var speechFallbackProviderOptions: [SpeechProvider] {
         SpeechProvider.availableBatchProviders.filter { $0 != selectedSpeechProvider }
-    }
-
-    private var primaryModelPlaceholder: String {
-        selectedProvider == .openrouter
-            ? "e.g. anthropic/claude-sonnet-4"
-            : "e.g. gpt-4o-mini"
-    }
-
-    private var textModelPlaceholder: String {
-        selectedTextProvider == .openrouter
-            ? "e.g. openai/gpt-oss-120b"
-            : "e.g. llama3.2"
-    }
-
-    private var fallbackModelPlaceholder: String {
-        selectedFallbackProvider == .openrouter
-            ? "e.g. anthropic/claude-sonnet-4"
-            : "e.g. gpt-4o-mini"
-    }
-
-    private var textFallbackModelPlaceholder: String {
-        selectedTextFallbackProvider == .openrouter
-            ? "e.g. openai/gpt-oss-120b"
-            : "e.g. llama3.2"
     }
 
     private func saveProfile() {
@@ -6444,8 +6271,7 @@ struct ProfileView: View {
 
     private func selectFallbackProvider(_ newProvider: AIProvider) {
         AIProviderSettings.selectedFallbackProvider = newProvider
-        if !newProvider.supportsCustomModelName,
-           !newProvider.models.contains(selectedFallbackModel) {
+        if !newProvider.models.contains(selectedFallbackModel) {
             selectedFallbackModel = newProvider.defaultModel
             AIProviderSettings.selectedFallbackModel = selectedFallbackModel
         }
@@ -6466,8 +6292,7 @@ struct ProfileView: View {
     private func selectTextFallbackProvider(_ newProvider: AIProvider) {
         AIProviderSettings.selectedTextFallbackProvider = newProvider
         let options = newProvider.textModels
-        if !newProvider.supportsCustomModelName,
-           !options.contains(selectedTextFallbackModel) {
+        if !options.contains(selectedTextFallbackModel) {
             selectedTextFallbackModel = newProvider.defaultTextModel
             AIProviderSettings.selectedTextFallbackModel = selectedTextFallbackModel
         }
