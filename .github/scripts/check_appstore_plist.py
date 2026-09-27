@@ -365,6 +365,7 @@ def _strip_leading_display_text(data):
         if (
             _starts_with_plist(rest)
             or _starts_with_der(rest)
+            or rest.startswith(b"[Dict]")
             or rest.startswith((XML_ENTITLEMENTS_MAGIC, DER_ENTITLEMENTS_MAGIC))
         ):
             return rest
@@ -538,6 +539,77 @@ def decode_der_plist(data):
     return value
 
 
+CODESIGN_TEXT_LINE = re.compile(r"^\[(?P<kind>[A-Za-z]+)\](?:\s+(?P<payload>.*))?$")
+
+
+def _codesign_text_lines(text):
+    lines = []
+    for raw_line in text.splitlines():
+        if not raw_line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" \t"))
+        match = CODESIGN_TEXT_LINE.match(raw_line.strip())
+        if match is None:
+            raise ValueError(f"unrecognized codesign entitlement line: {raw_line.strip()!r}")
+        lines.append((indent, match.group("kind"), match.group("payload") or ""))
+    return lines
+
+
+def _parse_codesign_text_value(lines, index):
+    indent, kind, payload = lines[index]
+    index += 1
+    if kind == "String":
+        return payload, index
+    if kind == "Bool":
+        if payload not in ("true", "false"):
+            raise ValueError(f"codesign bool must be true or false, got {payload!r}")
+        return payload == "true", index
+    if kind in ("Integer", "Int", "Number"):
+        return int(payload, 10), index
+    if kind == "Data":
+        return payload, index
+    if kind not in ("Dict", "Array"):
+        raise ValueError(f"unsupported codesign entitlement type {kind}")
+    children = []
+    while index < len(lines) and lines[index][0] > indent:
+        if kind == "Dict":
+            child, index = _parse_codesign_text_entry(lines, index)
+        else:
+            child, index = _parse_codesign_text_value(lines, index)
+        children.append(child)
+    if kind == "Array":
+        return children, index
+    return dict(children), index
+
+
+def _parse_codesign_text_entry(lines, index):
+    indent, kind, payload = lines[index]
+    if kind != "Key" or not payload:
+        raise ValueError("codesign dictionary entry is missing [Key]")
+    index += 1
+    if index >= len(lines) or lines[index][1] != "Value" or lines[index][0] < indent:
+        raise ValueError(f"codesign key {payload} is missing [Value]")
+    index += 1
+    if index >= len(lines) or lines[index][0] <= indent:
+        raise ValueError(f"codesign key {payload} is missing a value")
+    value, index = _parse_codesign_text_value(lines, index)
+    return (payload, value), index
+
+
+def decode_codesign_text(data):
+    """Parse the [Dict]/[Key]/[Value] dump from codesign -d --entitlements -."""
+    text = data.decode("utf-8")
+    lines = _codesign_text_lines(text)
+    if not lines or lines[0][1] != "Dict":
+        raise ValueError("codesign text does not start with [Dict]")
+    value, index = _parse_codesign_text_value(lines, 0)
+    if index != len(lines):
+        raise ValueError("trailing codesign entitlement lines")
+    if not isinstance(value, dict):
+        raise ValueError("codesign text is not a dictionary")
+    return value
+
+
 def _load_marked_plist(data):
     xml_start = data.find(b"<?xml")
     plist_start = data.find(b"<plist")
@@ -549,8 +621,14 @@ def _load_marked_plist(data):
 
 
 def load_plist_bytes(data):
-    """Parse XML, binary plist, or Apple DER from codesign / security cms."""
+    """Parse codesign text, XML, binary plist, or Apple DER."""
     payload = _split_codesign_blob(_strip_leading_display_text(data))
+    if payload.startswith(b"[Dict]"):
+        try:
+            return decode_codesign_text(payload)
+        except (ValueError, UnicodeDecodeError) as error:
+            preview = payload[:16].hex()
+            fail(f"plist data is not valid codesign entitlement text ({error}; prefix {preview})")
     if _starts_with_plist(payload):
         return plistlib.loads(payload)
     if _starts_with_der(payload):
@@ -681,6 +759,52 @@ def self_check():
     missing_der = der_entitlements([(HEALTHKIT_ACCESS_KEY, der_array([]))])
     if not signed_entitlement_problems(load_plist_bytes(missing_der)):
         fail("DER entitlements without HealthKit were accepted")
+    # Run 48 stdout began with this prefix: [Dict]\n\t[Key] co
+    run48_prefix = bytes.fromhex("5b446963745d0a095b4b65795d20636f")
+    codesign_text = (
+        "[Dict]\n"
+        "\t[Key] com.apple.developer.healthkit\n"
+        "\t[Value]\n"
+        "\t\t[Bool] true\n"
+        "\t[Key] com.apple.developer.healthkit.access\n"
+        "\t[Value]\n"
+        "\t\t[Array]\n"
+        "\t[Key] com.apple.security.application-groups\n"
+        "\t[Value]\n"
+        "\t\t[Array]\n"
+        "\t\t\t[String] group.com.jonathanbowe.jlphysical\n"
+    ).encode("utf-8")
+    if not codesign_text.startswith(run48_prefix):
+        fail("codesign text fixture does not match run 48")
+    decoded_text = load_plist_bytes(b"Executable=/tmp/calorietracker\n" + codesign_text)
+    if signed_entitlement_problems(decoded_text):
+        fail("codesign [Dict] HealthKit entitlements were rejected")
+    if decoded_text.get("com.apple.security.application-groups") != [
+        "group.com.jonathanbowe.jlphysical"
+    ]:
+        fail("codesign [Dict] string array was not decoded")
+    missing_text = (
+        "[Dict]\n"
+        "\t[Key] com.apple.developer.healthkit.access\n"
+        "\t[Value]\n"
+        "\t\t[Array]\n"
+    ).encode("utf-8")
+    if not signed_entitlement_problems(load_plist_bytes(missing_text)):
+        fail("codesign [Dict] without HealthKit was accepted")
+    false_text = (
+        "[Dict]\n"
+        "    [Key] com.apple.developer.healthkit\n"
+        "    [Value]\n"
+        "        [Bool] false\n"
+        "    [Key] com.apple.developer.healthkit.access\n"
+        "    [Value]\n"
+        "        [Array]\n"
+        "            [String] health-records\n"
+    ).encode("utf-8")
+    if not signed_entitlement_problems(load_plist_bytes(false_text)):
+        fail("codesign [Dict] with HealthKit false was accepted")
+    if load_plist_bytes(false_text)[HEALTHKIT_ACCESS_KEY] != ["health-records"]:
+        fail("codesign [Dict] array of strings was not decoded")
     try:
         load_plist_bytes(b"not a plist")
     except SystemExit:

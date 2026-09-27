@@ -509,14 +509,21 @@ jobs:
           echo "ERROR: IPA has no Payload/*.app"
           exit 1
         fi
-        # `--entitlements -` prints Apple DER (slot -7) after --generate-entitlement-der.
+        # `--xml` asks for a plist. Without it, Xcode 26 prints [Dict]/[Key] text.
         # The Executable= line is stderr and is not part of the plist.
-        if ! codesign -d --entitlements - "${app_path}" \
+        # If this codesign has no --xml, the text dump is still accepted below.
+        if ! codesign -d --entitlements - --xml "${app_path}" \
           > "${entitlement_dir}/signed-entitlements.plist" \
           2> "${entitlement_dir}/codesign-entitlements.stderr"; then
-          echo "ERROR: codesign entitlements dump failed"
+          echo "codesign --xml entitlements dump failed; retrying without --xml"
           cat "${entitlement_dir}/codesign-entitlements.stderr"
-          exit 1
+          if ! codesign -d --entitlements - "${app_path}" \
+            > "${entitlement_dir}/signed-entitlements.plist" \
+            2> "${entitlement_dir}/codesign-entitlements.stderr"; then
+            echo "ERROR: codesign entitlements dump failed"
+            cat "${entitlement_dir}/codesign-entitlements.stderr"
+            exit 1
+          fi
         fi
         if ! security cms -D -i "${app_path}/embedded.mobileprovision" \
           > "${entitlement_dir}/embedded.plist" \
