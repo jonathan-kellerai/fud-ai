@@ -509,8 +509,22 @@ jobs:
           echo "ERROR: IPA has no Payload/*.app"
           exit 1
         fi
-        codesign -d --entitlements - "${app_path}" > "${entitlement_dir}/signed-entitlements.plist"
-        security cms -D -i "${app_path}/embedded.mobileprovision" > "${entitlement_dir}/embedded.plist"
+        # `--entitlements -` prints Apple DER (slot -7) after --generate-entitlement-der.
+        # The Executable= line is stderr and is not part of the plist.
+        if ! codesign -d --entitlements - "${app_path}" \
+          > "${entitlement_dir}/signed-entitlements.plist" \
+          2> "${entitlement_dir}/codesign-entitlements.stderr"; then
+          echo "ERROR: codesign entitlements dump failed"
+          cat "${entitlement_dir}/codesign-entitlements.stderr"
+          exit 1
+        fi
+        if ! security cms -D -i "${app_path}/embedded.mobileprovision" \
+          > "${entitlement_dir}/embedded.plist" \
+          2> "${entitlement_dir}/cms-profile.stderr"; then
+          echo "ERROR: embedded.mobileprovision is not a CMS blob"
+          cat "${entitlement_dir}/cms-profile.stderr"
+          exit 1
+        fi
         python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" \
           --signed-entitlements "${entitlement_dir}/signed-entitlements.plist" \
           --provisioning-profile "${entitlement_dir}/embedded.plist"
