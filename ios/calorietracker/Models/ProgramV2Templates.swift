@@ -17,6 +17,7 @@ struct ProgramV2Exercise: Identifiable {
     let rirTarget: String
     let startLoadLb: Double?
     let notes: String
+    var loadNote: String = ""
 }
 
 struct ProgramV2Day: Identifiable {
@@ -29,6 +30,18 @@ struct ProgramV2Day: Identifiable {
 
 enum ProgramV2Templates {
     static let allDays: [ProgramV2Day] = [day1LowerA, day2UpperPush, day3PullHinge, day4UpperPhysique, day5LowerBCond]
+
+    static func restLowerBound(matching name: String) -> Int? {
+        let needle = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return nil }
+        let exercises = allDays.flatMap(\.exercises)
+        if let exact = exercises.first(where: { $0.name.lowercased() == needle }) {
+            return exact.restSeconds.lowerBound
+        }
+        return exercises.first { exercise in
+            needle.contains(exercise.key.lowercased()) || exercise.name.lowercased().contains(needle)
+        }?.restSeconds.lowerBound
+    }
     
     static let day1LowerA = ProgramV2Day(
         id: "Day1_LowerA",

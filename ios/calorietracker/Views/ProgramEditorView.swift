@@ -372,10 +372,10 @@ struct ProgramEditorView: View {
                 Stepper(value: $draft.dailyStepsTarget, in: 0...50_000, step: 500) {
                     Text("Steps target: \(draft.dailyStepsTarget.formatted())")
                 }
-                Stepper(value: $draft.weeks, in: 1...52) {
-                    Text("Weeks: \(draft.weeks)")
+                Stepper(value: weeksBinding, in: 0...52) {
+                    Text(draft.weeks.map { "Weeks: \($0)" } ?? "Weeks: not set")
                 }
-                Stepper(value: reductionWeekBinding, in: 0...max(draft.weeks, 1)) {
+                Stepper(value: reductionWeekBinding, in: 0...max(draft.weeks ?? 52, 1)) {
                     Text(reductionLabel)
                 }
                 TextField("Notes", text: notesBinding, axis: .vertical)
@@ -452,6 +452,13 @@ struct ProgramEditorView: View {
 
     private var notesBinding: Binding<String> {
         Binding(get: { draft.notes ?? "" }, set: { draft.notes = $0 })
+    }
+
+    private var weeksBinding: Binding<Int> {
+        Binding(
+            get: { draft.weeks ?? 0 },
+            set: { draft.weeks = $0 == 0 ? nil : $0 }
+        )
     }
 
     private var reductionWeekBinding: Binding<Int> {
@@ -651,9 +658,21 @@ private struct ProgramDayEditor: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(exercise.name.isEmpty ? "Untitled exercise" : exercise.name)
-                            Text("\(exercise.sets) × \(exercise.reps) · \(exercise.restSec)s rest")
+                            Text("\(exercise.sets) × \(exercise.reps) · \(exercise.resolvedRestSeconds)s rest")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            if let loadNote = exercise.loadNote, !loadNote.isEmpty {
+                                Text(loadNote)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                            }
+                            if let notes = exercise.notes, !notes.isEmpty {
+                                Text(notes)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
                         }
                     }
                 }
@@ -673,9 +692,7 @@ private struct ProgramDayEditor: View {
                                 order: day.exercises.count,
                                 name: "",
                                 sets: 3,
-                                reps: "10-12",
-                                rir: "2",
-                                restSec: 90
+                                reps: "10-12"
                             )
                         )
                     }
@@ -756,18 +773,29 @@ private struct ProgramExerciseEditor: View {
         Form {
             Section {
                 TextField("Name", text: $exercise.name)
+                TextField("Load note", text: loadNoteBinding, axis: .vertical)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(2...6)
+                TextField("Notes", text: notesBinding, axis: .vertical)
+                    .lineLimit(3...10)
+            }
+            Section {
                 Stepper(value: $exercise.sets, in: 1...20) {
                     Text("Sets: \(exercise.sets)")
                 }
                 TextField("Reps", text: $exercise.reps)
-                TextField("RIR", text: $exercise.rir)
-                Stepper(value: $exercise.restSec, in: 0...600, step: 5) {
-                    Text("Rest: \(exercise.restSec) sec")
+                TextField("RIR", text: $exercise.rir, prompt: Text("Empty when notes describe the range"))
+                Stepper(value: restSecondsBinding, in: 0...600, step: 5) {
+                    Text(restLabel)
+                }
+                if exercise.restSec != nil && !isReadOnly {
+                    Button("Use notes rest") {
+                        exercise.restSec = nil
+                    }
                 }
                 TextField("RPE", text: rpeBinding)
-                TextField("Load note", text: loadNoteBinding)
-                TextField("Notes", text: notesBinding, axis: .vertical)
-                    .lineLimit(2...4)
+            } footer: {
+                Text("Leave RIR empty when the notes already give a range. Rest stays on the notes value until you set a number.")
             }
             Section("Substitutions") {
                 ForEach(exercise.substitutions.indices, id: \.self) { index in
@@ -789,6 +817,20 @@ private struct ProgramExerciseEditor: View {
         .navigationTitle(exercise.name.isEmpty ? "Exercise" : exercise.name)
         .navigationBarTitleDisplayMode(.inline)
         .disabled(isReadOnly)
+    }
+
+    private var restSecondsBinding: Binding<Int> {
+        Binding(
+            get: { exercise.restSec ?? exercise.resolvedRestSeconds },
+            set: { exercise.restSec = $0 }
+        )
+    }
+
+    private var restLabel: String {
+        if exercise.restSec == nil {
+            return "Rest: \(exercise.resolvedRestSeconds) sec from notes"
+        }
+        return "Rest: \(exercise.restSec ?? 0) sec"
     }
 
     private var rpeBinding: Binding<String> {

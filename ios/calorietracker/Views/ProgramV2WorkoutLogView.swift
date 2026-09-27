@@ -128,11 +128,22 @@ struct ProgramV2WorkoutLogView: View {
                 
                 Spacer()
             }
+
+            if !exercise.loadNote.isEmpty {
+                Text(exercise.loadNote)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !exercise.notes.isEmpty {
+                Text(exercise.notes)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             
             if !exercise.rirTarget.isEmpty {
                 Text("RIR Target: \(exercise.rirTarget)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.semibold))
             }
             
             let sets = workoutSets[exercise.name] ?? []
@@ -237,7 +248,7 @@ struct ProgramV2WorkoutLogView: View {
         let newSet = LoggedSet(
             weight: suggestedLoad,
             reps: 0,
-            rir: 2,
+            rir: Int(exercise.rirTarget) ?? 0,
             rpeText: ""
         )
         

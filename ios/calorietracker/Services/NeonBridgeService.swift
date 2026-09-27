@@ -133,8 +133,15 @@ final class NeonBridgeService {
 
     // MARK: - Programs
 
-    func listPrograms() async throws -> [TrainingProgramRecord] {
-        let url = try makeURL(path: "/api/programs")
+    func listPrograms(status: String? = nil, lineageID: String? = nil) async throws -> [TrainingProgramRecord] {
+        var items: [URLQueryItem] = []
+        if let status, !status.isEmpty {
+            items.append(URLQueryItem(name: "status", value: status))
+        }
+        if let lineageID, !lineageID.isEmpty {
+            items.append(URLQueryItem(name: "lineage_id", value: lineageID))
+        }
+        let url = try makeURL(path: "/api/programs", queryItems: items.isEmpty ? nil : items)
         let request = makeRequest(url: url, method: "GET")
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
@@ -212,7 +219,8 @@ final class NeonBridgeService {
             body: body.normalizedForSave(),
             name: name,
             changeReason: changeReason,
-            activate: activate
+            activate: activate,
+            createdBy: "app"
         )
         request.httpBody = try JSONEncoder().encode(payload)
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -308,15 +316,43 @@ final class NeonBridgeService {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let bridgeMessage = (try? JSONDecoder().decode(BridgeErrorBody.self, from: data))?.error
             throw NeonBridgeError.httpError(
                 statusCode: httpResponse.statusCode,
-                message: bridgeMessage ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                message: BridgeErrorFormatting.userMessage(from: data)
+                    ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             )
         }
     }
 }
 
-private struct BridgeErrorBody: Decodable {
-    let error: String?
+enum BridgeErrorFormatting {
+    static func userMessage(from data: Data) -> String? {
+        guard !data.isEmpty,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let message = object["message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let issues = object["issues"] as? [Any] {
+            let lines = issues.compactMap { issue -> String? in
+                if let text = issue as? String {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
+                }
+                if let fields = issue as? [String: Any] {
+                    if let message = fields["message"] as? String, !message.isEmpty { return message }
+                    if let path = fields["path"] as? String, !path.isEmpty { return path }
+                }
+                return nil
+            }
+            if !lines.isEmpty {
+                return lines.joined(separator: "\n")
+            }
+        }
+        if let error = object["error"] as? String, !error.isEmpty {
+            return error
+        }
+        return nil
+    }
 }

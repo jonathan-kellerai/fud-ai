@@ -75,6 +75,58 @@ struct TrainingProgramConditioning: Codable, Equatable, Hashable {
     var description: String
 }
 
+enum ExerciseRest {
+    static let fallbackSeconds = 90
+
+    static func resolvedSeconds(restSec: Int?, notes: String?, exerciseName: String) -> Int {
+        if let restSec { return restSec }
+        if let fromNotes = lowerBoundSeconds(in: notes) { return fromNotes }
+        if let bundled = ProgramV2Templates.restLowerBound(matching: exerciseName) { return bundled }
+        return fallbackSeconds
+    }
+
+    /// Only a `Rest:` seconds expression. `2-3 s eccentric` later in the note must not match.
+    static func lowerBoundSeconds(in notes: String?) -> Int? {
+        guard let notes else { return nil }
+        return firstInteger(
+            in: notes,
+            pattern: #"(?i)\brest:\s*(\d+)\s*(?:-\s*\d+)?(?:\s*\([^)]*\))?\s*s\b"#
+        )
+    }
+
+    static func startLoadPounds(from loadNote: String?) -> Double? {
+        guard let loadNote else { return nil }
+        if let pounds = firstNumber(in: loadNote, pattern: #"(?i)(\d+(?:\.\d+)?)\s*lb\b"#) {
+            return pounds
+        }
+        if loadNote.range(of: "bodyweight", options: .caseInsensitive) != nil {
+            return firstNumber(in: loadNote, pattern: #"(\d+(?:\.\d+)?)"#)
+        }
+        return nil
+    }
+
+    private static func firstInteger(in text: String, pattern: String) -> Int? {
+        guard let number = firstCapture(in: text, pattern: pattern) else { return nil }
+        return Int(number)
+    }
+
+    private static func firstNumber(in text: String, pattern: String) -> Double? {
+        guard let number = firstCapture(in: text, pattern: pattern) else { return nil }
+        return Double(number)
+    }
+
+    private static func firstCapture(in text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              match.numberOfRanges > 1,
+              let capture = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[capture])
+    }
+}
+
 struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
     var id: UUID
     var order: Int
@@ -83,7 +135,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
     var reps: String
     var rir: String
     var rpe: Double?
-    var restSec: Int
+    var restSec: Int?
     var loadNote: String?
     var substitutions: [String]
     var notes: String?
@@ -96,7 +148,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         reps: String,
         rir: String = "",
         rpe: Double? = nil,
-        restSec: Int = 90,
+        restSec: Int? = nil,
         loadNote: String? = nil,
         substitutions: [String] = [],
         notes: String? = nil
@@ -130,7 +182,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         reps = Self.stringOrNumber(container, key: .reps)
         rir = Self.stringOrNumber(container, key: .rir)
         rpe = Self.optionalDouble(container, key: .rpe)
-        restSec = try container.decodeIfPresent(Int.self, forKey: .restSec) ?? 90
+        restSec = try container.decodeIfPresent(Int.self, forKey: .restSec)
         loadNote = try container.decodeIfPresent(String.self, forKey: .loadNote)
         substitutions = try container.decodeIfPresent([String].self, forKey: .substitutions) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
@@ -142,9 +194,17 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         try container.encode(name, forKey: .name)
         try container.encode(sets, forKey: .sets)
         try container.encode(reps, forKey: .reps)
-        try container.encode(rir, forKey: .rir)
+        if rir.isEmpty {
+            try container.encodeNil(forKey: .rir)
+        } else {
+            try container.encode(rir, forKey: .rir)
+        }
         try container.encodeIfPresent(rpe, forKey: .rpe)
-        try container.encode(restSec, forKey: .restSec)
+        if let restSec {
+            try container.encode(restSec, forKey: .restSec)
+        } else {
+            try container.encodeNil(forKey: .restSec)
+        }
         try container.encodeIfPresent(loadNote, forKey: .loadNote)
         try container.encode(substitutions, forKey: .substitutions)
         try container.encodeIfPresent(notes, forKey: .notes)
@@ -184,6 +244,14 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         }
         return nil
     }
+
+    var resolvedRestSeconds: Int {
+        ExerciseRest.resolvedSeconds(restSec: restSec, notes: notes, exerciseName: name)
+    }
+
+    var parsedStartLoadLb: Double? {
+        ExerciseRest.startLoadPounds(from: loadNote)
+    }
 }
 
 struct TrainingProgramDay: Codable, Equatable, Hashable, Identifiable {
@@ -222,19 +290,17 @@ struct TrainingProgramDay: Codable, Equatable, Hashable, Identifiable {
             conditioning: conditioningSummary,
             conditioningMinimum: "",
             exercises: exercises.sorted { $0.order < $1.order }.map { exercise in
-                let note = [exercise.loadNote, exercise.notes]
-                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-                    .joined(separator: "\n")
+                let rest = exercise.resolvedRestSeconds
                 return ProgramV2Exercise(
                     key: exercise.name.lowercased(),
                     name: exercise.name,
                     sets: exercise.sets,
                     reps: exercise.reps,
-                    restSeconds: exercise.restSec...exercise.restSec,
+                    restSeconds: rest...rest,
                     rirTarget: exercise.rir,
-                    startLoadLb: nil,
-                    notes: note
+                    startLoadLb: exercise.parsedStartLoadLb,
+                    notes: exercise.notes ?? "",
+                    loadNote: exercise.loadNote ?? ""
                 )
             }
         )
@@ -244,7 +310,7 @@ struct TrainingProgramDay: Codable, Equatable, Hashable, Identifiable {
 struct TrainingProgramBody: Codable, Equatable, Hashable {
     var startDate: String
     var dailyStepsTarget: Int
-    var weeks: Int
+    var weeks: Int?
     var reductionWeek: Int?
     var restWeekdays: [String]
     var notes: String?
@@ -257,6 +323,54 @@ struct TrainingProgramBody: Codable, Equatable, Hashable {
         case reductionWeek = "reduction_week"
         case restWeekdays = "rest_weekdays"
         case notes, days
+    }
+
+    init(
+        startDate: String,
+        dailyStepsTarget: Int,
+        weeks: Int?,
+        reductionWeek: Int?,
+        restWeekdays: [String],
+        notes: String?,
+        days: [TrainingProgramDay]
+    ) {
+        self.startDate = startDate
+        self.dailyStepsTarget = dailyStepsTarget
+        self.weeks = weeks
+        self.reductionWeek = reductionWeek
+        self.restWeekdays = restWeekdays
+        self.notes = notes
+        self.days = days
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        startDate = try container.decodeIfPresent(String.self, forKey: .startDate) ?? ""
+        dailyStepsTarget = try container.decodeIfPresent(Int.self, forKey: .dailyStepsTarget) ?? 0
+        weeks = try container.decodeIfPresent(Int.self, forKey: .weeks)
+        reductionWeek = try container.decodeIfPresent(Int.self, forKey: .reductionWeek)
+        restWeekdays = try container.decodeIfPresent([String].self, forKey: .restWeekdays) ?? []
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        days = try container.decodeIfPresent([TrainingProgramDay].self, forKey: .days) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(startDate, forKey: .startDate)
+        try container.encode(dailyStepsTarget, forKey: .dailyStepsTarget)
+        if let weeks {
+            try container.encode(weeks, forKey: .weeks)
+        } else {
+            try container.encodeNil(forKey: .weeks)
+        }
+        if let reductionWeek {
+            try container.encode(reductionWeek, forKey: .reductionWeek)
+        } else {
+            try container.encodeNil(forKey: .reductionWeek)
+        }
+        try container.encode(restWeekdays, forKey: .restWeekdays)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encode(days, forKey: .days)
     }
 
     func normalizedForSave() -> TrainingProgramBody {
@@ -444,11 +558,13 @@ struct ProgramReviseRequest: Encodable {
     var name: String?
     var changeReason: String
     var activate: Bool?
+    var createdBy: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case body, name
         case changeReason = "change_reason"
         case activate
+        case createdBy = "created_by"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -457,6 +573,7 @@ struct ProgramReviseRequest: Encodable {
         try container.encodeIfPresent(name, forKey: .name)
         try container.encode(changeReason, forKey: .changeReason)
         try container.encodeIfPresent(activate, forKey: .activate)
+        try container.encodeIfPresent(createdBy, forKey: .createdBy)
     }
 }
 
