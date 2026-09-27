@@ -12,12 +12,21 @@ struct BodyFatEntry: Identifiable, Codable {
     var bodyFatFraction: Double
     /// HealthKit sample UUID for rows imported from Apple Health. Nil for manual logs.
     var healthKitSampleUUID: UUID?
+    /// Apple Health source, such as "Withings". Nil for manual logs.
+    var healthSourceName: String?
 
-    init(id: UUID = UUID(), date: Date = .now, bodyFatFraction: Double, healthKitSampleUUID: UUID? = nil) {
+    init(
+        id: UUID = UUID(),
+        date: Date = .now,
+        bodyFatFraction: Double,
+        healthKitSampleUUID: UUID? = nil,
+        healthSourceName: String? = nil
+    ) {
         self.id = id
         self.date = date
         self.bodyFatFraction = bodyFatFraction
         self.healthKitSampleUUID = healthKitSampleUUID
+        self.healthSourceName = healthSourceName
     }
 
     /// Convenience for views that prefer 0–100 scale (e.g. "23%").

@@ -54,19 +54,25 @@ class WeightStore {
         addEntry(WeightEntry(date: .now, weightKg: weightKg))
     }
 
+    /// Total body weight only. Lean body mass stays in `entries` for Weight History
+    /// and must not move the chart, profile weight, or goal checks.
+    var bodyWeightEntries: [WeightEntry] {
+        entries.filter { !$0.isLeanBodyMass }
+    }
+
     var latestEntry: WeightEntry? {
-        entries.sorted { $0.date > $1.date }.first
+        bodyWeightEntries.max { $0.date < $1.date }
     }
 
     func entries(in range: ClosedRange<Date>) -> [WeightEntry] {
-        entries
+        bodyWeightEntries
             .filter { range.contains($0.date) }
             .sorted { $0.date < $1.date }
     }
 
     func addEntry(_ entry: WeightEntry) {
         guard !isPersistenceBlocked else { return }
-        let previousLatest = entries.sorted { $0.date > $1.date }.first
+        let previousLatest = latestEntry
         entries.append(entry)
         saveEntries()
         onEntryAdded?(entry)
@@ -74,7 +80,7 @@ class WeightStore {
         syncProfileWeightToLatest()
 
         // Detect goal-weight crossing — fire only on the transition, not on every weight past goal.
-        if let profile = UserProfile.load(), let goalKg = profile.goalWeightKg, let previous = previousLatest {
+        if !entry.isLeanBodyMass, let profile = UserProfile.load(), let goalKg = profile.goalWeightKg, let previous = previousLatest {
             let crossed: Bool
             switch profile.goal {
             case .lose:    crossed = previous.weightKg > goalKg && entry.weightKg <= goalKg
@@ -101,7 +107,7 @@ class WeightStore {
     /// — we still need some weightKg for BMR/TDEE math; user can log a new one.
     private func syncProfileWeightToLatest() {
         guard var profile = UserProfile.load(),
-              let newest = entries.sorted(by: { $0.date > $1.date }).first else { return }
+              let newest = latestEntry else { return }
         if abs(profile.weightKg - newest.weightKg) > 0.01 {
             profile.weightKg = newest.weightKg
             profile.save()

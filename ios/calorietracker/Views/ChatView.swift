@@ -698,7 +698,7 @@ struct ChatView: View {
                     newUserMessage: text,
                     imageData: imageDataForAI,
                     profile: userProfile,
-                    weights: weightStore.entries,
+                    weights: weightStore.bodyWeightEntries,
                     bodyFats: bodyFatStore.entries,
                     measurements: bodyMeasurementStore.entries,
                     foods: foodStore.entries,

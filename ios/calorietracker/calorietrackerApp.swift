@@ -442,7 +442,7 @@ struct calorietrackerApp: App {
         let energyBurnOn = UserDefaults.standard.bool(forKey: EnergyBurnSettings.enabledKey)
         let heightMetric = HeightUnit.current == .cm
         let weightMetric = WeightUnit.current == .kg
-        let weights = weightStore.entries
+        let weights = weightStore.bodyWeightEntries
         let foods = foodStore.entries
         let bodyFatEntries = bodyFatStore.entries
         let workoutSessions = strengthWorkoutStore.completedSessions

@@ -107,20 +107,53 @@ struct HealthSampleReading {
     let value: Double
     let date: Date
     let fudaiID: UUID?
+    var sourceName: String? = nil
+
+    static func normalizedSourceName(_ name: String?) -> String? {
+        guard let name else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 /// Turns HealthKit quantity samples into local weight and body-fat rows.
 /// Dedupes by sample UUID. Manual rows have a nil `healthKitSampleUUID` and stay.
 enum HealthBodyMeasurementImport {
-    static func weightEntries(from samples: [HealthSampleReading], existing: [WeightEntry]) -> [WeightEntry] {
-        entries(from: samples, existingIDs: Set(existing.map(\.id)), existingHealthUUIDs: Set(existing.compactMap(\.healthKitSampleUUID)), restoringOwnHistory: existing.isEmpty) { sample, entryID in
-            WeightEntry(id: entryID, date: sample.date, weightKg: sample.value, healthKitSampleUUID: sample.sampleUUID)
+    static func weightEntries(
+        from samples: [HealthSampleReading],
+        existing: [WeightEntry],
+        leanBodyMass: Bool = false
+    ) -> [WeightEntry] {
+        let existingBodyWeight = existing.filter { !$0.isLeanBodyMass }
+        let relevantExisting = leanBodyMass ? existing.filter(\.isLeanBodyMass) : existingBodyWeight
+        // Dedup against every stored sample UUID so a lean row cannot reuse a body-mass UUID.
+        let allHealthUUIDs = Set(existing.compactMap(\.healthKitSampleUUID))
+        return entries(
+            from: samples,
+            existingIDs: Set(relevantExisting.map(\.id)),
+            existingHealthUUIDs: allHealthUUIDs,
+            restoringOwnHistory: relevantExisting.isEmpty
+        ) { sample, entryID in
+            WeightEntry(
+                id: entryID,
+                date: sample.date,
+                weightKg: sample.value,
+                healthKitSampleUUID: sample.sampleUUID,
+                healthSourceName: sample.sourceName,
+                leanBodyMass: leanBodyMass ? true : nil
+            )
         }
     }
 
     static func bodyFatEntries(from samples: [HealthSampleReading], existing: [BodyFatEntry]) -> [BodyFatEntry] {
         entries(from: samples, existingIDs: Set(existing.map(\.id)), existingHealthUUIDs: Set(existing.compactMap(\.healthKitSampleUUID)), restoringOwnHistory: existing.isEmpty) { sample, entryID in
-            BodyFatEntry(id: entryID, date: sample.date, bodyFatFraction: sample.value, healthKitSampleUUID: sample.sampleUUID)
+            BodyFatEntry(
+                id: entryID,
+                date: sample.date,
+                bodyFatFraction: sample.value,
+                healthKitSampleUUID: sample.sampleUUID,
+                healthSourceName: sample.sourceName
+            )
         }
     }
 
@@ -185,7 +218,8 @@ class HealthKitManager {
     /// v8: stepCount joined the read set for daily steps on Home.
     /// v9: workout samples joined the read set so Apple Watch / Health workouts
     /// can be imported into Fud AI without a Watch companion app.
-    private let typesVersion = 9
+    /// v10: lean body mass joined the read set for Withings and other scales.
+    private let typesVersion = 10
     private let typesVersionKey = "healthKitTypesVersion"
 
     /// Active-energy samples written for the workout diary are deliberately
@@ -290,6 +324,7 @@ class HealthKitManager {
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [
             HKQuantityType(.bodyMass),
+            HKQuantityType(.leanBodyMass),
             HKQuantityType(.height),
             HKQuantityType(.bodyFatPercentage),
             HKQuantityType(.activeEnergyBurned),
@@ -899,6 +934,7 @@ class HealthKitManager {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let readTypes: Set<HKObjectType> = [
             HKQuantityType(.bodyMass),
+            HKQuantityType(.leanBodyMass),
             HKQuantityType(.bodyFatPercentage),
         ]
         do {
@@ -907,19 +943,23 @@ class HealthKitManager {
             return
         }
         if let samples = await fetchAllSamples(.bodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: "fudai_weight_id") {
-            let readings = samples.map {
-                HealthSampleReading(sampleUUID: $0.sampleUUID, value: $0.value, date: $0.date, fudaiID: $0.fudaiID)
+            let fresh = HealthBodyMeasurementImport.weightEntries(from: samples, existing: existingWeights())
+            if !fresh.isEmpty {
+                importWeights(fresh)
             }
-            let fresh = HealthBodyMeasurementImport.weightEntries(from: readings, existing: existingWeights())
+        }
+        if let samples = await fetchAllSamples(.leanBodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: nil) {
+            let fresh = HealthBodyMeasurementImport.weightEntries(
+                from: samples,
+                existing: existingWeights(),
+                leanBodyMass: true
+            )
             if !fresh.isEmpty {
                 importWeights(fresh)
             }
         }
         if let samples = await fetchAllSamples(.bodyFatPercentage, unit: .percent(), fudaiMetadataKey: "fudai_bodyfat_id") {
-            let readings = samples.map {
-                HealthSampleReading(sampleUUID: $0.sampleUUID, value: $0.value, date: $0.date, fudaiID: $0.fudaiID)
-            }
-            let fresh = HealthBodyMeasurementImport.bodyFatEntries(from: readings, existing: existingBodyFat())
+            let fresh = HealthBodyMeasurementImport.bodyFatEntries(from: samples, existing: existingBodyFat())
             if !fresh.isEmpty {
                 importBodyFat(fresh)
             }
@@ -1194,7 +1234,7 @@ class HealthKitManager {
     /// chart. Sorted oldest-first so callers can append in chronological order.
     /// Returns nil on query failure (vs [] for genuinely no data) so callers can
     /// leave their one-shot stamps unset and retry later.
-    func fetchAllSamples(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, fudaiMetadataKey: String?) async -> [(value: Double, date: Date, fudaiID: UUID?, sampleUUID: UUID)]? {
+    func fetchAllSamples(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, fudaiMetadataKey: String?) async -> [HealthSampleReading]? {
         let type = HKQuantityType(identifier)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let predicate = HKQuery.predicateForSamples(withStart: nil, end: nil, options: .strictEndDate)
@@ -1205,10 +1245,16 @@ class HealthKitManager {
                     continuation.resume(returning: nil)
                     return
                 }
-                let mapped = samples.map { sample -> (value: Double, date: Date, fudaiID: UUID?, sampleUUID: UUID) in
+                let mapped = samples.map { sample -> HealthSampleReading in
                     let idString = fudaiMetadataKey.flatMap { sample.metadata?[$0] as? String }
                     let fudaiID = idString.flatMap(UUID.init(uuidString:))
-                    return (sample.quantity.doubleValue(for: unit), sample.startDate, fudaiID, sample.uuid)
+                    return HealthSampleReading(
+                        sampleUUID: sample.uuid,
+                        value: sample.quantity.doubleValue(for: unit),
+                        date: sample.startDate,
+                        fudaiID: fudaiID,
+                        sourceName: HealthSampleReading.normalizedSourceName(sample.sourceRevision.source.name)
+                    )
                 }
                 continuation.resume(returning: mapped)
             }
@@ -1572,7 +1618,7 @@ class HealthKitManager {
         // N times (once per cold-launch-plus-background-resume cycle in the session).
         stopObserver()
 
-        let types: [HKQuantityTypeIdentifier] = [.bodyMass, .height, .bodyFatPercentage]
+        let types: [HKQuantityTypeIdentifier] = [.bodyMass, .leanBodyMass, .height, .bodyFatPercentage]
         for identifier in types {
             let type = HKQuantityType(identifier)
             let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completionHandler, _ in

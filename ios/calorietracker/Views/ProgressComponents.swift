@@ -960,7 +960,7 @@ struct AllWeightHistoryView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(displayWeight(entry.weightKg, useMetric: useMetric))
                                 .font(.system(.body, design: .rounded, weight: .medium))
-                            Text(weightHistoryFormatter.string(from: entry.date))
+                            Text(weightHistoryCaption(entry))
                                 .font(.system(.caption, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
@@ -1011,6 +1011,17 @@ private let weightHistoryFormatter: DateFormatter = {
     f.timeStyle = .none
     return f
 }()
+
+private func weightHistoryCaption(_ entry: WeightEntry) -> String {
+    var parts = [weightHistoryFormatter.string(from: entry.date)]
+    if entry.isLeanBodyMass {
+        parts.append("Lean body mass")
+    }
+    if let source = entry.healthSourceName {
+        parts.append(source)
+    }
+    return parts.joined(separator: " · ")
+}
 
 private func displayWeight(_ kg: Double, useMetric: Bool) -> String {
     if useMetric {
@@ -1071,7 +1082,7 @@ struct AllBodyFatHistoryView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(displayBodyFat(entry.bodyFatFraction))
                                 .font(.system(.body, design: .rounded, weight: .medium))
-                            Text(weightHistoryFormatter.string(from: entry.date))
+                            Text(bodyFatHistoryCaption(entry))
                                 .font(.system(.caption, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
@@ -1114,6 +1125,14 @@ struct AllBodyFatHistoryView: View {
             }
         }
     }
+}
+
+private func bodyFatHistoryCaption(_ entry: BodyFatEntry) -> String {
+    var parts = [weightHistoryFormatter.string(from: entry.date)]
+    if let source = entry.healthSourceName {
+        parts.append(source)
+    }
+    return parts.joined(separator: " · ")
 }
 
 private func displayBodyFat(_ fraction: Double) -> String {

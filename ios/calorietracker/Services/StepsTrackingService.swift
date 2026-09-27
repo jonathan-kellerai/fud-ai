@@ -26,6 +26,7 @@ final class StepsTrackingService {
     private let healthStore = HKHealthStore()
     private let stepsType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
     private let bodyMassType = HKQuantityType.quantityType(forIdentifier: .bodyMass)!
+    private let leanBodyMassType = HKQuantityType.quantityType(forIdentifier: .leanBodyMass)!
     private let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)!
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
@@ -47,7 +48,7 @@ final class StepsTrackingService {
         
         try await healthStore.requestAuthorization(
             toShare: [],
-            read: [stepsType, bodyMassType, bodyFatType]
+            read: [stepsType, bodyMassType, leanBodyMassType, bodyFatType]
         )
     }
     

@@ -270,7 +270,7 @@ class NotificationManager {
         let currentStreak = computeCurrentStreak(foodStore: foodStore)
 
         let calendar = Calendar.current
-        let hasLoggedWeightToday = weightStore.entries.contains { calendar.isDateInToday($0.date) }
+        let hasLoggedWeightToday = weightStore.bodyWeightEntries.contains { calendar.isDateInToday($0.date) }
         let hasLoggedBodyFatToday = bodyFatStore.entries.contains { calendar.isDateInToday($0.date) }
 
         scheduleStreakReminder(

@@ -3963,7 +3963,7 @@ struct ProgressTabView: View {
                                 goalWeightKg: userProfile.goalWeightKg,
                                 currentWeightKg: weightStore.latestEntry?.weightKg,
                                 onLogWeight: { showLogWeight = true },
-                                hasAnyEntries: !weightStore.entries.isEmpty,
+                                hasAnyEntries: !weightStore.bodyWeightEntries.isEmpty,
                                 rangeDescription: timeRange.rangeDescription
                             )
                         case .bodyFat:
@@ -7054,7 +7054,7 @@ struct ProfileView: View {
     private func makeGoalEvidence(profile: UserProfile, healthEnergy: [HealthEnergyDay]) -> GoalEvidence {
         GoalEvidence.build(
             foods: foodStore.entries,
-            weights: weightStore.entries,
+            weights: weightStore.bodyWeightEntries,
             bodyFatEntries: bodyFatStore.entries,
             workoutSessions: strengthWorkoutStore.completedSessions,
             bodyMeasurements: bodyMeasurementStore.entries,
