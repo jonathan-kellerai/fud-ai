@@ -336,7 +336,7 @@ struct WorkoutLogView: View {
                                     } label: {
                                         Label("Delete", systemImage: "trash.fill")
                                     }
-                                    .tint(Color(red: 0.58, green: 0.10, blue: 0.08))
+                                    .tint(IronTheme.bloodPressed)
 
                                     Button {
                                         workoutStore.toggleSaved(exercise.itemID)
@@ -347,7 +347,7 @@ struct WorkoutLogView: View {
                                             systemImage: isSaved ? "bookmark.slash.fill" : "bookmark.fill"
                                         )
                                     }
-                                    .tint(Color(red: 0.18, green: 0.42, blue: 0.16))
+                                    .tint(IronTheme.olive)
                                 }
                             }
                         }
@@ -369,7 +369,7 @@ struct WorkoutLogView: View {
                 .listSectionSpacing(8)
                 .scrollDismissesKeyboard(.interactively)
                 .contentMargins(.bottom, 96, for: .scrollContent)
-                .animation(.snappy, value: selectedDate)
+                .animation(IronTheme.motion, value: selectedDate)
                 .onPreferenceChange(WorkoutLogCardFramePreferenceKey.self) { frames in
                     workoutCardFrames = frames
                 }
@@ -1137,7 +1137,7 @@ private struct WorkoutLogExerciseCard: View {
                         .buttonStyle(.plain)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
-                        .foregroundStyle(Color(red: 0.78, green: 0.14, blue: 0.12))
+                        .foregroundStyle(IronTheme.bloodText)
                         .accessibilityLabel("Remove exercise")
                         .accessibilityHint("Removes this exercise from the selected day")
                     }
@@ -1255,11 +1255,16 @@ private struct WorkoutLogSetRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("Set \(setIndex + 1)")
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
+                .font(.system(.subheadline, weight: .bold).monospacedDigit())
                 .foregroundStyle(Color.workoutMutedText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
                 .frame(width: 46, alignment: .leading)
+            if set.hasLoggedValue {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(IronTheme.olive)
+            }
 
             WorkoutLogSetValueField(
                 placeholder: weightUnit.rawValue,
@@ -1289,6 +1294,13 @@ private struct WorkoutLogSetRow: View {
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 7)
+        .overlay(alignment: .leading) {
+            if focusedField.wrappedValue?.setID == set.id {
+                Rectangle()
+                    .fill(IronTheme.blood)
+                    .frame(width: IronTheme.ruleWidth)
+            }
+        }
         .contentShape(Rectangle())
         .accessibilityHint("Opens set weight, reps and RPE input")
     }
@@ -1317,10 +1329,10 @@ private struct WorkoutLogSetValueField: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 36)
-        .background(Color.workoutCard.opacity(0.74), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(IronTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(Color.workoutHairline.opacity(0.4), lineWidth: 0.6)
+            RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+                .stroke(IronTheme.hairline, lineWidth: 1)
         }
     }
 

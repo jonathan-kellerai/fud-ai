@@ -36,11 +36,11 @@ struct WorkoutHistoryLink: View {
             .padding(.horizontal, 14)
             .background(AppColors.appCard)
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(AppColors.calorie.opacity(0.09), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+                    .stroke(IronTheme.hairline, lineWidth: 1)
             }
             .compositingGroup()
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens workout calorie history")
@@ -154,10 +154,10 @@ struct ImportedHealthWorkoutDaySection: View {
             .padding(14)
             .background(AppColors.appCard)
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(AppColors.calorie.opacity(0.09), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+                    .stroke(IronTheme.hairline, lineWidth: 1)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous))
         }
     }
 }
@@ -229,11 +229,11 @@ struct ImportedHealthWorkoutHistoryLink: View {
             .padding(.horizontal, 14)
             .background(AppColors.appCard)
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(AppColors.calorie.opacity(0.09), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+                    .stroke(IronTheme.hairline, lineWidth: 1)
             }
             .compositingGroup()
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens imported Apple Health workout history")

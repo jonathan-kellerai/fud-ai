@@ -1494,12 +1494,12 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
         ) -> UIButton {
             let button = UIButton(type: .system)
             button.setTitle(title, for: .normal)
-            button.setTitleColor(emphasized ? .white : Self.calorieTint, for: .normal)
+            button.setTitleColor(emphasized ? Self.onAccent : Self.accentText, for: .normal)
             button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
             button.titleLabel?.adjustsFontSizeToFitWidth = true
             button.titleLabel?.minimumScaleFactor = 0.72
-            button.backgroundColor = emphasized ? Self.calorieTint : .clear
-            button.layer.cornerRadius = 10
+            button.backgroundColor = emphasized ? Self.accentFill : .clear
+            button.layer.cornerRadius = 4
             button.accessibilityLabel = accessibilityLabel
             button.addTarget(self, action: action, for: .touchUpInside)
             return button
@@ -1509,7 +1509,9 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
             UIBarButtonItem(systemItem: .flexibleSpace)
         }
 
-        private static let calorieTint = UIColor(red: 1.0, green: 55.0 / 255.0, blue: 95.0 / 255.0, alpha: 1.0)
+        private static let accentFill = UIColor(IronTheme.blood)
+        private static let accentText = UIColor(IronTheme.bloodText)
+        private static let onAccent = UIColor(IronTheme.textPrimary)
     }
 }
 

@@ -35,11 +35,10 @@ struct calorietrackerApp: App {
     @State private var isAutoRefreshingAdaptiveGoals = false
 
     private var colorScheme: ColorScheme? {
-        switch appearanceMode {
-        case "light": return .light
-        case "dark": return .dark
-        default: return nil
-        }
+        // Iron & Blood is one palette. Light mode maps onto it so system text
+        // stays bone on the iron canvas. `appearanceMode` is still stored by Settings.
+        _ = appearanceMode
+        return .dark
     }
 
     init() {
@@ -93,9 +92,11 @@ struct calorietrackerApp: App {
                         .environment(fastingStore)
                 }
             }
-            .tint(AppThemeColor.color(for: appThemeColorRaw).color)
+            .tint(IronTheme.bloodText)
             .preferredColorScheme(colorScheme)
+            .overlay { IronGrainOverlay() }
             .onAppear {
+                IronTheme.applyChrome()
                 AppThemeColor.applyAppIconIfNeeded(for: AppThemeColor.color(for: appThemeColorRaw))
             }
             .onChange(of: appThemeColorRaw) { _, newValue in

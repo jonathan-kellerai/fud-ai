@@ -127,84 +127,28 @@ enum AppThemeColor: String, CaseIterable, Identifiable {
         application.setAlternateIconName(themeColor.alternateIconName)
     }
 
-    // Internal (not private) so WidgetSnapshotWriter can ship the raw hexes to
-    // the Watch, which has no AppThemeColor and rebuilds Colors from the values.
-    var startHex: UInt {
-        switch self {
-        case .fudPink: return 0xFF375F
-        case .red: return 0xFF3B30
-        case .orange: return 0xFF9500
-        case .green: return 0x34C759
-        case .mint: return 0x00C7BE
-        case .teal: return 0x30B0C7
-        case .blue: return 0x0A84FF
-        case .purple: return 0xAF52DE
-        case .yellow: return 0xFFCC00
-        case .coral: return 0xFF7F50
-        case .roseGold: return 0xC9807C
-        case .mochaBrown: return 0xA2845E
-        case .indigo: return 0x5856D6
-        case .lavender: return 0xB57EDC
-        case .skyCyan: return 0x32ADE6
-        case .graphite: return 0x8E8E93
-        case .babyPink: return 0xFF8FAB
-        case .lime: return 0xA0D911
-        }
-    }
+    // Shipped to widgets as raw values. The rendered skin does not read these.
+    var startHex: UInt { IronTheme.alternateIconStartHex(self) }
 
-    var endHex: UInt {
-        switch self {
-        case .fudPink: return 0xFF6B8A
-        case .red: return 0xFF6961
-        case .orange: return 0xFFB340
-        case .green: return 0x62D46F
-        case .mint: return 0x66D4CF
-        case .teal: return 0x64D2FF
-        case .blue: return 0x5EAEFF
-        case .purple: return 0xBF5AF2
-        case .yellow: return 0xFFD60A
-        case .coral: return 0xFFA382
-        case .roseGold: return 0xE8B4B0
-        case .mochaBrown: return 0xC9A57E
-        case .indigo: return 0x7D7AFF
-        case .lavender: return 0xD0A9F5
-        case .skyCyan: return 0x70CFFF
-        case .graphite: return 0xB8B8BE
-        case .babyPink: return 0xFFB3C6
-        case .lime: return 0xC3E956
-        }
-    }
+    var endHex: UInt { IronTheme.alternateIconEndHex(self) }
 }
 
 enum AppColors {
-    // Calorie: Red → Pink
-    static var calorieGradient: [Color] { AppThemeColor.current.gradientColors }
-    static var calorie: Color { AppThemeColor.current.color }
+    /// Accent text and thin marks. Blood as a fill fails body contrast, so the
+    /// historical `calorie` token is the readable blood-text red.
+    static var calorieGradient: [Color] { [IronTheme.blood, IronTheme.bloodPressed] }
+    static var calorie: Color { IronTheme.bloodText }
+    static var accentFill: Color { IronTheme.blood }
 
-    // Protein
     static var proteinGradient: [Color] { calorieGradient }
     static var protein: Color { calorie }
 
-    // Carbs
     static var carbsGradient: [Color] { calorieGradient }
     static var carbs: Color { calorie }
 
-    // Fat
     static var fatGradient: [Color] { calorieGradient }
     static var fat: Color { calorie }
 
-    // Background: warm cream in light, system dark in dark
     static let appBackground = Color("appBackground")
     static let appCard = Color("appCard")
-}
-
-extension Color {
-    init(hex: UInt, opacity: Double = 1.0) {
-        self.init(
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
-            opacity: opacity
-        )
-    }
 }

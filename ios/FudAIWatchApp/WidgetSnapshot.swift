@@ -54,7 +54,7 @@ struct WidgetSnapshot: Codable, Equatable {
     var waterCurrentMl: Int? = nil
     var waterGoalMl: Int? = nil
     var waterUnitRaw: String? = nil
-    /// User's theme gradient as raw hex (e.g. 0xFF375F). Fud Pink when absent.
+    /// User's theme gradient as a raw integer. Absent until the phone writes one.
     var themeStartHex: UInt?
     var themeEndHex: UInt?
 

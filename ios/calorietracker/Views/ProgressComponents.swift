@@ -716,18 +716,21 @@ struct StatsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Streaks & Stats")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .font(.system(size: 13, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.textSecondary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                StatTile(icon: "flame.fill", label: "Current Streak", value: String(localized: "\(streak) days"), color: AppColors.calorie)
-                StatTile(icon: "trophy.fill", label: "Best Streak", value: String(localized: "\(bestStreak) days"), color: AppColors.carbs)
+                StatTile(icon: "flame.fill", label: "Current Streak", value: String(localized: "\(streak) days"), color: IronTheme.brass)
+                StatTile(icon: "trophy.fill", label: "Best Streak", value: String(localized: "\(bestStreak) days"), color: IronTheme.brass)
                 StatTile(icon: "target", label: "Days on Target", value: "\(daysOnTarget)", color: AppColors.protein)
                 StatTile(icon: "fork.knife", label: "Total Entries", value: "\(totalEntries)", color: AppColors.fat)
             }
         }
         .padding()
-        .background(AppColors.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .ironCard()
     }
 }
 

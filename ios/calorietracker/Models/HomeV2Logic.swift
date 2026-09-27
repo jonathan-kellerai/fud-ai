@@ -21,6 +21,14 @@ enum HomeV2Logic {
         var windowClosed: Bool
     }
 
+    /// Ring color for the steps target. Olive at 10,000 or when the pace is met,
+    /// rust when the day is late and steps are still short, blood otherwise.
+    enum StepsRingTone: Equatable {
+        case blood
+        case rust
+        case olive
+    }
+
     struct CalorieRemainder: Equatable {
         enum Kind: Equatable {
             case remaining
@@ -118,6 +126,16 @@ enum HomeV2Logic {
         }
         let perHour = Int((Double(remaining) / (seconds / 3600)).rounded())
         return StepsPace(remaining: remaining, perHour: perHour, met: false, windowClosed: false)
+    }
+
+    static func stepsRingTone(steps: Int, pace: StepsPace, hour: Int, lateHour: Int = 18) -> StepsRingTone {
+        if pace.met || steps >= 10_000 {
+            return .olive
+        }
+        if pace.windowClosed || hour >= lateHour {
+            return .rust
+        }
+        return .blood
     }
 
     static func windowTrend(

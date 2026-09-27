@@ -166,36 +166,61 @@ struct HomeV2Cards: View {
                 weekStrip
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
+            } header: {
+                IronSectionTitle(title: "Week")
             }
         case .today:
-            Section("Today") { todayCard.listRowBackground(AppColors.appCard) }
+            Section {
+                todayCard.listRowBackground(todaySurface)
+            } header: {
+                IronSectionTitle(title: "Today")
+            }
         case .dailyTargets:
-            Section("Daily targets") {
-                dailyTargets
-                    .listRowBackground(AppColors.appCard)
+            Section {
+                dailyTargets.listRowBackground(IronTheme.surface)
                 Button(action: onViewNutrition) {
                     HStack {
                         Spacer()
                         Text("View More")
-                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                            .font(.system(size: 13, weight: .heavy))
+                            .fontWidth(.condensed)
+                            .tracking(0.8)
                         Image(systemName: "chevron.right").font(.caption2)
                         Spacer()
                     }
-                    .foregroundStyle(AppColors.calorie.opacity(0.6))
+                    .foregroundStyle(IronTheme.bloodText)
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+            } header: {
+                IronSectionTitle(title: "Daily targets")
             }
         case .bodyTrend:
-            Section("Body trend") { bodyTrend.listRowBackground(AppColors.appCard) }
+            Section {
+                bodyTrend.listRowBackground(IronTheme.surface)
+            } header: {
+                IronSectionTitle(title: "Body trend")
+            }
         case .recovery:
-            Section("Recovery") { recovery.listRowBackground(AppColors.appCard) }
+            Section {
+                recovery.listRowBackground(IronTheme.surface)
+            } header: {
+                IronSectionTitle(title: "Recovery")
+            }
         case .peptides:
             if peptideSectionVisible {
-                Section("Peptides") { peptideCard.listRowBackground(AppColors.appCard) }
+                Section {
+                    peptideCard.listRowBackground(IronTheme.surface)
+                } header: {
+                    IronSectionTitle(title: "Peptides")
+                }
             }
         case .weekSoFar:
-            Section("Week so far") { weekSoFarCard.listRowBackground(AppColors.appCard) }
+            Section {
+                weekSoFarCard.listRowBackground(IronTheme.surface)
+            } header: {
+                IronSectionTitle(title: "Week so far")
+            }
         }
     }
 
@@ -328,15 +353,41 @@ struct HomeV2Cards: View {
             } else {
                 Text("No active program. Home loads it from the bridge.")
                     .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(IronTheme.textSecondary)
             }
             if let programNotice {
                 Text(programNotice)
                     .font(.caption)
-                    .foregroundStyle(AppColors.calorie)
+                    .foregroundStyle(IronTheme.bloodText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .leading) {
+            if todayShowsRule {
+                Rectangle()
+                    .fill(IronTheme.blood)
+                    .frame(width: IronTheme.ruleWidth)
+                    .padding(.vertical, -12)
+                    .padding(.leading, -16)
+            }
+        }
+    }
+
+    private var todaySurface: Color {
+        if case .rest = selectedResolution { return IronTheme.concrete }
+        return IronTheme.surface
+    }
+
+    private var todayShowsRule: Bool {
+        let key = SessionDateFormatting.calendarDateString(from: selectedDate, calendar: calendar)
+        if workouts.contains(where: { String($0.sessionDate.prefix(10)) == key }) { return true }
+        if case .session = selectedResolution { return true }
+        return false
+    }
+
+    private var selectedResolution: ResolvedTrainingDay? {
+        guard let programBody else { return nil }
+        return TrainingProgramSchedule.resolve(programBody, on: selectedDate, calendar: calendar)
     }
 
     @ViewBuilder
@@ -376,21 +427,19 @@ struct HomeV2Cards: View {
                     loggingDay = day.asProgramV2Day()
                 } label: {
                     Label("Start", systemImage: "play.fill")
-                        .font(.system(.headline, design: .rounded))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(AppColors.calorie, in: Capsule())
-                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IronCompactButtonStyle())
             }
         case .rest:
+            Text("REST. WALK. 10K.")
+                .font(.system(size: 22, weight: .black))
+                .fontWidth(.condensed)
+                .tracking(1.2)
+                .foregroundStyle(IronTheme.textPrimary)
             if let next = resolved.nextLabel {
-                Text("Rest day · \(next)")
-                    .font(.system(.title3, design: .rounded, weight: .bold))
-            } else {
-                Text("Rest day")
-                    .font(.system(.title3, design: .rounded, weight: .bold))
+                Text("Next · \(next)")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(IronTheme.textSecondary)
             }
         case .upcoming(let name, let weekday, _):
             Text(name)
@@ -413,20 +462,30 @@ struct HomeV2Cards: View {
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Steps")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .tracking(1.1)
+                    .textCase(.uppercase)
+                    .foregroundStyle(IronTheme.textSecondary)
                 if let steps {
-                    Text("\(steps.formatted()) / \(stepsTarget.formatted())")
-                        .font(.system(.title3, design: .rounded, weight: .bold))
-                    if let pace {
-                        Text(paceLine(pace))
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            .foregroundStyle(AppColors.calorie)
+                    HStack(alignment: .center, spacing: 12) {
+                        stepsRing(steps: steps, pace: pace)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(steps.formatted()) / \(stepsTarget.formatted())")
+                                .font(.system(.title3, weight: .bold).monospacedDigit())
+                                .fontWidth(.condensed)
+                                .foregroundStyle(IronTheme.textPrimary)
+                            if let pace {
+                                Text(paceLine(pace))
+                                    .font(.system(.subheadline, design: .rounded, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(stepsToneColor(steps: steps, pace: pace))
+                            }
+                        }
                     }
                 } else {
                     Text("Steps aren’t in Apple Health for this day.")
                         .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(IronTheme.textSecondary)
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -434,7 +493,8 @@ struct HomeV2Cards: View {
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text("\(Int(protein.rounded())) / \(profile.effectiveProtein) g")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold).monospacedDigit())
+                    .foregroundStyle(IronTheme.textPrimary)
             }
             HStack {
                 calorieColumn("Eaten", remainder.eaten.formatted())
@@ -463,6 +523,32 @@ struct HomeV2Cards: View {
         calendar.isDateInToday(selectedDate) ? Date() : selectedDate
     }
 
+    private func stepsRing(steps: Int, pace: HomeV2Logic.StepsPace?) -> some View {
+        let color = pace.map { stepsToneColor(steps: steps, pace: $0) } ?? IronTheme.blood
+        let progress = stepsTarget > 0 ? min(Double(steps) / Double(stepsTarget), 1) : 0
+        return ZStack {
+            Circle().stroke(IronTheme.hairline, lineWidth: 4)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .butt))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 36, height: 36)
+        .accessibilityHidden(true)
+    }
+
+    private func stepsToneColor(steps: Int, pace: HomeV2Logic.StepsPace) -> Color {
+        switch HomeV2Logic.stepsRingTone(
+            steps: steps,
+            pace: pace,
+            hour: calendar.component(.hour, from: paceNow)
+        ) {
+        case .olive: IronTheme.olive
+        case .rust: IronTheme.rust
+        case .blood: IronTheme.blood
+        }
+    }
+
     private func paceLine(_ pace: HomeV2Logic.StepsPace) -> String {
         if pace.met { return "Target hit" }
         if pace.windowClosed { return "\(pace.remaining.formatted()) left after 10 PM" }
@@ -486,7 +572,8 @@ struct HomeV2Cards: View {
                 .font(.system(.caption2, design: .rounded, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(.headline, design: .rounded))
+                .font(.system(.headline, weight: .semibold).monospacedDigit())
+                .foregroundStyle(IronTheme.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -667,6 +754,7 @@ struct HomeV2Cards: View {
             if let milestone = snapshot.milestone {
                 Text(milestone)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(IronTheme.rust)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

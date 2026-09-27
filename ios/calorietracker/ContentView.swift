@@ -1317,7 +1317,7 @@ struct HomeView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.appBackground)
-            .animation(.snappy, value: selectedDate)
+            .animation(IronTheme.motion, value: selectedDate)
             .contentMargins(.bottom, isFoodSelectionMode ? 8 : 96, for: .scrollContent)
             .sensoryFeedback(.selection, trigger: selectedFoodIDs) { _, selection in
                 !selection.isEmpty
@@ -1336,7 +1336,11 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 20))
+                    .background(IronTheme.surface, in: RoundedRectangle(cornerRadius: IronTheme.cardRadius))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+                            .strokeBorder(IronTheme.hairline, lineWidth: 1)
+                    }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(AppColors.appBackground)
@@ -1344,6 +1348,17 @@ struct HomeView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(selectedDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                        .font(.system(size: 17, weight: .heavy))
+                        .fontWidth(.condensed)
+                        .tracking(1.1)
+                        .textCase(.uppercase)
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .monospacedDigit()
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 Menu {
                     if fastingTrackingEnabled {

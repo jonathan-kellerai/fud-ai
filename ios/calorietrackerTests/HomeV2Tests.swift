@@ -158,6 +158,17 @@ struct HomeV2Tests {
         #expect(HomeV2Logic.newYorkDateString(from: civil(2026, 9, 27, hour: 21, calendar: newYorkCalendar())) == "2026-09-27")
     }
 
+    @Test func stepsRingIsOliveAtTenThousandRustWhenLateAndBloodOtherwise() {
+        let short = HomeV2Logic.StepsPace(remaining: 8_000, perHour: 1_000, met: false, windowClosed: false)
+        #expect(HomeV2Logic.stepsRingTone(steps: 2_000, pace: short, hour: 12) == .blood)
+        #expect(HomeV2Logic.stepsRingTone(steps: 2_000, pace: short, hour: 18) == .rust)
+        let closed = HomeV2Logic.StepsPace(remaining: 6_000, perHour: nil, met: false, windowClosed: true)
+        #expect(HomeV2Logic.stepsRingTone(steps: 4_000, pace: closed, hour: 12) == .rust)
+        let met = HomeV2Logic.StepsPace(remaining: 0, perHour: nil, met: true, windowClosed: false)
+        #expect(HomeV2Logic.stepsRingTone(steps: 10_000, pace: met, hour: 9) == .olive)
+        #expect(HomeV2Logic.stepsRingTone(steps: 10_000, pace: short, hour: 12) == .olive)
+    }
+
     @Test func emptyPeptideTodayDecodes() throws {
         let json = """
         {"date":"2026-09-27","timezone":"America/New_York","has_active_schedules":false,"planned":[],"completed":[]}

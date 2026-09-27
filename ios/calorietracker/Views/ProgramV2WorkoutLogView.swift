@@ -42,6 +42,7 @@ struct ProgramV2WorkoutLogView: View {
                 }
                 .padding()
             }
+            .background(IronTheme.canvas)
             .navigationTitle(day.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -80,9 +81,13 @@ struct ProgramV2WorkoutLogView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "heart.fill")
-                    .foregroundStyle(.red)
-                Text("Conditioning (Do First!)")
-                    .font(.headline)
+                    .foregroundStyle(IronTheme.bloodText)
+                Text("Conditioning · Do first")
+                    .font(.system(size: 15, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .tracking(1.0)
+                    .textCase(.uppercase)
+                    .foregroundStyle(IronTheme.textPrimary)
             }
             
             Text(conditioning)
@@ -98,8 +103,7 @@ struct ProgramV2WorkoutLogView: View {
                 .toggleStyle(.switch)
         }
         .padding()
-        .background(Color.red.opacity(0.1))
-        .cornerRadius(12)
+        .ironCard(rule: true)
     }
     
     private func exerciseCard(_ exercise: ProgramV2Exercise) -> some View {
@@ -107,21 +111,25 @@ struct ProgramV2WorkoutLogView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text(exercise.name)
-                        .font(.headline)
+                        .font(.system(size: 17, weight: .heavy))
+                        .fontWidth(.condensed)
+                        .textCase(.uppercase)
+                        .tracking(0.6)
+                        .foregroundStyle(IronTheme.textPrimary)
                     
                     HStack(spacing: 16) {
                         Text("\(exercise.sets) sets × \(exercise.reps)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(IronTheme.textSecondary)
                         
                         if let starting = exercise.startLoadLb {
                             Text("Start: \(Int(starting))lb")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(IronTheme.brass)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(4)
+                                .background(IronTheme.surfaceRaised)
+                                .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius))
                         }
                     }
                 }
@@ -156,22 +164,30 @@ struct ProgramV2WorkoutLogView: View {
                 addSet(for: exercise)
             } label: {
                 Label("Add Set", systemImage: "plus.circle.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(.blue)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(IronTheme.bloodText)
             }
         }
         .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 8, y: 2)
+        .ironCard()
     }
     
     private func setRow(exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
+        let currentIndex = (workoutSets[exercise.name] ?? []).firstIndex { $0.reps == 0 }
+        let previous = previousSessionLoad(for: exercise)
+        let isPersonalRecord = set.reps > 0 && previous.map { set.weight > $0 && $0 > 0 } == true
         HStack(spacing: 8) {
             Text("\(setIndex + 1)")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .font(.caption.bold().monospacedDigit())
+                .foregroundStyle(IronTheme.textSecondary)
                 .frame(width: 20)
+            if isPersonalRecord {
+                Text("PR")
+                    .font(.system(size: 11, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .tracking(0.6)
+                    .foregroundStyle(IronTheme.brass)
+            }
             
             TextField("Load", value: Binding(
                 get: { set.weight },
@@ -219,8 +235,8 @@ struct ProgramV2WorkoutLogView: View {
             Button {
                 logSet(exercise, setIndex: setIndex)
             } label: {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(set.reps > 0 ? .orange : .gray)
+                Image(systemName: set.reps > 0 ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(set.reps > 0 ? IronTheme.olive : IronTheme.textTertiary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Log set")
@@ -229,11 +245,24 @@ struct ProgramV2WorkoutLogView: View {
                 workoutSets[exercise.name]?.remove(at: setIndex)
             } label: {
                 Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(IronTheme.bloodText)
             }
             .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
+        .padding(.leading, 8)
+        .overlay(alignment: .leading) {
+            if currentIndex == setIndex {
+                Rectangle()
+                    .fill(IronTheme.blood)
+                    .frame(width: IronTheme.ruleWidth)
+            }
+        }
+    }
+
+    private func previousSessionLoad(for exercise: ProgramV2Exercise) -> Double? {
+        let key = exercise.name.lowercased()
+        return suggestedLoads.first { $0.key.lowercased() == key }?.value
     }
     
     private func logSet(_ exercise: ProgramV2Exercise, setIndex: Int) {
@@ -295,14 +324,10 @@ struct ProgramV2WorkoutLogView: View {
                     .padding()
             } else {
                 Text("Save Workout")
-                    .font(.headline)
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(canSave ? Color.accentColor : Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
             }
         }
+        .buttonStyle(IronPrimaryButtonStyle(enabled: canSave && !isSaving))
         .disabled(!canSave || isSaving)
     }
     
