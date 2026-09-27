@@ -512,18 +512,32 @@ jobs:
         # `--xml` asks for a plist. Without it, Xcode 26 prints [Dict]/[Key] text.
         # The Executable= line is stderr and is not part of the plist.
         # If this codesign has no --xml, the text dump is still accepted below.
-        if ! codesign -d --entitlements - --xml "${app_path}" \
-          > "${entitlement_dir}/signed-entitlements.plist" \
-          2> "${entitlement_dir}/codesign-entitlements.stderr"; then
-          echo "codesign --xml entitlements dump failed; retrying without --xml"
-          cat "${entitlement_dir}/codesign-entitlements.stderr"
-          if ! codesign -d --entitlements - "${app_path}" \
-            > "${entitlement_dir}/signed-entitlements.plist" \
+        dump_signed_entitlements() {
+          local target="$1"
+          local output="$2"
+          if ! codesign -d --entitlements - --xml "${target}" \
+            > "${output}" \
             2> "${entitlement_dir}/codesign-entitlements.stderr"; then
-            echo "ERROR: codesign entitlements dump failed"
+            echo "codesign --xml entitlements dump failed for ${target}; retrying without --xml"
             cat "${entitlement_dir}/codesign-entitlements.stderr"
-            exit 1
+            if ! codesign -d --entitlements - "${target}" \
+              > "${output}" \
+              2> "${entitlement_dir}/codesign-entitlements.stderr"; then
+              echo "ERROR: codesign entitlements dump failed for ${target}"
+              cat "${entitlement_dir}/codesign-entitlements.stderr"
+              exit 1
+            fi
           fi
+        }
+        dump_signed_entitlements "${app_path}" "${entitlement_dir}/signed-entitlements.plist"
+        appex_args=()
+        if [ -d "${app_path}/PlugIns" ]; then
+          while IFS= read -r appex_path; do
+            [ -z "${appex_path}" ] && continue
+            appex_name="$(basename "${appex_path}")"
+            dump_signed_entitlements "${appex_path}" "${entitlement_dir}/${appex_name}.entitlements"
+            appex_args+=(--appex-entitlements "${entitlement_dir}/${appex_name}.entitlements")
+          done < <(find "${app_path}/PlugIns" -maxdepth 1 -name '*.appex' -type d | sort)
         fi
         if ! security cms -D -i "${app_path}/embedded.mobileprovision" \
           > "${entitlement_dir}/embedded.plist" \
@@ -534,7 +548,8 @@ jobs:
         fi
         python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" \
           --signed-entitlements "${entitlement_dir}/signed-entitlements.plist" \
-          --provisioning-profile "${entitlement_dir}/embedded.plist"
+          --provisioning-profile "${entitlement_dir}/embedded.plist" \
+          "${appex_args[@]}"
 
     - name: Upload to TestFlight
       env:

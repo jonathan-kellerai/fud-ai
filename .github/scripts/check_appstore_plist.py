@@ -666,6 +666,59 @@ def signed_entitlement_problems(plist):
     return healthkit_entitlement_problems(plist, "signed entitlements")
 
 
+APPLICATION_IDENTIFIER_RE = re.compile(r"[A-Z0-9]{10}\..+")
+ICLOUD_ENVIRONMENT_KEY = "com.apple.developer.icloud-container-environment"
+
+
+def application_identifier_problems(entitlements, label):
+    if not isinstance(entitlements, dict):
+        return [f"{label} is not a dictionary"]
+    identifier = entitlements.get("application-identifier")
+    if not isinstance(identifier, str) or APPLICATION_IDENTIFIER_RE.fullmatch(identifier) is None:
+        return [
+            f"{label} application-identifier must be TeamID.bundleId, got {identifier!r}"
+        ]
+    team = entitlements.get("com.apple.developer.team-identifier")
+    if team != identifier.split(".", 1)[0]:
+        return [
+            f"{label} team identifier {team!r} does not match application-identifier {identifier!r}"
+        ]
+    return []
+
+
+def icloud_environment_problems(entitlements, label):
+    if not isinstance(entitlements, dict):
+        return [f"{label} is not a dictionary"]
+    uses_icloud = (
+        "com.apple.developer.icloud-services" in entitlements
+        or "com.apple.developer.icloud-container-identifiers" in entitlements
+    )
+    environment = entitlements.get(ICLOUD_ENVIRONMENT_KEY)
+    if uses_icloud and environment != "Production":
+        return [
+            f"{label} {ICLOUD_ENVIRONMENT_KEY} must be the string Production, got {environment!r}"
+        ]
+    if environment == "":
+        return [f"{label} {ICLOUD_ENVIRONMENT_KEY} is an empty string"]
+    return []
+
+
+def distribution_signature_problems(plist):
+    """HealthKit plus the App Store keys run 49 said the re-sign dropped."""
+    problems = healthkit_entitlement_problems(plist, "signed entitlements")
+    if isinstance(plist, dict):
+        problems.extend(application_identifier_problems(plist, "signed entitlements"))
+        problems.extend(icloud_environment_problems(plist, "signed entitlements"))
+    return problems
+
+
+def appex_entitlement_problems(plist):
+    problems = application_identifier_problems(plist, "appex entitlements")
+    if isinstance(plist, dict):
+        problems.extend(icloud_environment_problems(plist, "appex entitlements"))
+    return problems
+
+
 def provisioning_profile_problems(plist):
     if not isinstance(plist, dict):
         return ["provisioning profile is not a dictionary"]
@@ -805,6 +858,37 @@ def self_check():
         fail("codesign [Dict] with HealthKit false was accepted")
     if load_plist_bytes(false_text)[HEALTHKIT_ACCESS_KEY] != ["health-records"]:
         fail("codesign [Dict] array of strings was not decoded")
+    distribution_ok = {
+        HEALTHKIT_KEY: True,
+        HEALTHKIT_ACCESS_KEY: [],
+        "application-identifier": "2UMNXHG36N.com.jonathanbowe.jlphysical",
+        "com.apple.developer.team-identifier": "2UMNXHG36N",
+        "com.apple.developer.icloud-services": ["CloudKit"],
+        "com.apple.developer.icloud-container-identifiers": ["iCloud.com.jonathanbowe.jlphysical"],
+        ICLOUD_ENVIRONMENT_KEY: "Production",
+    }
+    if distribution_signature_problems(distribution_ok):
+        fail("complete App Store signature was rejected")
+    blank_environment = dict(distribution_ok)
+    blank_environment[ICLOUD_ENVIRONMENT_KEY] = ""
+    if not distribution_signature_problems(blank_environment):
+        fail("empty iCloud container environment was accepted")
+    array_environment = dict(distribution_ok)
+    array_environment[ICLOUD_ENVIRONMENT_KEY] = ["Production"]
+    if not distribution_signature_problems(array_environment):
+        fail("iCloud container environment array was accepted")
+    missing_identifier = dict(distribution_ok)
+    del missing_identifier["application-identifier"]
+    if not distribution_signature_problems(missing_identifier):
+        fail("signature without application-identifier was accepted")
+    appex_ok = {
+        "application-identifier": "2UMNXHG36N.com.jonathanbowe.jlphysical.FudAIWidgetsExtension",
+        "com.apple.developer.team-identifier": "2UMNXHG36N",
+    }
+    if appex_entitlement_problems(appex_ok):
+        fail("appex application-identifier was rejected")
+    if not appex_entitlement_problems({}):
+        fail("appex without application-identifier was accepted")
     try:
         load_plist_bytes(b"not a plist")
     except SystemExit:
@@ -815,12 +899,24 @@ def self_check():
 
 
 def argument_path(flag):
-    if flag not in sys.argv:
+    paths = argument_paths(flag)
+    if not paths:
         return None
-    index = sys.argv.index(flag)
-    if index + 1 >= len(sys.argv):
-        fail(f"{flag} requires a path")
-    return Path(sys.argv[index + 1])
+    return paths[0]
+
+
+def argument_paths(flag):
+    paths = []
+    index = 0
+    while index < len(sys.argv):
+        if sys.argv[index] != flag:
+            index += 1
+            continue
+        if index + 1 >= len(sys.argv):
+            fail(f"{flag} requires a path")
+        paths.append(Path(sys.argv[index + 1]))
+        index += 2
+    return paths
 
 
 def main():
@@ -833,8 +929,11 @@ def main():
     if signed_path is not None:
         ran_targeted_check = True
         problems.extend(
-            signed_entitlement_problems(load_plist_bytes(signed_path.read_bytes()))
+            distribution_signature_problems(load_plist_bytes(signed_path.read_bytes()))
         )
+    for appex_path in argument_paths("--appex-entitlements"):
+        ran_targeted_check = True
+        problems.extend(appex_entitlement_problems(load_plist_bytes(appex_path.read_bytes())))
     profile_path = argument_path("--provisioning-profile")
     if profile_path is not None:
         ran_targeted_check = True

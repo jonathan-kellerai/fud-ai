@@ -745,6 +745,8 @@ HEALTHKIT_ACCESS_KEY = "com.apple.developer.healthkit.access"
 ICLOUD_SERVICES_KEY = "com.apple.developer.icloud-services"
 ICLOUD_CONTAINERS_KEY = "com.apple.developer.icloud-container-identifiers"
 ICLOUD_ENVIRONMENT_KEY = "com.apple.developer.icloud-container-environment"
+APPLICATION_IDENTIFIER_KEY = "application-identifier"
+TEAM_IDENTIFIER_KEY = "com.apple.developer.team-identifier"
 
 
 def values_of(entitlements, key):
@@ -902,6 +904,31 @@ def load_expanded_entitlements(path, bundle_id):
     )
 
 
+def uses_icloud(entitlements):
+    return ICLOUD_SERVICES_KEY in entitlements or ICLOUD_CONTAINERS_KEY in entitlements
+
+
+def complete_app_store_entitlements(path, bundle_id):
+    """Entitlements codesign embeds for an App Store re-sign.
+
+    The source files omit application-identifier. Passing only those keys
+    replaces the export signature and drops TeamID.bundleId from the app,
+    widget, and share extension. iCloud container identifiers without an
+    environment make codesign write an empty icloud-container-environment
+    string. App Store validation requires that value to be the string
+    Production. The source file stays unchanged so local development is not
+    forced to Production.
+    """
+    entitlements = load_expanded_entitlements(path, bundle_id)
+    entitlements[APPLICATION_IDENTIFIER_KEY] = f"{TEAM_ID}.{bundle_id}"
+    entitlements[TEAM_IDENTIFIER_KEY] = TEAM_ID
+    if uses_icloud(entitlements):
+        entitlements[ICLOUD_ENVIRONMENT_KEY] = "Production"
+    else:
+        entitlements.pop(ICLOUD_ENVIRONMENT_KEY, None)
+    return entitlements
+
+
 def write_archived_entitlements(archive_path):
     """Write archived-expanded-entitlements.xcent into an unsigned archive.
 
@@ -934,7 +961,7 @@ def write_archived_entitlements(archive_path):
         bundle_dir = archive / relative
         if not bundle_dir.is_dir():
             fail(f"Archive is missing {relative}")
-        expanded = load_expanded_entitlements(entitlements_path, bundle_id)
+        expanded = complete_app_store_entitlements(entitlements_path, bundle_id)
         if bundle_id == "com.jonathanbowe.jlphysical":
             if not is_enabled(expanded.get(HEALTHKIT_KEY)):
                 fail("Expanded app entitlements are missing HealthKit")
@@ -980,7 +1007,7 @@ def resign_plan(app):
     )
     for relative, entitlements_path, bundle_id in bundles:
         target = app if relative == "." else app / relative
-        steps.append((target, load_expanded_entitlements(entitlements_path, bundle_id)))
+        steps.append((target, complete_app_store_entitlements(entitlements_path, bundle_id)))
     return steps
 
 
@@ -1350,6 +1377,14 @@ def self_check():
             fail("archive entitlements did not expand the app group")
         if expanded.get(ICLOUD_CONTAINERS_KEY) != [ICLOUD_CONTAINER]:
             fail("archive entitlements did not expand the iCloud container")
+        if expanded.get(APPLICATION_IDENTIFIER_KEY) != f"{TEAM_ID}.com.jonathanbowe.jlphysical":
+            fail("archive entitlements dropped application-identifier")
+        if expanded.get(TEAM_IDENTIFIER_KEY) != TEAM_ID:
+            fail("archive entitlements dropped the team identifier")
+        if expanded.get(ICLOUD_ENVIRONMENT_KEY) != "Production":
+            fail("archive entitlements must set iCloud environment to the string Production")
+        if not isinstance(expanded.get(ICLOUD_ENVIRONMENT_KEY), str):
+            fail("archive iCloud environment was not a string")
         widget_xcent = (
             archive
             / "Products/Applications/calorietracker.app/PlugIns/FudAIWidgetsExtension.appex/archived-expanded-entitlements.xcent"
@@ -1360,6 +1395,12 @@ def self_check():
             fail("widget archive entitlements did not expand the app group")
         if HEALTHKIT_KEY in widget_plist:
             fail("widget archive entitlements included HealthKit")
+        if widget_plist.get(APPLICATION_IDENTIFIER_KEY) != (
+            f"{TEAM_ID}.com.jonathanbowe.jlphysical.FudAIWidgetsExtension"
+        ):
+            fail("widget archive entitlements dropped application-identifier")
+        if ICLOUD_ENVIRONMENT_KEY in widget_plist:
+            fail("widget archive entitlements set an iCloud environment")
 
     with tempfile.TemporaryDirectory() as tmp:
         app = Path(tmp) / "Payload" / "calorietracker.app"
@@ -1379,6 +1420,7 @@ def self_check():
         if steps[0][1] is not None or steps[1][1] is not None:
             fail("framework resign steps should keep their existing entitlements")
         widget_entitlements = steps[2][1]
+        share_entitlements = steps[3][1]
         app_entitlements = steps[4][1]
         if HEALTHKIT_KEY in widget_entitlements:
             fail("widget resign entitlements included HealthKit")
@@ -1388,6 +1430,22 @@ def self_check():
             fail("app resign entitlements dropped HealthKit access")
         if app_entitlements.get("com.apple.security.application-groups") != [APP_GROUP]:
             fail("app resign entitlements did not expand the app group")
+        if app_entitlements.get(APPLICATION_IDENTIFIER_KEY) != (
+            f"{TEAM_ID}.com.jonathanbowe.jlphysical"
+        ):
+            fail("app resign entitlements dropped application-identifier")
+        if app_entitlements.get(ICLOUD_ENVIRONMENT_KEY) != "Production":
+            fail("app resign entitlements must set iCloud environment to Production")
+        if share_entitlements.get(APPLICATION_IDENTIFIER_KEY) != (
+            f"{TEAM_ID}.com.jonathanbowe.jlphysical.calorietrackerShare"
+        ):
+            fail("share resign entitlements dropped application-identifier")
+        if widget_entitlements.get(APPLICATION_IDENTIFIER_KEY) != (
+            f"{TEAM_ID}.com.jonathanbowe.jlphysical.FudAIWidgetsExtension"
+        ):
+            fail("widget resign entitlements dropped application-identifier")
+        if ICLOUD_ENVIRONMENT_KEY in widget_entitlements or ICLOUD_ENVIRONMENT_KEY in share_entitlements:
+            fail("extension resign entitlements set an iCloud environment")
     print("self-check ok")
 
 
