@@ -130,6 +130,11 @@ Both builds must succeed before triggering the TestFlight workflow.
 - The selected key id is 10 characters. `ISSUER_ID` is the Issuer ID UUID on the Keys page, not Team ID `2UMNXHG36N`, and it is shared by both keys
 - The key must not be revoked. It has to belong to team `2UMNXHG36N`
 
+### "Missing Info.plist value" / BGTaskSchedulerPermittedIdentifiers / "UPLOAD FAILED" and the job still succeeded
+- Run 44 reached Apple with `UIBackgroundModes` `processing` and no `BGTaskSchedulerPermittedIdentifiers`. The only registered task is `com.jlphysical.steps-sync`, a `BGAppRefreshTask` (`fetch`), scheduled from `AppDelegate`. `processing` is not declared
+- `altool` can print `UPLOAD FAILED` and still exit 0. The upload step treats that text, `Failed to upload package`, or a non-zero exit as failure and does not print "Upload to TestFlight initiated"
+- Before upload, `.github/scripts/check_appstore_plist.py` checks the IPA for the app usage strings, `ITSAppUsesNonExemptEncryption`, matching `CFBundleShortVersionString` and `CFBundleVersion` on the app, widget, and share extension, and extension keys Apple rejects. Photo saves are add-only, so the required photo key is `NSPhotoLibraryAddUsageDescription`
+
 ### "Export Failed"
 - Check build logs for signing or entitlement errors
 - Verify all extensions have correct bundle ID prefixes

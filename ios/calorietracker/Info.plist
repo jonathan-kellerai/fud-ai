@@ -19,10 +19,13 @@
 	<string>Read your weight, height, body composition, nutrition, workouts, daily steps, and workout calories to keep your history in sync and track your 10,000 steps/day goal.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Write, update, or remove your nutrition, body measurements, and calculated workout calories when you change your logs.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.jlphysical.steps-sync</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
-		<string>processing</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

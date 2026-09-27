@@ -492,6 +492,7 @@ jobs:
       env:
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
       run: |
+        set -eo pipefail
         cd ios
 
         if [ -z "${IPA_PATH:-}" ] || [ ! -f "${IPA_PATH}" ]; then
@@ -499,19 +500,33 @@ jobs:
           exit 1
         fi
 
+        # altool --validate-app is not available on Linux. This checks the built IPA
+        # for the usage strings, version match, and background-task keys Apple rejected.
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" --ipa "${IPA_PATH}"
+
         # --upload-app accepts --apiKey/--apiIssuer. --list-providers does not.
         # altool loads ~/private_keys/AuthKey_<selected key id>.p8
+        # Run 44 printed "Upload to TestFlight initiated" after altool reported
+        # UPLOAD FAILED and the step still exited 0.
         if [ "${ASC_KEY_LABEL}" = "admin" ]; then
           echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
         else
           echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
         fi
+        upload_log="${RUNNER_TEMP}/altool-upload.log"
+        set +e
         xcrun altool --upload-app \
           --type ios \
           --file "${IPA_PATH}" \
           --apiKey "${ASC_KEY_ID}" \
           --apiIssuer "${ISSUER_ID}" \
-          --verbose
+          --verbose 2>&1 | tee "${upload_log}"
+        altool_status=${PIPESTATUS[0]}
+        set -e
+        if grep -E -q 'UPLOAD FAILED|Failed to upload package' "${upload_log}" || [ "${altool_status}" -ne 0 ]; then
+          echo "ERROR: altool upload failed (exit ${altool_status})."
+          exit 1
+        fi
 
         echo "Upload to TestFlight initiated"
         echo ""
