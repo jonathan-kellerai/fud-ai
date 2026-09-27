@@ -222,7 +222,8 @@ class HealthKitManager {
     /// v11: the body-measurement import used to prompt for only body mass, lean
     /// body mass, and body fat. Re-request the full share/read set, including
     /// stepCount, so that narrow grant is not the only Health permission.
-    private let typesVersion = 11
+    /// v12: sleep, resting heart rate, and HRV (SDNN) joined the same read set.
+    private let typesVersion = 12
     private let typesVersionKey = "healthKitTypesVersion"
     private static let authorizationLock = NSLock()
     private static var inFlightFullAuthorization: (id: UUID, task: Task<Bool, Never>)?
@@ -342,6 +343,11 @@ class HealthKitManager {
         // rebuilding the food log from our own tagged samples after a reinstall.
         types.formUnion(nutritionTypeIdentifiers.map { HKQuantityType($0) })
         types.insert(HKObjectType.workoutType())
+        types.insert(HKQuantityType(.restingHeartRate))
+        types.insert(HKQuantityType(.heartRateVariabilitySDNN))
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            types.insert(sleep)
+        }
         return types
     }
 
@@ -1248,6 +1254,113 @@ class HealthKitManager {
                 }
                 let count = statistics.sumQuantity()?.doubleValue(for: .count()) ?? 0
                 continuation.resume(returning: count >= 0 ? Int(count.rounded()) : nil)
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    /// Step totals for each local day in `start...through`, inclusive. Nil when the query fails.
+    func fetchStepsByDay(from startDate: Date, through endDate: Date) async -> [Date: Int]? {
+        guard await ensureFullAuthorization() else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        let last = calendar.startOfDay(for: endDate)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: last), end > start else { return [:] }
+        let type = HKQuantityType(.stepCount)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        var interval = DateComponents()
+        interval.day = 1
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: .cumulativeSum,
+                anchorDate: start,
+                intervalComponents: interval
+            )
+            query.initialResultsHandler = { _, collection, error in
+                guard error == nil, let collection else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                var values: [Date: Int] = [:]
+                collection.enumerateStatistics(from: start, to: end) { statistics, _ in
+                    let count = statistics.sumQuantity()?.doubleValue(for: .count()) ?? 0
+                    values[calendar.startOfDay(for: statistics.startDate)] = Int(count.rounded())
+                }
+                continuation.resume(returning: values)
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    /// Quantity samples in a local date range, oldest first. Nil when the query fails.
+    func fetchSamples(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        through endDate: Date
+    ) async -> [HealthSampleReading]? {
+        guard await ensureFullAuthorization() else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)) else {
+            return nil
+        }
+        let type = HKQuantityType(identifier)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, results, error in
+                guard error == nil, let samples = results as? [HKQuantitySample] else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: samples.map { sample in
+                    HealthSampleReading(
+                        sampleUUID: sample.uuid,
+                        value: sample.quantity.doubleValue(for: unit),
+                        date: sample.startDate,
+                        fudaiID: nil,
+                        sourceName: HealthSampleReading.normalizedSourceName(sample.sourceRevision.source.name)
+                    )
+                })
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    /// Asleep time for the night that ends on `date` (previous evening through that morning).
+    /// Nil when Health has no sleep samples in the window.
+    func fetchAsleepSeconds(on date: Date) async -> TimeInterval? {
+        guard await ensureFullAuthorization() else { return nil }
+        guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return nil }
+        let calendar = Calendar.current
+        let morning = calendar.startOfDay(for: date)
+        guard let windowStart = calendar.date(byAdding: .hour, value: -12, to: morning),
+              let windowEnd = calendar.date(byAdding: .hour, value: 12, to: morning) else {
+            return nil
+        }
+        let predicate = HKQuery.predicateForSamples(withStart: windowStart, end: windowEnd, options: .strictStartDate)
+        let asleepValues: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
+        ]
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, results, error in
+                guard error == nil, let samples = results as? [HKCategorySample], !samples.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let seconds = samples.reduce(0.0) { total, sample in
+                    guard asleepValues.contains(sample.value) else { return total }
+                    let start = max(sample.startDate, windowStart)
+                    let end = min(sample.endDate, windowEnd)
+                    return total + max(0, end.timeIntervalSince(start))
+                }
+                continuation.resume(returning: seconds)
             }
             healthStore.execute(query)
         }

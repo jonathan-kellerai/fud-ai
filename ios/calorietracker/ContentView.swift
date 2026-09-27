@@ -833,11 +833,8 @@ struct HomeView: View {
     @Environment(WaterStore.self) private var waterStore
     @Environment(FastingStore.self) private var fastingStore
     @Environment(NotificationManager.self) private var notificationManager
-    @Environment(HealthKitManager.self) private var healthKitManager
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("healthKitEnabled") private var healthKitEnabled = false
-    @State private var dailySteps: Int?
-    @State private var dailyStepsFetchGeneration = 0
+    @State private var homeRefreshToken = 0
     @State private var showCamera = false
     @State private var showBarcodeScanner = false
     @State private var capturedImage: UIImage?
@@ -1000,12 +997,9 @@ struct HomeView: View {
     // Bumped each time the app is opened (cold launch = 1, then +1 on every
     // return from background). Drives the gauge + macro "fill from zero" reveal.
     // Not bumped on tab switches or data edits, so it only plays on app open.
-    @State private var launchFillEpoch = 1
-    @State private var wasBackgrounded = false
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     @AppStorage(FoodLogSortOrder.storageKey) private var foodLogSortOrderRaw = FoodLogSortOrder.defaultOrder.rawValue
     @AppStorage(HomeTopNutrient.storageKey) private var homeTopNutrientsRaw = HomeTopNutrient.storageValue(for: HomeTopNutrient.defaultSelection)
-    @AppStorage(OptionalNutrientGoals.storageKey) private var optionalNutrientGoalsData = Data()
     @AppStorage(WaterSettings.enabledKey) private var waterTrackingEnabled = false
     @AppStorage(WaterSettings.dailyGoalKey) private var waterDailyGoal = WaterSettings.defaultDailyGoalMl
     @AppStorage(WaterSettings.unitKey) private var waterUnitRaw = WaterUnit.defaultUnit.rawValue
@@ -1014,137 +1008,15 @@ struct HomeView: View {
     @AppStorage(FastingSettings.notificationEnabledKey) private var fastingGoalNotificationEnabled = true
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @Environment(ProfileStore.self) private var profileStore
-    @State private var homeBurnLine: String?
-    @State private var homeBurnRefreshGeneration = 0
 
     /// Force a body re-evaluation whenever profileStore.profile changes by reading it
     /// at the top of body. SwiftUI's @Observable tracking sometimes misses the access
     /// when the read is buried in a computed property; explicit access guarantees it.
     private var userProfile: UserProfile { profileStore.profile }
-    private var calorieGoal: Int { userProfile.effectiveCalories }
-    private var proteinGoal: Int { userProfile.effectiveProtein }
-    private var carbsGoal: Int { userProfile.effectiveCarbs }
-    private var fatGoal: Int { userProfile.effectiveFat }
-    private var selectedCalories: Int { foodStore.calories(for: selectedDate) }
     private var isToday: Bool { Calendar.current.isDateInToday(selectedDate) }
     private var foodLogSortOrder: FoodLogSortOrder { FoodLogSortOrder.order(for: foodLogSortOrderRaw) }
-    private var homeTopNutrients: [HomeTopNutrient] { HomeTopNutrient.selection(from: homeTopNutrientsRaw) }
-    private var displayedHomeNutrients: [HomeTopNutrient] { homeTopNutrients }
-    private var optionalNutrientGoals: OptionalNutrientGoals { OptionalNutrientGoals.decoded(from: optionalNutrientGoalsData) }
     private var waterUnit: WaterUnit { WaterUnit(rawValue: waterUnitRaw) ?? .defaultUnit }
-    private var waterPillarUnit: String { waterUnit == .fluidOunces ? " fl oz" : "ml" }
     private var logDateForSelectedDay: Date { logDate(on: selectedDate) }
-
-    private var navigationTitle: String {
-        if isToday { return "Today" }
-        return selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-    }
-
-    /// Horizontal swipe → previous/next day. Attached only to the top section (calorie hero +
-    /// macros), not the food log below "View More", so it never competes with the food rows'
-    /// own swipe actions or vertical scrolling there. `.simultaneousGesture` lets the List still
-    /// scroll; we act only on a clearly horizontal flick.
-    private var daySwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 24)
-            .onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                guard abs(dx) > 60, abs(dx) > abs(dy) * 1.5 else { return }
-                changeDay(by: dx < 0 ? 1 : -1)
-            }
-    }
-
-    /// Step the selected day by `delta` (−1 previous, +1 next), from the swipe gesture. Won't move
-    /// past today, and gives a light haptic on a successful change. Animates with the existing
-    /// `.animation(.snappy, value: selectedDate)` on the List.
-    private func changeDay(by delta: Int) {
-        let calendar = Calendar.current
-        guard let newDate = calendar.date(byAdding: .day, value: delta, to: selectedDate) else { return }
-        if delta > 0 && calendar.startOfDay(for: newDate) > calendar.startOfDay(for: .now) { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        selectedDate = newDate
-    }
-
-private var dailyStepsTaskKey: String {
-        "\(selectedDate.timeIntervalSince1970)-\(healthKitEnabled)"
-    }
-
-    private func refreshDailySteps() async {
-        let requestedDate = selectedDate
-        dailyStepsFetchGeneration += 1
-        let generation = dailyStepsFetchGeneration
-        guard !Task.isCancelled else { return }
-        let steps = await healthKitManager.fetchStepsForDay(requestedDate)
-        guard !Task.isCancelled else { return }
-        guard generation == dailyStepsFetchGeneration else { return }
-        guard Calendar.current.isDate(selectedDate, inSameDayAs: requestedDate) else { return }
-        dailySteps = steps
-    }
-
-    private var homeBurnRefreshToken: String {
-        let profileBmr = Int(userProfile.bmr.rounded())
-        return "\(healthKitEnabled)-\(selectedDate.timeIntervalSince1970)-\(selectedCalories)-\(profileBmr)-\(homeBurnRefreshGeneration)"
-    }
-
-    private func formattedHomeBurnLine(from balance: DailyCalorieBalance) -> String {
-        let burned = balance.burnedCalories.formatted()
-        switch balance.direction {
-        case .deficit:
-            return String(
-                format: String(localized: "%@ burned · %@ deficit"),
-                burned,
-                balance.differenceCalories.formatted()
-            )
-        case .surplus:
-            return String(
-                format: String(localized: "%@ burned · %@ surplus"),
-                burned,
-                balance.differenceCalories.formatted()
-            )
-        case .balanced:
-            return String(format: String(localized: "%@ burned · balanced"), burned)
-        }
-    }
-
-    private func refreshHomeBurnLine() async {
-        let requestDate = selectedDate
-        let requestCalories = selectedCalories
-        let requestBmr = Int(userProfile.bmr.rounded())
-        let requestHealthEnabled = healthKitEnabled
-
-        func inputsStillMatch() -> Bool {
-            healthKitEnabled == requestHealthEnabled
-                && Calendar.current.isDate(selectedDate, inSameDayAs: requestDate)
-                && selectedCalories == requestCalories
-                && Int(userProfile.bmr.rounded()) == requestBmr
-        }
-
-        guard requestHealthEnabled else {
-            homeBurnLine = nil
-            return
-        }
-        guard let energy = await healthKitManager.readEnergyForDay(requestDate) else {
-            guard !Task.isCancelled, inputsStillMatch() else { return }
-            homeBurnLine = nil
-            return
-        }
-        guard !Task.isCancelled, inputsStillMatch() else { return }
-        guard let burned = DailySummaryPolicy.resolveBurnedCalories(
-            measuredTotalCalories: energy.totalCalories,
-            externalActiveCalories: energy.activeCalories,
-            profileBmrCalories: requestBmr
-        ) else {
-            guard inputsStillMatch() else { return }
-            homeBurnLine = nil
-            return
-        }
-        guard inputsStillMatch() else { return }
-        let balance = DailySummaryPolicy.balance(
-            eatenCalories: requestCalories,
-            burnedCalories: burned
-        )
-        homeBurnLine = formattedHomeBurnLine(from: balance)
-    }
 
     private func logDate(on day: Date, now: Date = .now) -> Date {
         let calendar = Calendar.current
@@ -1275,89 +1147,8 @@ private var dailyStepsTaskKey: String {
         let _ = profileStore.profile
         return NavigationStack {
             List {
-                // Week energy strip
-                Section {
-                    WeekEnergyStrip(
-                        selectedDate: $selectedDate,
-                        caloriesForDate: { foodStore.calories(for: $0) },
-                        calorieGoal: calorieGoal
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                }
-
-                // Nutrition summary. Keeping the dome, macros, water and detail affordance in
-                // one section removes an unhelpful List section gap and matches Android's
-                // compact top-region hierarchy.
-                Section {
-                    CalorieGauge(
-                        eaten: selectedCalories,
-                        goal: calorieGoal,
-                        burnLine: homeBurnLine,
-                        launchFillEpoch: launchFillEpoch
-                    )
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, -8)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(daySwipeGesture)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .task(id: homeBurnRefreshToken) {
-                            await refreshHomeBurnLine()
-                        }
-
-                    if let dailySteps {
-                        DailyStepsRow(steps: dailySteps)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
-
-                    HStack(alignment: .top, spacing: 4) {
-                        ForEach(displayedHomeNutrients) { nutrient in
-                            MacroVerticalBar(
-                                label: nutrient.displayName,
-                                current: nutrient.value(from: foodStore, on: selectedDate),
-                                goal: nutrient.goal(for: userProfile, optionalGoals: optionalNutrientGoals),
-                                unit: nutrient.unit,
-                                gradient: nutrient.gradientColors,
-                                launchFillEpoch: launchFillEpoch
-                            )
-                        }
-                        if waterTrackingEnabled {
-                            MacroVerticalBar(
-                                label: "Water",
-                                current: waterUnit.displayAmount(
-                                    forMilliliters: waterStore.total(on: selectedDate)
-                                ),
-                                goal: waterUnit.displayAmount(forMilliliters: waterDailyGoal),
-                                unit: waterPillarUnit,
-                                gradient: AppColors.calorieGradient,
-                                launchFillEpoch: launchFillEpoch
-                            )
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(daySwipeGesture)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
-                    Button {
-                        showNutritionDetail = true
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Text("View More")
-                                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                            Image(systemName: "chevron.right")
-                                .font(.caption2)
-                            Spacer()
-                        }
-                        .foregroundStyle(AppColors.calorie.opacity(0.6))
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                HomeV2Cards(selectedDate: $selectedDate, refreshToken: homeRefreshToken) {
+                    showNutritionDetail = true
                 }
 
                 // Unified diary: water and fasting are grouped by their log/end time,
@@ -1527,9 +1318,6 @@ private var dailyStepsTaskKey: String {
             .scrollContentBackground(.hidden)
             .background(AppColors.appBackground)
             .animation(.snappy, value: selectedDate)
-            .task(id: dailyStepsTaskKey) {
-                await refreshDailySteps()
-            }
             .contentMargins(.bottom, isFoodSelectionMode ? 8 : 96, for: .scrollContent)
             .sensoryFeedback(.selection, trigger: selectedFoodIDs) { _, selection in
                 !selection.isEmpty
@@ -2052,17 +1840,7 @@ private var dailyStepsTaskKey: String {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     checkAndConsumeSharedImage()
-                    Task { await refreshDailySteps() }
-                    // Returned to the foreground -> replay the fill-from-zero reveal.
-                    // Gated on wasBackgrounded so transient .inactive blips (control
-                    // center, app switcher) don't retrigger it.
-                    if wasBackgrounded {
-                        launchFillEpoch += 1
-                        wasBackgrounded = false
-                    }
-                    homeBurnRefreshGeneration += 1
-                } else if newPhase == .background {
-                    wasBackgrounded = true
+                    homeRefreshToken += 1
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in

@@ -36,6 +36,13 @@ enum NeonBridgeError: LocalizedError {
         return false
     }
 
+    var isAlreadyCompleted: Bool {
+        if case .httpError(let statusCode, let message) = self, statusCode == 409 {
+            return message == "already_completed"
+        }
+        return false
+    }
+
     /// The bridge did not answer with a usable program payload.
     var isConnectivityFailure: Bool {
         switch self {
@@ -235,6 +242,138 @@ final class NeonBridgeService {
         try validateResponse(response, data: data)
     }
 
+    func peptidesToday(date: String? = nil) async throws -> PeptideTodayResponse {
+        var items: [URLQueryItem] = []
+        if let date, !date.isEmpty {
+            items.append(URLQueryItem(name: "date", value: date))
+        }
+        let url = try makeURL(path: "/api/peptides/today", queryItems: items.isEmpty ? nil : items)
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try JSONDecoder().decode(PeptideTodayResponse.self, from: data)
+    }
+
+    func peptideInventory() async throws -> [PeptideInventoryItem] {
+        let url = try makeURL(path: "/api/peptides/inventory")
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try JSONDecoder().decode(PeptideInventoryList.self, from: data).inventory
+    }
+
+    func peptideInventory(id: String) async throws -> PeptideInventoryItem {
+        let url = try makeURL(path: "/api/peptides/inventory/\(pathComponent(id))")
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try JSONDecoder().decode(PeptideInventoryItem.self, from: data)
+    }
+
+    func peptideSchedules(activeOnly: Bool = false) async throws -> [PeptideSchedule] {
+        let items = activeOnly ? [URLQueryItem(name: "active", value: "1")] : nil
+        let url = try makeURL(path: "/api/peptides/schedules", queryItems: items)
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try JSONDecoder().decode(PeptideScheduleList.self, from: data).schedules
+    }
+
+    func peptideSchedule(id: String) async throws -> PeptideSchedule {
+        let url = try makeURL(path: "/api/peptides/schedules/\(pathComponent(id))")
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try JSONDecoder().decode(PeptideSchedule.self, from: data)
+    }
+
+    func peptideAdministration(id: String) async throws -> PeptideAdministration {
+        let url = try makeURL(path: "/api/peptides/administrations/\(pathComponent(id))")
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try decodePeptideAdministration(data)
+    }
+
+    func createCompletedAdministration(
+        clientRequestID: String,
+        plannedID: String?,
+        datetime: String,
+        dose: Double?,
+        units: String?,
+        compound: String?,
+        route: String?,
+        notes: String?,
+        sourceVial: String?
+    ) async throws -> PeptideAdministration {
+        let url = try makeURL(path: "/api/peptides/administrations")
+        var request = makeRequest(url: url, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "client_request_id": clientRequestID,
+            "datetime": datetime,
+        ]
+        if let plannedID, !plannedID.isEmpty { body["planned_id"] = plannedID }
+        if let dose { body["dose"] = dose }
+        if let units, !units.isEmpty { body["units"] = units }
+        if let compound, !compound.isEmpty { body["compound"] = compound }
+        if let route, !route.isEmpty { body["route"] = route }
+        if let notes, !notes.isEmpty { body["notes"] = notes }
+        if let sourceVial, !sourceVial.isEmpty { body["source_vial"] = sourceVial }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           http.statusCode == 409,
+           BridgeErrorFormatting.errorCode(from: data) == "already_completed" {
+            throw NeonBridgeError.httpError(statusCode: 409, message: "already_completed")
+        }
+        try validateResponse(response, data: data)
+        return try decodePeptideAdministration(data)
+    }
+
+    func correctAdministration(
+        id: String,
+        reason: String,
+        changes: [String: Any]
+    ) async throws -> PeptideAdministration {
+        try await patchAdministration(id: id, body: [
+            "action": "correct",
+            "reason": reason,
+            "changes": changes,
+        ])
+    }
+
+    func voidAdministration(id: String, reason: String) async throws -> PeptideAdministration {
+        try await patchAdministration(id: id, body: [
+            "action": "void",
+            "reason": reason,
+        ])
+    }
+
+    private func patchAdministration(id: String, body: [String: Any]) async throws -> PeptideAdministration {
+        let url = try makeURL(path: "/api/peptides/administrations/\(pathComponent(id))")
+        var request = makeRequest(url: url, method: "PATCH")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try decodePeptideAdministration(data)
+    }
+
+    private func decodePeptideAdministration(_ data: Data) throws -> PeptideAdministration {
+        let decoder = JSONDecoder()
+        if let row = try? decoder.decode(PeptideAdministration.self, from: data), !row.id.isEmpty {
+            return row
+        }
+        struct Envelope: Decodable { let administration: PeptideAdministration? }
+        if let envelope = try? decoder.decode(Envelope.self, from: data), let row = envelope.administration, !row.id.isEmpty {
+            return row
+        }
+        throw NeonBridgeError.decodingError(
+            DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Peptide response was not an administration row"))
+        )
+    }
+
     func deleteDraft(id: String) async throws {
         let url = try makeURL(path: "/api/programs/\(pathComponent(id))")
         let request = makeRequest(url: url, method: "DELETE")
@@ -354,5 +493,15 @@ enum BridgeErrorFormatting {
             return error
         }
         return nil
+    }
+
+    static func errorCode(from data: Data) -> String? {
+        guard !data.isEmpty,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = object["error"] as? String,
+              !error.isEmpty else {
+            return nil
+        }
+        return error
     }
 }
