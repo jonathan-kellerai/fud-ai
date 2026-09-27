@@ -270,25 +270,69 @@ struct IronGrainOverlay: View {
 }
 
 enum IronGrainTile {
+    private static let tileSide = 128
+    private static let speckCount = 1_600
+
     static let image: UIImage = {
-        let side = 128
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
-        return renderer.image { context in
-            for index in 0..<1600 {
-                let x = CGFloat(IronGrainTile.mix(index, 1) % side)
-                let y = CGFloat(IronGrainTile.mix(index, 7) % side)
-                let alpha = CGFloat(40 + (IronGrainTile.mix(index, 13) % 180)) / 255
-                let white: CGFloat = IronGrainTile.mix(index, 3) % 2 == 0 ? 1 : 0
-                UIColor(white: white, alpha: alpha).setFill()
-                context.fill(CGRect(x: x, y: y, width: 1, height: 1))
-            }
+        let rendered = renderGrain()
+        guard rendered.size.width > 0, rendered.size.height > 0 else {
+            return plainTile()
         }
+        return rendered
     }()
 
-    private static func mix(_ value: Int, _ salt: Int) -> Int {
-        var mixed = UInt32(bitPattern: Int32(value &* 374761393 &+ salt &* 668265263))
-        mixed = (mixed ^ (mixed >> 13)) &* 1274126177
+    private static func renderGrain() -> UIImage {
+        let side = tileSide
+        guard side > 0 else { return plainTile() }
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        return renderer.image { context in
+            UIColor(IronTheme.canvas).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: CGFloat(side), height: CGFloat(side)))
+            for index in 0..<speckCount {
+                guard let origin = speckOrigin(index: index, side: side) else { continue }
+                UIColor(white: speckLuma(index: index), alpha: speckAlpha(index: index)).setFill()
+                context.fill(CGRect(x: origin.x, y: origin.y, width: 1, height: 1))
+            }
+        }
+    }
+
+    private static func speckOrigin(index: Int, side: Int) -> CGPoint? {
+        guard side > 0 else { return nil }
+        let x = mix(index, salt: 1) % side
+        let y = mix(index, salt: 7) % side
+        guard x >= 0, y >= 0 else { return nil }
+        return CGPoint(x: x, y: y)
+    }
+
+    private static func speckAlpha(index: Int) -> CGFloat {
+        let mixed = mix(index, salt: 13)
+        guard mixed >= 0 else { return 0.2 }
+        let byte = 40 + (mixed % 180)
+        guard (0...255).contains(byte) else { return 0.2 }
+        return CGFloat(byte) / 255
+    }
+
+    private static func speckLuma(index: Int) -> CGFloat {
+        let mixed = mix(index, salt: 3)
+        guard mixed >= 0 else { return 1 }
+        return mixed % 2 == 0 ? 1 : 0
+    }
+
+    /// Wrapping hash. `Int32(_:)` traps when the product does not fit, which
+    /// happens from speck index 6 (`6 * 374761393` is past Int32.max).
+    static func mix(_ value: Int, salt: Int) -> Int {
+        var mixed = UInt32(truncatingIfNeeded: value) &* 374_761_393
+        mixed &+= UInt32(truncatingIfNeeded: salt) &* 668_265_263
+        mixed = (mixed ^ (mixed >> 13)) &* 1_274_126_177
         return Int(mixed & 0x7fff_ffff)
+    }
+
+    private static func plainTile() -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1))
+        return renderer.image { context in
+            UIColor(IronTheme.canvas).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
     }
 }
 

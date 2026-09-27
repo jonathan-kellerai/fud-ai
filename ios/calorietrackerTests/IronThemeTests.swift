@@ -29,6 +29,18 @@ struct IronThemeTests {
         }
     }
 
+    @Test func grainHashStaysInRangeForEverySpeck() {
+        for index in 0..<1_600 {
+            for salt in [1, 3, 7, 13] {
+                let mixed = IronGrainTile.mix(index, salt: salt)
+                #expect(mixed >= 0)
+                #expect(mixed <= 0x7fff_ffff)
+            }
+        }
+        #expect(IronGrainTile.image.size.width > 0)
+        #expect(IronGrainTile.image.size.height > 0)
+    }
+
     @Test func adjustedTokensStayNearTheSpec() {
         #expect(IronTheme.Hex.bloodText == 0xE2464A)
         #expect(IronTheme.Hex.rust == 0xC9642F)
