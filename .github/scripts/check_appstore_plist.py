@@ -304,6 +304,8 @@ def healthkit_entitlement_problems(entitlements, label):
     access = entitlements.get(HEALTHKIT_ACCESS_KEY)
     if not isinstance(access, list):
         problems.append(f"{label} is missing {HEALTHKIT_ACCESS_KEY} array")
+    if problems:
+        problems.append(f"{label} keys: {sorted(entitlements)}")
     return problems
 
 

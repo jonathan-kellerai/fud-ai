@@ -471,8 +471,7 @@ jobs:
         "${RUNNER_TEMP}/asc-venv/bin/python" "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py"
 
         # The archive is unsigned, so Xcode never wrote archived-expanded-entitlements.xcent.
-        # Export re-signs from that file. Without it the signature only gets the profile
-        # defaults and HealthKit is missing at runtime.
+        # Run 46 wrote that file and Xcode 26 export still signed without HealthKit.
         python3 "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py" \
           --write-archive-entitlements "${PWD}/build/JLPhysical.xcarchive"
 
@@ -494,6 +493,11 @@ jobs:
         echo "IPA exported successfully"
         ls -lh "${ipa_files[0]}"
 
+        # Export signs from the profile defaults and drops HealthKit. Re-sign the
+        # app and appexes with the expanded entitlements before the gate.
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py" \
+          --resign-ipa "${ipa_files[0]}"
+
         # Fail before the upload step unless the signed app and its profile
         # both carry the HealthKit entitlement.
         entitlement_dir="${RUNNER_TEMP}/ipa-entitlements"
@@ -505,7 +509,7 @@ jobs:
           echo "ERROR: IPA has no Payload/*.app"
           exit 1
         fi
-        codesign -d --entitlements :- "${app_path}" > "${entitlement_dir}/signed-entitlements.plist"
+        codesign -d --entitlements - "${app_path}" > "${entitlement_dir}/signed-entitlements.plist"
         security cms -D -i "${app_path}/embedded.mobileprovision" > "${entitlement_dir}/embedded.plist"
         python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" \
           --signed-entitlements "${entitlement_dir}/signed-entitlements.plist" \

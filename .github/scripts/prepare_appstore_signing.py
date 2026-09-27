@@ -906,8 +906,9 @@ def write_archived_entitlements(archive_path):
     """Write archived-expanded-entitlements.xcent into an unsigned archive.
 
     Archive uses CODE_SIGNING_ALLOWED=NO, so ProcessProductPackaging never
-    runs and export would sign with only the profile defaults. Export reads
-    this xcent when it re-signs each bundle.
+    runs. Xcode 26 export still ignores this file and signs with profile
+    defaults, which omit HealthKit. resign_ipa() applies the entitlements
+    after export.
     """
     archive = Path(archive_path)
     if not archive.is_dir():
@@ -943,6 +944,140 @@ def write_archived_entitlements(archive_path):
         with destination.open("wb") as entitlements_file:
             plistlib.dump(expanded, entitlements_file)
         print(f"wrote {destination}")
+
+
+def nested_code_to_preserve(app):
+    """Frameworks and dylibs, deepest first, so a parent seal is written later."""
+    found = []
+    for path in app.rglob("*"):
+        if path.suffix == ".framework" and path.is_dir():
+            found.append(path)
+        elif path.suffix == ".dylib" and path.is_file():
+            found.append(path)
+    found.sort(key=lambda path: len(path.parts), reverse=True)
+    return found
+
+
+def resign_plan(app):
+    """Inside-out sign steps: preserved nested code, then appexes, then the app.
+
+    Each step is (bundle path, entitlements or None). None keeps the nested
+    code's existing entitlements. The app step carries HealthKit.
+    """
+    steps = [(path, None) for path in nested_code_to_preserve(app)]
+    bundles = (
+        (
+            "PlugIns/FudAIWidgetsExtension.appex",
+            WIDGET_ENTITLEMENTS_PATH,
+            "com.jonathanbowe.jlphysical.FudAIWidgetsExtension",
+        ),
+        (
+            "PlugIns/calorietrackerShare.appex",
+            SHARE_ENTITLEMENTS_PATH,
+            "com.jonathanbowe.jlphysical.calorietrackerShare",
+        ),
+        (".", APP_ENTITLEMENTS_PATH, "com.jonathanbowe.jlphysical"),
+    )
+    for relative, entitlements_path, bundle_id in bundles:
+        target = app if relative == "." else app / relative
+        steps.append((target, load_expanded_entitlements(entitlements_path, bundle_id)))
+    return steps
+
+
+def distribution_signing_identity():
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if not runner_temp:
+        fail("RUNNER_TEMP is required to locate the distribution keychain")
+    keychain_path_file = Path(runner_temp) / "jl-appstore-signing" / "jl-keychain-path"
+    if not keychain_path_file.is_file():
+        fail(f"Distribution keychain path is missing at {keychain_path_file}")
+    keychain = keychain_path_file.read_text().strip()
+    identities = subprocess.check_output(
+        ["security", "find-identity", "-v", "-p", "codesigning", keychain],
+        text=True,
+    )
+    for line in identities.splitlines():
+        if "Distribution" not in line or '"' not in line:
+            continue
+        return line.split('"', 2)[1]
+    fail("No Apple Distribution identity is available for codesign")
+
+
+def codesign_bundle(identity, bundle, entitlements_path=None, preserve=False):
+    command = [
+        "codesign",
+        "--force",
+        "--sign",
+        identity,
+        "--generate-entitlement-der",
+        "--timestamp",
+    ]
+    if entitlements_path is not None:
+        command.extend(["--entitlements", str(entitlements_path)])
+    elif preserve:
+        command.append("--preserve-metadata=identifier,entitlements,flags")
+    command.append(str(bundle))
+    print(f"codesign {bundle.name}")
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0 and preserve:
+        return codesign_bundle(identity, bundle, entitlements_path=None, preserve=False)
+    detail = (result.stderr or result.stdout or "").strip()
+    if result.returncode != 0 and "timestamp" in detail.lower():
+        command = [arg for arg in command if arg != "--timestamp"]
+        print(f"codesign {bundle.name} without timestamp")
+        result = subprocess.run(command, capture_output=True, text=True)
+        detail = (result.stderr or result.stdout or "").strip()
+    if result.returncode != 0:
+        fail(f"codesign {bundle.name} failed: {detail}")
+    return result
+
+
+def resign_ipa(ipa_path):
+    """Re-sign an exported IPA. Xcode 26 export drops HealthKit from unsigned archives."""
+    ipa = Path(ipa_path)
+    if not ipa.is_file():
+        fail(f"IPA was not found at {ipa}")
+    identity = distribution_signing_identity()
+    with tempfile.TemporaryDirectory(prefix="jl-resign-") as tmp:
+        root = Path(tmp)
+        run(["unzip", "-q", str(ipa), "-d", str(root)])
+        apps = sorted((root / "Payload").glob("*.app"))
+        if len(apps) != 1:
+            fail(f"Expected one Payload/*.app, found {[path.name for path in apps]}")
+        app = apps[0]
+        for bundle, entitlements in resign_plan(app):
+            if not bundle.exists():
+                fail(f"IPA is missing {bundle.name}")
+            entitlements_path = None
+            if entitlements is not None:
+                if bundle.suffix == ".app":
+                    if not is_enabled(entitlements.get(HEALTHKIT_KEY)):
+                        fail("Resign entitlements are missing HealthKit")
+                    if not isinstance(entitlements.get(HEALTHKIT_ACCESS_KEY), list):
+                        fail("Resign entitlements are missing HealthKit access")
+                entitlements_path = root / f"{bundle.name}.entitlements"
+                with entitlements_path.open("wb") as entitlements_file:
+                    plistlib.dump(entitlements, entitlements_file)
+            codesign_bundle(
+                identity,
+                bundle,
+                entitlements_path=entitlements_path,
+                preserve=entitlements is None,
+            )
+        resigned = root / "resigned.ipa"
+        run(
+            [
+                "ditto",
+                "-c",
+                "-k",
+                "--norsrc",
+                "--keepParent",
+                str(root / "Payload"),
+                str(resigned),
+            ]
+        )
+        ipa.write_bytes(resigned.read_bytes())
+    print(f"resigned {ipa} with explicit entitlements")
 
 
 def self_check():
@@ -1225,6 +1360,34 @@ def self_check():
             fail("widget archive entitlements did not expand the app group")
         if HEALTHKIT_KEY in widget_plist:
             fail("widget archive entitlements included HealthKit")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app = Path(tmp) / "Payload" / "calorietracker.app"
+        (app / "PlugIns" / "FudAIWidgetsExtension.appex").mkdir(parents=True)
+        (app / "PlugIns" / "calorietrackerShare.appex").mkdir(parents=True)
+        (app / "Frameworks" / "Foo.framework" / "Frameworks" / "Bar.framework").mkdir(parents=True)
+        steps = resign_plan(app)
+        names = [path.name for path, _entitlements in steps]
+        if names != [
+            "Bar.framework",
+            "Foo.framework",
+            "FudAIWidgetsExtension.appex",
+            "calorietrackerShare.appex",
+            "calorietracker.app",
+        ]:
+            fail(f"resign order was {names}")
+        if steps[0][1] is not None or steps[1][1] is not None:
+            fail("framework resign steps should keep their existing entitlements")
+        widget_entitlements = steps[2][1]
+        app_entitlements = steps[4][1]
+        if HEALTHKIT_KEY in widget_entitlements:
+            fail("widget resign entitlements included HealthKit")
+        if app_entitlements.get(HEALTHKIT_KEY) is not True:
+            fail("app resign entitlements dropped HealthKit")
+        if app_entitlements.get(HEALTHKIT_ACCESS_KEY) != []:
+            fail("app resign entitlements dropped HealthKit access")
+        if app_entitlements.get("com.apple.security.application-groups") != [APP_GROUP]:
+            fail("app resign entitlements did not expand the app group")
     print("self-check ok")
 
 
@@ -1307,5 +1470,10 @@ if __name__ == "__main__":
         if index + 1 >= len(sys.argv):
             fail("--write-archive-entitlements requires an xcarchive path")
         write_archived_entitlements(sys.argv[index + 1])
+    elif "--resign-ipa" in sys.argv:
+        index = sys.argv.index("--resign-ipa")
+        if index + 1 >= len(sys.argv):
+            fail("--resign-ipa requires an ipa path")
+        resign_ipa(sys.argv[index + 1])
     else:
         main()
