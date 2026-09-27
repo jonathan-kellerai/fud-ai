@@ -191,6 +191,32 @@ enum HealthBodyMeasurementImport {
     }
 }
 
+/// HealthKit may invoke a completion more than once. Resume the matching
+/// continuation on the first call and ignore the rest.
+nonisolated private final class OneShotContinuation<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+
+    func resume(
+        _ continuation: CheckedContinuation<Value, Error>,
+        returning value: Value,
+        throwing error: Error?
+    ) {
+        lock.lock()
+        if didResume {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        lock.unlock()
+        if let error {
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume(returning: value)
+        }
+    }
+}
+
 @Observable
 class HealthKitManager {
     var authorizationStatus: HKAuthorizationStatus = .notDetermined
@@ -412,23 +438,35 @@ class HealthKitManager {
     /// or when `typesVersion` moved since the last full request.
     private func fullAuthorizationNeedsRequest() async -> Bool {
         if needsReauthorization { return true }
+        let share = shareTypes
+        let read = readTypes
         do {
-            // This SDK only has the completion form. There is no async overload.
-            let status = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKAuthorizationRequestStatus, Error>) in
-                healthStore.getRequestStatusForAuthorization(
-                    toShare: shareTypes,
-                    read: readTypes
-                ) { status, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: status)
-                    }
-                }
-            }
+            let status = try await Self.authorizationRequestStatus(
+                healthStore: healthStore,
+                shareTypes: share,
+                readTypes: read
+            )
             return status == .shouldRequest
         } catch {
             return true
+        }
+    }
+
+    /// HealthKit calls the completion on a private queue. Keep that callback off the
+    /// main actor, and resume the continuation on only the first invocation.
+    nonisolated private static func authorizationRequestStatus(
+        healthStore: HKHealthStore,
+        shareTypes: Set<HKSampleType>,
+        readTypes: Set<HKObjectType>
+    ) async throws -> HKAuthorizationRequestStatus {
+        let gate = OneShotContinuation<HKAuthorizationRequestStatus>()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKAuthorizationRequestStatus, Error>) in
+            healthStore.getRequestStatusForAuthorization(
+                toShare: shareTypes,
+                read: readTypes
+            ) { status, error in
+                gate.resume(continuation, returning: status, throwing: error)
+            }
         }
     }
 

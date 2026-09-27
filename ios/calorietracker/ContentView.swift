@@ -1088,6 +1088,8 @@ struct HomeView: View {
 
     /// Loads the native menu and media authorization code paths while Home is idle.
     /// Reading authorization status never prompts the user or starts camera/microphone capture.
+    /// Photo access is add-only: `readWrite` aborts the process unless
+    /// `NSPhotoLibraryUsageDescription` is set, and this app only saves meal photos.
     private func prewarmFoodDestinations() {
         guard !didPrewarmFoodDestinations else { return }
         didPrewarmFoodDestinations = true
@@ -1097,7 +1099,7 @@ struct HomeView: View {
         _ = UIMenu(title: "", children: [placeholderSubmenu])
 
         Task.detached(priority: .utility) {
-            _ = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            _ = PHPhotoLibrary.authorizationStatus(for: .addOnly)
             _ = AVCaptureDevice.authorizationStatus(for: .video)
             _ = SFSpeechRecognizer.authorizationStatus()
         }

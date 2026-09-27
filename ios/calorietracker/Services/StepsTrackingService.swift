@@ -224,21 +224,22 @@ final class StepsTrackingService {
     
     // MARK: - Background Task Registration
     
-    static func registerBackgroundTask() {
+    /// `using: nil` delivers the handler on a background queue, so this stays
+    /// nonisolated. The identifier matches `BGTaskSchedulerPermittedIdentifiers`.
+    nonisolated static func registerBackgroundTask() {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "com.jlphysical.steps-sync",
             using: nil
         ) { task in
-            Task {
+            Task { @MainActor in
                 await StepsTrackingService.shared.syncStepsInBackground()
                 task.setTaskCompleted(success: true)
+                scheduleBackgroundTask()
             }
-            
-            scheduleBackgroundTask()
         }
     }
-    
-    static func scheduleBackgroundTask() {
+
+    nonisolated static func scheduleBackgroundTask() {
         let request = BGAppRefreshTaskRequest(identifier: "com.jlphysical.steps-sync")
         request.earliestBeginDate = Date(timeIntervalSinceNow: 3600) // 1 hour from now
         
