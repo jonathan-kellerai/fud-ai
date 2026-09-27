@@ -219,8 +219,13 @@ class HealthKitManager {
     /// v9: workout samples joined the read set so Apple Watch / Health workouts
     /// can be imported into Fud AI without a Watch companion app.
     /// v10: lean body mass joined the read set for Withings and other scales.
-    private let typesVersion = 10
+    /// v11: the body-measurement import used to prompt for only body mass, lean
+    /// body mass, and body fat. Re-request the full share/read set, including
+    /// stepCount, so that narrow grant is not the only Health permission.
+    private let typesVersion = 11
     private let typesVersionKey = "healthKitTypesVersion"
+    private static let authorizationLock = NSLock()
+    private static var inFlightFullAuthorization: (id: UUID, task: Task<Bool, Never>)?
 
     /// Active-energy samples written for the workout diary are deliberately
     /// app-owned and tagged. The stable session id makes updates/deletes exact,
@@ -360,9 +365,55 @@ class HealthKitManager {
             try await healthStore.requestAuthorization(toShare: shareTypes, read: readTypes)
             authorizationStatus = healthStore.authorizationStatus(for: HKQuantityType(.bodyMass))
             persistCurrentTypesVersion()
+            // This fork asks once for the full set, then treats Health as on.
+            // Upstream keeps an opt-in toggle; a completed full request is enough here.
+            UserDefaults.standard.set(true, forKey: "healthKitEnabled")
             return true
         } catch {
             return false
+        }
+    }
+
+    /// One in-flight full request for the process. A second caller waits instead
+    /// of presenting another Health sheet.
+    func ensureFullAuthorization() async -> Bool {
+        let flight: (id: UUID, task: Task<Bool, Never>) = Self.authorizationLock.withLock {
+            if let inFlightFullAuthorization = Self.inFlightFullAuthorization {
+                return inFlightFullAuthorization
+            }
+            let created = (id: UUID(), task: Task { await self.performEnsureFullAuthorization() })
+            Self.inFlightFullAuthorization = created
+            return created
+        }
+        let granted = await flight.task.value
+        Self.authorizationLock.withLock {
+            if Self.inFlightFullAuthorization?.id == flight.id {
+                Self.inFlightFullAuthorization = nil
+            }
+        }
+        return granted
+    }
+
+    private func performEnsureFullAuthorization() async -> Bool {
+        guard HKHealthStore.isHealthDataAvailable() else { return false }
+        if await fullAuthorizationNeedsRequest() {
+            return await requestAuthorization()
+        }
+        return true
+    }
+
+    /// True when stepCount or any other read/share type has not been requested,
+    /// or when `typesVersion` moved since the last full request.
+    private func fullAuthorizationNeedsRequest() async -> Bool {
+        if needsReauthorization { return true }
+        do {
+            let status = try await healthStore.getRequestStatusForAuthorization(
+                toShare: shareTypes,
+                read: readTypes
+            )
+            return status == .shouldRequest
+        } catch {
+            return true
         }
     }
 
@@ -932,16 +983,10 @@ class HealthKitManager {
         importBodyFat: @escaping ([BodyFatEntry]) -> Void
     ) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        let readTypes: Set<HKObjectType> = [
-            HKQuantityType(.bodyMass),
-            HKQuantityType(.leanBodyMass),
-            HKQuantityType(.bodyFatPercentage),
-        ]
-        do {
-            try await healthStore.requestAuthorization(toShare: [], read: readTypes)
-        } catch {
-            return
-        }
+        // The full share/read set, not the three body-composition types. A
+        // narrow request is what the first Health sheet shows, and later
+        // requests only add types the user has not already answered.
+        guard await ensureFullAuthorization() else { return }
         if let samples = await fetchAllSamples(.bodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: "fudai_weight_id") {
             let fresh = HealthBodyMeasurementImport.weightEntries(from: samples, existing: existingWeights())
             if !fresh.isEmpty {
@@ -1171,8 +1216,10 @@ class HealthKitManager {
 
     /// Daily step total for one local calendar day. Read-only — watches and phones
     /// write steps to HealthKit; Fud AI surfaces the aggregate on Home.
+    /// Requests the full Health set first when stepCount has never been asked.
+    /// A false `healthKitEnabled` flag does not skip the read.
     func fetchStepsForDay(_ date: Date) async -> Int? {
-        guard UserDefaults.standard.bool(forKey: "healthKitEnabled") else { return nil }
+        guard await ensureFullAuthorization() else { return nil }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: date)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return nil }

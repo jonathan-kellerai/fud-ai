@@ -133,6 +133,7 @@ struct calorietrackerApp: App {
                     )
                 }
                 if hasCompletedOnboarding {
+                    _ = await healthKitManager.ensureFullAuthorization()
                     await healthKitManager.importBodyMeasurementsIntoAppStores(
                         weightStore: weightStore,
                         bodyFatStore: bodyFatStore
@@ -157,12 +158,13 @@ struct calorietrackerApp: App {
                 }
                 if hasCompletedOnboarding {
                     Task {
+                        _ = await healthKitManager.ensureFullAuthorization()
                         await healthKitManager.importBodyMeasurementsIntoAppStores(
                             weightStore: weightStore,
                             bodyFatStore: bodyFatStore
                         )
+                        wireUpHealthKit()
                     }
-                    wireUpHealthKit()
                     // Re-wire on every scene-active so the widget refresh callback
                     // is connected for users who completed onboarding before this
                     // hook existed (the .onChange(hasCompletedOnboarding) branch

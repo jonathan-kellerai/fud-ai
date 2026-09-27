@@ -1083,16 +1083,12 @@ private var dailyStepsTaskKey: String {
     }
 
     private func refreshDailySteps() async {
-        guard healthKitEnabled else {
-            dailySteps = nil
-            return
-        }
         let requestedDate = selectedDate
         dailyStepsFetchGeneration += 1
         let generation = dailyStepsFetchGeneration
         guard !Task.isCancelled else { return }
         let steps = await healthKitManager.fetchStepsForDay(requestedDate)
-        guard !Task.isCancelled, healthKitEnabled else { return }
+        guard !Task.isCancelled else { return }
         guard generation == dailyStepsFetchGeneration else { return }
         guard Calendar.current.isDate(selectedDate, inSameDayAs: requestedDate) else { return }
         dailySteps = steps

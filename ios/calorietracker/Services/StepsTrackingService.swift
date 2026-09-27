@@ -25,9 +25,6 @@ final class StepsTrackingService {
 
     private let healthStore = HKHealthStore()
     private let stepsType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-    private let bodyMassType = HKQuantityType.quantityType(forIdentifier: .bodyMass)!
-    private let leanBodyMassType = HKQuantityType.quantityType(forIdentifier: .leanBodyMass)!
-    private let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)!
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
@@ -45,11 +42,15 @@ final class StepsTrackingService {
                 NSLocalizedDescriptionKey: "HealthKit is not available on this device"
             ])
         }
-        
-        try await healthStore.requestAuthorization(
-            toShare: [],
-            read: [stepsType, bodyMassType, leanBodyMassType, bodyFatType]
-        )
+        // Same full share/read set as HealthKitManager, including stepCount.
+        // A steps-only or body-composition-only request would be the sheet the
+        // user sees if this runs first.
+        let granted = await HealthKitManager().ensureFullAuthorization()
+        if !granted {
+            throw NSError(domain: "StepsTracking", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Health access was not granted"
+            ])
+        }
     }
     
     // MARK: - Steps Reading
@@ -166,7 +167,9 @@ final class StepsTrackingService {
         guard !isSyncing else { return }
         isSyncing = true
         defer { isSyncing = false }
-        
+
+        try await requestAuthorization()
+
         // Fetch today and yesterday
         let today = try await fetchTodaySteps()
         let yesterday = try await fetchYesterdaySteps()
