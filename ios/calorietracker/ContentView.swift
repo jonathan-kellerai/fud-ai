@@ -3962,7 +3962,9 @@ struct ProgressTabView: View {
                                 weightEntries: filteredWeightEntries,
                                 goalWeightKg: userProfile.goalWeightKg,
                                 currentWeightKg: weightStore.latestEntry?.weightKg,
-                                onLogWeight: { showLogWeight = true }
+                                onLogWeight: { showLogWeight = true },
+                                hasAnyEntries: !weightStore.entries.isEmpty,
+                                rangeDescription: timeRange.rangeDescription
                             )
                         case .bodyFat:
                             BodyFatChartSection(
@@ -3970,7 +3972,9 @@ struct ProgressTabView: View {
                                 goalBodyFatFraction: userProfile.goalBodyFatPercentage,
                                 currentBodyFatFraction: bodyFatStore.latestEntry?.bodyFatFraction
                                     ?? userProfile.bodyFatPercentage,
-                                onLogBodyFat: { showLogBodyFat = true }
+                                onLogBodyFat: { showLogBodyFat = true },
+                                hasAnyEntries: !bodyFatStore.entries.isEmpty,
+                                rangeDescription: timeRange.rangeDescription
                             )
                         case .workouts:
                             if !workoutCalorieSessions.isEmpty {

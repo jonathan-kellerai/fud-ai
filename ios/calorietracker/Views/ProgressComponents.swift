@@ -22,11 +22,25 @@ enum TimeRange: String, CaseIterable {
         }
     }
 
+    /// Inclusive through the end of today. Ending at midnight dropped every entry
+    /// logged today, so 1W could be empty while Weight History still had a row.
     func dateRange() -> ClosedRange<Date> {
         let calendar = Calendar.current
-        let end = calendar.startOfDay(for: .now)
-        let start = calendar.date(byAdding: .day, value: -(days - 1), to: end)!
+        let startOfToday = calendar.startOfDay(for: .now)
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: startOfToday)!
+        let end = calendar.date(byAdding: .day, value: 1, to: startOfToday)!.addingTimeInterval(-1)
         return start...end
+    }
+
+    var rangeDescription: String {
+        switch self {
+        case .week: "the last 7 days"
+        case .month: "the last 30 days"
+        case .threeMonths: "the last 3 months"
+        case .sixMonths: "the last 6 months"
+        case .year: "the last year"
+        case .allTime: "the selected range"
+        }
     }
 }
 
@@ -140,6 +154,9 @@ struct WeightChartSection: View {
     let goalWeightKg: Double?
     let currentWeightKg: Double?
     let onLogWeight: () -> Void
+    /// True when the store has entries that may sit outside `weightEntries`.
+    var hasAnyEntries: Bool = false
+    var rangeDescription: String = "the selected range"
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     @State private var inspectedPoint: TrendPoint?
 
@@ -149,7 +166,7 @@ struct WeightChartSection: View {
         useMetric ? kg : kg * 2.20462
     }
 
-    private var unit: String { useMetric ? "kg" : "lbs" }
+    private var unit: String { useMetric ? "kg" : "lb" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -165,7 +182,11 @@ struct WeightChartSection: View {
             }
 
             if weightEntries.isEmpty {
-                emptyState("Log your first weight to see trends")
+                emptyState(
+                    hasAnyEntries
+                        ? "No weight entries in \(rangeDescription)"
+                        : "Log your first weight to see trends"
+                )
             } else {
                 let chartPoints = plottedPoints
 
@@ -796,7 +817,7 @@ struct LogWeightSheet: View {
         useMetric ? selectedValue : selectedValue / 2.20462
     }
 
-    private var unit: String { useMetric ? "kg" : "lbs" }
+    private var unit: String { useMetric ? "kg" : "lb" }
     private var wholeRange: ClosedRange<Int> { useMetric ? 20...250 : 50...500 }
 
     var body: some View {
@@ -807,7 +828,7 @@ struct LogWeightSheet: View {
 
                 Picker("Unit", selection: $weightUnitRaw) {
                     Text("kg").tag("kg")
-                    Text("lbs").tag("lbs")
+                    Text("lb").tag("lbs")
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
@@ -1198,6 +1219,8 @@ struct BodyFatChartSection: View {
     let goalBodyFatFraction: Double?
     let currentBodyFatFraction: Double?
     let onLogBodyFat: () -> Void
+    var hasAnyEntries: Bool = false
+    var rangeDescription: String = "the selected range"
     @State private var inspectedPoint: TrendPoint?
 
     private func displayPercent(_ fraction: Double) -> Double {
@@ -1218,7 +1241,11 @@ struct BodyFatChartSection: View {
             }
 
             if entries.isEmpty {
-                emptyState("Log your first body fat % to see trends")
+                emptyState(
+                    hasAnyEntries
+                        ? "No body fat entries in \(rangeDescription)"
+                        : "Log your first body fat % to see trends"
+                )
             } else {
                 HStack(spacing: 8) {
                     if let current = currentBodyFatFraction {

@@ -17,6 +17,7 @@ import plistlib
 import secrets
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -735,9 +736,12 @@ def install_profile(profile, profiles_dir):
     return decoded
 
 
-APP_ENTITLEMENTS_PATH = (
-    Path(__file__).resolve().parents[2] / "ios" / "calorietracker" / "calorietracker.entitlements"
-)
+IOS_ROOT = Path(__file__).resolve().parents[2] / "ios"
+APP_ENTITLEMENTS_PATH = IOS_ROOT / "calorietracker" / "calorietracker.entitlements"
+WIDGET_ENTITLEMENTS_PATH = IOS_ROOT / "FudAIWidgets" / "FudAIWidgets.entitlements"
+SHARE_ENTITLEMENTS_PATH = IOS_ROOT / "calorietrackerShare" / "calorietrackerShare.entitlements"
+HEALTHKIT_KEY = "com.apple.developer.healthkit"
+HEALTHKIT_ACCESS_KEY = "com.apple.developer.healthkit.access"
 ICLOUD_SERVICES_KEY = "com.apple.developer.icloud-services"
 ICLOUD_CONTAINERS_KEY = "com.apple.developer.icloud-container-identifiers"
 ICLOUD_ENVIRONMENT_KEY = "com.apple.developer.icloud-container-environment"
@@ -823,6 +827,13 @@ def distribution_entitlement_problems(bundle_id):
                 "app entitlements set icloud-container-environment to "
                 f"{environments}. Distribution must set it to ['Production']."
             )
+    if not is_enabled(required.get("com.apple.developer.healthkit")):
+        problems.append("app entitlements com.apple.developer.healthkit must be true")
+    access = required.get("com.apple.developer.healthkit.access")
+    if not isinstance(access, list):
+        problems.append(
+            "app entitlements com.apple.developer.healthkit.access must be an array"
+        )
     return problems
 
 
@@ -839,6 +850,8 @@ def profile_problems(entitlements, kind, bundle_id="com.jonathanbowe.jlphysical"
         problems.append("HealthKit entitlement is missing")
     if not is_enabled(entitlements.get("com.apple.developer.healthkit.background-delivery")):
         problems.append("HealthKit background-delivery entitlement is missing")
+    if not isinstance(entitlements.get("com.apple.developer.healthkit.access"), list):
+        problems.append("HealthKit access entitlement is missing")
     required = app_signing_requirements(bundle_id)
     required_services = values_of(required, ICLOUD_SERVICES_KEY)
     profile_services = values_of(entitlements, ICLOUD_SERVICES_KEY)
@@ -875,6 +888,63 @@ def write_export_options(path, profiles_by_bundle_id, signing_certificate):
     print(f"wrote {path}")
 
 
+def load_expanded_entitlements(path, bundle_id):
+    if not path.is_file():
+        fail(f"Entitlements file is missing at {path}")
+    with path.open("rb") as entitlements_file:
+        raw = plistlib.load(entitlements_file)
+    return expand_build_settings(
+        raw,
+        {
+            "PRODUCT_BUNDLE_IDENTIFIER": bundle_id,
+            "APP_GROUP_IDENTIFIER": APP_GROUP,
+        },
+    )
+
+
+def write_archived_entitlements(archive_path):
+    """Write archived-expanded-entitlements.xcent into an unsigned archive.
+
+    Archive uses CODE_SIGNING_ALLOWED=NO, so ProcessProductPackaging never
+    runs and export would sign with only the profile defaults. Export reads
+    this xcent when it re-signs each bundle.
+    """
+    archive = Path(archive_path)
+    if not archive.is_dir():
+        fail(f"Archive was not found at {archive}")
+    bundles = (
+        (
+            "Products/Applications/calorietracker.app",
+            APP_ENTITLEMENTS_PATH,
+            "com.jonathanbowe.jlphysical",
+        ),
+        (
+            "Products/Applications/calorietracker.app/PlugIns/FudAIWidgetsExtension.appex",
+            WIDGET_ENTITLEMENTS_PATH,
+            "com.jonathanbowe.jlphysical.FudAIWidgetsExtension",
+        ),
+        (
+            "Products/Applications/calorietracker.app/PlugIns/calorietrackerShare.appex",
+            SHARE_ENTITLEMENTS_PATH,
+            "com.jonathanbowe.jlphysical.calorietrackerShare",
+        ),
+    )
+    for relative, entitlements_path, bundle_id in bundles:
+        bundle_dir = archive / relative
+        if not bundle_dir.is_dir():
+            fail(f"Archive is missing {relative}")
+        expanded = load_expanded_entitlements(entitlements_path, bundle_id)
+        if bundle_id == "com.jonathanbowe.jlphysical":
+            if not is_enabled(expanded.get(HEALTHKIT_KEY)):
+                fail("Expanded app entitlements are missing HealthKit")
+            if not isinstance(expanded.get(HEALTHKIT_ACCESS_KEY), list):
+                fail("Expanded app entitlements are missing HealthKit access")
+        destination = bundle_dir / "archived-expanded-entitlements.xcent"
+        with destination.open("wb") as entitlements_file:
+            plistlib.dump(expanded, entitlements_file)
+        print(f"wrote {destination}")
+
+
 def self_check():
     extension_ok = {"com.apple.security.application-groups": [APP_GROUP]}
     if profile_problems(extension_ok, "extension"):
@@ -884,6 +954,7 @@ def self_check():
     app_ok = {
         "com.apple.security.application-groups": [APP_GROUP],
         "com.apple.developer.healthkit": True,
+        "com.apple.developer.healthkit.access": [],
         "com.apple.developer.healthkit.background-delivery": True,
         "com.apple.developer.icloud-services": ["CloudKit"],
         "com.apple.developer.icloud-container-identifiers": [ICLOUD_CONTAINER],
@@ -894,6 +965,7 @@ def self_check():
     wildcard_profile = {
         "com.apple.security.application-groups": [APP_GROUP],
         "com.apple.developer.healthkit": True,
+        "com.apple.developer.healthkit.access": [],
         "com.apple.developer.healthkit.background-delivery": True,
         "com.apple.developer.icloud-services": "*",
         "com.apple.developer.icloud-container-environment": ["Production", "Development"],
@@ -924,6 +996,10 @@ def self_check():
         "app",
     ):
         fail("app profile missing HealthKit was accepted")
+    missing_access = dict(app_ok)
+    missing_access.pop("com.apple.developer.healthkit.access")
+    if not profile_problems(missing_access, "app"):
+        fail("app profile missing HealthKit access was accepted")
     recorded = []
     original_api = api
 
@@ -1111,6 +1187,44 @@ def self_check():
     absent_id, absent_label = resolve_api_key_id({})
     if absent_id != "" or not absent_label.startswith("default "):
         fail("missing API keys did not resolve to the default label")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / "JLPhysical.xcarchive"
+        for relative, _, _ in (
+            ("Products/Applications/calorietracker.app", None, None),
+            (
+                "Products/Applications/calorietracker.app/PlugIns/FudAIWidgetsExtension.appex",
+                None,
+                None,
+            ),
+            (
+                "Products/Applications/calorietracker.app/PlugIns/calorietrackerShare.appex",
+                None,
+                None,
+            ),
+        ):
+            (archive / relative).mkdir(parents=True)
+        write_archived_entitlements(archive)
+        with (archive / "Products/Applications/calorietracker.app/archived-expanded-entitlements.xcent").open("rb") as xcent_file:
+            expanded = plistlib.load(xcent_file)
+        if expanded.get(HEALTHKIT_KEY) is not True:
+            fail("archive entitlements dropped HealthKit")
+        if expanded.get(HEALTHKIT_ACCESS_KEY) != []:
+            fail(f"archive entitlements HealthKit access was {expanded.get(HEALTHKIT_ACCESS_KEY)}")
+        if expanded.get("com.apple.security.application-groups") != [APP_GROUP]:
+            fail("archive entitlements did not expand the app group")
+        if expanded.get(ICLOUD_CONTAINERS_KEY) != [ICLOUD_CONTAINER]:
+            fail("archive entitlements did not expand the iCloud container")
+        widget_xcent = (
+            archive
+            / "Products/Applications/calorietracker.app/PlugIns/FudAIWidgetsExtension.appex/archived-expanded-entitlements.xcent"
+        )
+        with widget_xcent.open("rb") as widget_file:
+            widget_plist = plistlib.load(widget_file)
+        if widget_plist.get("com.apple.security.application-groups") != [APP_GROUP]:
+            fail("widget archive entitlements did not expand the app group")
+        if HEALTHKIT_KEY in widget_plist:
+            fail("widget archive entitlements included HealthKit")
     print("self-check ok")
 
 
@@ -1188,5 +1302,10 @@ def main():
 if __name__ == "__main__":
     if "--self-check" in sys.argv:
         self_check()
+    elif "--write-archive-entitlements" in sys.argv:
+        index = sys.argv.index("--write-archive-entitlements")
+        if index + 1 >= len(sys.argv):
+            fail("--write-archive-entitlements requires an xcarchive path")
+        write_archived_entitlements(sys.argv[index + 1])
     else:
         main()

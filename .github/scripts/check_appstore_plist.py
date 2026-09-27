@@ -280,6 +280,45 @@ def altool_output_failed(exit_code, output):
     return "UPLOAD FAILED" in output or "Failed to upload package" in output
 
 
+HEALTHKIT_KEY = "com.apple.developer.healthkit"
+HEALTHKIT_ACCESS_KEY = "com.apple.developer.healthkit.access"
+
+
+def load_plist_bytes(data):
+    """codesign --entitlements :- sometimes prefixes the plist with a blob header."""
+    xml_start = data.find(b"<?xml")
+    plist_start = data.find(b"<plist")
+    binary_start = data.find(b"bplist")
+    starts = [index for index in (xml_start, plist_start, binary_start) if index >= 0]
+    if not starts:
+        fail("plist data did not contain an XML or binary plist")
+    return plistlib.loads(data[min(starts) :])
+
+
+def healthkit_entitlement_problems(entitlements, label):
+    problems = []
+    if not isinstance(entitlements, dict):
+        return [f"{label} is not a dictionary"]
+    if entitlements.get(HEALTHKIT_KEY) is not True:
+        problems.append(f"{label} is missing {HEALTHKIT_KEY} = true")
+    access = entitlements.get(HEALTHKIT_ACCESS_KEY)
+    if not isinstance(access, list):
+        problems.append(f"{label} is missing {HEALTHKIT_ACCESS_KEY} array")
+    return problems
+
+
+def signed_entitlement_problems(plist):
+    return healthkit_entitlement_problems(plist, "signed entitlements")
+
+
+def provisioning_profile_problems(plist):
+    if not isinstance(plist, dict):
+        return ["provisioning profile is not a dictionary"]
+    return healthkit_entitlement_problems(
+        plist.get("Entitlements"), "provisioning profile"
+    )
+
+
 def self_check():
     problems = source_problems()
     if problems:
@@ -302,21 +341,62 @@ def self_check():
         fail("non-zero altool exit was accepted")
     if altool_output_failed(0, "Upload to TestFlight initiated"):
         fail("success log was treated as an upload failure")
+    signed_ok = {
+        HEALTHKIT_KEY: True,
+        HEALTHKIT_ACCESS_KEY: [],
+    }
+    if signed_entitlement_problems(signed_ok):
+        fail("signed HealthKit entitlements were rejected")
+    if not signed_entitlement_problems({HEALTHKIT_KEY: True}):
+        fail("signed entitlements without HealthKit access were accepted")
+    if not signed_entitlement_problems({}):
+        fail("signed entitlements without HealthKit were accepted")
+    profile_ok = {"Entitlements": signed_ok}
+    if provisioning_profile_problems(profile_ok):
+        fail("profile with HealthKit was rejected")
+    if not provisioning_profile_problems({"Entitlements": {HEALTHKIT_ACCESS_KEY: []}}):
+        fail("profile without HealthKit true was accepted")
+    junk = b"\xfa\xde\x71\x71" + plistlib.dumps(signed_ok)
+    if signed_entitlement_problems(load_plist_bytes(junk)):
+        fail("codesign blob prefix was not stripped")
     print("self-check ok")
+
+
+def argument_path(flag):
+    if flag not in sys.argv:
+        return None
+    index = sys.argv.index(flag)
+    if index + 1 >= len(sys.argv):
+        fail(f"{flag} requires a path")
+    return Path(sys.argv[index + 1])
 
 
 def main():
     if "--self-check" in sys.argv:
         self_check()
         return
-    if "--ipa" in sys.argv:
-        index = sys.argv.index("--ipa")
-        if index + 1 >= len(sys.argv):
-            fail("--ipa requires a path")
-        problems = ipa_problems(Path(sys.argv[index + 1]))
+    problems = []
+    ran_targeted_check = False
+    signed_path = argument_path("--signed-entitlements")
+    if signed_path is not None:
+        ran_targeted_check = True
+        problems.extend(
+            signed_entitlement_problems(load_plist_bytes(signed_path.read_bytes()))
+        )
+    profile_path = argument_path("--provisioning-profile")
+    if profile_path is not None:
+        ran_targeted_check = True
+        problems.extend(
+            provisioning_profile_problems(load_plist_bytes(profile_path.read_bytes()))
+        )
+    ipa_path = argument_path("--ipa")
+    if ipa_path is not None:
+        ran_targeted_check = True
+        problems.extend(ipa_problems(ipa_path))
+    if ran_targeted_check:
         if problems:
-            fail("IPA plist check failed: " + "; ".join(problems))
-        print("IPA plist check ok")
+            fail("IPA check failed: " + "; ".join(problems))
+        print("IPA check ok")
         return
     problems = source_problems()
     if problems:

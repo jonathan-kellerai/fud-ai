@@ -230,13 +230,17 @@ struct StepsView: View {
         } catch {
             self.error = error.localizedDescription
         }
+        await StepsTrackingService.syncBodyMeasurementsFromHealth()
     }
     
     private func syncNow() async {
         do {
             try await stepsService.syncStepsToBackend()
+            _ = try await stepsService.fetchTodaySteps()
+            _ = try await stepsService.fetchLast7Days()
         } catch {
             self.error = error.localizedDescription
+            await StepsTrackingService.syncBodyMeasurementsFromHealth()
         }
     }
     

@@ -470,6 +470,12 @@ jobs:
         export EXPORT_OPTIONS_PLIST="${PWD}/build/ExportOptions.plist"
         "${RUNNER_TEMP}/asc-venv/bin/python" "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py"
 
+        # The archive is unsigned, so Xcode never wrote archived-expanded-entitlements.xcent.
+        # Export re-signs from that file. Without it the signature only gets the profile
+        # defaults and HealthKit is missing at runtime.
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py" \
+          --write-archive-entitlements "${PWD}/build/JLPhysical.xcarchive"
+
         xcodebuild -exportArchive \
           -archivePath build/JLPhysical.xcarchive \
           -exportPath build/output \
@@ -487,6 +493,23 @@ jobs:
         echo "IPA_PATH=${ipa_files[0]}" >> "$GITHUB_ENV"
         echo "IPA exported successfully"
         ls -lh "${ipa_files[0]}"
+
+        # Fail before the upload step unless the signed app and its profile
+        # both carry the HealthKit entitlement.
+        entitlement_dir="${RUNNER_TEMP}/ipa-entitlements"
+        rm -rf "${entitlement_dir}"
+        mkdir -p "${entitlement_dir}"
+        unzip -q "${ipa_files[0]}" -d "${entitlement_dir}/unzipped"
+        app_path="$(find "${entitlement_dir}/unzipped/Payload" -maxdepth 1 -name '*.app' -type d | head -n 1)"
+        if [ -z "${app_path}" ]; then
+          echo "ERROR: IPA has no Payload/*.app"
+          exit 1
+        fi
+        codesign -d --entitlements :- "${app_path}" > "${entitlement_dir}/signed-entitlements.plist"
+        security cms -D -i "${app_path}/embedded.mobileprovision" > "${entitlement_dir}/embedded.plist"
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" \
+          --signed-entitlements "${entitlement_dir}/signed-entitlements.plist" \
+          --provisioning-profile "${entitlement_dir}/embedded.plist"
 
     - name: Upload to TestFlight
       env:

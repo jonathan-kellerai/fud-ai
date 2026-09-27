@@ -363,6 +363,38 @@ struct DiaryPersistenceSafetyTests {
         }
     }
 
+    @Test func healthSampleUUIDIsImportedOnce() {
+        let sampleID = UUID()
+        let manual = WeightEntry(date: Date(timeIntervalSince1970: 10), weightKg: 80)
+        let reading = HealthSampleReading(sampleUUID: sampleID, value: 81, date: Date(timeIntervalSince1970: 20), fudaiID: nil)
+        let first = HealthBodyMeasurementImport.weightEntries(from: [reading], existing: [manual])
+        #expect(first.count == 1)
+        #expect(first.first?.id == sampleID)
+        #expect(first.first?.healthKitSampleUUID == sampleID)
+        let second = HealthBodyMeasurementImport.weightEntries(from: [reading], existing: [manual] + first)
+        #expect(second.isEmpty)
+
+        let ownSample = UUID()
+        let ownID = UUID()
+        let tagged = HealthSampleReading(sampleUUID: ownSample, value: 70, date: .now, fudaiID: ownID)
+        let alongsideManual = HealthBodyMeasurementImport.weightEntries(from: [tagged], existing: [manual])
+        #expect(alongsideManual.isEmpty)
+        let restored = HealthBodyMeasurementImport.weightEntries(from: [tagged], existing: [])
+        #expect(restored.count == 1)
+        #expect(restored.first?.id == ownID)
+        #expect(restored.first?.healthKitSampleUUID == ownSample)
+    }
+
+    @Test func weekRangeIncludesToday() {
+        let range = TimeRange.week.dateRange()
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: .now)
+        #expect(range.contains(Date()))
+        #expect(range.contains(startOfToday))
+        let dayBeforeWindow = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+        #expect(!range.contains(dayBeforeWindow))
+    }
+
     @Test func corruptWeightBlobIsNotReplacedByANewEntry() throws {
         try withDefaults { defaults, _ in
             let garbage = Data("broken".utf8)

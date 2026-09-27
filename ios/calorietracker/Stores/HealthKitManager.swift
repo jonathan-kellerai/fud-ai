@@ -102,6 +102,62 @@ struct HealthFoodServingMetadata: Equatable {
     }
 }
 
+struct HealthSampleReading {
+    let sampleUUID: UUID
+    let value: Double
+    let date: Date
+    let fudaiID: UUID?
+}
+
+/// Turns HealthKit quantity samples into local weight and body-fat rows.
+/// Dedupes by sample UUID. Manual rows have a nil `healthKitSampleUUID` and stay.
+enum HealthBodyMeasurementImport {
+    static func weightEntries(from samples: [HealthSampleReading], existing: [WeightEntry]) -> [WeightEntry] {
+        entries(from: samples, existingIDs: Set(existing.map(\.id)), existingHealthUUIDs: Set(existing.compactMap(\.healthKitSampleUUID)), restoringOwnHistory: existing.isEmpty) { sample, entryID in
+            WeightEntry(id: entryID, date: sample.date, weightKg: sample.value, healthKitSampleUUID: sample.sampleUUID)
+        }
+    }
+
+    static func bodyFatEntries(from samples: [HealthSampleReading], existing: [BodyFatEntry]) -> [BodyFatEntry] {
+        entries(from: samples, existingIDs: Set(existing.map(\.id)), existingHealthUUIDs: Set(existing.compactMap(\.healthKitSampleUUID)), restoringOwnHistory: existing.isEmpty) { sample, entryID in
+            BodyFatEntry(id: entryID, date: sample.date, bodyFatFraction: sample.value, healthKitSampleUUID: sample.sampleUUID)
+        }
+    }
+
+    private static func entries<Entry>(
+        from samples: [HealthSampleReading],
+        existingIDs: Set<UUID>,
+        existingHealthUUIDs: Set<UUID>,
+        restoringOwnHistory: Bool,
+        make: (HealthSampleReading, UUID) -> Entry
+    ) -> [Entry] {
+        var seenIDs = existingIDs
+        var seenHealthUUIDs = existingHealthUUIDs
+        var fresh: [Entry] = []
+        for sample in samples {
+            if seenHealthUUIDs.contains(sample.sampleUUID) || seenIDs.contains(sample.sampleUUID) {
+                continue
+            }
+            let entryID: UUID
+            if let fudaiID = sample.fudaiID {
+                if seenIDs.contains(fudaiID) { continue }
+                // Our own HealthKit writes are already local rows. Only a wiped
+                // store should restore them, and it keeps the original entry id
+                // so a later delete still matches fudai_* metadata.
+                guard restoringOwnHistory else { continue }
+                entryID = fudaiID
+            } else {
+                entryID = sample.sampleUUID
+            }
+            fresh.append(make(sample, entryID))
+            seenIDs.insert(entryID)
+            seenIDs.insert(sample.sampleUUID)
+            seenHealthUUIDs.insert(sample.sampleUUID)
+        }
+        return fresh
+    }
+}
+
 @Observable
 class HealthKitManager {
     var authorizationStatus: HKAuthorizationStatus = .notDetermined
@@ -217,10 +273,8 @@ class HealthKitManager {
     /// scene-active wire-ups skip it. Keeps these separate from the nutrition
     /// backfill version so each one can be re-run independently if we ever bump
     /// only one of the type sets.
-    private let weightBackfillVersionKey = "healthKitWeightBackfillVersion"
-    private let bodyFatBackfillVersionKey = "healthKitBodyFatBackfillVersion"
-    private var isBackfillingWeight = false
-    private var isBackfillingBodyFat = false
+    private var bodyMeasurementImportTail: Task<Void, Never>?
+    private let bodyMeasurementImportLock = NSLock()
     private var isBackfillingWorkoutBurn = false
     private let workoutImportLookbackDays = 90
     private let workoutImportLastSyncKey = "healthKitWorkoutImportLastSync"
@@ -787,110 +841,119 @@ class HealthKitManager {
         }
     }
 
-    /// One-shot import of every weight sample HealthKit knows about. Skips
-    /// our own writes (fudai_weight_id present), and dedupes against existing
-    /// entries by same-day + same-value so re-running this — or running it
-    /// when the user already incrementally synced via the change-token observer
-    /// — never creates duplicates. Stamps weightBackfillVersionKey on success
-    /// so subsequent scene-active wire-ups skip it.
+    /// Read body mass and body fat from Apple Health into the local stores.
+    /// Does not require the HealthKit write toggle. Manual Log Weight still
+    /// works; imported rows are deduped by HealthKit sample UUID.
+    @MainActor
+    func importBodyMeasurementsFromHealth(
+        existingWeights: @escaping () -> [WeightEntry],
+        importWeights: @escaping ([WeightEntry]) -> Void,
+        existingBodyFat: @escaping () -> [BodyFatEntry],
+        importBodyFat: @escaping ([BodyFatEntry]) -> Void
+    ) async {
+        let operation: Task<Void, Never> = bodyMeasurementImportLock.withLock {
+            let previous = bodyMeasurementImportTail
+            let task = Task { @MainActor in
+                await previous?.value
+                await self.performBodyMeasurementImport(
+                    existingWeights: existingWeights,
+                    importWeights: importWeights,
+                    existingBodyFat: existingBodyFat,
+                    importBodyFat: importBodyFat
+                )
+            }
+            bodyMeasurementImportTail = task
+            return task
+        }
+        await operation.value
+    }
+
+    @MainActor
+    func importBodyMeasurementsIntoAppStores(weightStore: WeightStore, bodyFatStore: BodyFatStore) async {
+        await importBodyMeasurementsFromHealth(
+            existingWeights: { weightStore.entries },
+            importWeights: { weightStore.importExternalEntries($0) },
+            existingBodyFat: { bodyFatStore.entries },
+            importBodyFat: { bodyFatStore.importExternalEntries($0) }
+        )
+    }
+
+    /// Used when a background launch has not installed the app's live stores yet.
+    @MainActor
+    static func importBodyMeasurementsIntoTemporaryStores() async {
+        let weightStore = WeightStore(observesExternalChanges: false)
+        let bodyFatStore = BodyFatStore(observesExternalChanges: false)
+        await HealthKitManager().importBodyMeasurementsIntoAppStores(
+            weightStore: weightStore,
+            bodyFatStore: bodyFatStore
+        )
+    }
+
+    @MainActor
+    private func performBodyMeasurementImport(
+        existingWeights: @escaping () -> [WeightEntry],
+        importWeights: @escaping ([WeightEntry]) -> Void,
+        existingBodyFat: @escaping () -> [BodyFatEntry],
+        importBodyFat: @escaping ([BodyFatEntry]) -> Void
+    ) async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let readTypes: Set<HKObjectType> = [
+            HKQuantityType(.bodyMass),
+            HKQuantityType(.bodyFatPercentage),
+        ]
+        do {
+            try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+        } catch {
+            return
+        }
+        if let samples = await fetchAllSamples(.bodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: "fudai_weight_id") {
+            let readings = samples.map {
+                HealthSampleReading(sampleUUID: $0.sampleUUID, value: $0.value, date: $0.date, fudaiID: $0.fudaiID)
+            }
+            let fresh = HealthBodyMeasurementImport.weightEntries(from: readings, existing: existingWeights())
+            if !fresh.isEmpty {
+                importWeights(fresh)
+            }
+        }
+        if let samples = await fetchAllSamples(.bodyFatPercentage, unit: .percent(), fudaiMetadataKey: "fudai_bodyfat_id") {
+            let readings = samples.map {
+                HealthSampleReading(sampleUUID: $0.sampleUUID, value: $0.value, date: $0.date, fudaiID: $0.fudaiID)
+            }
+            let fresh = HealthBodyMeasurementImport.bodyFatEntries(from: readings, existing: existingBodyFat())
+            if !fresh.isEmpty {
+                importBodyFat(fresh)
+            }
+        }
+    }
+
+    /// Compatibility entry point. Imports by HealthKit sample UUID and does not
+    /// require `healthKitEnabled`. Repeated calls do not double-count.
     func backfillWeightFromHealthKitIfNeeded(
         existing: @escaping () -> [WeightEntry],
         importBatch: @escaping ([WeightEntry]) -> Void
     ) {
-        guard UserDefaults.standard.bool(forKey: "healthKitEnabled") else { return }
-        let backfilled = UserDefaults.standard.integer(forKey: weightBackfillVersionKey)
-        guard backfilled < typesVersion else { return }
-        guard !isBackfillingWeight else { return }
-        isBackfillingWeight = true
-        Task {
-            defer { isBackfillingWeight = false }
-            // A failed query (auth not determined, transient HK error) returns nil —
-            // bail WITHOUT stamping the version so the backfill retries next scene-active
-            // instead of being permanently burned by one bad run.
-            guard let samples = await fetchAllSamples(.bodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: "fudai_weight_id") else { return }
-            // Build the dedup index from the *current* store snapshot — the
-            // observer might have added rows while we were querying HK.
-            let calendar = Calendar.current
-            let snapshot = existing()
-            // Restore mode = empty local store (reinstall / new phone). Only then do we
-            // import our own fudai-tagged samples: when entries exist locally, own samples
-            // are either already represented or synthetic profile-pushes
-            // (writeWeight(kg:date:)) that never had an entry — importing those would
-            // fabricate history the user never logged.
-            let restoringOwnHistory = snapshot.isEmpty
-            var newEntries: [WeightEntry] = []
-            // Same-day + close-value match catches our own pre-metadata writes,
-            // externals already imported via the change-token loop, and same-day
-            // duplicates within this batch (an entry write + a profile push on the
-            // same day carry the same value).
-            let isAlreadyLogged: (Date, Double) -> Bool = { date, kg in
-                snapshot.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.weightKg - kg) < 0.01
-                } || newEntries.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.weightKg - kg) < 0.01
-                }
-            }
-            for s in samples {
-                if isAlreadyLogged(s.date, s.value) { continue }
-                if let fudaiID = s.fudaiID {
-                    guard restoringOwnHistory else { continue }
-                    // Keep the ORIGINAL entry id so a later in-app delete of the
-                    // restored entry still finds and removes its HK sample via the
-                    // fudai_weight_id metadata predicate.
-                    newEntries.append(WeightEntry(id: fudaiID, date: s.date, weightKg: s.value))
-                } else {
-                    newEntries.append(WeightEntry(date: s.date, weightKg: s.value))
-                }
-            }
-            if !newEntries.isEmpty {
-                await MainActor.run { importBatch(newEntries) }
-            }
-            UserDefaults.standard.set(typesVersion, forKey: weightBackfillVersionKey)
+        Task { @MainActor in
+            await importBodyMeasurementsFromHealth(
+                existingWeights: existing,
+                importWeights: importBatch,
+                existingBodyFat: { [] },
+                importBodyFat: { _ in }
+            )
         }
     }
 
-    /// Mirror of backfillWeightFromHealthKitIfNeeded for body-fat samples.
-    /// Same dedup discipline (skip our writes via fudai_bodyfat_id, dedup
-    /// externals by same-day + same-fraction) and same one-shot-per-version
-    /// guard so it doesn't re-scan on every scene-active.
+    /// Compatibility entry point for body-fat samples. See the weight backfill.
     func backfillBodyFatFromHealthKitIfNeeded(
         existing: @escaping () -> [BodyFatEntry],
         importBatch: @escaping ([BodyFatEntry]) -> Void
     ) {
-        guard UserDefaults.standard.bool(forKey: "healthKitEnabled") else { return }
-        let backfilled = UserDefaults.standard.integer(forKey: bodyFatBackfillVersionKey)
-        guard backfilled < typesVersion else { return }
-        guard !isBackfillingBodyFat else { return }
-        isBackfillingBodyFat = true
-        Task {
-            defer { isBackfillingBodyFat = false }
-            guard let samples = await fetchAllSamples(.bodyFatPercentage, unit: .percent(), fudaiMetadataKey: "fudai_bodyfat_id") else { return }
-            let calendar = Calendar.current
-            let snapshot = existing()
-            // Same restore-mode / original-id / batch-dedup discipline as the
-            // weight backfill — see backfillWeightFromHealthKitIfNeeded.
-            let restoringOwnHistory = snapshot.isEmpty
-            var newEntries: [BodyFatEntry] = []
-            let isAlreadyLogged: (Date, Double) -> Bool = { date, fraction in
-                snapshot.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.bodyFatFraction - fraction) < 0.001
-                } || newEntries.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.bodyFatFraction - fraction) < 0.001
-                }
-            }
-            for s in samples {
-                if isAlreadyLogged(s.date, s.value) { continue }
-                if let fudaiID = s.fudaiID {
-                    guard restoringOwnHistory else { continue }
-                    newEntries.append(BodyFatEntry(id: fudaiID, date: s.date, bodyFatFraction: s.value))
-                } else {
-                    newEntries.append(BodyFatEntry(date: s.date, bodyFatFraction: s.value))
-                }
-            }
-            if !newEntries.isEmpty {
-                await MainActor.run { importBatch(newEntries) }
-            }
-            UserDefaults.standard.set(typesVersion, forKey: bodyFatBackfillVersionKey)
+        Task { @MainActor in
+            await importBodyMeasurementsFromHealth(
+                existingWeights: { [] },
+                importWeights: { _ in },
+                existingBodyFat: existing,
+                importBodyFat: importBatch
+            )
         }
     }
 
@@ -1131,7 +1194,7 @@ class HealthKitManager {
     /// chart. Sorted oldest-first so callers can append in chronological order.
     /// Returns nil on query failure (vs [] for genuinely no data) so callers can
     /// leave their one-shot stamps unset and retry later.
-    func fetchAllSamples(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, fudaiMetadataKey: String?) async -> [(value: Double, date: Date, fudaiID: UUID?)]? {
+    func fetchAllSamples(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, fudaiMetadataKey: String?) async -> [(value: Double, date: Date, fudaiID: UUID?, sampleUUID: UUID)]? {
         let type = HKQuantityType(identifier)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let predicate = HKQuery.predicateForSamples(withStart: nil, end: nil, options: .strictEndDate)
@@ -1142,10 +1205,10 @@ class HealthKitManager {
                     continuation.resume(returning: nil)
                     return
                 }
-                let mapped = samples.map { sample -> (value: Double, date: Date, fudaiID: UUID?) in
+                let mapped = samples.map { sample -> (value: Double, date: Date, fudaiID: UUID?, sampleUUID: UUID) in
                     let idString = fudaiMetadataKey.flatMap { sample.metadata?[$0] as? String }
                     let fudaiID = idString.flatMap(UUID.init(uuidString:))
-                    return (sample.quantity.doubleValue(for: unit), sample.startDate, fudaiID)
+                    return (sample.quantity.doubleValue(for: unit), sample.startDate, fudaiID, sample.uuid)
                 }
                 continuation.resume(returning: mapped)
             }

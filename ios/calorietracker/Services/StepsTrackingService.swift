@@ -20,8 +20,13 @@ final class StepsTrackingService {
     var lastSyncError: String?
     var isSyncing = false
     
+    /// Set by the app so Sync Now, steps refresh, and the background task also import weight.
+    static var onBodyMeasurementsSync: (() async -> Void)?
+
     private let healthStore = HKHealthStore()
     private let stepsType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+    private let bodyMassType = HKQuantityType.quantityType(forIdentifier: .bodyMass)!
+    private let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)!
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
@@ -40,7 +45,10 @@ final class StepsTrackingService {
             ])
         }
         
-        try await healthStore.requestAuthorization(toShare: [], read: [stepsType])
+        try await healthStore.requestAuthorization(
+            toShare: [],
+            read: [stepsType, bodyMassType, bodyFatType]
+        )
     }
     
     // MARK: - Steps Reading
@@ -189,6 +197,7 @@ final class StepsTrackingService {
         
         lastSyncDate = Date()
         lastSyncError = nil
+        await Self.syncBodyMeasurementsFromHealth()
     }
     
     func syncStepsInBackground() async {
@@ -197,7 +206,16 @@ final class StepsTrackingService {
         } catch {
             lastSyncError = error.localizedDescription
             print("Background steps sync failed: \(error)")
+            await Self.syncBodyMeasurementsFromHealth()
         }
+    }
+
+    static func syncBodyMeasurementsFromHealth() async {
+        if let onBodyMeasurementsSync {
+            await onBodyMeasurementsSync()
+            return
+        }
+        await HealthKitManager.importBodyMeasurementsIntoTemporaryStores()
     }
     
     // MARK: - Background Task Registration

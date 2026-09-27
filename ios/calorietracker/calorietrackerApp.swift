@@ -126,6 +126,18 @@ struct calorietrackerApp: App {
                 refreshWidgetSnapshot()
             }
             .task {
+                StepsTrackingService.onBodyMeasurementsSync = { [healthKitManager, weightStore, bodyFatStore] in
+                    await healthKitManager.importBodyMeasurementsIntoAppStores(
+                        weightStore: weightStore,
+                        bodyFatStore: bodyFatStore
+                    )
+                }
+                if hasCompletedOnboarding {
+                    await healthKitManager.importBodyMeasurementsIntoAppStores(
+                        weightStore: weightStore,
+                        bodyFatStore: bodyFatStore
+                    )
+                }
                 await cloudBackupService.runSmokeTestIfRequested()
                 await weeklyChallengeStore.retryPendingDeletionIfNeeded()
             }
@@ -144,6 +156,12 @@ struct calorietrackerApp: App {
                     )
                 }
                 if hasCompletedOnboarding {
+                    Task {
+                        await healthKitManager.importBodyMeasurementsIntoAppStores(
+                            weightStore: weightStore,
+                            bodyFatStore: bodyFatStore
+                        )
+                    }
                     wireUpHealthKit()
                     // Re-wire on every scene-active so the widget refresh callback
                     // is connected for users who completed onboarding before this
@@ -176,6 +194,12 @@ struct calorietrackerApp: App {
                 // Seed the user's first WeightEntry from their onboarding-entered profile
                 // weight. Used to be seeded in WeightStore.init with .default fallback,
                 // which produced a 70 kg phantom entry for every fresh user.
+                Task {
+                    await healthKitManager.importBodyMeasurementsIntoAppStores(
+                        weightStore: weightStore,
+                        bodyFatStore: bodyFatStore
+                    )
+                }
                 if let profile = UserProfile.load() {
                     weightStore.seedInitialWeightFromProfileIfEmpty(profile.weightKg)
                     // Same idea for body fat — only when the user actually
@@ -219,29 +243,19 @@ struct calorietrackerApp: App {
             }
         }
 
-        healthKitManager.onBodyMeasurementsChanged = { [weightStore, bodyFatStore] weightKg, weightDate, weightFudaiID, heightCm, bodyFat, bodyFatDate, bodyFatFudaiID, dob, sex in
+        healthKitManager.onBodyMeasurementsChanged = { [healthKitManager, weightStore, bodyFatStore] weightKg, weightDate, weightFudaiID, heightCm, bodyFat, bodyFatDate, bodyFatFudaiID, dob, sex in
+            Task {
+                await healthKitManager.importBodyMeasurementsIntoAppStores(
+                    weightStore: weightStore,
+                    bodyFatStore: bodyFatStore
+                )
+            }
             guard var profile = UserProfile.load() else { return }
             var changed = false
 
-            if let kg = weightKg, let date = weightDate {
-                // If the HK sample was written by our app (has fudai_weight_id), never re-add
-                // from the observer: either the entry still exists in the store (duplicate) or the
-                // user just deleted it and the HK delete hasn't propagated yet (would resurrect it).
-                // External HK samples (Apple Watch, scale, Health app) have no fudai_weight_id;
-                // those we dedup by same-day + same-value.
-                let shouldAdd: Bool
-                if weightFudaiID != nil {
-                    shouldAdd = false
-                } else {
-                    let calendar = Calendar.current
-                    let alreadyLogged = weightStore.entries.contains {
-                        calendar.isDate($0.date, inSameDayAs: date) && abs($0.weightKg - kg) < 0.01
-                    }
-                    shouldAdd = !alreadyLogged
-                }
-                if shouldAdd {
-                    weightStore.addEntry(WeightEntry(date: date, weightKg: kg))
-                }
+            if let kg = weightKg, weightDate != nil {
+                // Rows are imported by HealthKit sample UUID. Adding the latest
+                // sample here would mint a new id and double-count on the next sync.
                 // Only sync profile.weightKg from the HK observer when the latest sample came
                 // from OUTSIDE our app. For our own samples, WeightStore.addEntry / deleteEntry
                 // already syncs profile — updating it here again can revert a just-made edit if
@@ -255,26 +269,9 @@ struct calorietrackerApp: App {
                 profile.heightCm = cm
                 changed = true
             }
-            if let bf = bodyFat, let date = bodyFatDate {
-                // Same dedup discipline as weight: skip our own writes
-                // (fudai_bodyfat_id present), and dedup external samples by
-                // same-day + same-fraction so re-firing the observer can't
-                // duplicate a smart-scale reading we already imported once.
-                let shouldAdd: Bool
-                if bodyFatFudaiID != nil {
-                    shouldAdd = false
-                } else {
-                    let calendar = Calendar.current
-                    let alreadyLogged = bodyFatStore.entries.contains {
-                        calendar.isDate($0.date, inSameDayAs: date) && abs($0.bodyFatFraction - bf) < 0.001
-                    }
-                    shouldAdd = !alreadyLogged
-                }
-                if shouldAdd {
-                    bodyFatStore.addEntry(BodyFatEntry(date: date, bodyFatFraction: bf))
-                    // BodyFatStore.addEntry already syncs profile.bodyFatPercentage
-                    // for any new entry, so no extra profile.save() needed here.
-                } else if bodyFatFudaiID == nil,
+            if let bf = bodyFat, bodyFatDate != nil {
+                // Body-fat rows come from the UUID import, same as weight.
+                if bodyFatFudaiID == nil,
                           profile.bodyFatPercentage == nil || abs((profile.bodyFatPercentage ?? 0) - bf) > 0.001 {
                     // External sample we already had (dedup hit) — but the
                     // profile cache somehow drifted. Realign without creating
@@ -349,14 +346,12 @@ struct calorietrackerApp: App {
     /// Watch, manual entries, etc.). One-shot per typesVersion — see
     /// HealthKitManager.{weight,bodyFat}BackfillVersionKey.
     private func runBodyMeasurementBackfills() {
-        healthKitManager.backfillWeightFromHealthKitIfNeeded(
-            existing: { [weightStore] in weightStore.entries },
-            importBatch: { [weightStore] entries in weightStore.importExternalEntries(entries) }
-        )
-        healthKitManager.backfillBodyFatFromHealthKitIfNeeded(
-            existing: { [bodyFatStore] in bodyFatStore.entries },
-            importBatch: { [bodyFatStore] entries in bodyFatStore.importExternalEntries(entries) }
-        )
+        Task {
+            await healthKitManager.importBodyMeasurementsIntoAppStores(
+                weightStore: weightStore,
+                bodyFatStore: bodyFatStore
+            )
+        }
         // Restore the food log from the app's own HK nutrition samples after a
         // reinstall / phone reset wiped the local store. The merge path fires
         // onEntriesChanged (widgets/notifications) but not onEntryAdded, so
