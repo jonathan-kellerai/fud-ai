@@ -276,6 +276,7 @@ final class VisualQASnapshotTests: XCTestCase {
             let root = stores.inject(content(size.size), dynamicType: size.size)
             let sheetView = sheet.map { AnyView(stores.inject(AnyView($0()), dynamicType: size.size)) }
             let secondView = secondSheet.map { AnyView(stores.inject(AnyView($0()), dynamicType: size.size)) }
+            VisualQAGraveyard.keep(stores, root, sheetView as Any, secondView as Any)
             try await render(
                 name: "\(name)",
                 sizeLabel: size.label,
@@ -315,6 +316,7 @@ final class VisualQASnapshotTests: XCTestCase {
         host.overrideUserInterfaceStyle = .dark
         host.view.backgroundColor = UIColor(IronTheme.canvas)
         window.rootViewController = host
+        VisualQAGraveyard.keep(window, host)
         window.makeKeyAndVisible()
         try await Task.sleep(for: .milliseconds(700))
         if let afterAppear {
@@ -328,6 +330,7 @@ final class VisualQASnapshotTests: XCTestCase {
             controller.traitOverrides.preferredContentSizeCategory = category
             controller.overrideUserInterfaceStyle = .dark
             controller.modalPresentationStyle = .pageSheet
+            VisualQAGraveyard.keep(controller)
             top.present(controller, animated: false)
             top = controller
             try await Task.sleep(for: .milliseconds(700))
@@ -342,6 +345,7 @@ final class VisualQASnapshotTests: XCTestCase {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let fileName = "\(VisualQAOutput.deviceLabel)_\(sizeLabel)_\(name).png"
+        VisualQADiagnostics.recordNavigationBars(in: window, for: fileName)
         if let data = image.pngData() {
             VisualQAOutput.write(data, named: fileName)
             let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
@@ -352,12 +356,58 @@ final class VisualQASnapshotTests: XCTestCase {
             XCTFail("Could not encode \(fileName)")
         }
 
-        if host.presentedViewController != nil {
-            host.dismiss(animated: false)
-            try await Task.sleep(for: .milliseconds(300))
-        }
+        // Never tear anything down while a test is running: releasing app
+        // objects inside XCTest's task-local scope trips the iOS <= 26.2
+        // isolated-deinit double free (swiftlang/swift#88036). Hide the
+        // window and keep the whole graph alive in the graveyard instead.
         window.isHidden = true
-        window.rootViewController = nil
+    }
+}
+
+// MARK: - Graveyard
+
+/// Holds every window, host, view and store the snapshot tests create for the
+/// lifetime of the test process so none of them deallocate mid-test.
+@MainActor
+enum VisualQAGraveyard {
+    private static var objects: [Any] = []
+
+    static func keep(_ items: Any...) {
+        objects.append(contentsOf: items)
+    }
+}
+
+// MARK: - Diagnostics
+
+/// Writes the navigation-bar labels present at capture time so a missing
+/// large title can be told apart from a drawHierarchy capture artifact.
+@MainActor
+enum VisualQADiagnostics {
+    private static var lines: [String] = []
+
+    static func recordNavigationBars(in window: UIWindow, for fileName: String) {
+        var found: [String] = []
+        func walk(_ view: UIView, insideBar: Bool) {
+            let inBar = insideBar || view is UINavigationBar
+            if inBar, let label = view as? UILabel, let text = label.text, !text.isEmpty {
+                let frame = label.convert(label.bounds, to: window)
+                found.append(
+                    "  label=\"\(text)\" alpha=\(label.alpha) hidden=\(label.isHidden) "
+                    + "font=\(label.font.pointSize) frame=\(NSCoder.string(for: frame))"
+                )
+            }
+            if let bar = view as? UINavigationBar {
+                found.append(
+                    "  bar prefersLarge=\(bar.prefersLargeTitles) frame=\(NSCoder.string(for: bar.convert(bar.bounds, to: window)))"
+                )
+            }
+            for sub in view.subviews { walk(sub, insideBar: inBar) }
+        }
+        walk(window, insideBar: false)
+        lines.append(fileName)
+        lines.append(contentsOf: found.isEmpty ? ["  (no navigation bar labels)"] : found)
+        let text = lines.joined(separator: "\n") + "\n"
+        VisualQAOutput.write(Data(text.utf8), named: "navbar-\(VisualQAOutput.deviceLabel).txt")
     }
 }
 
@@ -681,6 +731,7 @@ enum VisualQAFixtures {
 
     static func seedChat() {
         let chat = ChatStore()
+        VisualQAGraveyard.keep(chat)
         chat.reset()
         chat.append(ChatMessage(role: .user, content: "How did my training week look?"))
         chat.append(ChatMessage(role: .assistant, content: "You hit four of five sessions. Lower A moved up 5 lb on the squat, and steps averaged 6,100 a day. Tomorrow is Upper Push; aim for 8,000 steps."))
@@ -689,6 +740,7 @@ enum VisualQAFixtures {
 
     static func seedReconCalendar() {
         let store = ReconBenchStore()
+        VisualQAGraveyard.keep(store)
         for entry in store.entries {
             store.delete(id: entry.id)
         }

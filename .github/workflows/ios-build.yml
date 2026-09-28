@@ -94,7 +94,7 @@ jobs:
   visual-qa:
     name: Visual QA screenshots
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -163,7 +163,8 @@ jobs:
           local udid="$1" label="$2"
           local out="$GITHUB_WORKSPACE/visual-qa/$label"
           local result="$RUNNER_TEMP/visual-qa-$label.xcresult"
-          mkdir -p "$out"
+          local log="$GITHUB_WORKSPACE/visual-qa/logs/xcodebuild-$label.log"
+          mkdir -p "$out" "$(dirname "$log")"
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b || true
           TEST_RUNNER_VISUAL_QA_DIR="$out" TEST_RUNNER_VISUAL_QA_DEVICE="$label" \
@@ -174,10 +175,15 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/dd" \
             -resultBundlePath "$result" \
             -only-testing:calorietrackerTests/VisualQASnapshotTests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 240 \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty || STATUS=1
+            2>&1 | tee "$log" | xcpretty || STATUS=1
+          grep -E "Test Case .*(passed|failed)|error:|Executed [0-9]+ tests" "$log" | tail -60 || true
           if ! ls "$out"/*.png >/dev/null 2>&1; then
             echo "No PNGs written directly; exporting attachments from $result"
             xcrun xcresulttool export attachments --path "$result" --output-path "$out" || true
