@@ -90,3 +90,127 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \
           | xcpretty && exit ${PIPESTATUS[0]}
+
+  visual-qa:
+    name: Visual QA screenshots
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select latest Xcode 26
+      run: |
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          exit 1
+        fi
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+
+    - name: Pick simulators (Pro size + small size)
+      id: sims
+      run: |
+        set -euo pipefail
+        RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x.get('platform')=='iOS' and x.get('isAvailable')]; r.sort(key=lambda x:[int(p) for p in x['version'].split('.')]); print(r[-1]['identifier'])")
+        echo "Runtime: $RUNTIME"
+        create() {
+          xcrun simctl create "$1" "$2" "$RUNTIME" 2>/dev/null || true
+        }
+        PRO=""
+        for type in iPhone-17-Pro iPhone-16-Pro; do
+          PRO=$(create "QA Pro" "com.apple.CoreSimulator.SimDeviceType.$type")
+          if [ -n "$PRO" ]; then PRO_LABEL=$(echo "$type" | tr -d '-'); break; fi
+        done
+        SMALL=""
+        for type in iPhone-SE-3rd-generation iPhone-SE-2nd-generation iPhone-13-mini iPhone-12-mini; do
+          SMALL=$(create "QA Small" "com.apple.CoreSimulator.SimDeviceType.$type")
+          if [ -n "$SMALL" ]; then SMALL_LABEL=$(echo "$type" | tr -d '-'); break; fi
+        done
+        if [ -z "$PRO" ] || [ -z "$SMALL" ]; then
+          echo "Could not create simulators. Available device types:"
+          xcrun simctl list devicetypes
+          exit 1
+        fi
+        echo "Pro: $PRO_LABEL $PRO"
+        echo "Small: $SMALL_LABEL $SMALL"
+        echo "pro=$PRO" >> "$GITHUB_OUTPUT"
+        echo "pro_label=$PRO_LABEL" >> "$GITHUB_OUTPUT"
+        echo "small=$SMALL" >> "$GITHUB_OUTPUT"
+        echo "small_label=$SMALL_LABEL" >> "$GITHUB_OUTPUT"
+
+    - name: Build for testing
+      run: |
+        set -o pipefail
+        cd ios
+        xcodebuild build-for-testing \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination "id=${{ steps.sims.outputs.pro }}" \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty
+
+    - name: Capture screenshots
+      id: capture
+      run: |
+        set -o pipefail
+        cd ios
+        STATUS=0
+        run_device() {
+          local udid="$1" label="$2"
+          local out="$GITHUB_WORKSPACE/visual-qa/$label"
+          local result="$RUNNER_TEMP/visual-qa-$label.xcresult"
+          mkdir -p "$out"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b || true
+          TEST_RUNNER_VISUAL_QA_DIR="$out" TEST_RUNNER_VISUAL_QA_DEVICE="$label" \
+          xcodebuild test-without-building \
+            -project calorietracker.xcodeproj \
+            -scheme calorietracker \
+            -destination "id=$udid" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$result" \
+            -only-testing:calorietrackerTests/VisualQASnapshotTests \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || STATUS=1
+          if ! ls "$out"/*.png >/dev/null 2>&1; then
+            echo "No PNGs written directly; exporting attachments from $result"
+            xcrun xcresulttool export attachments --path "$result" --output-path "$out" || true
+          fi
+          echo "$label: $(ls "$out" | grep -c '\.png$' || true) PNGs"
+        }
+        run_device "${{ steps.sims.outputs.pro }}" "${{ steps.sims.outputs.pro_label }}"
+        run_device "${{ steps.sims.outputs.small }}" "${{ steps.sims.outputs.small_label }}"
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Visual QA screenshots"
+          find "$GITHUB_WORKSPACE/visual-qa" -name '*.png' | sed "s|$GITHUB_WORKSPACE/||" | sort
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-qa-screenshots
+        path: visual-qa/
+        if-no-files-found: warn
+        retention-days: 14
+
+    - name: Upload result bundles
+      if: failure() || steps.capture.outputs.status == '1'
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-qa-xcresult
+        path: ${{ runner.temp }}/visual-qa-*.xcresult
+        retention-days: 7
+
+    - name: Fail if snapshot tests failed
+      if: steps.capture.outputs.status == '1'
+      run: |
+        echo "VisualQASnapshotTests reported failures; see the xcresult artifact."
+        exit 1
