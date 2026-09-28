@@ -11,8 +11,9 @@ struct KeychainHelper {
             || accessible == kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
     }
 
-    static func save(key: String, value: String) {
-        _ = save(key: key, value: value, accessible: kSecAttrAccessibleAfterFirstUnlock)
+    @discardableResult
+    static func save(key: String, value: String) -> Bool {
+        save(key: key, value: value, accessible: kSecAttrAccessibleAfterFirstUnlock)
     }
 
     /// `ThisDeviceOnly` keeps the item out of iCloud Keychain and device backups.
