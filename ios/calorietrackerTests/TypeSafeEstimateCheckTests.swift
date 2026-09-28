@@ -163,7 +163,9 @@ struct TypeSafeEstimateCheckTests {
         #expect(missing == .unavailable(.invalidResponse))
 
         TypeSafeStub.requests = []
-        let future = Data(#"{"model":"jev-1.13.0","answers":{"plausible":{"type":"future_type"},"calorie_band":{"type":"choice","choice":"band_2","confidence":0.9,"probabilities":{"band_2":1}}}}"#.utf8)
+        let future = Data("""
+        {"model":"jev-1.13.0","answers":{"plausible":{"type":"future_type"},"calorie_band":{"type":"choice","choice":"band_2","confidence":0.9,"probabilities":{"band_2":1}}}}
+        """.utf8)
         TypeSafeStub.handler = { _, _ in (200, [:], future) }
         let unknown = await TypeSafeEstimateChecker.check(bowl, client: client(), model: "jev-latest")
         #expect(unknown == .unavailable(.invalidResponse))
@@ -266,7 +268,9 @@ struct TypeSafeEstimateCheckTests {
     }
 
     private func jsonObject(_ data: Data?) throws -> [String: Any] {
-        try #require(JSONSerialization.jsonObject(with: try #require(data)) as? [String: Any])
+        let payload = try #require(data)
+        let object = try JSONSerialization.jsonObject(with: payload)
+        return try #require(object as? [String: Any])
     }
 
     private func containsCaloriesKey(_ value: Any) -> Bool {
