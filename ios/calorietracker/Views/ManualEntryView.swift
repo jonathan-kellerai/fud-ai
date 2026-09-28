@@ -66,7 +66,9 @@ struct ManualEntryView: View {
                             .foregroundStyle(.secondary)
                         HStack {
                             Text("Meal Type")
-                            Spacer()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            Spacer(minLength: 8)
                             Picker("Meal Type", selection: $mealType) {
                                 ForEach(MealType.allCases, id: \.self) { meal in
                                     Label(meal.displayName, systemImage: meal.icon).tag(meal)
@@ -75,6 +77,9 @@ struct ManualEntryView: View {
                             .pickerStyle(.menu)
                             .tint(AppColors.calorie)
                             .labelsHidden()
+                            // Keep the selected meal on one line; it was
+                            // hyphen-wrapping to "Break-/fast" in the narrow popover.
+                            .fixedSize()
                         }
                         .padding(10)
                         .background(RoundedRectangle(cornerRadius: 10).fill(Color(.quaternarySystemFill)))

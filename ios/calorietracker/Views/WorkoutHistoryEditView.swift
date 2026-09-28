@@ -52,12 +52,14 @@ struct WorkoutHistoryEditView: View {
                                     Text("lb ×")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .fixedSize()
                                     TextField("Reps", value: $set.reps, format: .number)
                                         .keyboardType(.numberPad)
                                         .textFieldStyle(.roundedBorder)
                                     Text("RIR")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .fixedSize()
                                     TextField("RIR", value: $set.rir, format: .number)
                                         .keyboardType(.numberPad)
                                         .textFieldStyle(.roundedBorder)
@@ -66,6 +68,10 @@ struct WorkoutHistoryEditView: View {
                                         .textFieldStyle(.roundedBorder)
                                         .frame(width: 52)
                                 }
+                                // Five inputs share one row; at accessibility
+                                // sizes the load showed "…" and "lb ×" wrapped.
+                                .lineLimit(1)
+                                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                             }
                         }
                     }

@@ -20,6 +20,11 @@ final class ReconBenchStore {
         bridgeSyncEnabled = UserDefaults.standard.bool(forKey: Self.bridgeKey)
     }
 
+    /// Explicit nonisolated deinit: the synthesized main-actor-isolated deinit
+    /// double-frees a TaskLocal scope on iOS <= 26.2 (swiftlang/swift#88036)
+    /// when the store is released inside a task-local context.
+    nonisolated deinit {}
+
     func card(person: String, key: String) -> ReconMath.Card {
         cards[person]?[key] ?? ReconMath.defaultCard(person: person, key: key)
     }

@@ -96,7 +96,10 @@ struct RestTimerSheet: View {
                         } label: {
                             Text("\(seconds / 60):\(String(format: "%02d", seconds % 60))")
                                 .font(.system(.body, weight: .semibold).monospacedDigit())
-                                .frame(width: 70, height: 40)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                                .padding(.horizontal, 4)
+                                .frame(maxWidth: 88, minHeight: 44)
                                 .foregroundStyle(IronTheme.textPrimary)
                                 .background(
                                     timer.totalSeconds == seconds ? IronTheme.blood : IronTheme.surfaceRaised,
@@ -110,6 +113,8 @@ struct RestTimerSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             }
             
             Spacer()
