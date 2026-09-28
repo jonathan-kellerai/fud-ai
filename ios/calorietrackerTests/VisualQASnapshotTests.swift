@@ -562,7 +562,7 @@ enum VisualQADiagnostics {
             XCTAssertNil(items[4].badgeValue, "More tab shows an update badge")
         }
         let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
-        var frames = hubRowFrames(in: window, identifiers: identifiers)
+        let frames = hubRowFrames(in: window, identifiers: identifiers)
         let missingAtTop = rows.map(\.0).filter { frames[$0] == nil }
         var buried: Set<String> = []
         if !missingAtTop.isEmpty {
@@ -612,11 +612,12 @@ enum VisualQADiagnostics {
         func consider(_ object: NSObject) {
             let token = ObjectIdentifier(object)
             guard seen.insert(token).inserted else { return }
-            if let identifier = object.accessibilityIdentifier {
+            if let identifiable = object as? UIAccessibilityIdentification,
+               let identifier = identifiable.accessibilityIdentifier {
                 if let view = object as? UIView {
                     keep(identifier, view.convert(view.bounds, to: window))
-                } else {
-                    keep(identifier, window.convert(object.accessibilityFrame, from: nil))
+                } else if let element = object as? UIAccessibilityElement {
+                    keep(identifier, window.convert(element.accessibilityFrame, from: nil))
                 }
             }
             guard let view = object as? UIView else { return }
