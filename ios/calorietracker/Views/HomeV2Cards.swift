@@ -210,6 +210,19 @@ struct HomeV2Cards: View {
         case .peptides:
             if peptideSectionVisible {
                 Section {
+                    NavigationLink {
+                        ReconView()
+                    } label: {
+                        HStack {
+                            Text("Recon")
+                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .listRowBackground(IronTheme.surface)
                     peptideCard.listRowBackground(IronTheme.surface)
                 } header: {
                     IronSectionTitle(title: "Peptides")
