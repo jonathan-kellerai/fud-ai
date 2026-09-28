@@ -4256,7 +4256,7 @@ struct ProfileView: View {
     fileprivate init(
         updateState: Binding<AppUpdateState>,
         refreshUpdateState: @escaping () async -> Void,
-        settingsCategory: ProfileSettingsCategory?
+        settingsCategory: ProfileSettingsCategory? = nil
     ) {
         self._updateState = updateState
         self.refreshUpdateState = refreshUpdateState
