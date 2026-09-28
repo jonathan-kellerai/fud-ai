@@ -4504,9 +4504,9 @@ struct ProfileView: View {
             .listRowBackground(AppColors.appCard)
 
         }
-        .listSectionSpacing(8)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
-        .contentMargins(.top, 4, for: .scrollContent)
+        .listSectionSpacing(4)
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 12))
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
         .settingsFloatingTabClearance()
