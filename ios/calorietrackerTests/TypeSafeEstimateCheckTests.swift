@@ -280,7 +280,7 @@ struct TypeSafeEstimateCheckTests {
         return false
     }
 
-    private static func answerJSON(
+    nonisolated private static func answerJSON(
         noul: Double,
         band: String,
         bandProbabilities: [String: Double]? = nil,
