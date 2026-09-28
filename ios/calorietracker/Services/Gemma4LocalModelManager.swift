@@ -138,6 +138,11 @@ final class Gemma4LocalModelManager {
     }
 
     private(set) var state: InstallState = .notDownloaded
+
+    /// Visual QA only. Does not download, verify, or touch files.
+    func applySnapshotState(_ state: InstallState) {
+        self.state = state
+    }
     private(set) var installedByteCount: Int64 = 0
 
     @ObservationIgnored private let fileManager: FileManager

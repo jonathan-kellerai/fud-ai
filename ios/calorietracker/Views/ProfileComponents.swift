@@ -1275,7 +1275,15 @@ struct NotificationSettingsView: View {
                         hour: $summaryHour,
                         minute: $summaryMinute
                     )
+                } header: {
+                    Text("Smart Notifications")
+                } footer: {
+                    Text("Streak and summary reminders skip firing on days you've already logged.")
+                        .font(.system(.caption, design: .rounded))
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
                     NotificationTimeRow(
                         label: "Log Weight",
                         icon: "scalemass.fill",
@@ -1292,14 +1300,14 @@ struct NotificationSettingsView: View {
                         minute: $bodyFatLogMinute
                     )
                 } header: {
-                    Text("Smart Notifications")
+                    Text("Weigh-In Reminders")
                 } footer: {
-                    Text("All four reminders are smart — they skip firing on days you've already logged. Body fat default is off since most users don't measure daily.")
+                    Text("Manual logging. Not needed if your scale syncs to Apple Health.")
                         .font(.system(.caption, design: .rounded))
                 }
                 .listRowBackground(AppColors.appCard)
 
-                // App Updates
+                if JLFeatureFlags.fudUpdateCheck {
                 Section {
                     Toggle(isOn: $appUpdatesEnabled) {
                         Label {

@@ -4,7 +4,7 @@ struct CloudBackupSettingsSection: View {
     @Environment(CloudBackupService.self) private var backup
     @State private var showEnableConfirm = false
     @State private var showRestoreChoice = false
-    @State private var showDeleteConfirm = false
+    @State private var showBackupActions = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -32,11 +32,7 @@ struct CloudBackupSettingsSection: View {
                 Button("Back up now") { Task { await run { try await backup.backupNow() } } }
                     .accessibilityIdentifier("settings.cloudBackup.backupNow")
                     .disabled(backup.busy)
-                Button("Restore now") { Task { await run { try await backup.restoreNow() } } }
-                    .accessibilityIdentifier("settings.cloudBackup.restoreNow")
-                    .disabled(backup.busy)
-                Button("Delete cloud backup", role: .destructive) { showDeleteConfirm = true }
-                    .accessibilityIdentifier("settings.cloudBackup.delete")
+                Button("Restore or Delete Backup…") { showBackupActions = true }
                     .disabled(backup.busy)
             }
         } footer: {
@@ -61,13 +57,18 @@ struct CloudBackupSettingsSection: View {
         } message: {
             Text("Restore it, or keep this phone.")
         }
-        .alert("Delete cloud backup?", isPresented: $showDeleteConfirm) {
+        .confirmationDialog("Restore or Delete Backup?", isPresented: $showBackupActions, titleVisibility: .visible) {
+            Button("Restore") {
+                Task { await run { try await backup.restoreNow() } }
+            }
+            .accessibilityIdentifier("settings.cloudBackup.restoreNow")
             Button("Delete", role: .destructive) {
                 Task { await run { try await backup.deleteCloudBackup() } }
             }
+            .accessibilityIdentifier("settings.cloudBackup.delete")
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Removes the JL Physical file from iCloud. This iPhone is unchanged.")
+            Text("Restore replaces this phone with the iCloud backup. Delete removes the JL Physical file from iCloud and leaves this phone unchanged.")
         }
         .alert("iCloud Backup", isPresented: Binding(
             get: { errorMessage != nil },

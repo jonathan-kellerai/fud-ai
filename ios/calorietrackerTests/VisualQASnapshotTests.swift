@@ -110,9 +110,8 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test10More() async throws {
-        // ProfileView's init is file-private to ContentView, so render the real ContentView
-        // and switch its tab bar to More the way a tap would.
         PostUpdatePrompts.markAllSeenForFreshInstall()
+        seedSettingsSubtitles()
         try await eachSize("10-more-settings", afterAppear: { window in
             VisualQAUIKit.selectTab(4, in: window)
         }) { _ in
@@ -271,6 +270,123 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Settings
+
+    func test24SettingsTraining() async throws {
+        try await settingsScreen("24-settings-training") { ProfileView(settingsCategory: .training) }
+    }
+
+    func test25SettingsFoodAI() async throws {
+        try await settingsScreen("25-settings-food-ai") { ProfileView(settingsCategory: .foodAI) }
+    }
+
+    func test26SettingsDailyTargets() async throws {
+        try await settingsScreen("26-settings-daily-targets") { ProfileView(settingsCategory: .dailyTargets) }
+    }
+
+    func test27SettingsWaterFasting() async throws {
+        try await settingsScreen("27-settings-water-fasting") { ProfileView(settingsCategory: .waterFasting) }
+    }
+
+    func test28SettingsShortcutsSiri() async throws {
+        try await settingsScreen("28-settings-shortcuts-siri") { ShortcutsAndSiriSettingsView() }
+    }
+
+    func test29SettingsHomeMenu() async throws {
+        try await settingsScreen("29-settings-home-menu") { AddMenuSettingsView() }
+    }
+
+    func test30SettingsAIProviders() async throws {
+        try await settingsScreen("30-settings-ai-providers") { ProfileView(settingsCategory: .aiProviders) }
+    }
+
+    func test31SettingsOnDeviceModels() async throws {
+        try await settingsScreen("31-settings-on-device-models") { ProfileView(settingsCategory: .onDeviceModels) }
+    }
+
+    func test32SettingsAdvancedAI() async throws {
+        try await settingsScreen("32-settings-advanced-ai", heightMultiplier: 3) {
+            ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    func test33SettingsBodyHealth() async throws {
+        try await settingsScreen("33-settings-body-health", heightMultiplier: 1.8) {
+            ProfileView(settingsCategory: .bodyHealth)
+        }
+    }
+
+    func test34SettingsProfile() async throws {
+        try await settingsScreen("34-settings-profile") { ProfileView(settingsCategory: .profile) }
+    }
+
+    func test35SettingsDataSync() async throws {
+        try await settingsScreen("35-settings-data-sync") { ProfileView(settingsCategory: .dataSync) }
+    }
+
+    func test36SettingsNeonBridge() async throws {
+        try await settingsScreen("36-settings-neon-bridge") { BridgeSettingsView() }
+    }
+
+    func test37SettingsNotifications() async throws {
+        try await settingsScreen("37-settings-notifications") { NotificationSettingsView() }
+    }
+
+    func test38SettingsAbout() async throws {
+        try await settingsScreen("38-settings-about") { AboutView() }
+    }
+
+    func test39SettingsAcknowledgements() async throws {
+        try await settingsScreen("39-settings-acknowledgements") { AcknowledgementsView() }
+    }
+
+    func test40RestTimerMuted() async throws {
+        let day = VisualQAFixtures.liftingDay()
+        try await eachSize("40-rest-timer-muted", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+        }, secondSheet: {
+            RestTimerSheet(defaultSeconds: 90, initiallyMuted: true)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    func test41ReconCalendarSyncStatus() async throws {
+        VisualQAFixtures.seedReconCalendar()
+        try await settingsScreen("41-recon-calendar-sync-status") {
+            ReconView(initialSection: .calendar)
+        }
+    }
+
+    private func settingsScreen<Content: View>(
+        _ name: String,
+        heightMultiplier: CGFloat = 1,
+        @ViewBuilder content: @escaping () -> Content
+    ) async throws {
+        seedSettingsSubtitles()
+        try await eachSize(name, heightMultiplier: heightMultiplier) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { content() }
+            }
+        }
+    }
+
+    private func seedSettingsSubtitles() {
+        AIProviderSettings.selectedProvider = .gemini
+        AIProviderSettings.selectedModel = AIProvider.gemini.defaultModel
+        AIProviderSettings.setAPIKey("visual-qa-key", for: .gemini)
+        Gemma4LocalModelManager.shared.applySnapshotState(.ready)
+        VisualQAFixtures.icloudLastBackupISO = ISO8601DateFormatter().string(
+            from: Date().addingTimeInterval(-2 * 60 * 60)
+        )
+        UserDefaults.standard.set(true, forKey: "healthKitEnabled")
+        UserDefaults.standard.set("lbs", forKey: "weightUnit")
+        let bridge = NeonBridgeSettings(baseURL: NeonBridgeSettings.defaultBaseURL, apiKey: nil)
+        bridge.save()
+    }
+
     // MARK: - Rendering
 
     private func eachSize<Content: View>(
@@ -358,6 +474,9 @@ final class VisualQASnapshotTests: XCTestCase {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let fileName = "\(VisualQAOutput.deviceLabel)_\(sizeLabel)_\(name).png"
+        if name == "10-more-settings", sizeLabel == "default", window.bounds.height <= 700 {
+            VisualQADiagnostics.assertHubRowsAboveTabBar(in: window)
+        }
         VisualQADiagnostics.recordNavigationBars(in: window, for: fileName)
         if let data = image.pngData() {
             VisualQAOutput.write(data, named: fileName)
@@ -421,6 +540,48 @@ enum VisualQADiagnostics {
         lines.append(contentsOf: found.isEmpty ? ["  (no navigation bar labels)"] : found)
         let text = lines.joined(separator: "\n") + "\n"
         VisualQAOutput.write(Data(text.utf8), named: "navbar-\(VisualQAOutput.deviceLabel).txt")
+    }
+
+    static func assertHubRowsAboveTabBar(in window: UIWindow) {
+        let titles = ["Recon Bench", "Training", "Food & AI", "Body & Health", "Data & Sync", "Notifications", "About"]
+        var frames: [String: CGRect] = [:]
+        func walk(_ view: UIView) {
+            if let label = view as? UILabel, let text = label.text {
+                if text == "!" {
+                    XCTFail("More tab shows an update badge")
+                }
+                if titles.contains(text), !label.isHidden, label.alpha > 0 {
+                    let frame = label.convert(label.bounds, to: window)
+                    if frame.height > 1 {
+                        frames[text] = frame
+                    }
+                }
+            }
+            for subview in view.subviews {
+                walk(subview)
+            }
+        }
+        walk(window)
+        guard let tabBar = findTabBar(in: window) else {
+            XCTFail("Missing tab bar")
+            return
+        }
+        let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
+        for title in titles {
+            guard let frame = frames[title] else {
+                XCTFail("Missing More hub row \(title)")
+                continue
+            }
+            XCTAssertLessThan(frame.maxY, tabTop + 1, "\(title) sits under the tab bar on iPhone SE")
+        }
+    }
+
+    private static func findTabBar(in view: UIView) -> UITabBar? {
+        if let bar = view as? UITabBar { return bar }
+        for subview in view.subviews {
+            if let bar = findTabBar(in: subview) { return bar }
+        }
+        return nil
     }
 }
 
@@ -659,6 +820,10 @@ final class VisualQAStores {
         strength = StrengthWorkoutStore(defaults: defaults)
         importedWorkouts = ImportedHealthWorkoutStore(defaults: defaults)
         weeklyChallenge = WeeklyChallengeStore(defaults: defaults)
+        if let iso = VisualQAFixtures.icloudLastBackupISO {
+            defaults.set(iso, forKey: CloudBackupService.lastAtKey)
+            defaults.set(true, forKey: CloudBackupService.enabledKey)
+        }
         cloudBackup = CloudBackupService(defaults: defaults)
         bodyFat = BodyFatStore(observesExternalChanges: false)
         bodyMeasurement = BodyMeasurementStore()
@@ -707,6 +872,7 @@ final class VisualQAStores {
 enum VisualQAFixtures {
     nonisolated static let host = VisualQAStubStorage.host
     static let workoutID = "qa-workout-1"
+    static var icloudLastBackupISO: String?
     private static var savedSettings: NeonBridgeSettings?
 
     static func install() {

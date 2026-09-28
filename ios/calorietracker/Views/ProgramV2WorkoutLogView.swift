@@ -20,7 +20,7 @@ struct ProgramV2WorkoutLogView: View {
     @State private var workoutSets: [String: [LoggedSet]] = [:]
     @State private var conditioningCompleted = false
     @State private var showingRestTimer = false
-    @State private var restDuration = 90
+    @State private var restDuration = RestTimerSettings.defaultSeconds
     @State private var suggestedLoads: [String: Double] = [:]
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false

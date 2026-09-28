@@ -237,20 +237,59 @@ struct StepsListResponse: Codable {
 struct NeonBridgeSettings: Codable {
     var baseURL: String
     var apiKey: String?
-    
+
     static let defaultBaseURL = "https://jl-workout-ingest.vercel.app"
-    
+    static let storageKey = "neonBridgeSettings"
+
     static func load() -> NeonBridgeSettings {
-        guard let data = UserDefaults.standard.data(forKey: "neonBridgeSettings"),
-              let settings = try? JSONDecoder().decode(NeonBridgeSettings.self, from: data) else {
-            return NeonBridgeSettings(baseURL: defaultBaseURL, apiKey: nil)
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              var settings = try? JSONDecoder().decode(NeonBridgeSettings.self, from: data) else {
+            return NeonBridgeSettings(baseURL: defaultBaseURL, apiKey: NeonBridgeKeychain.load())
+        }
+        return settings.migratingKeyToKeychain()
+    }
+
+    func save() {
+        let trimmed = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            NeonBridgeKeychain.delete()
+            writeJSON(apiKey: nil)
+            return
+        }
+        if NeonBridgeKeychain.save(trimmed) {
+            writeJSON(apiKey: nil)
+        } else {
+            writeJSON(apiKey: trimmed)
+        }
+    }
+
+    /// Moves a JSON token into the Keychain. The JSON key is removed only after the write succeeds.
+    private func migratingKeyToKeychain() -> NeonBridgeSettings {
+        var settings = self
+        let jsonKey = settings.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !jsonKey.isEmpty, NeonBridgeKeychain.load() == nil {
+            guard NeonBridgeKeychain.save(jsonKey) else {
+                return settings
+            }
+            settings.writeJSON(apiKey: nil)
+            settings.apiKey = jsonKey
+            return settings
+        }
+        if let keychainKey = NeonBridgeKeychain.load(), !keychainKey.isEmpty {
+            if settings.apiKey != nil {
+                settings.writeJSON(apiKey: nil)
+            }
+            settings.apiKey = keychainKey
+            return settings
         }
         return settings
     }
-    
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: "neonBridgeSettings")
+
+    private func writeJSON(apiKey: String?) {
+        var stored = self
+        stored.apiKey = apiKey
+        if let data = try? JSONEncoder().encode(stored) {
+            UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
     }
 }

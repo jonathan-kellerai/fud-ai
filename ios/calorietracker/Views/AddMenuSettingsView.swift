@@ -58,7 +58,7 @@ struct AddMenuSettingsView: View {
             }
         }
         .environment(\.editMode, $editMode)
-        .navigationTitle("+ Menu")
+        .navigationTitle("Home + Menu")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: config) { _, newValue in
             AddMenuSettings.save(newValue)
@@ -97,7 +97,7 @@ struct AddMenuSettingsView: View {
 
     private var flatMethodsSection: some View {
         Section {
-            ForEach(config.flatMethods) { method in
+            ForEach(config.flatMethods.filter { $0 != .siriPhrases }) { method in
                 Label(method.title, systemImage: method.systemImageName)
             }
             .onMove { from, to in
@@ -128,7 +128,7 @@ struct AddMenuSettingsView: View {
         Section {
             TextField("Group Name", text: group.name)
 
-            ForEach(group.wrappedValue.methods) { method in
+            ForEach(group.wrappedValue.methods.filter { $0 != .siriPhrases }) { method in
                 Label(method.title, systemImage: method.systemImageName)
             }
             .onMove { from, to in
@@ -152,7 +152,7 @@ struct AddMenuSettingsView: View {
 
     private var hiddenMethods: [FoodLogMethod] {
         let visible = Set(config.visibleMethods)
-        return FoodLogMethod.addMenuCases.filter { !visible.contains($0) }
+        return FoodLogMethod.addMenuCases.filter { $0 != .siriPhrases && !visible.contains($0) }
     }
 
     private func addMenuGroupIcon(for group: AddMenuGroupConfig) -> String {

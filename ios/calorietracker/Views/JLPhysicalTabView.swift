@@ -195,10 +195,8 @@ struct JLPhysicalTabView: View {
                     QuickActionButton(icon: "server.rack", title: "Bridge", color: IronTheme.textSecondary)
                 }
                 
-                Button {
-                    showingPrograms = true
-                } label: {
-                    QuickActionButton(icon: "list.bullet", title: "Program", color: IronTheme.bloodText)
+                NavigationLink(destination: WorkoutHistoryListView()) {
+                    QuickActionButton(icon: "clock.arrow.circlepath", title: "History", color: IronTheme.bloodText)
                 }
             }
         }

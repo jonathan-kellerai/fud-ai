@@ -65,7 +65,7 @@ struct ReconView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(IronTheme.canvas)
-        .navigationTitle("Recon")
+        .navigationTitle("Recon Bench")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if anchor.isEmpty { anchor = ReconMath.todayISO() }
@@ -343,15 +343,18 @@ struct ReconView: View {
                 .foregroundStyle(IronTheme.textSecondary)
             calendarGrid(simulation)
             entryList()
-            Toggle(isOn: Binding(get: { store.bridgeSyncEnabled }, set: { store.bridgeSyncEnabled = $0 })) {
-                Text("Sync taken doses to the bridge")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(IronTheme.textPrimary)
+            NavigationLink {
+                BridgeSettingsView()
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Dose sync: \(store.bridgeSyncEnabled ? "On" : "Off") · Data & Sync")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(IronTheme.textPrimary)
+                    Text("Change in More › Data & Sync › Neon Bridge")
+                        .font(.system(size: 12))
+                        .foregroundStyle(IronTheme.textSecondary)
+                }
             }
-            .tint(IronTheme.blood)
-            Text("Off by default. Taken doses stay on this phone until this is on.")
-                .font(.system(size: 12))
-                .foregroundStyle(IronTheme.textSecondary)
         }
         .padding(12)
         .modifier(IronCardModifier())
