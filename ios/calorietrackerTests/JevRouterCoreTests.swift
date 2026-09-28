@@ -14,16 +14,16 @@ struct JevRouterCoreTests {
     @Test func killSwitchMakesZeroRequests() async {
         let router = makeRouter(killSwitch: true)
         let outcome = await router.ask(.estimateCheck, cacheKey: "meal", preview: "bowl") { model in
-            sampleRequest(model)
+            Self.request(model)
         }
-        #expect(outcome == .skipped(.killSwitch) || isSkip(outcome, .killSwitch))
+        #expect(isSkip(outcome, .killSwitch))
         #expect(TypeSafeStub.requests.isEmpty)
     }
 
     @Test func noCredentialsMakesZeroRequests() async {
         let router = makeRouter(includeCredentials: false)
         for use in JevUse.allCases {
-            let outcome = await router.ask(use, cacheKey: "x", preview: "x") { sampleRequest($0) }
+            let outcome = await router.ask(use, cacheKey: "x", preview: "x") { Self.request($0) }
             #expect(isSkip(outcome, .noKey))
         }
         #expect(TypeSafeStub.requests.isEmpty)
@@ -40,7 +40,7 @@ struct JevRouterCoreTests {
             cacheKey: "slow",
             preview: "chili",
             policy: JevCallPolicy(budget: .milliseconds(300), retryDelaysNs: [], cacheTTL: 60)
-        ) { sampleRequest($0) }
+        ) { Self.request($0) }
         #expect(isSkip(outcome, .timeout))
         #expect(Date().timeIntervalSince(started) < 1)
         #expect(telemetry.snapshot.uses[JevUse.mealMatch.rawValue]?.skipped["timeout"] == 1)
@@ -50,8 +50,8 @@ struct JevRouterCoreTests {
         TypeSafeStub.handler = { _, _ in (200, [:], Self.okJSON()) }
         let telemetry = JevRouterTelemetry(defaults: suite("cache"))
         let router = makeRouter(telemetry: telemetry)
-        _ = await router.ask(.coachIntent, cacheKey: "same", preview: "steps") { sampleRequest($0) }
-        _ = await router.ask(.coachIntent, cacheKey: "same", preview: "steps") { sampleRequest($0) }
+        _ = await router.ask(.coachIntent, cacheKey: "same", preview: "steps") { Self.request($0) }
+        _ = await router.ask(.coachIntent, cacheKey: "same", preview: "steps") { Self.request($0) }
         #expect(TypeSafeStub.requests.count == 1)
         #expect(telemetry.snapshot.uses[JevUse.coachIntent.rawValue]?.cacheHits == 1)
     }
@@ -62,14 +62,14 @@ struct JevRouterCoreTests {
         let router = makeRouter(now: { clock.date })
         let policy = JevCallPolicy(budget: .seconds(2), retryDelaysNs: [], cacheTTL: 60)
         for _ in 0..<3 {
-            _ = await router.ask(.plausibility, cacheKey: nil, preview: "set", policy: policy) { sampleRequest($0) }
+            _ = await router.ask(.plausibility, cacheKey: nil, preview: "set", policy: policy) { Self.request($0) }
         }
-        let blocked = await router.ask(.plausibility, cacheKey: nil, preview: "set", policy: policy) { sampleRequest($0) }
+        let blocked = await router.ask(.plausibility, cacheKey: nil, preview: "set", policy: policy) { Self.request($0) }
         #expect(isSkip(blocked, .circuitOpen))
         #expect(TypeSafeStub.requests.count == 3)
         clock.date = clock.date.addingTimeInterval(5 * 60 + 1)
         TypeSafeStub.handler = { _, _ in (200, [:], Self.okJSON()) }
-        let reopened = await router.ask(.plausibility, cacheKey: "after", preview: "set", policy: policy) { sampleRequest($0) }
+        let reopened = await router.ask(.plausibility, cacheKey: "after", preview: "set", policy: policy) { Self.request($0) }
         #expect(isAnswer(reopened))
         #expect(TypeSafeStub.requests.count == 4)
     }
@@ -79,20 +79,20 @@ struct JevRouterCoreTests {
         TypeSafeStub.handler = { _, _ in (401, [:], Data(#"{"detail":{"error_type":"authentication_error","message":"no"}}"#.utf8)) }
         let router = makeRouter(credentials: { box.value })
         let policy = JevCallPolicy(budget: .seconds(2), retryDelaysNs: [], cacheTTL: 60)
-        _ = await router.ask(.mealMatch, cacheKey: nil, preview: "a", policy: policy) { sampleRequest($0) }
-        let blocked = await router.ask(.mealMatch, cacheKey: nil, preview: "b", policy: policy) { sampleRequest($0) }
+        _ = await router.ask(.mealMatch, cacheKey: nil, preview: "a", policy: policy) { Self.request($0) }
+        let blocked = await router.ask(.mealMatch, cacheKey: nil, preview: "b", policy: policy) { Self.request($0) }
         #expect(isSkip(blocked, .circuitOpen))
         #expect(TypeSafeStub.requests.count == 1)
         box.value = JevCredentials(endpoint: .direct, apiKey: "other-key", model: "jev-latest")
         TypeSafeStub.handler = { _, _ in (200, [:], Self.okJSON()) }
-        let again = await router.ask(.mealMatch, cacheKey: "fresh", preview: "c", policy: policy) { sampleRequest($0) }
+        let again = await router.ask(.mealMatch, cacheKey: "fresh", preview: "c", policy: policy) { Self.request($0) }
         #expect(isAnswer(again))
     }
 
     @Test func requestShapeIsDocumented() async throws {
         TypeSafeStub.handler = { _, _ in (200, [:], Self.okJSON()) }
         let direct = makeRouter()
-        _ = await direct.ask(.estimateCheck, cacheKey: nil, preview: "bowl") { sampleRequest($0) }
+        _ = await direct.ask(.estimateCheck, cacheKey: nil, preview: "bowl") { Self.request($0) }
         let first = try #require(TypeSafeStub.requests.first)
         #expect(first.0.url?.absoluteString == "https://api.typesafe.ai/v1/systemone")
         #expect(first.0.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
@@ -111,7 +111,8 @@ struct JevRouterCoreTests {
         }
         let second = try #require(TypeSafeStub.requests.first)
         #expect(second.0.url?.absoluteString == "https://ai-gateway.vercel.sh/typesafe/v1/systemone")
-        let gatewayJSON = try #require(JSONSerialization.jsonObject(with: try #require(second.1)) as? [String: Any])
+        let secondBody = try #require(second.1)
+        let gatewayJSON = try #require(JSONSerialization.jsonObject(with: secondBody) as? [String: Any])
         #expect(gatewayJSON["model"] as? String == "typesafe-ai/jev")
     }
 
@@ -152,7 +153,7 @@ struct JevRouterCoreTests {
 
     @Test func estimateCheckHonorsKillSwitch() async {
         let router = makeRouter(killSwitch: true)
-        let outcome = await router.ask(.estimateCheck, cacheKey: "bowl", preview: "Chicken rice bowl") { sampleRequest($0) }
+        let outcome = await router.ask(.estimateCheck, cacheKey: "bowl", preview: "Chicken rice bowl") { Self.request($0) }
         #expect(isSkip(outcome, .killSwitch))
         #expect(TypeSafeStub.requests.isEmpty)
     }
@@ -161,7 +162,7 @@ struct JevRouterCoreTests {
         TypeSafeStub.handler = { _, _ in (200, [:], Self.okJSON()) }
         let telemetry = JevRouterTelemetry(defaults: suite("estimate"))
         let router = makeRouter(telemetry: telemetry, active: true)
-        let outcome = await router.ask(.estimateCheck, cacheKey: "bowl", preview: "Chicken rice bowl") { sampleRequest($0) }
+        let outcome = await router.ask(.estimateCheck, cacheKey: "bowl", preview: "Chicken rice bowl") { Self.request($0) }
         #expect(isAnswer(outcome))
         await router.report(.estimateCheck, .accepted(label: "ok", confidence: nil, llmCallsAvoided: 0), preview: "Chicken rice bowl")
         #expect(telemetry.snapshot.uses[JevUse.estimateCheck.rawValue]?.accepted == 1)
@@ -208,7 +209,7 @@ struct JevRouterCoreTests {
         return defaults
     }
 
-    private func sampleRequest(_ model: String) -> TypeSafeRequest {
+    nonisolated private static func request(_ model: String) -> TypeSafeRequest {
         TypeSafeRequest(
             state: .object(["meal": .string("bowl")]),
             model: model,
