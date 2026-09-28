@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TypeSafeEstimateCheckSection: View {
     @State private var enabled = TypeSafeSettings.enabled
+    @State private var routerEnabled = JevRouterSettings.enabled
     @State private var endpoint = TypeSafeSettings.endpoint
     @State private var model = TypeSafeSettings.model
     @State private var checkTypedMeals = TypeSafeSettings.checkTypedMeals
@@ -16,7 +17,7 @@ struct TypeSafeEstimateCheckSection: View {
 
     var body: some View {
         AISettingsSubsectionHeader(
-            title: "Estimate Check",
+            title: "TypeSafe Jev",
             systemImage: "checkmark.seal",
             infoTopic: .estimateCheck
         )
@@ -24,6 +25,13 @@ struct TypeSafeEstimateCheckSection: View {
         Toggle("Check estimates with TypeSafe", isOn: $enabled)
             .tint(AppColors.calorie)
             .accessibilityIdentifier("settings.typesafe.enabled")
+
+        Toggle("Jev router (faster, cheaper AI)", isOn: $routerEnabled)
+            .tint(AppColors.calorie)
+            .accessibilityIdentifier("settings.jevRouter.enabled")
+            .onChange(of: routerEnabled) { _, isOn in
+                JevRouterSettings.enabled = isOn
+            }
             .onChange(of: enabled) { _, isOn in
                 TypeSafeSettings.enabled = isOn
                 if isOn {
@@ -49,7 +57,7 @@ struct TypeSafeEstimateCheckSection: View {
                 )
             }
 
-        if enabled {
+        if enabled || routerEnabled {
             Picker("Service", selection: $endpoint) {
                 ForEach(TypeSafeEndpoint.allCases) { item in
                     Text(item.title).tag(item)

@@ -217,11 +217,40 @@ enum TypeSafeEstimateChecker {
     }
 
     static func liveCheck(_ input: EstimateCheckInput) async -> EstimateCheckOutcome? {
-        guard TypeSafeSettings.isConfigured else { return nil }
-        let endpoint = TypeSafeSettings.endpoint
-        guard let key = TypeSafeSettings.apiKey(for: endpoint) else { return nil }
-        let client = TypeSafeClient(baseURL: endpoint.baseURL, apiKey: key)
-        return await check(input, client: client, model: TypeSafeSettings.model)
+        guard TypeSafeSettings.isConfigured || JevRouterSettings.killSwitch else { return nil }
+        let outcome = await JevRouter.shared.ask(
+            .estimateCheck,
+            cacheKey: cacheKey(for: input),
+            preview: input.name,
+            policy: JevCallPolicy.standard(for: .estimateCheck)
+        ) { model in
+            makeRequest(for: input, model: model)
+        }
+        switch outcome {
+        case .answered(let response, _, let latency):
+            let verdict = verdict(for: input, response: response)
+            let label: String
+            switch verdict {
+            case .ok: label = "ok"
+            case .looksOff(_, let band, _): label = "looksOff:\(band)"
+            case .unavailable: label = "unavailable"
+            }
+            await JevRouter.shared.report(
+                .estimateCheck,
+                .accepted(label: label, confidence: nil, llmCallsAvoided: 0),
+                preview: input.name,
+                latencyMs: latency,
+                model: response.model
+            )
+            return verdict
+        case .skipped:
+            return nil
+        }
+    }
+
+    static func cacheKey(for input: EstimateCheckInput) -> String {
+        let items = input.items.map { "\($0.name)|\($0.grams)" }.joined(separator: ",")
+        return JevText.normalize("\(input.name)|\(input.calories)|\(input.servingSizeGrams)|\(items)")
     }
 
     static func includesDensity(_ input: EstimateCheckInput) -> Bool {

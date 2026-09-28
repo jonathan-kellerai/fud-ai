@@ -1266,8 +1266,11 @@ struct HomeView: View {
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
+                    JevCredentials.refresh()
                     checkAndConsumeSharedImage()
                     homeRefreshToken += 1
+                } else if newPhase == .background {
+                    JevRouterTelemetry.shared.flush()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in
@@ -2174,6 +2177,7 @@ struct HomeView: View {
 
     private func reestimateFood(direction: EstimateDirection, calories: Int, name: String) {
         guard !reestimateUsed, let lastEstimateRequest else { return }
+        Task { await JevRouter.shared.report(.estimateCheck, .userOverride, preview: name) }
         let hint = "A plausibility check flagged the previous estimate (\(calories) kcal for \(name)) as likely too \(direction.phrase). Re-check portion size and calorie density carefully."
         switch lastEstimateRequest {
         case .analysis(let images, _, let description, let progressiveMeal):
@@ -4034,6 +4038,7 @@ enum AISettingsInfoTopic {
     case speechToText
     case speechFallback
     case estimateCheck
+    case jevRouter
 
     var title: String {
         switch self {
@@ -4044,6 +4049,7 @@ enum AISettingsInfoTopic {
         case .speechToText: "Speech-to-Text"
         case .speechFallback: "Voice Fallback"
         case .estimateCheck: "Estimate Check"
+        case .jevRouter: "Jev Router"
         }
     }
 
@@ -4062,7 +4068,9 @@ enum AISettingsInfoTopic {
         case .speechFallback:
             "Retries transcription when the selected remote STT provider fails. It only produces a transcript; that transcript still follows the normal text AI route. Native iOS speech already uses Apple's offline and online recognition recovery, so a separate STT fallback is available only for remote providers."
         case .estimateCheck:
-            "After your AI provider estimates a meal, TypeSafe's Jev model double-checks whether the calories look plausible. It can't read photos or estimate nutrition itself. It only sends the food name, item names, and portion sizes as text. Logging is never blocked."
+            "Jev makes quick yes/no and multiple-choice decisions so the app can skip or shrink AI calls. It only receives text (never photos). Nothing is logged without your review. Estimate Check still only sends the food name, item names, and portion sizes."
+        case .jevRouter:
+            "The router asks Jev short questions before a bigger AI call. It is off until you turn it on, and it does nothing without a TypeSafe or AI Gateway key. Plausibility checks can flag typos on this iPhone without a key. The optional tie-break sends relative facts as text, never photos or your absolute body weight."
         }
     }
 }
@@ -4074,7 +4082,7 @@ enum NotificationsHubSubtitle {
     }
 }
 
-private struct IronInfoSectionHeader: View {
+struct IronInfoSectionHeader: View {
     let title: String
     let infoTopic: AISettingsInfoTopic
     @State private var isShowingInfo = false
@@ -6028,6 +6036,16 @@ struct ProfileView: View {
                 .onDisappear { autosaveCustomInstructions() }
                 }
 
+                if settingsCategory == .advancedAI,
+                   JevRouterSettings.visualPreview || (TypeSafeSettings.hasCredentials && (JevRouterSettings.enabled || TypeSafeSettings.enabled)) {
+                Section {
+                    JevRouterAdvancedSection()
+                } header: {
+                    IronInfoSectionHeader(title: "Jev Router", infoTopic: .jevRouter)
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
                 if settingsCategory == .trainingAdvanced, JLFeatureFlags.legacyWorkoutLogger {
                 WorkoutLoggingSettingsSection()
                 Section {
@@ -6419,6 +6437,7 @@ struct ProfileView: View {
                         AIProviderSettings.deleteAllData()
                         SpeechSettings.deleteAllData()
                         TypeSafeSettings.deleteAllData()
+                        JevRouterSettings.deleteAllData()
                         chatStore.reset()
                         WidgetSnapshot.clear()
                         WidgetCenter.shared.reloadAllTimelines()

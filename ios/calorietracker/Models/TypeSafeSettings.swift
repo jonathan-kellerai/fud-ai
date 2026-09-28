@@ -24,6 +24,7 @@ enum TypeSafeEndpoint: String, CaseIterable, Identifiable {
 }
 
 enum TypeSafeSettings {
+    static let didChangeNotification = Notification.Name("TypeSafeSettingsDidChange")
     static let enabledKey = "typesafe.estimateCheck.enabled"
     static let checkTextKey = "typesafe.estimateCheck.checkText"
     static let endpointKey = "typesafe.endpoint"
@@ -51,7 +52,10 @@ enum TypeSafeSettings {
             let raw = UserDefaults.standard.string(forKey: endpointKey) ?? ""
             return TypeSafeEndpoint(rawValue: raw) ?? .direct
         }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: endpointKey) }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: endpointKey)
+            postChange()
+        }
     }
 
     static var model: String {
@@ -60,7 +64,10 @@ enum TypeSafeSettings {
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return stored.isEmpty ? endpoint.defaultModel : stored
         }
-        set { UserDefaults.standard.set(newValue, forKey: modelKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: modelKey)
+            postChange()
+        }
     }
 
     static func apiKeyAccount(for endpoint: TypeSafeEndpoint) -> String {
@@ -86,12 +93,22 @@ enum TypeSafeSettings {
         } else {
             KeychainHelper.delete(key: account)
         }
+        postChange()
+    }
+
+    static var hasCredentials: Bool {
+        let key = apiKey(for: endpoint)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let modelID = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !key.isEmpty && !modelID.isEmpty
     }
 
     static var isConfigured: Bool {
-        let key = apiKey(for: endpoint)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let modelID = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        return enabled && !key.isEmpty && !modelID.isEmpty
+        enabled && hasCredentials
+    }
+
+    private static func postChange() {
+        JevCredentials.refresh()
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
     static func cachedCatalog(for endpoint: TypeSafeEndpoint, defaults: UserDefaults = .standard) -> ModelCatalogSnapshot? {

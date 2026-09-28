@@ -2,41 +2,6 @@ import Foundation
 import Testing
 @testable import calorietracker
 
-nonisolated private final class TypeSafeStub: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: ((URLRequest, Data?) throws -> (Int, [String: String], Data))?
-    nonisolated(unsafe) static var requests: [(URLRequest, Data?)] = []
-
-    nonisolated override class func canInit(with request: URLRequest) -> Bool { true }
-    nonisolated override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    nonisolated override func startLoading() {
-        let body = request.httpBody ?? request.httpBodyStream.map { stream in
-            stream.open()
-            defer { stream.close() }
-            var data = Data()
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            while stream.hasBytesAvailable {
-                let count = stream.read(&buffer, maxLength: buffer.count)
-                if count <= 0 { break }
-                data.append(buffer, count: count)
-            }
-            return data
-        }
-        Self.requests.append((request, body))
-        do {
-            let (status, headers, data) = try Self.handler!(request, body)
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-
-    nonisolated override func stopLoading() {}
-}
-
 @Suite(.serialized)
 @MainActor
 struct TypeSafeEstimateCheckTests {
@@ -53,8 +18,7 @@ struct TypeSafeEstimateCheckTests {
     )
 
     init() {
-        TypeSafeStub.requests = []
-        TypeSafeStub.handler = nil
+        TypeSafeStub.reset()
     }
 
     @Test func requestHitsSystemOneWithBearerKeyAndDocumentedShape() async throws {

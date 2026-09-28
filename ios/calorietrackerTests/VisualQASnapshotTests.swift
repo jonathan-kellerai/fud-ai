@@ -404,6 +404,31 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    func test44SettingsAdvancedAIJevRouter() async throws {
+        JevRouterSettings.visualPreview = true
+        defer { JevRouterSettings.visualPreview = false }
+        try await settingsScreen("44-settings-advanced-ai-jev-router", heightMultiplier: 3) {
+            ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    func test45JevRouterStats() async throws {
+        let defaults = UserDefaults(suiteName: "jev.router.visual")!
+        defaults.removePersistentDomain(forName: "jev.router.visual")
+        let telemetry = JevRouterTelemetry(defaults: defaults)
+        telemetry.record(
+            .mealMatch,
+            .accepted(label: "oatmeal", confidence: 0.91, llmCallsAvoided: 1),
+            preview: "oatmeal",
+            latencyMs: 180,
+            model: "jev-1.13.0"
+        )
+        defer { defaults.removePersistentDomain(forName: "jev.router.visual") }
+        try await settingsScreen("45-jev-router-stats") {
+            JevRouterStatsView(telemetry: telemetry)
+        }
+    }
+
     private func settingsScreen<Content: View>(
         _ name: String,
         heightMultiplier: CGFloat = 1,
