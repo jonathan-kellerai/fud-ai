@@ -1,6 +1,113 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "CFBundleDisplayName": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "az": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical"
+          }
+        }
+      }
+    },
     "NSCameraUsageDescription": {
       "extractionState": "manual",
       "localizations": {
@@ -108,6 +215,220 @@
         }
       }
     },
+    "NSHealthShareUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "يقرأ JL Physical وزنك وطولك وتكوين جسمك وتغذيتك وخطواتك اليومية وسعرات تمارين JL Physical للحفاظ على مزامنة سجلك."
+          }
+        },
+        "az": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tarixçənizi sinxron saxlamaq üçün çəkinizi, boyunuzu, bədən tərkibinizi, qidalanmanızı, gündəlik addımlarınızı və JL Physical məşq kalorilərini oxuyur."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Liest Gewicht, Größe, Körperzusammensetzung, Ernährung, tägliche Schritte und JL Physical-Trainingskalorien, damit dein Verlauf synchron bleibt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read your weight, height, body composition, nutrition, daily steps, and JL Physical workout calories to keep your history in sync."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lee tu peso, altura, composición corporal, nutrición, pasos diarios y calorías de entrenamiento de JL Physical para mantener tu historial sincronizado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lit votre poids, votre taille, votre composition corporelle, votre nutrition, vos pas quotidiens et les calories d’entraînement JL Physical pour garder votre historique synchronisé."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "आपका इतिहास सिंक में रखने के लिए आपका वज़न, ऊंचाई, शरीर संरचना, पोषण, दैनिक कदम और JL Physical वर्कआउट कैलोरी पढ़ता है।"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Legge peso, altezza, composizione corporea, alimentazione, passi giornalieri e calorie degli allenamenti JL Physical per mantenere sincronizzata la cronologia."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "履歴を同期するために、体重、身長、体組成、栄養、1日の歩数、JL Physicalのワークアウト消費カロリーを読み取ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "기록을 동기화하기 위해 체중, 키, 체성분, 영양, 일일 걸음 수 및 JL Physical 운동 칼로리를 읽습니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Leest je gewicht, lengte, lichaamssamenstelling, voeding, dagelijkse stappen en JL Physical-trainingscalorieën om je geschiedenis synchroon te houden."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Odczytuje wagę, wzrost, skład ciała, odżywianie, dzienne kroki i kalorie z treningów JL Physical, aby historia była zsynchronizowana."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lê seu peso, altura, composição corporal, nutrição, passos diários e calorias de treinos do JL Physical para manter seu histórico sincronizado."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Citește greutatea, înălțimea, compoziția corporală, nutriția, pașii zilnici și caloriile antrenamentelor JL Physical pentru a-ți păstra istoricul sincronizat."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Считывает вес, рост, состав тела, питание, ежедневные шаги и калории тренировок JL Physical, чтобы история оставалась синхронизированной."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Зчитує вагу, зріст, склад тіла, харчування, щоденні кроки та калорії тренувань JL Physical, щоб історія залишалася синхронізованою."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "读取你的体重、身高、身体成分、营养、每日步数和 JL Physical 锻炼卡路里，以保持记录同步。"
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "يحتاج JL Physical إلى الوصول إلى الميكروفون لتتمكن من تسجيل الطعام بصوتك."
+          }
+        },
+        "az": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Qidanı səslə qeyd edə bilməyiniz üçün JL Physical mikrofona giriş tələb edir."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical benötigt Zugriff auf das Mikrofon, damit du Lebensmittel per Sprache erfassen kannst."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical needs microphone access so you can log food by voice."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical necesita acceso al micrófono para que puedas registrar alimentos por voz."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical a besoin d’accéder au micro pour que vous puissiez enregistrer vos aliments à la voix."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical को माइक्रोफ़ोन एक्सेस चाहिए ताकि आप आवाज़ से भोजन लॉग कर सकें।"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical ha bisogno dell’accesso al microfono per registrare i pasti con la voce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "音声で食事を記録するために、JL Physicalはマイクへのアクセスを必要とします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "음성으로 음식을 기록하려면 JL Physical에 마이크 접근 권한이 필요합니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical heeft toegang tot de microfoon nodig zodat je voedsel met je stem kunt vastleggen."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical potrzebuje dostępu do mikrofonu, abyś mógł rejestrować jedzenie głosem."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "O JL Physical precisa de acesso ao microfone para que você possa registrar alimentos por voz."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical are nevoie de acces la microfon pentru a putea înregistra alimentele prin voce."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical нужен доступ к микрофону, чтобы вы могли записывать еду голосом."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical потрібен доступ до мікрофона, щоб ви могли записувати їжу голосом."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical 需要访问麦克风，以便你通过语音记录食物。"
+          }
+        }
+      }
+    },
     "NSPhotoLibraryAddUsageDescription": {
       "extractionState": "manual",
       "localizations": {
@@ -211,6 +532,113 @@
           "stringUnit": {
             "state": "translated",
             "value": "当你点按“保存”时，JL Physical 会将餐食照片保存到照片图库。"
+          }
+        }
+      }
+    },
+    "NSSpeechRecognitionUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "يستخدم JL Physical التعرّف على الكلام لتحويل صوتك إلى نص لتسجيل الطعام."
+          }
+        },
+        "az": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical qida qeydi üçün səsinizi mətnə çevirmək məqsədilə nitq tanımadan istifadə edir."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical verwendet Spracherkennung, um deine Stimme für die Lebensmittelerfassung in Text umzuwandeln."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JL Physical uses speech recognition to convert your voice into text for food logging."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical usa el reconocimiento de voz para convertir tu voz en texto al registrar alimentos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical utilise la reconnaissance vocale pour convertir votre voix en texte afin d’enregistrer vos aliments."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "भोजन लॉग करने के लिए JL Physical आपकी आवाज़ को टेक्स्ट में बदलने हेतु वाक् पहचान का उपयोग करता है।"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical usa il riconoscimento vocale per trasformare la tua voce in testo durante la registrazione dei pasti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physicalは、食事記録のために音声認識を使ってあなたの声をテキストに変換します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical는 음식 기록을 위해 음성 인식을 사용하여 음성을 텍스트로 변환합니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical gebruikt spraakherkenning om je stem om te zetten in tekst voor het vastleggen van voedsel."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical używa rozpoznawania mowy, aby zamieniać Twój głos na tekst podczas rejestrowania jedzenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "O JL Physical usa o reconhecimento de fala para converter sua voz em texto ao registrar alimentos."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical folosește recunoașterea vorbirii pentru a transforma vocea ta în text la înregistrarea alimentelor."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical использует распознавание речи, чтобы превращать ваш голос в текст для записи еды."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical використовує розпізнавання мовлення, щоб перетворювати ваш голос на текст для запису їжі."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "JL Physical 使用语音识别将你的语音转换为文字，用于记录食物。"
           }
         }
       }
