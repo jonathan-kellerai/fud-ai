@@ -612,12 +612,13 @@ enum VisualQADiagnostics {
         func consider(_ object: NSObject) {
             let token = ObjectIdentifier(object)
             guard seen.insert(token).inserted else { return }
-            if let identifiable = object as? UIAccessibilityIdentification,
-               let identifier = identifiable.accessibilityIdentifier {
+            if let identifier = (object as? UIAccessibilityIdentification)?.accessibilityIdentifier, !identifier.isEmpty {
                 if let view = object as? UIView {
                     keep(identifier, view.convert(view.bounds, to: window))
-                } else if let element = object as? UIAccessibilityElement {
-                    keep(identifier, window.convert(element.accessibilityFrame, from: nil))
+                } else if let space = window.windowScene?.screen.coordinateSpace {
+                    keep(identifier, window.convert(object.accessibilityFrame, from: space))
+                } else {
+                    keep(identifier, window.convert(object.accessibilityFrame, from: nil))
                 }
             }
             guard let view = object as? UIView else { return }
@@ -662,7 +663,9 @@ enum VisualQAOutput {
         if let name = env["SIMULATOR_DEVICE_NAME"], !name.isEmpty {
             return name.filter { $0.isLetter || $0.isNumber }
         }
-        let bounds = UIScreen.main.bounds
+        let bounds = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.bounds ?? .zero
         return "\(Int(bounds.width))x\(Int(bounds.height))"
     }
 
