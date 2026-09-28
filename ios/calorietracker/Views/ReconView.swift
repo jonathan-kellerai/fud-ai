@@ -114,6 +114,9 @@ struct ReconView: View {
                     }
                 }
             }
+            // The menu label has a fixed row height; at accessibility sizes
+            // "Custom (no preset)" wrapped to two lines and clipped top and bottom.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .onChange(of: calculatorKey) { _, newValue in
                 loadCalculatorPreset(newValue)
             }
