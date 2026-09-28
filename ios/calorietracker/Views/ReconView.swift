@@ -228,7 +228,7 @@ struct ReconView: View {
                 .font(.system(size: 12, weight: .heavy))
                 .fontWidth(.condensed)
                 .foregroundStyle(IronTheme.textSecondary)
-            hero(result: result, key: key, doseText: card.dose.map(ReconMath.jsNumber) ?? "", large: false)
+            hero(result: result, key: key, doseText: jsText(card.dose), large: false)
             statGrid([
                 ("Concentration", finite(result.concentration) ? ReconMath.fmtTrim(result.concentration, 3) + " " + result.concentrationUnit : "—", false),
                 ("Per unit", finite(result.perUnit) ? ReconMath.fmtTrim(result.perUnit, 3) + " " + result.perUnitUnit : "—", false),
@@ -335,7 +335,7 @@ struct ReconView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(IronTheme.textSecondary)
             calendarGrid(simulation)
-            entryList(simulation)
+            entryList()
             Toggle(isOn: Binding(get: { store.bridgeSyncEnabled }, set: { store.bridgeSyncEnabled = $0 })) {
                 Text("Sync taken doses to the bridge")
                     .font(.system(size: 14, weight: .semibold))
@@ -571,13 +571,15 @@ struct ReconView: View {
         let compound = ReconMath.compounds[occurrence.entry.compound]
         let taken = store.isTaken(occurrence)
         let person = ReconMath.peopleNames[occurrence.entry.person] ?? occurrence.entry.person
+        let name = compound?.abbreviation ?? compound?.name ?? ""
+        let unitsLine = occurrenceUnitsLine(occurrence)
         return Button {
             store.toggleTaken(occurrence)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(person.prefix(1)) · \(compound?.abbreviation ?? compound?.name ?? "") · D\(occurrence.dayNumber)")
+                Text(String(person.prefix(1)) + " · " + name + " · D" + String(occurrence.dayNumber))
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
-                Text("\(occurrence.info.doseText) · \(occurrence.info.unitsText == "—" ? "units —" : occurrence.info.unitsText + " u")")
+                Text(unitsLine)
                     .font(.system(size: 12, design: .monospaced))
                     .monospacedDigit()
                 if let components = occurrence.info.components, !components.isEmpty {
@@ -604,34 +606,75 @@ struct ReconView: View {
         .accessibilityLabel(taken ? "Taken — tap to undo" : "Tap to log as taken")
     }
 
-    private func entryList(_ simulation: ReconMath.SupplySimulation) -> some View {
+    private func occurrenceUnitsLine(_ occurrence: ReconMath.Occurrence) -> String {
+        if occurrence.info.unitsText == "—" {
+            return occurrence.info.doseText + " · units —"
+        }
+        return occurrence.info.doseText + " · " + occurrence.info.unitsText + " u"
+    }
+
+    private func entryList() -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !store.entries.isEmpty {
                 fieldLabel("Entries (\(store.entries.count))")
             }
             ForEach(store.entries) { entry in
-                let info = ReconMath.entryDoseInfo(entry: entry, config: store.config(person: entry.person, key: entry.compound))
-                let count = ReconMath.expandEntry(entry).count
-                let compound = ReconMath.compounds[entry.compound]
-                let dose = compound?.blend.isEmpty == false ? ReconMath.fmtUnits(entry.draw ?? .nan) + " unit draw" : ReconMath.fmtTrim(entry.dose ?? .nan, 3) + " " + (entry.doseUnit ?? "")
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(ReconMath.peopleNames[entry.person] ?? entry.person) · \(compound?.name ?? entry.compound)")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(IronTheme.textPrimary)
-                        Text("\(dose) → \(info.ok ? info.unitsText + " units" : "units —") · \(ReconMath.frequencyText(entry.freq)) · from \(ReconMath.formatDate(entry.start)) · \(ReconMath.fmtTrim(entry.weeks, 2)) wk · \(count) \(count == 1 ? "dose" : "doses")")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(IronTheme.textSecondary)
-                            .monospacedDigit()
-                    }
-                    Spacer()
-                    Button("Delete") { store.delete(id: entry.id) }
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(IronTheme.bloodText)
-                }
-                _ = simulation
+                entryRow(entry)
             }
         }
+    }
+
+    private func entryRow(_ entry: ReconMath.ScheduleEntry) -> some View {
+        let compound = ReconMath.compounds[entry.compound]
+        let title = entryTitle(entry, compound: compound)
+        let detail = entryDetail(entry, compound: compound)
+        return HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(IronTheme.textPrimary)
+                Text(detail)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .monospacedDigit()
+            }
+            Spacer()
+            Button("Delete") { store.delete(id: entry.id) }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(IronTheme.bloodText)
+        }
+    }
+
+    private func entryTitle(_ entry: ReconMath.ScheduleEntry, compound: ReconMath.Compound?) -> String {
+        let person = ReconMath.peopleNames[entry.person] ?? entry.person
+        let name = compound?.name ?? entry.compound
+        return person + " · " + name
+    }
+
+    private func entryDetail(_ entry: ReconMath.ScheduleEntry, compound: ReconMath.Compound?) -> String {
+        let info = ReconMath.entryDoseInfo(entry: entry, config: store.config(person: entry.person, key: entry.compound))
+        let count = ReconMath.expandEntry(entry).count
+        let dose: String
+        if compound?.blend.isEmpty == false {
+            dose = ReconMath.fmtUnits(entry.draw ?? .nan) + " unit draw"
+        } else {
+            dose = ReconMath.fmtTrim(entry.dose ?? .nan, 3) + " " + (entry.doseUnit ?? "")
+        }
+        let units = info.ok ? info.unitsText + " units" : "units —"
+        let doseWord = count == 1 ? "dose" : "doses"
+        return dose
+            + " → "
+            + units
+            + " · "
+            + ReconMath.frequencyText(entry.freq)
+            + " · from "
+            + ReconMath.formatDate(entry.start)
+            + " · "
+            + ReconMath.fmtTrim(entry.weeks, 2)
+            + " wk · "
+            + String(count)
+            + " "
+            + doseWord
     }
 
     private func loadCalculatorPreset(_ key: String) {
@@ -643,7 +686,7 @@ struct ReconView: View {
         }
         vialText = ReconMath.jsNumber(compound.vial)
         vialUnit = compound.vialUnit
-        waterText = compound.water.map(ReconMath.jsNumber) ?? ""
+        waterText = jsText(compound.water)
         if let preset = ReconMath.defaultPreset(for: key), let draw = preset.draw {
             doseText = ReconMath.blendDoseField(vial: compound.vial, vialUnit: compound.vialUnit, water: compound.water ?? .nan, draw: draw)
             doseUnit = "mg"
@@ -671,16 +714,33 @@ struct ReconView: View {
 
     private func cardHeader(key: String) -> some View {
         let compound = ReconMath.compounds[key]
+        let subtitle = cardSubtitle(compound)
         return VStack(alignment: .leading, spacing: 4) {
             Text(compound?.name ?? key)
                 .font(.system(size: 20, weight: .black))
                 .fontWidth(.condensed)
                 .foregroundStyle(IronTheme.textPrimary)
-            Text(((compound?.sub).map { $0 + " · " } ?? "") + ReconMath.fmtTrim(compound?.vial ?? .nan, 3) + " " + (compound?.vialUnit ?? "") + " vial" + (compound?.diluent == "saline" ? " · saline" : ""))
+            Text(subtitle)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(IronTheme.textSecondary)
             provenanceRow(key: key, dose: .nan, unit: "", tipOpen: tipBinding(person: drawPerson, key: key), showCustom: false)
         }
+    }
+
+    private func cardSubtitle(_ compound: ReconMath.Compound?) -> String {
+        guard let compound else { return "" }
+        var subtitle = ""
+        if let sub = compound.sub, !sub.isEmpty {
+            subtitle += sub + " · "
+        }
+        subtitle += ReconMath.fmtTrim(compound.vial, 3)
+        subtitle += " "
+        subtitle += compound.vialUnit
+        subtitle += " vial"
+        if compound.diluent == "saline" {
+            subtitle += " · saline"
+        }
+        return subtitle
     }
 
     private func provenanceRow(key: String, dose: Double, unit: String, tipOpen: Binding<Bool>, showCustom: Bool = true) -> some View {
@@ -951,7 +1011,11 @@ struct ReconView: View {
     private func draftBinding(person: String, key: String, field: String, value: Double?, commit: @escaping (Double?) -> Void) -> Binding<String> {
         let id = person + "|" + key + "|" + field
         return Binding(
-            get: { drafts[id] ?? value.map(ReconMath.jsNumber) ?? "" },
+            get: {
+                if let draft = drafts[id] { return draft }
+                guard let value else { return "" }
+                return ReconMath.jsNumber(value)
+            },
             set: { text in
                 drafts[id] = text
                 let parsed = ReconMath.toNumber(text)
@@ -974,4 +1038,9 @@ struct ReconView: View {
     }
 
     private func finite(_ value: Double) -> Bool { value.isFinite }
+
+    private func jsText(_ value: Double?) -> String {
+        guard let value else { return "" }
+        return ReconMath.jsNumber(value)
+    }
 }

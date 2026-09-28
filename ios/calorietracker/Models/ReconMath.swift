@@ -2,7 +2,7 @@ import Foundation
 
 /// Port of recon-bench.html. Every syringe-unit, blend, flag, and supply figure
 /// goes through this type. Views format the values it returns.
-enum ReconMath {
+nonisolated enum ReconMath {
     static let epsilon = 1e-9
     static let footerText = "This app converts doses to syringe units and tracks supply. It sets no doses and recommends no protocol. Research compounds; not medical advice."
     static let massToMicrograms: [String: Double] = ["mcg": 1, "mg": 1000]
