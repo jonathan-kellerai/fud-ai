@@ -1,6 +1,6 @@
 import Foundation
 
-struct JevDecisionCache: Sendable {
+nonisolated final class JevDecisionCache: @unchecked Sendable {
     private struct Entry: Sendable {
         var response: TypeSafeResponse
         var expiresAt: Date
@@ -14,7 +14,7 @@ struct JevDecisionCache: Sendable {
         self.capacity = max(1, capacity)
     }
 
-    mutating func value(for key: String, now: Date) -> TypeSafeResponse? {
+    func value(for key: String, now: Date) -> TypeSafeResponse? {
         guard let entry = entries[key] else { return nil }
         guard entry.expiresAt > now else {
             remove(key)
@@ -24,7 +24,7 @@ struct JevDecisionCache: Sendable {
         return entry.response
     }
 
-    mutating func store(_ response: TypeSafeResponse, for key: String, ttl: TimeInterval, now: Date) {
+    func store(_ response: TypeSafeResponse, for key: String, ttl: TimeInterval, now: Date) {
         if entries[key] != nil {
             entries[key] = Entry(response: response, expiresAt: now.addingTimeInterval(ttl))
             touch(key)
@@ -37,17 +37,17 @@ struct JevDecisionCache: Sendable {
         order.append(key)
     }
 
-    mutating func removeAll() {
+    func removeAll() {
         order.removeAll()
         entries.removeAll()
     }
 
-    private mutating func touch(_ key: String) {
+    private func touch(_ key: String) {
         order.removeAll { $0 == key }
         order.append(key)
     }
 
-    private mutating func remove(_ key: String) {
+    private func remove(_ key: String) {
         entries[key] = nil
         order.removeAll { $0 == key }
     }

@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-enum JevText {
+nonisolated enum JevText {
     static func normalize(_ text: String) -> String {
         let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
         let spaced = folded.map { character -> Character in

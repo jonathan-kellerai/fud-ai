@@ -1,6 +1,6 @@
 import Foundation
 
-enum JevGates {
+nonisolated enum JevGates {
     static func acceptChoice(
         _ answer: TypeSafeAnswer?,
         minP: Double,

@@ -55,7 +55,7 @@ actor JevRouter {
     private let isActive: @Sendable (JevUse) -> Bool
     private let killSwitch: @Sendable () -> Bool
     private let session: URLSession
-    private var cache: JevDecisionCache
+    private let cache: JevDecisionCache
     nonisolated(unsafe) private let telemetry: JevRouterTelemetry
     private let now: @Sendable () -> Date
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "calorietracker", category: "JevRouter")
