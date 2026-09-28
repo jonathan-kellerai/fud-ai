@@ -3,6 +3,13 @@ import Security
 
 struct KeychainHelper {
     private static let service = "com.apoorvdarshan.calorietracker"
+    static var lastStatus: OSStatus = errSecSuccess
+
+    private static func isThisDeviceOnly(_ accessible: CFString) -> Bool {
+        accessible == kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            || accessible == kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            || accessible == kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+    }
 
     static func save(key: String, value: String) {
         _ = save(key: key, value: value, accessible: kSecAttrAccessibleAfterFirstUnlock)
@@ -13,15 +20,21 @@ struct KeychainHelper {
     static func save(key: String, value: String, accessible: CFString) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
         delete(key: key)
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
             kSecAttrAccessible as String: accessible,
-            kSecAttrSynchronizable as String: false,
         ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        // ThisDeviceOnly already excludes iCloud Keychain and backups. Pairing it
+        // with kSecAttrSynchronizable makes SecItemAdd fail.
+        if !isThisDeviceOnly(accessible) {
+            query[kSecAttrSynchronizable as String] = false
+        }
+        let status = SecItemAdd(query as CFDictionary, nil)
+        lastStatus = status
+        return status == errSecSuccess
     }
 
     static func load(key: String) -> String? {
