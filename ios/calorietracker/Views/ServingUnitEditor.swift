@@ -87,12 +87,17 @@ struct ServingUnitEditor: View {
             } else {
                 Text(selectedUnitLabel)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .frame(
                         width: selectedOption.normalizedUnit == "serving" ? 90 : 36,
                         alignment: .leading
                     )
             }
         }
+        // Fixed 104/90pt columns: beyond accessibility1 the unit wrapped to
+        // "Servi / ng". Cap only this compact editor.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     private func displayUnit(for option: ServingUnitOption, quantity: Double?) -> String {
