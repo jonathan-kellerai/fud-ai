@@ -4245,10 +4245,18 @@ struct ProfileView: View {
     private let refreshUpdateState: () async -> Void
     private let settingsCategory: ProfileSettingsCategory?
 
-    init(
-        updateState: Binding<AppUpdateState> = .constant(.idle),
-        refreshUpdateState: @escaping () async -> Void = {},
-        settingsCategory: ProfileSettingsCategory? = nil
+    init(settingsCategory: ProfileSettingsCategory? = nil) {
+        self.init(
+            updateState: .constant(.idle),
+            refreshUpdateState: {},
+            settingsCategory: settingsCategory
+        )
+    }
+
+    fileprivate init(
+        updateState: Binding<AppUpdateState>,
+        refreshUpdateState: @escaping () async -> Void,
+        settingsCategory: ProfileSettingsCategory?
     ) {
         self._updateState = updateState
         self.refreshUpdateState = refreshUpdateState
