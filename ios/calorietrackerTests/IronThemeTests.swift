@@ -1,3 +1,5 @@
+import CoreFoundation
+import UIKit
 import Testing
 @testable import calorietracker
 
