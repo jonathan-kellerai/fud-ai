@@ -1325,6 +1325,7 @@ struct NotificationSettingsView: View {
                         .font(.system(.caption, design: .rounded))
                 }
                 .listRowBackground(AppColors.appCard)
+                }
             }
         }
         .scrollContentBackground(.hidden)
