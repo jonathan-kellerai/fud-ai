@@ -249,7 +249,7 @@ private struct LargeCalorieView: View {
 
                 Spacer()
 
-                Label("Fud AI", systemImage: "flame.fill")
+                Label("JL Physical", systemImage: "flame.fill")
                     .font(.system(.caption, design: .rounded, weight: .bold))
                     .foregroundStyle(snapshot.themeGradient)
                     .labelStyle(.titleAndIcon)
