@@ -43,6 +43,10 @@ struct ReconView: View {
     @State private var calendarNotice = ""
     @State private var calendarWarning: (level: String, text: String)?
 
+    init(initialSection: ReconSection = .calculator) {
+        _section = State(initialValue: initialSection)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
