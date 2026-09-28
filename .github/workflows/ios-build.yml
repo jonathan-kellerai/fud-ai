@@ -96,6 +96,10 @@ jobs:
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
         grep -E "runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        if [ "$STATUS" -ne 0 ]; then
+          echo "---- raw compiler errors ----"
+          grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
+        fi
         # runSelfTest asserts all 42 recon-bench self-test rows pass.
         if ! grep -qE "runSelfTest\(\).*passed" "$RUNNER_TEMP/recon-tests.log"; then
           echo "runSelfTest() did not report a pass; treating as failure."

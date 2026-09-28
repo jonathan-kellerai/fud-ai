@@ -3,7 +3,7 @@ import Testing
 @testable import calorietracker
 
 nonisolated private final class TypeSafeStub: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest, Data?) throws -> (Int, [String: String], Data))?
+    nonisolated(unsafe) static var handler: ((URLRequest, Data?) throws -> (Int, [String: String], Data))?
     nonisolated(unsafe) static var requests: [(URLRequest, Data?)] = []
 
     nonisolated override class func canInit(with request: URLRequest) -> Bool { true }
