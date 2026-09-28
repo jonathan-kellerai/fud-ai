@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 
 struct FoodSubmissionGate {
@@ -20,6 +21,12 @@ struct FoodResultView: View {
     let source: FoodSource
     let progressiveMeal: Bool
     let productMetadata: FoodProductMetadata?
+    let estimateCheck: EstimateCheckMode
+    let onReestimate: ((EstimateDirection) -> Void)?
+    private let originalCalories: Int
+    private let originalProtein: Double
+    private let originalCarbs: Double
+    private let originalFat: Double
 
     @State private var baseServingSizeGrams: Double
     @State private var servingUnitOptions: [ServingUnitOption]
@@ -33,6 +40,7 @@ struct FoodResultView: View {
     @State private var isQuantityEditing = false
     @State private var nutritionUnlocked = false
     @State private var editableCalories: Int
+    @State private var estimateOutcome: EstimateCheckOutcome?
     @State private var editableProtein: Double
     @State private var editableCarbs: Double
     @State private var editableFat: Double
@@ -166,7 +174,9 @@ struct FoodResultView: View {
         profile: UserProfile,
         entriesForDate: @escaping (Date) -> [FoodEntry],
         weightMetric: Bool,
-        onLog: @escaping (FoodEntry) -> Void
+        onLog: @escaping (FoodEntry) -> Void,
+        estimateCheck: EstimateCheckMode = .off,
+        onReestimate: ((EstimateDirection) -> Void)? = nil
     ) {
         let normalizedServingUnitOptions = servingSizeIsKnown
             ? ServingUnitOption.normalizedOptions(servingUnitOptions, totalGrams: servingSizeGrams)
@@ -213,6 +223,17 @@ struct FoodResultView: View {
         ))
         self._selectedServingUnitID = State(initialValue: initialServingUnitID)
         self._editableCalories = State(initialValue: headerCalories)
+        self.originalCalories = headerCalories
+        self.originalProtein = headerProtein
+        self.originalCarbs = headerCarbs
+        self.originalFat = headerFat
+        self.estimateCheck = estimateCheck
+        self.onReestimate = onReestimate
+        if case .preview(let outcome) = estimateCheck {
+            self._estimateOutcome = State(initialValue: outcome)
+        } else {
+            self._estimateOutcome = State(initialValue: nil)
+        }
         self._editableProtein = State(initialValue: headerProtein)
         self._editableCarbs = State(initialValue: headerCarbs)
         self._editableFat = State(initialValue: headerFat)
@@ -246,6 +267,24 @@ struct FoodResultView: View {
         self.entriesForDate = entriesForDate
         self.weightMetric = weightMetric
         self.onLog = onLog
+    }
+
+    private var isEstimatePreview: Bool {
+        if case .preview = estimateCheck { return true }
+        return false
+    }
+
+    private var userEditedNutrition: Bool {
+        editableCalories != originalCalories
+            || editableProtein != originalProtein
+            || editableCarbs != originalCarbs
+            || editableFat != originalFat
+            || abs(servingSizeGrams - baseServingSizeGrams) > 0.49
+    }
+
+    private var showsEstimateBadge: Bool {
+        guard case .looksOff = estimateOutcome, !userEditedNutrition else { return false }
+        return onReestimate != nil || isEstimatePreview
     }
 
     private var whatIfDayEntries: [FoodEntry] {
@@ -429,6 +468,16 @@ struct FoodResultView: View {
                             }
                             .listRowBackground(Color.clear)
                         }
+                    }
+
+                    if showsEstimateBadge, case .looksOff(let direction, let expectedBandLabel, _) = estimateOutcome {
+                        Section {
+                            EstimateCheckBadge(
+                                expectedBandLabel: expectedBandLabel,
+                                onReestimate: onReestimate.map { callback in { callback(direction) } }
+                            )
+                        }
+                        .listRowBackground(AppColors.appCard)
                     }
 
                     Section("Food Details") {
@@ -649,6 +698,15 @@ struct FoodResultView: View {
                     scrollQuantityIntoView(scrollProxy)
                 }
                 .navigationTitle("Review Food")
+                .task {
+                    guard case .live(let input) = estimateCheck else { return }
+                    let outcome = await TypeSafeEstimateChecker.liveCheck(input)
+                    estimateOutcome = outcome
+                    if case .unavailable(let reason) = outcome {
+                        Logger(subsystem: Bundle.main.bundleIdentifier ?? "calorietracker", category: "TypeSafe")
+                            .error("Estimate check unavailable: \(String(describing: reason), privacy: .public)")
+                    }
+                }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {

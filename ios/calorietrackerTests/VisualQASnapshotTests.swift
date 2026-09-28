@@ -359,6 +359,51 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    func test42FoodReviewEstimateLooksOff() async throws {
+        try await eachSize("42-food-review-estimate-looks-off", sheet: {
+            FoodResultView(
+                emoji: "🥗",
+                source: .snapFood,
+                name: "Chicken rice bowl",
+                calories: 640,
+                protein: 48,
+                carbs: 72,
+                fat: 16,
+                servingSizeGrams: 420,
+                fiber: 6,
+                profile: .default,
+                entriesForDate: { _ in [] },
+                weightMetric: false,
+                onLog: { _ in },
+                estimateCheck: .preview(.looksOff(
+                    direction: .tooLow,
+                    expectedBandLabel: "1,000–1,500 kcal (a very large or restaurant-size meal)",
+                    model: "jev-1.13.0"
+                )),
+                onReestimate: { _ in }
+            )
+        }) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
+    func test43SettingsAIProvidersEstimateCheck() async throws {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: TypeSafeSettings.enabledKey)
+        defaults.set(TypeSafeEndpoint.direct.rawValue, forKey: TypeSafeSettings.endpointKey)
+        defaults.set("jev-latest", forKey: TypeSafeSettings.modelKey)
+        defer {
+            defaults.removeObject(forKey: TypeSafeSettings.enabledKey)
+            defaults.removeObject(forKey: TypeSafeSettings.endpointKey)
+            defaults.removeObject(forKey: TypeSafeSettings.modelKey)
+        }
+        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 2) {
+            ProfileView(settingsCategory: .aiProviders)
+        }
+    }
+
     private func settingsScreen<Content: View>(
         _ name: String,
         heightMultiplier: CGFloat = 1,

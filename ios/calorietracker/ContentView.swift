@@ -856,6 +856,8 @@ struct HomeView: View {
         case barcode(String)
     }
     @State private var retryRequest: RetryRequest?
+    @State private var lastEstimateRequest: RetryRequest?
+    @State private var reestimateUsed = false
     /// The in-flight photo/text/barcode analysis behind the analyzing sheet, so Cancel can abort it.
     @State private var analysisTask: Task<Void, Never>?
     @State private var selectedDate: Date = .now
@@ -1774,6 +1776,10 @@ struct HomeView: View {
                             weightMetric: weightUnitRaw == "kg",
                             onLog: { entry in
                                 if !foodStore.addEntry(entry) { showFoodLoggingBlocked = true }
+                            },
+                            estimateCheck: estimateCheckMode(for: result),
+                            onReestimate: reestimateUsed ? nil : { direction in
+                                reestimateFood(direction: direction, calories: result.calories, name: result.name)
                             }
                         )
                     }
@@ -1801,6 +1807,7 @@ struct HomeView: View {
             }
             .sheet(item: $savedMealsMode, content: { mode in
                 RecentsView(mode: mode, logDate: logDateForSelectedDay, onReview: { entry in
+                    lastEstimateRequest = nil
                     currentImages = entry.allImageData.compactMap(UIImage.init(data:))
                     currentImage = currentImages.first
                     currentEmoji = entry.emoji
@@ -2060,14 +2067,18 @@ struct HomeView: View {
         images: [UIImage],
         mode: CameraMode,
         description: String? = nil,
-        progressiveMeal: Bool = false
+        progressiveMeal: Bool = false,
+        isReestimate: Bool = false
     ) {
-        retryRequest = .analysis(
+        let request = RetryRequest.analysis(
             images: images,
             mode: mode,
             description: description,
             progressiveMeal: progressiveMeal
         )
+        retryRequest = request
+        lastEstimateRequest = request
+        reestimateUsed = isReestimate
         presentFoodLogLoading(.analyzing)
 
         analysisTask?.cancel()
@@ -2140,6 +2151,47 @@ struct HomeView: View {
         activeSheet = .foodResult
     }
 
+    private func estimateCheckMode(for result: GeminiService.FoodAnalysis) -> EstimateCheckMode {
+        guard TypeSafeSettings.isConfigured else { return .off }
+        let name = result.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.calories > 0, !name.isEmpty else { return .off }
+        let allowed = currentFoodSource == .snapFood
+            || (currentFoodSource == .textInput && TypeSafeSettings.checkTypedMeals)
+        guard allowed else { return .off }
+        return .live(EstimateCheckInput(analysis: result, userNote: estimateUserNote))
+    }
+
+    private var estimateUserNote: String? {
+        switch lastEstimateRequest {
+        case .analysis(_, _, let description, _):
+            return description
+        case .text(let description):
+            return description
+        default:
+            return nil
+        }
+    }
+
+    private func reestimateFood(direction: EstimateDirection, calories: Int, name: String) {
+        guard !reestimateUsed, let lastEstimateRequest else { return }
+        let hint = "A plausibility check flagged the previous estimate (\(calories) kcal for \(name)) as likely too \(direction.phrase). Re-check portion size and calorie density carefully."
+        switch lastEstimateRequest {
+        case .analysis(let images, _, let description, let progressiveMeal):
+            startAnalysis(
+                images: images,
+                mode: .snapFoodWithContext,
+                description: (description ?? "") + hint,
+                progressiveMeal: progressiveMeal,
+                isReestimate: true
+            )
+        case .text(let description):
+            currentFoodSource = .textInput
+            startTextAnalysis(description + "\n" + hint, isReestimate: true)
+        case .barcode:
+            break
+        }
+    }
+
     private func startBarcodeLookup(_ barcode: String) {
         let trimmedBarcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBarcode.isEmpty else { return }
@@ -2174,8 +2226,11 @@ struct HomeView: View {
         }
     }
 
-    private func startTextAnalysis(_ description: String) {
-        retryRequest = .text(description)
+    private func startTextAnalysis(_ description: String, isReestimate: Bool = false) {
+        let request = RetryRequest.text(description)
+        retryRequest = request
+        lastEstimateRequest = request
+        reestimateUsed = isReestimate
         presentFoodLogLoading(.analyzingText)
         analysisTask?.cancel()
         analysisTask = Task {
@@ -3978,6 +4033,7 @@ enum AISettingsInfoTopic {
     case imageFallback
     case speechToText
     case speechFallback
+    case estimateCheck
 
     var title: String {
         switch self {
@@ -3987,6 +4043,7 @@ enum AISettingsInfoTopic {
         case .imageFallback: "Image AI Fallback"
         case .speechToText: "Speech-to-Text"
         case .speechFallback: "Voice Fallback"
+        case .estimateCheck: "Estimate Check"
         }
     }
 
@@ -4004,6 +4061,8 @@ enum AISettingsInfoTopic {
             "Converts microphone audio into text only. The transcript then follows the normal text route: Text AI when enabled, otherwise Primary AI. Matching provider API keys are reused unless you save a separate STT key."
         case .speechFallback:
             "Retries transcription when the selected remote STT provider fails. It only produces a transcript; that transcript still follows the normal text AI route. Native iOS speech already uses Apple's offline and online recognition recovery, so a separate STT fallback is available only for remote providers."
+        case .estimateCheck:
+            "After your AI provider estimates a meal, TypeSafe's Jev model double-checks whether the calories look plausible. It can't read photos or estimate nutrition itself. It only sends the food name, item names, and portion sizes as text. Logging is never blocked."
         }
     }
 }
@@ -4049,7 +4108,7 @@ private struct IronInfoSectionHeader: View {
     }
 }
 
-private struct AISettingsSubsectionHeader: View {
+struct AISettingsSubsectionHeader: View {
     let title: String
     let systemImage: String
     let infoTopic: AISettingsInfoTopic
@@ -5476,6 +5535,15 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
                 }
 
+                if settingsCategory == .aiProviders {
+                Section {
+                    TypeSafeEstimateCheckSection()
+                } footer: {
+                    TypeSafeEstimateCheckFooter()
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
                 if settingsCategory == .advancedAI {
                 Section {
                     Toggle(isOn: $separateTextProviderEnabled) {
@@ -6350,6 +6418,7 @@ struct ProfileView: View {
                         UserDefaults.standard.removePersistentDomain(forName: domain)
                         AIProviderSettings.deleteAllData()
                         SpeechSettings.deleteAllData()
+                        TypeSafeSettings.deleteAllData()
                         chatStore.reset()
                         WidgetSnapshot.clear()
                         WidgetCenter.shared.reloadAllTimelines()
