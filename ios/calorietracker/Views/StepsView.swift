@@ -14,30 +14,44 @@ struct StepsView: View {
     @State private var isLoading = false
     @State private var error: String?
     @State private var showingPermission = false
-    
+
+    /// Daily step goal. The bar is full at this value and the ring closes here.
+    static let dailyGoal = 10_000
+
+    /// When false the view shows whatever `StepsTrackingService.shared` already holds
+    /// and never asks HealthKit. Only the visual QA snapshot tests pass false.
+    private let loadsHealthData: Bool
+
+    init(loadsHealthData: Bool = true) {
+        self.loadsHealthData = loadsHealthData
+    }
+
     var body: some View {
         ScrollView {
                 VStack(spacing: 20) {
                     // Today's Progress Card
                     todayCard
-                    
+
                     // 7-Day History
                     weeklyHistory
-                    
+
                     // Sync Status
                     syncStatus
                 }
                 .padding()
             }
+            .background(IronTheme.canvas)
             .navigationTitle("Daily Steps")
             .refreshable {
+                guard loadsHealthData else { return }
                 await refreshSteps()
             }
             .task {
+                guard loadsHealthData else { return }
                 await loadInitialData()
             }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
+                if newPhase == .active && loadsHealthData {
                     Task { await refreshSteps() }
                 }
             }
@@ -50,134 +64,145 @@ struct StepsView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
     }
-    
+
     private var todayCard: some View {
-        VStack(spacing: 16) {
+        let goal = Self.dailyGoal
+        let steps = stepsService.todaySteps
+        let met = steps >= goal
+        return VStack(spacing: 16) {
             Text("Today")
                 .font(.headline)
-            
+                .foregroundStyle(IronTheme.textPrimary)
+
             ZStack {
                 Circle()
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 20)
+                    .stroke(IronTheme.surfaceRaised, lineWidth: 20)
                     .frame(width: 200, height: 200)
-                
+
                 Circle()
-                    .trim(from: 0, to: min(Double(stepsService.todaySteps) / 10000.0, 1.0))
+                    .trim(from: 0, to: min(Double(steps) / Double(goal), 1.0))
                     .stroke(
-                        stepsService.todaySteps >= 10000 ? Color.green : Color.blue,
+                        met ? IronTheme.brass : IronTheme.blood,
                         style: StrokeStyle(lineWidth: 20, lineCap: .round)
                     )
                     .frame(width: 200, height: 200)
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut, value: stepsService.todaySteps)
-                
-                VStack {
-                    Text("\(stepsService.todaySteps)")
-                        .font(.system(size: 48, weight: .bold))
+                    .animation(.easeInOut, value: steps)
+
+                VStack(spacing: 2) {
+                    Text(steps.formatted(.number.grouping(.automatic)))
+                        .font(.system(size: 44, weight: .bold))
                         .monospacedDigit()
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                     Text("steps")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    if stepsService.todaySteps >= 10000 {
-                        Text("Goal Met! 🎉")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                            .padding(.top, 4)
-                    } else {
-                        Text("\(10000 - stepsService.todaySteps) to go")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 4)
+                        .foregroundStyle(IronTheme.textSecondary)
+
+                    Group {
+                        if met {
+                            Text("Goal met")
+                                .foregroundStyle(IronTheme.brass)
+                        } else {
+                            Text("\((goal - steps).formatted(.number.grouping(.automatic))) to go")
+                                .foregroundStyle(IronTheme.textSecondary)
+                        }
                     }
+                    .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .padding(.top, 4)
                 }
+                .frame(width: 150)
             }
             .frame(height: 220)
         }
         .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(radius: 2)
+        .frame(maxWidth: .infinity)
+        .ironCard()
     }
-    
+
     private var weeklyHistory: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Last 7 Days")
-                .font(.headline)
-                .padding(.horizontal)
-            
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    historyTitle
+                    Spacer(minLength: 8)
+                    goalCaption
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    historyTitle
+                    goalCaption
+                }
+            }
+            .padding(.horizontal)
+
             if stepsService.last7Days.isEmpty {
-                Text("No data available")
-                    .foregroundStyle(.secondary)
+                Text("No step data yet. Pull to refresh after Apple Health syncs.")
+                    .font(.subheadline)
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding()
             } else {
                 ForEach(stepsService.last7Days) { day in
-                    HStack {
-                        Text(formatDate(day.date))
-                            .font(.subheadline)
-                            .frame(width: 100, alignment: .leading)
-                        
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 24)
-                            
-                            if let steps = day.steps {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(steps >= 10000 ? Color.green : Color.blue)
-                                    .frame(width: CGFloat(min(steps, 10000)) / 10000 * 200, height: 24)
-                            }
-                        }
-                        .frame(width: 200)
-                        
-                        if let steps = day.steps {
-                            Text("\(steps)")
-                                .font(.subheadline.monospacedDigit())
-                                .foregroundStyle(steps >= 10000 ? .green : .secondary)
-                        } else {
-                            Text("—")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    StepsHistoryRow(
+                        title: formatDate(day.date),
+                        steps: day.steps,
+                        goal: Self.dailyGoal
+                    )
                     .padding(.horizontal)
                 }
             }
         }
         .padding(.vertical)
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(radius: 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ironCard()
     }
-    
+
+    private var historyTitle: some View {
+        Text("Last 7 Days")
+            .font(.headline)
+            .foregroundStyle(IronTheme.textPrimary)
+    }
+
+    private var goalCaption: some View {
+        Text("Goal \(Self.dailyGoal.formatted(.number.grouping(.automatic)))")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(IronTheme.brass)
+            .lineLimit(1)
+    }
+
     private var syncStatus: some View {
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(IronTheme.brass)
                 
                 VStack(alignment: .leading) {
                     Text("Sync Status")
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(IronTheme.textPrimary)
                     
                     if stepsService.isSyncing {
                         Text("Syncing...")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     } else if let lastSync = stepsService.lastSyncDate {
                         Text("Last synced: \(lastSync, style: .relative) ago")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     } else {
                         Text("Never synced")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                     
                     if let error = stepsService.lastSyncError {
                         Text("Error: \(error)")
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(IronTheme.bloodText)
                             .lineLimit(2)
                     }
                 }
@@ -194,13 +219,12 @@ struct StepsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(IronTheme.blood)
                 .disabled(stepsService.isSyncing)
             }
         }
         .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(radius: 2)
+        .ironCard()
     }
     
     private func loadInitialData() async {
@@ -257,5 +281,132 @@ struct StepsView: View {
             formatter.dateFormat = "EEE M/d"
             return formatter.string(from: date)
         }
+    }
+}
+
+// MARK: - 7-day row
+
+/// One day in the Daily Steps history: the day name and a bar with the count drawn inside it.
+struct StepsHistoryRow: View {
+    let title: String
+    let steps: Int?
+    let goal: Int
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var titleWidth: CGFloat = 92
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    titleText
+                    StepsHistoryBar(steps: steps, goal: goal)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    titleText
+                        .frame(width: titleWidth, alignment: .leading)
+                    StepsHistoryBar(steps: steps, goal: goal)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .font(.subheadline)
+            .foregroundStyle(IronTheme.textPrimary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+    }
+
+    private var accessibilityValue: String {
+        guard let steps else { return "No data" }
+        let count = steps.formatted(.number.grouping(.automatic))
+        return steps >= goal ? "\(count) steps, goal met" : "\(count) steps"
+    }
+}
+
+/// Horizontal bar capped at `goal`. The count sits inside the filled part when it fits
+/// (right-aligned, contrasting ink) and otherwise just past the end of the fill.
+struct StepsHistoryBar: View {
+    let steps: Int?
+    let goal: Int
+
+    @ScaledMetric(relativeTo: .subheadline) private var barHeight: CGFloat = 28
+    @ScaledMetric(relativeTo: .subheadline) private var labelInset: CGFloat = 8
+    @State private var labelWidth: CGFloat = 0
+
+    private var fraction: CGFloat {
+        guard let steps, goal > 0, steps > 0 else { return 0 }
+        return min(CGFloat(steps) / CGFloat(goal), 1)
+    }
+
+    private var metGoal: Bool { (steps ?? 0) >= goal && goal > 0 }
+
+    private var labelText: String {
+        guard let steps else { return "—" }
+        return steps.formatted(.number.grouping(.automatic))
+    }
+
+    private var labelFont: Font { .subheadline.weight(.semibold).monospacedDigit() }
+
+    /// Where the count goes for a bar `width` points wide.
+    static func labelFitsInsideFill(fillWidth: CGFloat, labelWidth: CGFloat, inset: CGFloat) -> Bool {
+        fillWidth > 0 && fillWidth >= labelWidth + inset * 2
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let fillWidth = (width * fraction).rounded()
+            let inside = Self.labelFitsInsideFill(fillWidth: fillWidth, labelWidth: labelWidth, inset: labelInset)
+            let shape = RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+
+            ZStack(alignment: .leading) {
+                shape.fill(IronTheme.surfaceRaised)
+
+                if fillWidth > 0 {
+                    shape
+                        .fill(metGoal ? IronTheme.brass : IronTheme.blood)
+                        .frame(width: max(fillWidth, IronTheme.buttonRadius * 2))
+                }
+
+                if inside {
+                    label
+                        .foregroundStyle(metGoal ? IronTheme.canvas : IronTheme.textPrimary)
+                        .frame(width: max(fillWidth - labelInset * 2, 0), alignment: .trailing)
+                        .offset(x: labelInset)
+                } else {
+                    let start = (fillWidth > 0 ? max(fillWidth, IronTheme.buttonRadius * 2) : 0) + labelInset
+                    label
+                        .foregroundStyle(steps == nil ? IronTheme.textSecondary : IronTheme.textPrimary)
+                        .frame(width: max(width - start - labelInset, 0), alignment: .leading)
+                        .offset(x: start)
+                }
+            }
+            .frame(width: width, height: proxy.size.height, alignment: .leading)
+        }
+        .frame(height: barHeight)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .leading) {
+            // Unscaled width of the count, used to decide inside vs. outside.
+            Text(labelText)
+                .font(labelFont)
+                .lineLimit(1)
+                .fixedSize()
+                .hidden()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { labelWidth = $0 }
+        }
+    }
+
+    private var label: some View {
+        Text(labelText)
+            .font(labelFont)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
     }
 }

@@ -16,8 +16,15 @@ struct JLPhysicalTabView: View {
     @State private var isLoadingRecent = false
     
     private var neonBridge = NeonBridgeService.shared
+    /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
+    private let referenceDate: Date?
+
+    init(referenceDate: Date? = nil) {
+        self.referenceDate = referenceDate
+    }
+
     private var todayPlan: ResolvedTrainingDay {
-        TrainingProgramSchedule.resolve(programBody, on: Date())
+        TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date())
     }
     
     var body: some View {
@@ -159,17 +166,17 @@ struct JLPhysicalTabView: View {
             
             HStack(spacing: 12) {
                 NavigationLink(destination: StepsView()) {
-                    QuickActionButton(icon: "figure.walk", title: "Steps", color: .green)
+                    QuickActionButton(icon: "figure.walk", title: "Steps", color: IronTheme.brass)
                 }
                 
                 NavigationLink(destination: BridgeSettingsView()) {
-                    QuickActionButton(icon: "server.rack", title: "Bridge", color: .blue)
+                    QuickActionButton(icon: "server.rack", title: "Bridge", color: IronTheme.textSecondary)
                 }
                 
                 Button {
                     showingPrograms = true
                 } label: {
-                    QuickActionButton(icon: "list.bullet", title: "Program", color: .orange)
+                    QuickActionButton(icon: "list.bullet", title: "Program", color: IronTheme.bloodText)
                 }
             }
         }
@@ -186,7 +193,7 @@ struct JLPhysicalTabView: View {
                 NavigationLink(destination: WorkoutHistoryListView()) {
                     Text("See All")
                         .font(.subheadline)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(AppColors.calorie)
                 }
             }
             
@@ -260,11 +267,13 @@ struct QuickActionButton: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(8)
+        .padding(.vertical)
+        .padding(.horizontal, 8)
+        .ironCard()
     }
 }
 
@@ -286,13 +295,12 @@ struct RecentWorkoutRow: View {
             
             if let conditioning = workout.conditioning {
                 Image(systemName: "heart.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(IronTheme.bloodText)
                     .font(.caption)
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(8)
+        .ironCard()
     }
 }
 
