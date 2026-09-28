@@ -4378,6 +4378,18 @@ struct ProfileView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                NavigationLink {
+                    ReconView()
+                } label: {
+                    Label {
+                        Text("Recon Bench")
+                            .font(.system(.body, design: .rounded, weight: .medium))
+                    } icon: {
+                        Image(systemName: "cross.vial.fill")
+                            .foregroundStyle(AppColors.calorie)
+                            .frame(width: 24)
+                    }
+                }
             }
             .listRowBackground(AppColors.appCard)
 
