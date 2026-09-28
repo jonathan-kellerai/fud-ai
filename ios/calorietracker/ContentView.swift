@@ -4196,6 +4196,28 @@ private struct ProfileSettingsCategoryRow: View {
             SettingsHubRowLabel(title: category.title, systemImage: category.systemImage, subtitle: subtitle)
         }
         .accessibilityIdentifier("settings.category.\(category.rawValue)")
+        .overlay {
+            SettingsHubRowAnchor(identifier: "settings.hub.row.\(category.rawValue)")
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Clear overlay so visual QA can measure hub rows without reading SwiftUI text views.
+private struct SettingsHubRowAnchor: UIViewRepresentable {
+    let identifier: String
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        view.accessibilityIdentifier = identifier
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        uiView.isUserInteractionEnabled = false
+        uiView.accessibilityIdentifier = identifier
     }
 }
 
@@ -4441,6 +4463,10 @@ struct ProfileView: View {
                     )
                 }
                 .accessibilityIdentifier("settings.category.reconBench")
+                .overlay {
+                    SettingsHubRowAnchor(identifier: "settings.hub.row.reconBench")
+                        .allowsHitTesting(false)
+                }
             } header: {
                 IronSectionTitle(title: "Tools")
             }

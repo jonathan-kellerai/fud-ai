@@ -543,20 +543,30 @@ enum VisualQADiagnostics {
     }
 
     static func assertHubRowsAboveTabBar(in window: UIWindow) {
-        let titles = ["Recon Bench", "Training", "Food & AI", "Body & Health", "Data & Sync", "Notifications", "About"]
+        let rows = [
+            ("settings.hub.row.reconBench", "Recon Bench"),
+            ("settings.hub.row.training", "Training"),
+            ("settings.hub.row.foodAI", "Food & AI"),
+            ("settings.hub.row.bodyHealth", "Body & Health"),
+            ("settings.hub.row.dataSync", "Data & Sync"),
+            ("settings.hub.row.notifications", "Notifications"),
+            ("settings.hub.row.about", "About"),
+        ]
         var frames: [String: CGRect] = [:]
+        func consider(identifier: String?, frame: CGRect) {
+            guard let identifier, rows.contains(where: { $0.0 == identifier }) else { return }
+            guard frame.width > 1, frame.height > 1 else { return }
+            if let existing = frames[identifier], existing.height <= frame.height { return }
+            frames[identifier] = frame
+        }
         func walk(_ view: UIView) {
-            if let label = view as? UILabel, let text = label.text {
-                if text == "!" {
-                    XCTFail("More tab shows an update badge")
-                }
-                if titles.contains(text), !label.isHidden, label.alpha > 0 {
-                    let frame = label.convert(label.bounds, to: window)
-                    if frame.height > 1 {
-                        frames[text] = frame
-                    }
-                }
+            if let label = view as? UILabel, label.text == "!" {
+                XCTFail("More tab shows an update badge")
             }
+            consider(
+                identifier: view.accessibilityIdentifier,
+                frame: view.convert(view.bounds, to: window)
+            )
             for subview in view.subviews {
                 walk(subview)
             }
@@ -567,8 +577,8 @@ enum VisualQADiagnostics {
             return
         }
         let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
-        for title in titles {
-            guard let frame = frames[title] else {
+        for (identifier, title) in rows {
+            guard let frame = frames[identifier] else {
                 XCTFail("Missing More hub row \(title)")
                 continue
             }
