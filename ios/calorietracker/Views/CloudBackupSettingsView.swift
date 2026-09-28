@@ -29,12 +29,14 @@ struct CloudBackupSettingsSection: View {
             }
 
             if backup.enabled {
-                Button("Back up now") { Task { await run { try await backup.backupNow() } } }
+                Button("Back Up Now") { Task { await run { try await backup.backupNow() } } }
                     .accessibilityIdentifier("settings.cloudBackup.backupNow")
                     .disabled(backup.busy)
                 Button("Restore or Delete Backup…") { showBackupActions = true }
                     .disabled(backup.busy)
             }
+        } header: {
+            IronSectionTitle(title: "iCloud")
         } footer: {
             Text("Off until you turn it on. Uses the iCloud account on this iPhone — change Apple ID in iOS Settings if you need a different account. API keys stay on the device.")
         }

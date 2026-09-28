@@ -1552,6 +1552,7 @@ private struct ReviewNutritionValueRow: View {
         HStack {
             Text(LocalizedDisplayText.text(label))
                 .foregroundStyle(dim ? .secondary : .primary)
+                .avoidsMidWordBreak()
             Spacer()
             if isUnlocked {
                 TextField("0", text: Binding(
@@ -1585,6 +1586,7 @@ private struct ReviewNutritionValueRow: View {
             } else {
                 Text(displayValue)
                     .fontWeight(.medium)
+                    .avoidsMidWordBreak()
             }
             Text(unit)
                 .foregroundStyle(.secondary)
@@ -1605,9 +1607,11 @@ struct NutritionDisplayRow: View {
     var body: some View {
         HStack {
             Text(LocalizedDisplayText.text(label))
+                .avoidsMidWordBreak()
             Spacer()
             Text(value)
                 .fontWeight(.medium)
+                .avoidsMidWordBreak()
             Text(unit)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1628,9 +1632,11 @@ struct OptionalNutritionDisplayRow: View {
         HStack {
             Text(LocalizedDisplayText.text(label))
                 .foregroundStyle(.secondary)
+                .avoidsMidWordBreak()
             Spacer()
             Text(value.map { String(format: "%.1f", $0) } ?? "—")
                 .fontWeight(.medium)
+                .avoidsMidWordBreak()
             Text(unit)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

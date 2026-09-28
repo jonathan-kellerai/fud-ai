@@ -8,6 +8,7 @@ struct ShortcutsAndSiriSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("Shortcuts & Siri")
         .navigationBarTitleDisplayMode(.inline)
     }

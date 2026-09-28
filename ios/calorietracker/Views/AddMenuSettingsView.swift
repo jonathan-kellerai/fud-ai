@@ -25,7 +25,7 @@ struct AddMenuSettingsView: View {
             } header: {
                 Text("Food Add Menu")
             } footer: {
-                Text("Customize the Home + button food menu. Water and fasting stay separate when enabled. This does not change app-icon Quick Actions.")
+                Text("Customize the Home + button food menu. Water and fasting stay separate when enabled. This does not change App Icon Shortcuts.")
             }
 
             if config.usesFlatLayout {
@@ -58,6 +58,7 @@ struct AddMenuSettingsView: View {
             }
         }
         .environment(\.editMode, $editMode)
+        .settingsFloatingTabClearance()
         .navigationTitle("Home + Menu")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: config) { _, newValue in

@@ -111,6 +111,7 @@ struct BridgeSettingsView: View {
                 Text("Off by default. Taken Recon doses stay on this phone until this is on.")
             }
         }
+        .settingsFloatingTabClearance()
         .navigationTitle("Neon Bridge")
         .navigationBarTitleDisplayMode(.inline)
     }

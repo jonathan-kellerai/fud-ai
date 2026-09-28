@@ -19,15 +19,16 @@ struct AIModelPickerRow: View {
             HStack {
                 Label {
                     Text("Model")
+                        .avoidsMidWordBreak()
                 } icon: {
                     Image(systemName: "brain")
                         .foregroundStyle(AppColors.calorie)
                 }
                 Spacer()
-                Text(model.isEmpty ? "Choose a model" : model)
+                Text(model.isEmpty ? "Choose a model" : AIProvider.friendlyModelName(model))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .avoidsMidWordBreak()
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.tertiary)

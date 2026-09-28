@@ -18,10 +18,11 @@ struct AboutView: View {
         List {
             Section {
                 VStack(spacing: 8) {
-                    Image("onboardingLogo")
+                    Image("JLPhysicalAppIcon")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .accessibilityHidden(true)
                     Text("JL Physical")
                         .font(.system(.title2, design: .rounded, weight: .bold))
@@ -50,6 +51,7 @@ struct AboutView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -98,6 +100,7 @@ struct AcknowledgementsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
     }

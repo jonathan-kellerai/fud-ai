@@ -3983,10 +3983,10 @@ enum AISettingsInfoTopic {
         switch self {
         case .primaryAI: "Primary AI"
         case .textAI: "Text AI"
-        case .textFallback: "Text AI Fallback"
+        case .textFallback: "Text Fallback"
         case .imageFallback: "Image AI Fallback"
         case .speechToText: "Speech-to-Text"
-        case .speechFallback: "STT Fallback"
+        case .speechFallback: "Voice Fallback"
         }
     }
 
@@ -4173,11 +4173,11 @@ struct SettingsHubRowLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(.body, design: .rounded, weight: .medium))
+                    .avoidsMidWordBreak()
                 Text(subtitle)
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(IronTheme.brass)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .avoidsMidWordBreak()
             }
         } icon: {
             Image(systemName: systemImage)
@@ -4197,7 +4197,8 @@ private struct ProfileSettingsCategoryRow: View {
         }
         .accessibilityIdentifier("settings.category.\(category.rawValue)")
         .overlay {
-            SettingsHubRowAnchor(identifier: "settings.hub.row.\(category.rawValue)")
+            SettingsHubRowAnchor(identifier: "settings.category.\(category.rawValue)")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
         }
     }
@@ -4464,7 +4465,8 @@ struct ProfileView: View {
                 }
                 .accessibilityIdentifier("settings.category.reconBench")
                 .overlay {
-                    SettingsHubRowAnchor(identifier: "settings.hub.row.reconBench")
+                    SettingsHubRowAnchor(identifier: "settings.category.reconBench")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
                 }
             } header: {
@@ -4490,13 +4492,13 @@ struct ProfileView: View {
             }
             .listRowBackground(AppColors.appCard)
 
-            Color.clear
-                .frame(height: 72)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
         }
+        .listSectionSpacing(8)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
+        .contentMargins(.top, 4, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showExerciseLibrary) {
             WorkoutsView(presentedAsSheet: true, libraryOnly: true)
@@ -4520,7 +4522,7 @@ struct ProfileView: View {
             let name = ActiveProgramCache.load()?.name ?? "Program V2"
             return "\(name) · rest \(RestTimerSettings.defaultRestLabel)"
         case .foodAI:
-            let model = AIProviderSettings.selectedModel
+            let model = AIProvider.friendlyModelName(AIProviderSettings.selectedModel)
             return "\(model) · \(gemmaStatusLabel)"
         case .bodyHealth:
             let health = healthKitEnabled ? "Apple Health on" : "Apple Health off"
@@ -4529,7 +4531,9 @@ struct ProfileView: View {
         case .dataSync:
             return "\(bridgeStatusLabel) · \(iCloudStatusLabel)"
         case .notifications:
-            return "\(enabledReminderCount) reminders on"
+            guard UserDefaults.standard.bool(forKey: "notificationsEnabled") else { return "Off" }
+            let count = enabledReminderCount
+            return count == 1 ? "1 reminder on" : "\(count) reminders on"
         case .about:
             return "\(JLAppVersion.shortAndBuild) · based on Fud AI"
         default:
@@ -4538,12 +4542,7 @@ struct ProfileView: View {
     }
 
     private var gemmaStatusLabel: String {
-        switch Gemma4LocalModelManager.shared.state {
-        case .ready, .generating: "Gemma ready"
-        case .downloaded: "Gemma downloaded"
-        case .downloading: "Gemma downloading"
-        default: "Gemma not ready"
-        }
+        Gemma4LocalModelManager.shared.settingsSubtitle
     }
 
     private var bridgeStatusLabel: String {
@@ -4579,19 +4578,13 @@ struct ProfileView: View {
     }
 
     private var aiProvidersSubtitle: String {
-        "\(AIProviderSettings.selectedProvider.displayName) · \(AIProviderSettings.selectedModel)"
+        let model = AIProvider.friendlyModelName(AIProviderSettings.selectedModel)
+        return "\(AIProviderSettings.selectedProvider.displayName) · \(model)"
     }
 
     private var otherNutrientsSubtitle: String {
         let count = OptionalNutrient.allCases.filter { OptionalNutrientGoals.current.goal(for: $0) > 0 }.count
         return "\(count) set"
-    }
-
-    private var showsRequestTimeout: Bool {
-        selectedProvider.usesConfigurableRequestTimeout
-            || (separateTextProviderEnabled && selectedTextProvider.usesConfigurableRequestTimeout)
-            || (fallbackEnabled && selectedFallbackProvider.usesConfigurableRequestTimeout)
-            || (textFallbackEnabled && selectedTextFallbackProvider.usesConfigurableRequestTimeout)
     }
 
     private func autosaveCustomInstructions() {
@@ -4647,6 +4640,8 @@ struct ProfileView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(IronTheme.textPrimary)
                     } header: {
                         IronSectionTitle(title: "Program")
                     }
@@ -4786,16 +4781,28 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
 
                 Section {
-                    Picker("Weight", selection: $weightUnitRaw) {
-                        Text("lb").tag("lbs")
-                        Text("kg").tag("kg")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Weight")
+                            .avoidsMidWordBreak()
+                        Picker("Weight", selection: $weightUnitRaw) {
+                            Text("lb").tag("lbs")
+                            Text("kg").tag("kg")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                    .pickerStyle(.segmented)
-                    Picker("Height & Length", selection: $heightUnitRaw) {
-                        Text("ft-in").tag("ftin")
-                        Text("cm").tag("cm")
+                    .accessibilityElement(children: .contain)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Height & Length")
+                            .avoidsMidWordBreak()
+                        Picker("Height & Length", selection: $heightUnitRaw) {
+                            Text("ft-in").tag("ftin")
+                            Text("cm").tag("cm")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                    .pickerStyle(.segmented)
+                    .accessibilityElement(children: .contain)
                     Picker(selection: $weekStartsOnMonday) {
                         Text("Sunday").tag(false)
                         Text("Monday").tag(true)
@@ -4912,72 +4919,6 @@ struct ProfileView: View {
 
                 if settingsCategory == .dailyTargets {
                 Section {
-                    HStack {
-                        Label {
-                            Text("Adaptive Goals")
-                        } icon: {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                        Spacer()
-                        if isApplyingAdaptiveGoals {
-                            ProgressView()
-                        }
-                        Button {
-                            showAdaptiveGoalsInfo = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("About Adaptive Goals")
-
-                        Toggle("", isOn: $adaptiveGoalsEnabled)
-                            .labelsHidden()
-                            .tint(AppColors.calorie)
-                            .disabled(isApplyingAdaptiveGoals)
-                            .onChange(of: adaptiveGoalsEnabled) { oldValue, enabled in
-                                handleAdaptiveGoalsToggle(enabled, wasEnabled: oldValue)
-                            }
-                    }
-
-                    HStack {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Energy Burn")
-                                if !healthKitEnabled {
-                                    Text("Needs Apple Health")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: "flame")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                        Spacer()
-                        Button {
-                            showEnergyBurnInfo = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("About Energy Burn")
-
-                        Toggle("", isOn: $energyBurnEnabled)
-                            .labelsHidden()
-                            .tint(AppColors.calorie)
-                            .disabled(isRecalculatingGoals)
-                            .onChange(of: energyBurnEnabled) { _, enabled in
-                                handleEnergyBurnToggle(enabled)
-                            }
-                    }
-
-                }
-                .listRowBackground(AppColors.appCard)
-
-                Section("Daily Targets") {
                     lockableGoalRow(
                         icon: "flame",
                         label: "Calories",
@@ -5042,6 +4983,75 @@ struct ProfileView: View {
                         }
                     }
                     .tint(.primary)
+                } header: {
+                    IronSectionTitle(title: "Targets")
+                }
+                .listRowBackground(AppColors.appCard)
+                Section {
+                    HStack {
+                        Label {
+                            Text("Adaptive Goals")
+                        } icon: {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                        Spacer()
+                        if isApplyingAdaptiveGoals {
+                            ProgressView()
+                        }
+                        Button {
+                            showAdaptiveGoalsInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("About Adaptive Goals")
+
+                        Toggle("", isOn: $adaptiveGoalsEnabled)
+                            .labelsHidden()
+                            .tint(AppColors.calorie)
+                            .disabled(isApplyingAdaptiveGoals)
+                            .onChange(of: adaptiveGoalsEnabled) { oldValue, enabled in
+                                handleAdaptiveGoalsToggle(enabled, wasEnabled: oldValue)
+                            }
+                    }
+
+                    HStack {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Energy Burn")
+                                if !healthKitEnabled {
+                                    Text("Needs Apple Health")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } icon: {
+                            Image(systemName: "flame")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                        Spacer()
+                        Button {
+                            showEnergyBurnInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("About Energy Burn")
+
+                        Toggle("", isOn: $energyBurnEnabled)
+                            .labelsHidden()
+                            .tint(AppColors.calorie)
+                            .disabled(isRecalculatingGoals)
+                            .onChange(of: energyBurnEnabled) { _, enabled in
+                                handleEnergyBurnToggle(enabled)
+                            }
+                    }
+
+                } header: {
+                    IronSectionTitle(title: "Adaptive")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
@@ -5129,6 +5139,12 @@ struct ProfileView: View {
                     NavigationLink(value: ProfileSettingsCategory.shortcutsSiri) {
                         SettingsHubRowLabel(title: "Shortcuts & Siri", systemImage: "bolt.fill", subtitle: "App icon and Siri")
                     }
+                } header: {
+                    IronSectionTitle(title: "Food Logging")
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
                     NavigationLink(value: ProfileSettingsCategory.aiProviders) {
                         SettingsHubRowLabel(title: "AI Providers", systemImage: "sparkles", subtitle: aiProvidersSubtitle)
                     }
@@ -5138,7 +5154,8 @@ struct ProfileView: View {
                     NavigationLink(value: ProfileSettingsCategory.advancedAI) {
                         SettingsHubRowLabel(title: "Advanced AI", systemImage: "slider.horizontal.3", subtitle: "Fallbacks, timeout, instructions")
                     }
-
+                } header: {
+                    IronSectionTitle(title: "AI")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
@@ -5384,66 +5401,7 @@ struct ProfileView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if settingsCategory == .advancedAI {
-                        if selectedProvider == .openrouter
-                            || (separateTextProviderEnabled && selectedTextProvider == .openrouter)
-                            || (fallbackEnabled && selectedFallbackProvider == .openrouter)
-                            || (textFallbackEnabled && selectedTextFallbackProvider == .openrouter) {
-                            Picker("OpenRouter Reasoning Effort", selection: $openRouterReasoningEffort) {
-                                ForEach(OpenRouterReasoningEffort.allCases) { effort in
-                                    Text(effort.title).tag(effort)
-                                }
-                            }
-                            Text("Applies to all OpenRouter requests. Supported levels vary by model. Higher effort may take longer and cost more. Auto keeps the model default; incomplete responses retry with Low.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        // Only OpenAI-compatible + Anthropic send a token cap; Gemini is
-                        // left uncapped, so hide this for Gemini.
-                        if showsRequestTimeout {
-                            HStack {
-                                Label {
-                                    Text("Request Timeout")
-                                } icon: {
-                                    Image(systemName: "timer")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                requestTimeoutInput
-                                Text("sec")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if selectedProvider.apiFormat != .gemini {
-                            HStack {
-                                Label {
-                                    Text("Max Response Tokens")
-                                } icon: {
-                                    Image(systemName: "text.append")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                maxResponseTokensInput
-                            }
-                        }
-
-                    }
-
                     if settingsCategory == .onDeviceModels {
-                        Label(
-                            LocalModelStrings.text(
-                                "settings.onDeviceModel",
-                                defaultValue: "On-Device Model"
-                            ),
-                            systemImage: "iphone.gen3.radiowaves.left.and.right"
-                        )
-                            .font(.system(.subheadline, design: .rounded, weight: .bold))
-                            .foregroundStyle(AppColors.calorie)
-                            .textCase(.uppercase)
-                            .accessibilityAddTraits(.isHeader)
-
                         Gemma4ModelSettingsView {
                             selectedProvider = AIProviderSettings.selectedProvider
                             selectedModel = AIProviderSettings.selectedModel
@@ -5457,16 +5415,6 @@ struct ProfileView: View {
                             selectedTextFallbackModel = AIProviderSettings.selectedTextFallbackModel
                             textFallbackEnabled = AIProviderSettings.textFallbackEnabled
                             localModelAvailabilityRevision += 1
-                        }
-
-                        appleIntelligenceAvailabilityRow
-                        Button("Use for text") {
-                            separateTextProviderEnabled = true
-                            AIProviderSettings.separateTextProviderEnabled = true
-                            selectedTextProvider = .appleIntelligence
-                            AIProviderSettings.selectedTextProvider = .appleIntelligence
-                            selectedTextModel = AIProvider.appleIntelligence.defaultTextModel
-                            AIProviderSettings.selectedTextModel = selectedTextModel
                         }
                     }
 
@@ -5743,12 +5691,74 @@ struct ProfileView: View {
                             }
                         }
                         AISettingsSubsectionHeader(
-                            title: "Text AI Fallback",
+                            title: "Text Fallback",
                             systemImage: "text.bubble.fill",
                             infoTopic: .textFallback
                         )
                         textFallbackSettingsRows
                     }
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .onDeviceModels {
+                Section {
+                    appleIntelligenceAvailabilityRow
+                    Button("Use for text") {
+                        separateTextProviderEnabled = true
+                        AIProviderSettings.separateTextProviderEnabled = true
+                        selectedTextProvider = .appleIntelligence
+                        AIProviderSettings.selectedTextProvider = .appleIntelligence
+                        selectedTextModel = AIProvider.appleIntelligence.defaultTextModel
+                        AIProviderSettings.selectedTextModel = selectedTextModel
+                    }
+                    .disabled(!appleIntelligenceIsAvailable)
+                    .opacity(appleIntelligenceIsAvailable ? 1 : 0.45)
+                } header: {
+                    IronSectionTitle(title: "Apple Intelligence")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .advancedAI {
+                Section {
+                    HStack {
+                        Label {
+                            Text("Request Timeout")
+                        } icon: {
+                            Image(systemName: "timer")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                        Spacer()
+                        requestTimeoutInput
+                        Text("sec")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Label {
+                            Text("Max Response Tokens")
+                        } icon: {
+                            Image(systemName: "text.append")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                        Spacer()
+                        maxResponseTokensInput
+                    }
+                    if selectedProvider == .openrouter
+                        || (separateTextProviderEnabled && selectedTextProvider == .openrouter)
+                        || (fallbackEnabled && selectedFallbackProvider == .openrouter)
+                        || (textFallbackEnabled && selectedTextFallbackProvider == .openrouter) {
+                        Picker("OpenRouter Reasoning Effort", selection: $openRouterReasoningEffort) {
+                            ForEach(OpenRouterReasoningEffort.allCases) { effort in
+                                Text(effort.title).tag(effort)
+                            }
+                        }
+                        Text("Applies to all OpenRouter requests. Supported levels vary by model. Higher effort may take longer and cost more. Auto keeps the model default; incomplete responses retry with Low.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    IronSectionTitle(title: "Requests")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
@@ -5924,6 +5934,8 @@ struct ProfileView: View {
                         Text("Edit in Programs")
                             .font(.footnote)
                     }
+                } header: {
+                    IronSectionTitle(title: "Apple Health")
                 } footer: {
                     Text("Weight and body fat from your scale (e.g. Withings) arrive through Apple Health. Steps feed the steps goal and your bridge.")
                 }
@@ -6189,6 +6201,7 @@ struct ProfileView: View {
 
                 }
             }
+            .settingsFloatingTabClearance()
             .alert("Clear Food Log", isPresented: $showClearFoodLogConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Clear All Logs", role: .destructive) {
@@ -6308,7 +6321,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var textFallbackSettingsRows: some View {
         Toggle(isOn: $textFallbackEnabled) {
-            Label("Enable Text Fallback", systemImage: "arrow.triangle.2.circlepath")
+            Label("Text Fallback", systemImage: "arrow.triangle.2.circlepath")
         }
         .tint(AppColors.calorie)
         .onChange(of: textFallbackEnabled) { _, newValue in
@@ -6431,14 +6444,18 @@ struct ProfileView: View {
     @ViewBuilder
     private var speechFallbackSettingsRows: some View {
         AISettingsSubsectionHeader(
-            title: "STT Fallback",
+            title: "Voice Fallback",
             systemImage: "waveform.badge.plus",
             infoTopic: .speechFallback
         )
 
-        if selectedSpeechProvider != .nativeIOS {
+        if selectedSpeechProvider == .nativeIOS || speechFallbackProviderOptions.isEmpty {
+            Text("Native iOS speech already recovers on this iPhone, so there is no separate voice fallback.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if selectedSpeechProvider != .nativeIOS {
             Toggle(isOn: $speechFallbackEnabled) {
-                Label("Enable STT Fallback", systemImage: "arrow.triangle.2.circlepath")
+                Label("Voice Fallback", systemImage: "arrow.triangle.2.circlepath")
             }
             .tint(AppColors.calorie)
             .onChange(of: speechFallbackEnabled) { _, newValue in
@@ -6521,6 +6538,17 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+
+    private var appleIntelligenceIsAvailable: Bool {
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            return OnDeviceAIService.isAvailable
+            #else
+            return false
+            #endif
+        }
+        return false
     }
 
     @ViewBuilder
@@ -6711,11 +6739,15 @@ struct ProfileView: View {
                 Image(systemName: icon)
                     .foregroundStyle(AppColors.calorie)
                     .frame(width: 22)
-                Text(LocalizedDisplayText.text(label))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(valueText)
-                    .foregroundStyle(.secondary)
+                AdaptiveLabelValue {
+                    Text(LocalizedDisplayText.text(label))
+                        .foregroundStyle(.primary)
+                        .avoidsMidWordBreak()
+                } value: {
+                    Text(valueText)
+                        .foregroundStyle(.secondary)
+                        .avoidsMidWordBreak()
+                }
                 Image(systemName: locked ? "lock.fill" : "lock.open")
                     .font(.footnote)
                     .foregroundStyle(locked ? AppColors.calorie : .secondary)

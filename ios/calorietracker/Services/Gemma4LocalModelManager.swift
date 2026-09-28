@@ -166,6 +166,20 @@ final class Gemma4LocalModelManager {
         Self.isEligible(physicalMemoryBytes: physicalMemoryBytes)
     }
 
+    /// Hub and Food & AI subtitles use the same gate as the Gemma card.
+    var settingsSubtitle: String {
+        guard isEligible else { return "Needs 8 GB RAM" }
+        switch state {
+        case .notDownloaded: return "Not downloaded"
+        case .downloaded: return "Downloaded"
+        case .downloading: return "Downloading"
+        case .verifying: return "Verifying"
+        case .preparing: return "Preparing"
+        case .ready, .generating: return "Gemma ready"
+        case .failed: return "Needs attention"
+        }
+    }
+
     var isDownloaded: Bool {
         Self.hasVerifiedInstall(
             modelURL: modelURL,

@@ -51,6 +51,7 @@ struct ProfileInfoRow: View {
             HStack {
                 Label {
                     Text(LocalizedDisplayText.text(label))
+                        .avoidsMidWordBreak()
                 } icon: {
                     Image(systemName: icon)
                         .foregroundStyle(AppColors.calorie)
@@ -58,6 +59,7 @@ struct ProfileInfoRow: View {
                 Spacer()
                 Text(value)
                     .foregroundStyle(.secondary)
+                    .avoidsMidWordBreak()
                 if action != nil {
                     Image(systemName: "chevron.right")
                         .font(.caption)
@@ -727,6 +729,7 @@ struct MealTimeSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("Meal Times")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: repairInvalidScheduleIfNeeded)
@@ -1330,6 +1333,7 @@ struct NotificationSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task {

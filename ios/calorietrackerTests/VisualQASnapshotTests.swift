@@ -260,9 +260,8 @@ final class VisualQASnapshotTests: XCTestCase {
     // MARK: - AI providers
 
     func test23AIProvidersOnDeviceModel() async throws {
-        // ProfileView (which hosts the full AI Providers & Fallbacks list) has a
-        // file-private init in ContentView, so render its On-Device Model section
-        // with the real Gemma4ModelSettingsView in the download-in-progress state.
+        // ProfileView's update-state initializer is fileprivate. This harness draws
+        // the Gemma card in downloading, not-downloaded, and ready states.
         try await eachSize("23-ai-providers-on-device-download") { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "More") { VisualQAOnDeviceModelSection() }
@@ -355,7 +354,7 @@ final class VisualQASnapshotTests: XCTestCase {
 
     func test41ReconCalendarSyncStatus() async throws {
         VisualQAFixtures.seedReconCalendar()
-        try await settingsScreen("41-recon-calendar-sync-status") {
+        try await settingsScreen("41-recon-calendar-sync-status", heightMultiplier: 3) {
             ReconView(initialSection: .calendar)
         }
     }
@@ -377,12 +376,12 @@ final class VisualQASnapshotTests: XCTestCase {
         AIProviderSettings.selectedProvider = .gemini
         AIProviderSettings.selectedModel = AIProvider.gemini.defaultModel
         AIProviderSettings.setAPIKey("visual-qa-key", for: .gemini)
-        Gemma4LocalModelManager.shared.applySnapshotState(.ready)
         VisualQAFixtures.icloudLastBackupISO = ISO8601DateFormatter().string(
             from: Date().addingTimeInterval(-2 * 60 * 60)
         )
         UserDefaults.standard.set(true, forKey: "healthKitEnabled")
         UserDefaults.standard.set("lbs", forKey: "weightUnit")
+        UserDefaults.standard.set(true, forKey: "notificationsEnabled")
         let bridge = NeonBridgeSettings(baseURL: NeonBridgeSettings.defaultBaseURL, apiKey: nil)
         bridge.save()
     }
@@ -544,46 +543,95 @@ enum VisualQADiagnostics {
 
     static func assertHubRowsAboveTabBar(in window: UIWindow) {
         let rows = [
-            ("settings.hub.row.reconBench", "Recon Bench"),
-            ("settings.hub.row.training", "Training"),
-            ("settings.hub.row.foodAI", "Food & AI"),
-            ("settings.hub.row.bodyHealth", "Body & Health"),
-            ("settings.hub.row.dataSync", "Data & Sync"),
-            ("settings.hub.row.notifications", "Notifications"),
-            ("settings.hub.row.about", "About"),
+            ("settings.category.reconBench", "Recon Bench"),
+            ("settings.category.training", "Training"),
+            ("settings.category.foodAI", "Food & AI"),
+            ("settings.category.bodyHealth", "Body & Health"),
+            ("settings.category.dataSync", "Data & Sync"),
+            ("settings.category.notifications", "Notifications"),
+            ("settings.category.about", "About"),
         ]
-        var frames: [String: CGRect] = [:]
-        func consider(identifier: String?, frame: CGRect) {
-            guard let identifier, rows.contains(where: { $0.0 == identifier }) else { return }
-            guard frame.width > 1, frame.height > 1 else { return }
-            if let existing = frames[identifier], existing.height <= frame.height { return }
-            frames[identifier] = frame
-        }
-        func walk(_ view: UIView) {
-            if let label = view as? UILabel, label.text == "!" {
-                XCTFail("More tab shows an update badge")
-            }
-            consider(
-                identifier: view.accessibilityIdentifier,
-                frame: view.convert(view.bounds, to: window)
-            )
-            for subview in view.subviews {
-                walk(subview)
-            }
-        }
-        walk(window)
+        let identifiers = Set(rows.map(\.0))
+        scrollHubToTop(window)
+        window.layoutIfNeeded()
         guard let tabBar = findTabBar(in: window) else {
             XCTFail("Missing tab bar")
             return
         }
+        if let items = tabBar.items, items.count > 4 {
+            XCTAssertNil(items[4].badgeValue, "More tab shows an update badge")
+        }
         let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
+        var frames = hubRowFrames(in: window, identifiers: identifiers)
+        let missingAtTop = rows.map(\.0).filter { frames[$0] == nil }
+        var buried: Set<String> = []
+        if !missingAtTop.isEmpty {
+            scrollHubToBottom(window)
+            window.layoutIfNeeded()
+            let revealed = hubRowFrames(in: window, identifiers: Set(missingAtTop))
+            for identifier in missingAtTop where revealed[identifier] != nil {
+                buried.insert(identifier)
+                let title = rows.first { $0.0 == identifier }?.1 ?? identifier
+                XCTFail("\(title) sits under the tab bar on iPhone SE")
+            }
+        }
         for (identifier, title) in rows {
             guard let frame = frames[identifier] else {
-                XCTFail("Missing More hub row \(title)")
+                if !buried.contains(identifier) {
+                    XCTFail("Missing More hub row \(title)")
+                }
                 continue
             }
             XCTAssertLessThan(frame.maxY, tabTop + 1, "\(title) sits under the tab bar on iPhone SE")
         }
+    }
+
+    private static func scrollHubToTop(_ view: UIView) {
+        if let scroll = view as? UIScrollView {
+            scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        }
+        for subview in view.subviews { scrollHubToTop(subview) }
+    }
+
+    private static func scrollHubToBottom(_ view: UIView) {
+        if let scroll = view as? UIScrollView {
+            let bottom = max(-scroll.adjustedContentInset.top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+            scroll.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        }
+        for subview in view.subviews { scrollHubToBottom(subview) }
+    }
+
+    private static func hubRowFrames(in window: UIWindow, identifiers: Set<String>) -> [String: CGRect] {
+        var frames: [String: CGRect] = [:]
+        var seen = Set<ObjectIdentifier>()
+        func keep(_ identifier: String, _ frame: CGRect) {
+            guard identifiers.contains(identifier), frame.width > 1, frame.height > 20 else { return }
+            if let existing = frames[identifier], existing.height <= frame.height { return }
+            frames[identifier] = frame
+        }
+        func consider(_ object: NSObject) {
+            let token = ObjectIdentifier(object)
+            guard seen.insert(token).inserted else { return }
+            if let identifier = object.accessibilityIdentifier {
+                if let view = object as? UIView {
+                    keep(identifier, view.convert(view.bounds, to: window))
+                } else {
+                    keep(identifier, window.convert(object.accessibilityFrame, from: nil))
+                }
+            }
+            guard let view = object as? UIView else { return }
+            let count = view.accessibilityElementCount()
+            if count > 0, count < 10_000 {
+                for index in 0..<count {
+                    if let element = view.accessibilityElement(at: index) as? NSObject {
+                        consider(element)
+                    }
+                }
+            }
+            for subview in view.subviews { consider(subview) }
+        }
+        consider(window)
+        return frames
     }
 
     private static func findTabBar(in view: UIView) -> UITabBar? {
@@ -767,36 +815,35 @@ struct VisualQAStepsEdgeCases: View {
     }
 }
 
-/// Mirrors the "On-Device Model" block of Settings > AI Providers & Fallbacks.
+/// Gemma card states for visual QA. ProfileView hosts the live On-Device Models screen.
 struct VisualQAOnDeviceModelSection: View {
     var body: some View {
         List {
             Section {
-                onDeviceHeader
                 Gemma4ModelSettingsView(previewState: .downloading(0.42)) {}
+            } header: {
+                IronSectionTitle(title: "Downloading")
             }
             .listRowBackground(AppColors.appCard)
 
             Section {
-                onDeviceHeader
                 Gemma4ModelSettingsView(previewState: .notDownloaded) {}
+            } header: {
+                IronSectionTitle(title: "Not Downloaded")
+            }
+            .listRowBackground(AppColors.appCard)
+
+            Section {
+                Gemma4ModelSettingsView(previewState: .ready) {}
+            } header: {
+                IronSectionTitle(title: "Ready")
             }
             .listRowBackground(AppColors.appCard)
         }
         .scrollContentBackground(.hidden)
         .background(IronTheme.canvas)
-        .navigationTitle("AI Providers & Fallbacks")
+        .navigationTitle("On-Device Models")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var onDeviceHeader: some View {
-        Label(
-            LocalModelStrings.text("settings.onDeviceModel", defaultValue: "On-Device Model"),
-            systemImage: "iphone.gen3.radiowaves.left.and.right"
-        )
-        .font(.system(.subheadline, design: .rounded, weight: .bold))
-        .foregroundStyle(AppColors.calorie)
-        .textCase(.uppercase)
     }
 }
 

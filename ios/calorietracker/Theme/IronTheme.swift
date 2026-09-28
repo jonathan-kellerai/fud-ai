@@ -177,6 +177,46 @@ extension Color {
     }
 }
 
+extension View {
+    /// Keeps the last row of a settings list above the floating tab bar.
+    func settingsFloatingTabClearance() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: 64)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Stops accessibility sizes from hyphenating a short label or value mid-word.
+    func avoidsMidWordBreak() -> some View {
+        lineLimit(1)
+            .minimumScaleFactor(0.55)
+            .allowsTightening(true)
+    }
+}
+
+struct AdaptiveLabelValue<Label: View, Value: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ViewBuilder var label: () -> Label
+    @ViewBuilder var value: () -> Value
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                label()
+                value()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                label()
+                Spacer(minLength: 8)
+                value()
+            }
+        }
+    }
+}
+
 struct IronSectionTitle: View {
     let title: String
 
