@@ -263,7 +263,7 @@ struct GeminiService {
         let bodyFat = profile.bodyFatPercentage.map { "\(Int(($0 * 100).rounded()))%" } ?? "not set"
 
         let prompt = """
-        You are a concise nutrition coach inside Fud AI. The user is reviewing a meal before logging it.
+        You are a concise nutrition coach inside JL Physical. The user is reviewing a meal before logging it.
         Analyze this what-if scenario only. Do not say the meal has already been logged. Do not change the user's goals.
 
         Return 2-4 short plain-English sentences, no markdown and no bullets.
@@ -1117,7 +1117,7 @@ struct GeminiService {
         }
         if provider == .openrouter {
             headers["HTTP-Referer"] = "https://github.com/apoorvdarshan/fud-ai"
-            headers["X-Title"] = "Fud AI"
+            headers["X-Title"] = "JL Physical"
         }
 
         func request(_ requestPrompt: String, compactRetry: Bool) async throws -> OpenAITextResponse {

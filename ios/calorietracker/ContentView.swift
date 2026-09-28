@@ -141,7 +141,7 @@ struct ContentView: View {
                     continueToMeetDeveloperPrompt()
                 }
             } message: {
-                Text("Fud AI is free with your own API keys (BYOK) — and always will be. If juggling keys feels confusing, Plus and Pro plans run the AI for you with no keys to manage. Totally optional, nothing changes unless you switch.")
+                Text("JL Physical is free with your own API keys (BYOK) — and always will be. If juggling keys feels confusing, Plus and Pro plans run the AI for you with no keys to manage. Totally optional, nothing changes unless you switch.")
             }
             .sheet(isPresented: $showHostedUpsellPaywall, onDismiss: { continueToMeetDeveloperPrompt() }) {
                 HostedPaywallView()
@@ -331,7 +331,7 @@ enum AboutSettingsCategory: String, CaseIterable, Identifiable, Hashable {
     var title: LocalizedStringResource {
         switch self {
         case .appUpdates: "App & Updates"
-        case .support: "Support Fud AI"
+        case .support: "Support JL Physical"
         case .helpFeedback: "Help & Feedback"
         case .community: "Community"
         case .legal: "Legal"
@@ -359,7 +359,7 @@ private struct AboutAppHeaderSection: View {
                     .frame(width: 64, height: 64)
                     .accessibilityHidden(true)
 
-                Text("Fud AI")
+                Text("JL Physical")
                     .font(.system(.title2, design: .rounded, weight: .bold))
 
                 Text("Version \(AppUpdateChecker.currentVersionDisplay)")
@@ -414,7 +414,7 @@ private struct AboutSettingsSections: View {
     }
 
     private var shareMessage: String {
-        String(localized: "I've been tracking my meals with Fud AI — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app")
+        String(localized: "I've been tracking my meals with JL Physical — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app")
     }
 
     var body: some View {
@@ -2410,26 +2410,26 @@ private struct SiriPhrasesSettingsView: View {
             title: "Log Food",
             icon: "fork.knife",
             phrases: [
-                "Log food in Fud AI",
-                "Add food in Fud AI",
-                "Track food in Fud AI",
+                "Log food in JL Physical",
+                "Add food in JL Physical",
+                "Track food in JL Physical",
             ]
         ),
         SiriPhraseGroup(
             title: "Today's Calories",
             icon: "chart.bar.fill",
             phrases: [
-                "Calories today in Fud AI",
-                "How many calories in Fud AI",
-                "Today's nutrition in Fud AI",
+                "Calories today in JL Physical",
+                "How many calories in JL Physical",
+                "Today's nutrition in JL Physical",
             ]
         ),
         SiriPhraseGroup(
             title: "Log Weight",
             icon: "scalemass.fill",
             phrases: [
-                "Log my weight in Fud AI",
-                "Record weight in Fud AI",
+                "Log my weight in JL Physical",
+                "Record weight in JL Physical",
             ]
         ),
     ]
@@ -2438,7 +2438,7 @@ private struct SiriPhrasesSettingsView: View {
         List {
             Section {
                 Label {
-                    Text("Say these phrases to Siri to use Fud AI hands-free.")
+                    Text("Say these phrases to Siri to use JL Physical hands-free.")
                         .foregroundStyle(.secondary)
                 } icon: {
                     Image(systemName: "waveform.circle.fill")
@@ -2975,7 +2975,7 @@ struct MultiPhotoCaptureSheet: View {
             .alert("How Progressive Meal works", isPresented: $showProgressiveInfo) {
                 Button("Done", role: .cancel) {}
             } message: {
-                Text("Use this when every photo shows the same plate after another ingredient is added. Keep the photos in order and make the scale display visible. Fud AI uses the difference between consecutive scale totals to estimate each new ingredient. Leave this off when the photos are only different angles of the same meal.")
+                Text("Use this when every photo shows the same plate after another ingredient is added. Keep the photos in order and make the scale display visible. JL Physical uses the difference between consecutive scale totals to estimate each new ingredient. Leave this off when the photos are only different angles of the same meal.")
             }
         }
     }
@@ -4099,7 +4099,7 @@ enum ProfileSettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .healthData: "Health & Data"
         case .dataManagement: "Data Management"
         case .appUpdates: "App & Updates"
-        case .support: "Support Fud AI"
+        case .support: "Support JL Physical"
         case .helpFeedback: "Help & Feedback"
         case .community: "Community"
         case .legal: "Legal"
@@ -5663,7 +5663,7 @@ struct ProfileView: View {
                     }
 
                 } footer: {
-                    Text("Reads weight, nutrition, energy, and workouts from Apple Health. Apple Watch and iPhone workouts appear read-only in Workouts and Progress. Fud AI’s calculated diary burns are written separately and excluded from Energy Burn goals.")
+                    Text("Reads weight, nutrition, energy, and workouts from Apple Health. Apple Watch and iPhone workouts appear read-only in Workouts and Progress. JL Physical’s calculated diary burns are written separately and excluded from Energy Burn goals.")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
@@ -5913,12 +5913,12 @@ struct ProfileView: View {
             .alert("Adaptive Goals", isPresented: $showAdaptiveGoalsInfo) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("About once a week when you open the app, Fud AI automatically re-runs the full goal calculation — the same one the Recalculate button uses — from your profile, recent logged food, and weight trend. If Energy Burn is on, it uses your measured burn as the maintenance anchor. It skips silently if the AI is unavailable. Turning this off restores the targets from before Adaptive Goals first changed them. This is not medical advice.")
+                Text("About once a week when you open the app, JL Physical automatically re-runs the full goal calculation — the same one the Recalculate button uses — from your profile, recent logged food, and weight trend. If Energy Burn is on, it uses your measured burn as the maintenance anchor. It skips silently if the AI is unavailable. Turning this off restores the targets from before Adaptive Goals first changed them. This is not medical advice.")
             }
             .alert("Energy Burn", isPresented: $showEnergyBurnInfo) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("When on, Fud AI uses Apple Health’s recent measured-energy window as your maintenance anchor when calculating goals instead of the formula estimate: measured total energy when enough days are available; otherwise, average measured active energy + formula BMR. No AI is used to read your burn. Requires Apple Health. Works with the Recalculate button and with Adaptive Goals.")
+                Text("When on, JL Physical uses Apple Health’s recent measured-energy window as your maintenance anchor when calculating goals instead of the formula estimate: measured total energy when enough days are available; otherwise, average measured active energy + formula BMR. No AI is used to read your burn. Requires Apple Health. Works with the Recalculate button and with Adaptive Goals.")
             }
             .alert(adaptiveGoalAlertTitle, isPresented: $showAdaptiveGoalAlert) {
                 Button("OK", role: .cancel) { }
@@ -5971,7 +5971,7 @@ struct ProfileView: View {
                         await weeklyChallengeStore.deleteRemoteProfileForFullReset()
 
                         // Apple Health samples remain untouched; users manage those
-                        // from the Health app's Sources > Fud AI screen.
+                        // from the Health app's Sources > JL Physical screen.
                         foodStore.replaceAllEntries([])
                         weightStore.replaceAllEntries([])
                         waterStore.clear()
@@ -6436,7 +6436,7 @@ struct ProfileView: View {
     private func showAdaptiveGoalsLockHint() {
         showAdaptiveGoalAlert(
             title: "Adaptive Goals Is On",
-            message: "Turn off Adaptive Goals to lock or set your own calories and macros. While it's on, Fud AI recalculates them for you each week."
+            message: "Turn off Adaptive Goals to lock or set your own calories and macros. While it's on, JL Physical recalculates them for you each week."
         )
     }
 
@@ -6546,7 +6546,7 @@ struct ProfileView: View {
             // untouched and tell the user so they can fix their provider/key and retry.
             showAdaptiveGoalAlert(
                 title: "Couldn't Recalculate",
-                message: "Fud AI couldn't reach your AI provider, so your goals are unchanged. Check your AI provider and API key in Settings, then try Recalculate again."
+                message: "JL Physical couldn't reach your AI provider, so your goals are unchanged. Check your AI provider and API key in Settings, then try Recalculate again."
             )
             return
         }
@@ -6665,7 +6665,7 @@ struct ProfileView: View {
                 if await healthKitManager.fetchRecentEnergySummary(days: 14) == nil {
                     energyBurnToggleReverting = true
                     energyBurnEnabled = false
-                    showAdaptiveGoalAlert(title: "Not Enough Health Data", message: "Fud AI needs at least 3 recent days of Apple Health energy data before it can use your measured burn.")
+                    showAdaptiveGoalAlert(title: "Not Enough Health Data", message: "JL Physical needs at least 3 recent days of Apple Health energy data before it can use your measured burn.")
                     return
                 }
                 await recalculateGoalsWithAI()
@@ -6690,7 +6690,7 @@ struct ProfileView: View {
     }
 
     /// Daily measured energy is only included while Energy Burn and Apple Health are enabled.
-    /// HealthKitManager removes Fud AI's own estimated workout samples before aggregation.
+    /// HealthKitManager removes JL Physical's own estimated workout samples before aggregation.
     private func measuredEnergyHistory() async -> [HealthEnergyDay] {
         guard energyBurnEnabled, healthKitEnabled else { return [] }
         let history = await healthKitManager.fetchRecentEnergyHistory(days: 14)

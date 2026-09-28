@@ -8,6 +8,11 @@ import UIKit
 final class WorkoutLogSessionState {
     var selectedDate = Date.now
 
+    /// Explicit nonisolated deinit: the synthesized main-actor-isolated deinit
+    /// double-frees a TaskLocal scope on iOS <= 26.2 (swiftlang/swift#88036)
+    /// when the session is released during a SwiftUI graph update.
+    nonisolated deinit {}
+
     func reset() {
         selectedDate = .now
     }

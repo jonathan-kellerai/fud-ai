@@ -158,8 +158,8 @@ enum CloudBackupError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .missingPayload, .invalidFormat: return "This is not a Fud AI backup."
-        case .needsNewerApp: return "This backup needs a newer Fud AI."
+        case .missingPayload, .invalidFormat: return "This is not a JL Physical backup."
+        case .needsNewerApp: return "This backup needs a newer JL Physical."
         case .iCloudUnavailable: return "Sign into iCloud in iOS Settings first."
         case .noBackup: return "No iCloud backup found."
         }

@@ -1125,7 +1125,7 @@ private struct DetailInstructionSection: View {
                         Text("Watch on YouTube")
                             .font(.callout.weight(.bold))
                             .foregroundStyle(Color.workoutCharcoal)
-                        Text("Opens YouTube search — not an official Fud AI video")
+                        Text("Opens YouTube search — not an official JL Physical video")
                             .font(.caption)
                             .foregroundStyle(Color.workoutMutedText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1146,7 +1146,7 @@ private struct DetailInstructionSection: View {
             }
             .buttonStyle(.plain)
             .workoutPressable()
-            .accessibilityHint(String(localized: "Opens YouTube search — not an official Fud AI video"))
+            .accessibilityHint(String(localized: "Opens YouTube search — not an official JL Physical video"))
 
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(instructions.enumerated()), id: \.offset) { index, instruction in

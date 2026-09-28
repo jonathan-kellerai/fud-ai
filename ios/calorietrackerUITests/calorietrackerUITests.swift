@@ -113,7 +113,7 @@ final class calorietrackerUITests: XCTestCase {
 
         let categories = [
             ("appUpdates", "App & Updates", "Open Source (MIT)"),
-            ("support", "Support Fud AI", "Rate the App"),
+            ("support", "Support JL Physical", "Rate the App"),
             ("helpFeedback", "Help & Feedback", "Report an Issue"),
             ("community", "Community", "Join Discord"),
             ("legal", "Legal", "Privacy Policy"),
