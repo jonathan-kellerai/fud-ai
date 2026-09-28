@@ -28,7 +28,7 @@ enum AppThemeColor: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .fudPink: return LocalizedDisplayText.text("Fud Pink", polish: "Róż Fud")
+        case .fudPink: return LocalizedDisplayText.text("JL Physical Pink", polish: "Róż JL Physical")
         case .red: return LocalizedDisplayText.text("Red", polish: "Czerwony")
         case .orange: return LocalizedDisplayText.text("Orange", polish: "Pomarańczowy")
         case .green: return LocalizedDisplayText.text("Green", polish: "Zielony")
