@@ -15,6 +15,7 @@ struct JLPhysicalTabView: View {
     @State private var recentWorkouts: [RemoteWorkout] = []
     @State private var isLoadingRecent = false
     
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var neonBridge = NeonBridgeService.shared
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
@@ -117,26 +118,30 @@ struct JLPhysicalTabView: View {
     private func sessionCard(dayIndex: Int, name: String) -> some View {
         let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
             ?? programBody.days.first { $0.dayIndex == dayIndex }
-        HStack {
-            VStack(alignment: .leading) {
-                Text("Today's Workout")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(name)
-                    .font(.title2.bold())
+        let title = VStack(alignment: .leading) {
+            Text("Today's Workout")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(name)
+                .font(.title2.bold())
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        // At accessibility sizes the Start button no longer fits beside the
+        // session name on small phones, so stack it full-width underneath
+        // instead of squeezing "Start" into a one-letter-wide column.
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 12) {
+                title
+                if let day {
+                    startButton(day, fullWidth: true)
+                }
             }
-            Spacer()
-            if let day {
-                Button {
-                    loggingDay = day.asProgramV2Day()
-                } label: {
-                    Label("Start", systemImage: "play.fill")
-                        .font(.headline)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(AppColors.calorie)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else {
+            HStack {
+                title
+                Spacer(minLength: 12)
+                if let day {
+                    startButton(day, fullWidth: false)
                 }
             }
         }
@@ -159,6 +164,23 @@ struct JLPhysicalTabView: View {
         }
     }
     
+    private func startButton(_ day: TrainingProgramDay, fullWidth: Bool) -> some View {
+        Button {
+            loggingDay = day.asProgramV2Day()
+        } label: {
+            Label("Start", systemImage: "play.fill")
+                .font(.headline)
+                .lineLimit(1)
+                .fixedSize(horizontal: !fullWidth, vertical: false)
+                .frame(maxWidth: fullWidth ? .infinity : nil)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(AppColors.calorie)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
     private var quickActionsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Quick Actions")
@@ -264,9 +286,11 @@ struct QuickActionButton: View {
                 .font(.title2)
                 .foregroundStyle(color)
             
+            // Explicit bone-grey: `.secondary` inherits the NavigationLink tint
+            // and rendered as low-contrast reddish-brown on iron black.
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(IronTheme.textSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }

@@ -44,8 +44,65 @@ enum ProgressMetric: String, CaseIterable, Identifiable, Equatable {
 
 struct ProgressOverviewModeSelector: View {
     @Binding var selection: ProgressOverviewMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            stackedSelector
+        } else {
+            scrollingSelector
+        }
+    }
+
+    /// Accessibility sizes: both modes visible as full-width rows instead of
+    /// pushing "Weekly Challenge" off the right edge of a horizontal scroller.
+    private var stackedSelector: some View {
+        VStack(spacing: 4) {
+            ForEach(ProgressOverviewMode.allCases) { mode in
+                Button {
+                    withAnimation(.snappy) { selection = mode }
+                } label: {
+                    modeLabel(mode)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == mode ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(AppColors.calorie.opacity(0.12), lineWidth: 0.75)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(WeeklyChallengeL10n.text("Progress view"))
+    }
+
+    private func modeLabel(_ mode: ProgressOverviewMode) -> some View {
+        Label(mode.title, systemImage: mode.icon)
+            .font(.system(.subheadline, design: .rounded, weight: .semibold))
+            .foregroundStyle(selection == mode ? Color.white : Color.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background {
+                if selection == mode {
+                    Capsule().fill(
+                        LinearGradient(
+                            colors: AppColors.calorieGradient,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                } else {
+                    Capsule().fill(Color.clear)
+                }
+            }
+    }
+
+    private var scrollingSelector: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(spacing: 6) {

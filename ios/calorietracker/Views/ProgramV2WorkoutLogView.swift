@@ -249,6 +249,10 @@ struct ProgramV2WorkoutLogView: View {
             }
             .buttonStyle(.plain)
         }
+        // Fixed-width numeric inputs: keep labels on one line and stop the
+        // row growing past the card at accessibility sizes.
+        .lineLimit(1)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.vertical, 4)
         .padding(.leading, 8)
         .overlay(alignment: .leading) {
