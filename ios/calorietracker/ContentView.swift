@@ -4212,13 +4212,24 @@ private struct SettingsHubRowAnchor: UIViewRepresentable {
         let view = UIView()
         view.isUserInteractionEnabled = false
         view.backgroundColor = .clear
-        view.accessibilityIdentifier = identifier
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        apply(identifier, to: view)
         return view
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
         uiView.isUserInteractionEnabled = false
-        uiView.accessibilityIdentifier = identifier
+        uiView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        apply(identifier, to: uiView)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 320, height: 52))
+    }
+
+    private func apply(_ identifier: String, to view: UIView) {
+        view.accessibilityIdentifier = identifier
+        view.layer.name = identifier
     }
 }
 

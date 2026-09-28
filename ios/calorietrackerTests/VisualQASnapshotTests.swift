@@ -578,13 +578,15 @@ enum VisualQADiagnostics {
         for (identifier, title) in rows {
             guard let frame = frames[identifier] else {
                 if !buried.contains(identifier) {
-                    XCTFail("Missing More hub row \(title)")
+                    XCTFail("Missing More hub row \(title). \(hubLookupDebug)")
                 }
                 continue
             }
             XCTAssertLessThan(frame.maxY, tabTop + 1, "\(title) sits under the tab bar on iPhone SE")
         }
     }
+
+    private static var hubLookupDebug = ""
 
     private static func scrollHubToTop(_ view: UIView) {
         if let scroll = view as? UIScrollView {
@@ -604,24 +606,49 @@ enum VisualQADiagnostics {
     private static func hubRowFrames(in window: UIWindow, identifiers: Set<String>) -> [String: CGRect] {
         var frames: [String: CGRect] = [:]
         var seen = Set<ObjectIdentifier>()
+        var notes: [String] = []
         func keep(_ identifier: String, _ frame: CGRect) {
-            guard identifiers.contains(identifier), frame.width > 1, frame.height > 20 else { return }
-            if let existing = frames[identifier], existing.height <= frame.height { return }
+            guard identifiers.contains(identifier), frame.width > 40, frame.height > 20, frame.height < 220 else { return }
+            if let existing = frames[identifier], existing.height >= frame.height { return }
             frames[identifier] = frame
+        }
+        func rowFrame(for view: UIView) -> CGRect {
+            var current: UIView? = view
+            while let candidate = current, candidate !== window {
+                let rect = candidate.convert(candidate.bounds, to: window)
+                if rect.width > 40, rect.height > 20, rect.height < 220 {
+                    return rect
+                }
+                current = candidate.superview
+            }
+            return view.convert(view.bounds, to: window)
         }
         func consider(_ object: NSObject) {
             let token = ObjectIdentifier(object)
             guard seen.insert(token).inserted else { return }
-            if let identifier = (object as? UIAccessibilityIdentification)?.accessibilityIdentifier, !identifier.isEmpty {
+            let accessibilityIdentifier = (object as? UIAccessibilityIdentification)?.accessibilityIdentifier
+            let layerName = (object as? UIView)?.layer.name
+            let identifier = [accessibilityIdentifier, layerName].compactMap { $0 }.first { !$0.isEmpty }
+            if let identifier {
+                let frame: CGRect
                 if let view = object as? UIView {
-                    keep(identifier, view.convert(view.bounds, to: window))
+                    frame = rowFrame(for: view)
                 } else if let space = window.windowScene?.screen.coordinateSpace {
-                    keep(identifier, window.convert(object.accessibilityFrame, from: space))
+                    frame = window.convert(object.accessibilityFrame, from: space)
                 } else {
-                    keep(identifier, window.convert(object.accessibilityFrame, from: nil))
+                    frame = window.convert(object.accessibilityFrame, from: nil)
                 }
+                if notes.count < 12, identifier.contains("settings") {
+                    notes.append("\(identifier) \(Int(frame.width))x\(Int(frame.height))")
+                }
+                keep(identifier, frame)
             }
             guard let view = object as? UIView else { return }
+            if let elements = view.accessibilityElements {
+                for case let element as NSObject in elements {
+                    consider(element)
+                }
+            }
             let count = view.accessibilityElementCount()
             if count > 0, count < 10_000 {
                 for index in 0..<count {
@@ -633,6 +660,7 @@ enum VisualQADiagnostics {
             for subview in view.subviews { consider(subview) }
         }
         consider(window)
+        hubLookupDebug = notes.isEmpty ? "no settings identifiers in the window" : notes.joined(separator: "; ")
         return frames
     }
 
