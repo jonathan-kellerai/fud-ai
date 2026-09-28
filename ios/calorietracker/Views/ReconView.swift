@@ -395,7 +395,9 @@ struct ReconView: View {
             if calendarFrequency == "everyN" {
                 numberField("Every N days", text: $calendarEveryN)
             }
-            DatePicker("Start date", selection: $calendarStart, displayedComponents: .date)
+            DatePicker(selection: $calendarStart, displayedComponents: .date) {
+                UnbrokenText("Start date")
+            }
                 .foregroundStyle(IronTheme.textPrimary)
             numberField("Duration (weeks)", text: $calendarWeeks)
             if let preview = calendarPreview {

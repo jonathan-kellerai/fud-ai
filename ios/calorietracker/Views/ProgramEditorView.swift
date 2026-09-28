@@ -364,11 +364,9 @@ struct ProgramEditorView: View {
         List {
             Section {
                 TextField("Name", text: $draftName)
-                DatePicker(
-                    "Start date",
-                    selection: startDateBinding,
-                    displayedComponents: .date
-                )
+                DatePicker(selection: startDateBinding, displayedComponents: .date) {
+                    UnbrokenText("Start date")
+                }
                 Stepper(value: $draft.dailyStepsTarget, in: 0...50_000, step: 500) {
                     Text("Daily Steps Goal: \(draft.dailyStepsTarget.formatted())")
                 }

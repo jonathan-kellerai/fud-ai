@@ -176,6 +176,13 @@ struct SettingsKeyPreservationTests {
         #expect(decoded.apiKey == token)
     }
 
+    @Test func notificationsHubSubtitleIsOffWhenTheMasterSwitchIsOff() {
+        #expect(NotificationsHubSubtitle.text(masterEnabled: false, reminderCount: 6) == "Off")
+        #expect(NotificationsHubSubtitle.text(masterEnabled: true, reminderCount: 0) == "0 reminders on")
+        #expect(NotificationsHubSubtitle.text(masterEnabled: true, reminderCount: 1) == "1 reminder on")
+        #expect(NotificationsHubSubtitle.text(masterEnabled: true, reminderCount: 6) == "6 reminders on")
+    }
+
     private func hostEverySettingsScreen(stores: VisualQAStores) throws {
         let scene = try #require(
             UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first

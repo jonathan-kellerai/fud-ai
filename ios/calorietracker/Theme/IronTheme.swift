@@ -190,11 +190,39 @@ extension View {
         }
     }
 
-    /// Stops accessibility sizes from hyphenating a short label or value mid-word.
+    /// Lets a short label use a second line and scale slightly instead of hyphenating mid-word.
     func avoidsMidWordBreak() -> some View {
-        lineLimit(1)
-            .minimumScaleFactor(0.55)
+        lineLimit(2)
+            .minimumScaleFactor(0.8)
             .allowsTightening(true)
+    }
+}
+
+/// Text that may scale or wrap onto a second line, but does not hyphenate inside a word.
+struct UnbrokenText: View {
+    private let content: Text
+
+    init(_ string: String) {
+        content = Text(Self.attributed(string))
+    }
+
+    init(_ resource: LocalizedStringResource) {
+        content = Text(Self.attributed(String(localized: resource)))
+    }
+
+    var body: some View {
+        content
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
+    }
+
+    private static func attributed(_ string: String) -> AttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.hyphenationFactor = 0
+        paragraph.lineBreakStrategy = .pushOut
+        let raw = NSAttributedString(string: string, attributes: [.paragraphStyle: paragraph])
+        return AttributedString(raw)
     }
 }
 

@@ -4008,6 +4008,47 @@ enum AISettingsInfoTopic {
     }
 }
 
+enum NotificationsHubSubtitle {
+    static func text(masterEnabled: Bool, reminderCount: Int) -> String {
+        guard masterEnabled else { return "Off" }
+        return reminderCount == 1 ? "1 reminder on" : "\(reminderCount) reminders on"
+    }
+}
+
+private struct IronInfoSectionHeader: View {
+    let title: String
+    let infoTopic: AISettingsInfoTopic
+    @State private var isShowingInfo = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.textSecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            Button {
+                isShowingInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(IronTheme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About \(title)")
+            Spacer(minLength: 0)
+        }
+        .alert(infoTopic.title, isPresented: $isShowingInfo) {
+            Button("Got it", role: .cancel) { }
+        } message: {
+            Text(infoTopic.message)
+        }
+    }
+}
+
 private struct AISettingsSubsectionHeader: View {
     let title: String
     let systemImage: String
@@ -4171,13 +4212,11 @@ struct SettingsHubRowLabel: View {
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                UnbrokenText(title)
                     .font(.system(.body, design: .rounded, weight: .medium))
-                    .avoidsMidWordBreak()
-                Text(subtitle)
+                UnbrokenText(subtitle)
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(IronTheme.brass)
-                    .avoidsMidWordBreak()
             }
         } icon: {
             Image(systemName: systemImage)
@@ -4480,8 +4519,6 @@ struct ProfileView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
                 }
-            } header: {
-                IronSectionTitle(title: "Tools")
             }
             .listRowBackground(AppColors.appCard)
 
@@ -4542,9 +4579,10 @@ struct ProfileView: View {
         case .dataSync:
             return "\(bridgeStatusLabel) · \(iCloudStatusLabel)"
         case .notifications:
-            guard UserDefaults.standard.bool(forKey: "notificationsEnabled") else { return "Off" }
-            let count = enabledReminderCount
-            return count == 1 ? "1 reminder on" : "\(count) reminders on"
+            return NotificationsHubSubtitle.text(
+                masterEnabled: UserDefaults.standard.bool(forKey: "notificationsEnabled"),
+                reminderCount: enabledReminderCount
+            )
         case .about:
             return "\(JLAppVersion.shortAndBuild) · based on Fud AI"
         default:
@@ -4663,7 +4701,12 @@ struct ProfileView: View {
                             get: { RestTimerSettings.defaultSeconds },
                             set: { RestTimerSettings.defaultSeconds = $0 }
                         ), in: 15...300, step: 15) {
-                            LabeledContent("Default Rest", value: RestTimerSettings.defaultRestLabel)
+                            AdaptiveLabelValue {
+                                UnbrokenText("Default Rest")
+                            } value: {
+                                UnbrokenText(RestTimerSettings.defaultRestLabel)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Toggle("10-Second Clack", isOn: Binding(
                             get: { RestTimerSettings.clackEnabled },
@@ -5262,14 +5305,14 @@ struct ProfileView: View {
                         } label: {
                             HStack {
                                 Label {
-                                    Text("Default Fasting Goal")
+                                    UnbrokenText("Default Fasting Goal")
                                 } icon: {
                                     Image(systemName: "target")
                                         .foregroundStyle(AppColors.calorie)
                                 }
                                 .foregroundStyle(.primary)
-                                Spacer()
-                                Text(FastingDurationFormatter.goal(minutes: fastingDefaultGoalMinutes))
+                                Spacer(minLength: 8)
+                                UnbrokenText(FastingDurationFormatter.goal(minutes: fastingDefaultGoalMinutes))
                                     .foregroundStyle(.secondary)
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
@@ -5285,7 +5328,7 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .aiProviders || settingsCategory == .advancedAI || settingsCategory == .onDeviceModels {
+                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels {
                 Section {
                     if settingsCategory == .aiProviders {
                         AISettingsSubsectionHeader(
@@ -5429,13 +5472,12 @@ struct ProfileView: View {
                         }
                     }
 
-                    if settingsCategory == .advancedAI {
-                        AISettingsSubsectionHeader(
-                            title: "Text AI",
-                            systemImage: "text.bubble.fill",
-                            infoTopic: .textAI
-                        )
+                }
+                .listRowBackground(AppColors.appCard)
+                }
 
+                if settingsCategory == .advancedAI {
+                Section {
                     Toggle(isOn: $separateTextProviderEnabled) {
                         Label {
                             Text("Use Separate Text Provider")
@@ -5565,12 +5607,12 @@ struct ProfileView: View {
                         }
                     }
 
-                        AISettingsSubsectionHeader(
-                            title: "Photo Fallback",
-                            systemImage: "photo.badge.arrow.down",
-                            infoTopic: .imageFallback
-                        )
+                } header: {
+                    IronInfoSectionHeader(title: "Text AI", infoTopic: .textAI)
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
                         Toggle(isOn: $fallbackEnabled) {
                             Label {
                                 Text("Photo Fallback")
@@ -5701,13 +5743,15 @@ struct ProfileView: View {
                                 }
                             }
                         }
-                        AISettingsSubsectionHeader(
-                            title: "Text Fallback",
-                            systemImage: "text.bubble.fill",
-                            infoTopic: .textFallback
-                        )
+                } header: {
+                    IronInfoSectionHeader(title: "Photo Fallback", infoTopic: .imageFallback)
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
                         textFallbackSettingsRows
-                    }
+                } header: {
+                    IronInfoSectionHeader(title: "Text Fallback", infoTopic: .textFallback)
                 }
                 .listRowBackground(AppColors.appCard)
                 }
@@ -5733,17 +5777,26 @@ struct ProfileView: View {
 
                 if settingsCategory == .advancedAI {
                 Section {
-                    HStack {
+                    speechFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Voice Fallback", infoTopic: .speechFallback)
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                    AdaptiveLabelValue {
                         Label {
-                            Text("Request Timeout")
+                            UnbrokenText("Request Timeout")
                         } icon: {
                             Image(systemName: "timer")
                                 .foregroundStyle(AppColors.calorie)
                         }
-                        Spacer()
-                        requestTimeoutInput
-                        Text("sec")
-                            .foregroundStyle(.secondary)
+                    } value: {
+                        HStack(spacing: 6) {
+                            requestTimeoutInput
+                            Text("sec")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     HStack {
                         Label {
@@ -5774,7 +5827,7 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels || settingsCategory == .advancedAI {
+                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels {
                 Section {
                     if settingsCategory == .aiProviders {
                         AISettingsSubsectionHeader(
@@ -5879,9 +5932,6 @@ struct ProfileView: View {
                         }
                     }
 
-                    if settingsCategory == .advancedAI {
-                        speechFallbackSettingsRows
-                    }
                 }
                 .listRowBackground(AppColors.appCard)
                 }
@@ -5902,7 +5952,7 @@ struct ProfileView: View {
                         if !focused { autosaveCustomInstructions() }
                     }
                 } header: {
-                    Text("Custom AI Instructions")
+                    IronSectionTitle(title: "Instructions")
                 } footer: {
                     Text("Optional context sent with every AI request — region, diet, athletic goals, anything you'd otherwise repeat each time. Leave empty to disable.")
                 }
@@ -6454,12 +6504,6 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var speechFallbackSettingsRows: some View {
-        AISettingsSubsectionHeader(
-            title: "Voice Fallback",
-            systemImage: "waveform.badge.plus",
-            infoTopic: .speechFallback
-        )
-
         if selectedSpeechProvider == .nativeIOS || speechFallbackProviderOptions.isEmpty {
             Text("Native iOS speech already recovers on this iPhone, so there is no separate voice fallback.")
                 .font(.footnote)

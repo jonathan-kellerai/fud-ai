@@ -50,16 +50,14 @@ struct ProfileInfoRow: View {
         } label: {
             HStack {
                 Label {
-                    Text(LocalizedDisplayText.text(label))
-                        .avoidsMidWordBreak()
+                    UnbrokenText(LocalizedDisplayText.text(label))
                 } icon: {
                     Image(systemName: icon)
                         .foregroundStyle(AppColors.calorie)
                 }
-                Spacer()
-                Text(value)
+                Spacer(minLength: 8)
+                UnbrokenText(value)
                     .foregroundStyle(.secondary)
-                    .avoidsMidWordBreak()
                 if action != nil {
                     Image(systemName: "chevron.right")
                         .font(.caption)
@@ -1186,7 +1184,7 @@ struct NotificationSettingsView: View {
 
             if notificationsEnabled {
                 // Meal Reminders
-                Section("Meal Reminders") {
+                Section {
                     NotificationTimeRow(
                         label: "Breakfast",
                         icon: "sunrise.fill",
@@ -1219,11 +1217,13 @@ struct NotificationSettingsView: View {
                     .onChange(of: dinnerEnabled) { _, _ in applyMealReminders() }
                     .onChange(of: dinnerHour) { _, _ in applyMealReminders() }
                     .onChange(of: dinnerMinute) { _, _ in applyMealReminders() }
+                } header: {
+                    IronSectionTitle(title: "Meal Reminders")
                 }
                 .listRowBackground(AppColors.appCard)
 
                 if waterTrackingEnabled {
-                    Section("Water") {
+                    Section {
                         NotificationTimeRow(
                             label: "Water Reminder",
                             icon: "drop.fill",
@@ -1234,6 +1234,8 @@ struct NotificationSettingsView: View {
                         .onChange(of: waterReminderEnabled) { _, _ in applyWaterReminder() }
                         .onChange(of: waterReminderHour) { _, _ in applyWaterReminder() }
                         .onChange(of: waterReminderMinute) { _, _ in applyWaterReminder() }
+                    } header: {
+                        IronSectionTitle(title: "Water")
                     }
                     .listRowBackground(AppColors.appCard)
                 }
@@ -1253,7 +1255,7 @@ struct NotificationSettingsView: View {
                             applyFastingGoalNotification()
                         }
                     } header: {
-                        Text("Fasting")
+                        IronSectionTitle(title: "Fasting")
                     } footer: {
                         Text("Notifies you once when the active fast reaches its goal. The timer continues until you end it.")
                             .font(.system(.caption, design: .rounded))
@@ -1279,7 +1281,7 @@ struct NotificationSettingsView: View {
                         minute: $summaryMinute
                     )
                 } header: {
-                    Text("Smart Notifications")
+                    IronSectionTitle(title: "Smart Notifications")
                 } footer: {
                     Text("Streak and summary reminders skip firing on days you've already logged.")
                         .font(.system(.caption, design: .rounded))
@@ -1303,7 +1305,7 @@ struct NotificationSettingsView: View {
                         minute: $bodyFatLogMinute
                     )
                 } header: {
-                    Text("Weigh-In Reminders")
+                    IronSectionTitle(title: "Weigh-In Reminders")
                 } footer: {
                     Text("Manual logging. Not needed if your scale syncs to Apple Health.")
                         .font(.system(.caption, design: .rounded))
@@ -1322,7 +1324,7 @@ struct NotificationSettingsView: View {
                     }
                     .tint(AppColors.calorie)
                 } header: {
-                    Text("App")
+                    IronSectionTitle(title: "App")
                 } footer: {
                     Text("Get notified when a new version is available. Tap the notification to open the App Store.")
                         .font(.system(.caption, design: .rounded))

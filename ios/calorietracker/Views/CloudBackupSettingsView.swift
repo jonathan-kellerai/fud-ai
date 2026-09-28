@@ -38,7 +38,7 @@ struct CloudBackupSettingsSection: View {
         } header: {
             IronSectionTitle(title: "iCloud")
         } footer: {
-            Text("Off until you turn it on. Uses the iCloud account on this iPhone — change Apple ID in iOS Settings if you need a different account. API keys stay on the device.")
+            Text("Backups stay off until you turn this on. Uses the iCloud account on this iPhone — change Apple ID in iOS Settings if you need a different account. API keys stay on the device.")
         }
         .listRowBackground(AppColors.appCard)
         .alert("iCloud Backup", isPresented: $showEnableConfirm) {

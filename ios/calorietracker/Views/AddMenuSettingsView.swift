@@ -23,7 +23,7 @@ struct AddMenuSettingsView: View {
                     }
                 }
             } header: {
-                Text("Food Add Menu")
+                IronSectionTitle(title: "Food Add Menu")
             } footer: {
                 Text("Customize the Home + button food menu. Water and fasting stay separate when enabled. This does not change App Icon Shortcuts.")
             }
@@ -44,7 +44,7 @@ struct AddMenuSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("Hidden Methods")
+                    IronSectionTitle(title: "Hidden Methods")
                 } footer: {
                     Text("These logging methods are not shown on the Home + menu.")
                 }
@@ -92,7 +92,7 @@ struct AddMenuSettingsView: View {
                 config.groups.move(fromOffsets: from, toOffset: to)
             }
         } header: {
-            Text("Group Order")
+            IronSectionTitle(title: "Group Order")
         }
     }
 
@@ -118,7 +118,7 @@ struct AddMenuSettingsView: View {
                 }
             }
         } header: {
-            Text("Flat Menu")
+            IronSectionTitle(title: "Flat Menu")
         } footer: {
             Text("With no groups, enabled methods appear directly under +.")
         }
@@ -147,7 +147,7 @@ struct AddMenuSettingsView: View {
                 }
             }
         } header: {
-            Text(group.name.wrappedValue)
+            IronSectionTitle(title: group.name.wrappedValue)
         }
     }
 

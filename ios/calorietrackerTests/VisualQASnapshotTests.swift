@@ -328,7 +328,7 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test37SettingsNotifications() async throws {
-        try await settingsScreen("37-settings-notifications") { NotificationSettingsView() }
+        try await settingsScreen("37-settings-notifications", heightMultiplier: 3) { NotificationSettingsView() }
     }
 
     func test38SettingsAbout() async throws {
@@ -562,27 +562,60 @@ enum VisualQADiagnostics {
             XCTAssertNil(items[4].badgeValue, "More tab shows an update badge")
         }
         let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
-        let frames = hubRowFrames(in: window, identifiers: identifiers)
-        let missingAtTop = rows.map(\.0).filter { frames[$0] == nil }
-        var buried: Set<String> = []
-        if !missingAtTop.isEmpty {
-            scrollHubToBottom(window)
-            window.layoutIfNeeded()
-            let revealed = hubRowFrames(in: window, identifiers: Set(missingAtTop))
-            for identifier in missingAtTop where revealed[identifier] != nil {
-                buried.insert(identifier)
-                let title = rows.first { $0.0 == identifier }?.1 ?? identifier
-                XCTFail("\(title) sits under the tab bar on iPhone SE")
-            }
+        if let scroll = tallestScrollView(in: window) {
+            let coveredByTab = window.bounds.maxY - tabTop
+            XCTAssertGreaterThanOrEqual(
+                scroll.adjustedContentInset.bottom,
+                coveredByTab,
+                "More list clearance is shorter than the tab bar"
+            )
+        } else {
+            XCTFail("Missing More hub scroll view")
         }
+        let frames = hubRowFrames(in: window, identifiers: identifiers)
         for (identifier, title) in rows {
-            guard let frame = frames[identifier] else {
-                if !buried.contains(identifier) {
-                    XCTFail("Missing More hub row \(title). \(hubLookupDebug)")
-                }
+            guard let rest = frames[identifier] else {
+                XCTFail("Missing More hub row \(title). \(hubLookupDebug)")
                 continue
             }
-            XCTAssertLessThan(frame.maxY, tabTop + 1, "\(title) sits under the tab bar on iPhone SE")
+            XCTAssertLessThan(rest.maxY, tabTop + 1, "\(title) sits under the tab bar at rest on iPhone SE")
+        }
+        scrollHubToBottom(window)
+        window.layoutIfNeeded()
+        writeHubScreenshot(of: window, named: "10b-more-settings-scrolled")
+        let scrolled = hubRowFrames(in: window, identifiers: identifiers)
+        for (identifier, title) in rows {
+            guard let frame = scrolled[identifier] else {
+                XCTFail("\(title) disappeared after scrolling the More hub")
+                continue
+            }
+            XCTAssertLessThanOrEqual(frame.maxY, tabTop + 1, "\(title) can't be scrolled above the tab bar on iPhone SE")
+        }
+        scrollHubToTop(window)
+        window.layoutIfNeeded()
+    }
+
+    private static func tallestScrollView(in view: UIView) -> UIScrollView? {
+        var best: UIScrollView?
+        func walk(_ candidate: UIView) {
+            if let scroll = candidate as? UIScrollView,
+               scroll.contentSize.height > (best?.contentSize.height ?? 0) {
+                best = scroll
+            }
+            for subview in candidate.subviews { walk(subview) }
+        }
+        walk(view)
+        return best
+    }
+
+    private static func writeHubScreenshot(of window: UIWindow, named name: String) {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.windowScene?.screen.scale ?? 2
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        if let data = image.pngData() {
+            VisualQAOutput.write(data, named: "\(VisualQAOutput.deviceLabel)_default_\(name).png")
         }
     }
 

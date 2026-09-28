@@ -36,7 +36,7 @@ struct BridgeSettingsView: View {
                 }
                 .disabled(baseURL == NeonBridgeSettings.defaultBaseURL)
             } header: {
-                Text("Connection")
+                IronSectionTitle(title: "Connection")
             } footer: {
                 Text("The Neon training bridge endpoint for workout and steps sync.")
             }
@@ -45,7 +45,7 @@ struct BridgeSettingsView: View {
                 SecureField("API Key (optional)", text: $apiKey)
                     .autocapitalization(.none)
             } header: {
-                Text("Authentication")
+                IronSectionTitle(title: "Authentication")
             } footer: {
                 Text("Optional Bearer token for authenticated requests.")
             }
@@ -99,7 +99,7 @@ struct BridgeSettingsView: View {
                     }
                 }
             } header: {
-                Text("Sync Status")
+                IronSectionTitle(title: "Sync Status")
             }
 
             Section {
