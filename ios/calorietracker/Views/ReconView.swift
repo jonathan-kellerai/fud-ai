@@ -568,42 +568,83 @@ struct ReconView: View {
     }
 
     private func occurrenceButton(_ occurrence: ReconMath.Occurrence) -> some View {
-        let compound = ReconMath.compounds[occurrence.entry.compound]
         let taken = store.isTaken(occurrence)
-        let person = ReconMath.peopleNames[occurrence.entry.person] ?? occurrence.entry.person
-        let name = compound?.abbreviation ?? compound?.name ?? ""
-        let unitsLine = occurrenceUnitsLine(occurrence)
         return Button {
             store.toggleTaken(occurrence)
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(person.prefix(1)) + " · " + name + " · D" + String(occurrence.dayNumber))
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                Text(unitsLine)
-                    .font(.system(size: 12, design: .monospaced))
-                    .monospacedDigit()
-                if let components = occurrence.info.components, !components.isEmpty {
-                    Text(components.map { $0.name + " " + ReconMath.fmtAmountN($0.deliveredN, "mass") }.joined(separator: " · "))
-                        .font(.system(size: 11, design: .monospaced))
-                }
-                if !occurrence.flags.isEmpty {
-                    Text("! " + occurrence.flags.joined(separator: "; "))
-                        .font(.system(size: 11))
-                }
-                if taken {
-                    Text("taken")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(IronTheme.olive)
-                }
-            }
-            .foregroundStyle(occurrence.status == "short" ? IronTheme.bloodText : IronTheme.textPrimary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
-            .background(taken ? IronTheme.surfaceRaised : IronTheme.surface)
-            .overlay(RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous).stroke(occurrence.duplicate ? IronTheme.rust : IronTheme.hairline, lineWidth: 1))
+            occurrenceLabel(occurrence, taken: taken)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(taken ? "Taken — tap to undo" : "Tap to log as taken")
+        .accessibilityLabel(occurrenceAccessibility(taken))
+    }
+
+    private func occurrenceAccessibility(_ taken: Bool) -> String {
+        if taken { return "Taken — tap to undo" }
+        return "Tap to log as taken"
+    }
+
+    private func occurrenceLabel(_ occurrence: ReconMath.Occurrence, taken: Bool) -> some View {
+        let title = occurrenceTitle(occurrence)
+        let unitsLine = occurrenceUnitsLine(occurrence)
+        let componentsLine = occurrenceComponentsLine(occurrence)
+        let flagsLine = occurrenceFlagsLine(occurrence)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+            Text(unitsLine)
+                .font(.system(size: 12, design: .monospaced))
+                .monospacedDigit()
+            if let componentsLine {
+                Text(componentsLine)
+                    .font(.system(size: 11, design: .monospaced))
+            }
+            if let flagsLine {
+                Text(flagsLine)
+                    .font(.system(size: 11))
+            }
+            if taken {
+                Text("taken")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(IronTheme.olive)
+            }
+        }
+        .modifier(OccurrenceChrome(ink: occurrenceInk(occurrence), fill: occurrenceFill(taken), stroke: occurrenceStroke(occurrence)))
+    }
+
+    private func occurrenceInk(_ occurrence: ReconMath.Occurrence) -> Color {
+        if occurrence.status == "short" { return IronTheme.bloodText }
+        return IronTheme.textPrimary
+    }
+
+    private func occurrenceFill(_ taken: Bool) -> Color {
+        if taken { return IronTheme.surfaceRaised }
+        return IronTheme.surface
+    }
+
+    private func occurrenceStroke(_ occurrence: ReconMath.Occurrence) -> Color {
+        if occurrence.duplicate { return IronTheme.rust }
+        return IronTheme.hairline
+    }
+
+    private func occurrenceTitle(_ occurrence: ReconMath.Occurrence) -> String {
+        let compound = ReconMath.compounds[occurrence.entry.compound]
+        let person = ReconMath.peopleNames[occurrence.entry.person] ?? occurrence.entry.person
+        let name = compound?.abbreviation ?? compound?.name ?? ""
+        let initial = String(person.prefix(1))
+        let day = String(occurrence.dayNumber)
+        return initial + " · " + name + " · D" + day
+    }
+
+    private func occurrenceComponentsLine(_ occurrence: ReconMath.Occurrence) -> String? {
+        guard let components = occurrence.info.components, !components.isEmpty else { return nil }
+        return components.map { component in
+            component.name + " " + ReconMath.fmtAmountN(component.deliveredN, "mass")
+        }.joined(separator: " · ")
+    }
+
+    private func occurrenceFlagsLine(_ occurrence: ReconMath.Occurrence) -> String? {
+        if occurrence.flags.isEmpty { return nil }
+        return "! " + occurrence.flags.joined(separator: "; ")
     }
 
     private func occurrenceUnitsLine(_ occurrence: ReconMath.Occurrence) -> String {
@@ -1042,5 +1083,25 @@ struct ReconView: View {
     private func jsText(_ value: Double?) -> String {
         guard let value else { return "" }
         return ReconMath.jsNumber(value)
+    }
+}
+
+private struct OccurrenceChrome: ViewModifier {
+    let ink: Color
+    let fill: Color
+    let stroke: Color
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(fill)
+            .overlay(occurrenceBorder)
+    }
+
+    private var occurrenceBorder: some View {
+        RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+            .stroke(stroke, lineWidth: 1)
     }
 }
