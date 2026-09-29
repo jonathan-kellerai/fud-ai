@@ -17,18 +17,29 @@ struct JevRouterStatsView: View {
             }
             .listRowBackground(AppColors.appCard)
 
-            ForEach(JevUse.allCases) { use in
-                let stats = telemetry.snapshot.uses[use.rawValue] ?? JevUseStats()
+            let activeUses = JevUse.allCases.filter { use in
+                Self.hasActivity(telemetry.snapshot.uses[use.rawValue] ?? JevUseStats())
+            }
+            if activeUses.isEmpty {
                 Section {
-                    LabeledContent("Requests", value: "\(stats.requests)")
-                    LabeledContent("Cache hits", value: "\(stats.cacheHits)")
-                    LabeledContent("Accepted", value: "\(stats.accepted)")
-                    LabeledContent("Local shortcuts", value: "\(stats.localShortcuts)")
-                    LabeledContent("AI calls avoided", value: "\(stats.llmCallsAvoided)")
-                } header: {
-                    IronSectionTitle(title: use.title)
+                    Text("No activity yet")
+                        .foregroundStyle(.secondary)
                 }
                 .listRowBackground(AppColors.appCard)
+            } else {
+                ForEach(activeUses) { use in
+                    let stats = telemetry.snapshot.uses[use.rawValue] ?? JevUseStats()
+                    Section {
+                        LabeledContent("Requests", value: "\(stats.requests)")
+                        LabeledContent("Cache hits", value: "\(stats.cacheHits)")
+                        LabeledContent("Accepted", value: "\(stats.accepted)")
+                        LabeledContent("Local shortcuts", value: "\(stats.localShortcuts)")
+                        LabeledContent("AI calls avoided", value: "\(stats.llmCallsAvoided)")
+                    } header: {
+                        IronSectionTitle(title: use.title)
+                    }
+                    .listRowBackground(AppColors.appCard)
+                }
             }
 
             Section {
@@ -48,7 +59,7 @@ struct JevRouterStatsView: View {
                     }
                 }
             } header: {
-                IronSectionTitle(title: "Recent decisions")
+                IronSectionTitle(title: "Recent decisions (this session)")
             }
             .listRowBackground(AppColors.appCard)
             .accessibilityIdentifier("jevRouter.stats.decisions")
@@ -67,9 +78,28 @@ struct JevRouterStatsView: View {
 
     private var summary: String {
         let calls = telemetry.netCallsAvoided
+        let callLabel = calls == 1 ? "AI call" : "AI calls"
         let p50 = telemetry.percentile(0.5).map { "\($0) ms" } ?? "—"
-        let spend = String(format: "~$%.4f", telemetry.estimatedSpend)
-        return "Saved ~\(calls) AI calls · p50 \(p50) · \(spend) Jev spend"
+        return "Saved ~\(calls) \(callLabel) · p50 \(p50) · \(spendLabel) Jev spend"
+    }
+
+    private var spendLabel: String {
+        let spend = telemetry.estimatedSpend
+        let formatted = String(format: "%.4f", spend)
+        if formatted == "0.0000" { return "< $0.01" }
+        return "~$\(formatted)"
+    }
+
+    private static func hasActivity(_ stats: JevUseStats) -> Bool {
+        stats.requests > 0
+            || stats.cacheHits > 0
+            || stats.localShortcuts > 0
+            || stats.accepted > 0
+            || stats.userOverrides > 0
+            || stats.llmCallsAvoided > 0
+            || stats.inputTokens > 0
+            || !stats.fallbacks.isEmpty
+            || !stats.skipped.isEmpty
     }
 }
 
@@ -86,41 +116,33 @@ struct JevRouterAdvancedSection: View {
         return provider.textModels
     }
 
+    private var tiersOn: Bool { uses[.tierRouting] ?? JevRouterSettings.isUseEnabled(.tierRouting) }
+    private var plausibilityOn: Bool {
+        JevUse.plausibility.isShipped && (uses[.plausibility] ?? JevRouterSettings.isUseEnabled(.plausibility))
+    }
+
     var body: some View {
-        ForEach(JevUse.allCases.filter(\.isSettingsToggle)) { use in
-            Toggle(use.title, isOn: binding(for: use))
-                .tint(AppColors.calorie)
-                .accessibilityIdentifier("settings.jevRouter.\(use.rawValue)")
-        }
-        Toggle("Allow on-device Gemma", isOn: $allowOnDevice)
-            .tint(AppColors.calorie)
-            .disabled(!gemmaSelectable)
-            .onChange(of: allowOnDevice) { _, isOn in
-                JevRouterSettings.allowOnDevice = isOn
+        ForEach(JevUse.settingsOrder) { use in
+            if use.isShipped {
+                Toggle(use.title, isOn: binding(for: use))
+                    .tint(AppColors.calorie)
+                    .accessibilityIdentifier("settings.jevRouter.\(use.rawValue)")
+            } else {
+                Toggle(use.title, isOn: .constant(false))
+                    .tint(AppColors.calorie)
+                    .disabled(true)
+                    .accessibilityIdentifier("settings.jevRouter.\(use.rawValue)")
+                Text("Coming soon")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-        if !gemmaSelectable {
-            Text("Gemma needs an 8 GB iPhone with the model downloaded.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        Picker("Cheaper text model", selection: $cheapModel) {
-            Text("None").tag("")
-            ForEach(textModels, id: \.self) { model in
-                Text(AIProvider.friendlyModelName(model)).tag(model)
+            if use == .tierRouting {
+                tierOptions
+            }
+            if use == .plausibility {
+                tieBreakOptions
             }
         }
-        .onChange(of: cheapModel) { _, model in
-            JevRouterSettings.cheapTextModel = model
-        }
-        Toggle("Jev tie-break for close calls", isOn: $tieBreak)
-            .tint(AppColors.calorie)
-            .accessibilityIdentifier("settings.jevRouter.plausibilityTieBreak")
-            .onChange(of: tieBreak) { _, isOn in
-                JevRouterSettings.plausibilityTieBreak = isOn
-            }
-        Text("The tie-break sends relative facts as text, never photos or absolute body weight. It stays off until you turn it on.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
         Toggle("Pause all Jev calls", isOn: $killSwitch)
             .tint(AppColors.calorie)
             .accessibilityIdentifier("settings.jevRouter.killSwitch")
@@ -140,6 +162,50 @@ struct JevRouterAdvancedSection: View {
             }
             uses = seeded
         }
+    }
+
+    @ViewBuilder
+    private var tierOptions: some View {
+        Toggle("Allow on-device Gemma", isOn: $allowOnDevice)
+            .tint(AppColors.calorie)
+            .disabled(!tiersOn || !gemmaSelectable)
+            .padding(.leading, 16)
+            .onChange(of: allowOnDevice) { _, isOn in
+                JevRouterSettings.allowOnDevice = isOn
+            }
+        if !gemmaSelectable {
+            Text("Gemma needs an 8 GB iPhone with the model downloaded.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 16)
+        }
+        Picker("Cheaper text model", selection: $cheapModel) {
+            Text("None").tag("")
+            ForEach(textModels, id: \.self) { model in
+                Text(AIProvider.friendlyModelName(model)).tag(model)
+            }
+        }
+        .disabled(!tiersOn)
+        .padding(.leading, 16)
+        .onChange(of: cheapModel) { _, model in
+            JevRouterSettings.cheapTextModel = model
+        }
+    }
+
+    @ViewBuilder
+    private var tieBreakOptions: some View {
+        Toggle("Jev tie-break for close calls", isOn: $tieBreak)
+            .tint(AppColors.calorie)
+            .disabled(!plausibilityOn)
+            .padding(.leading, 16)
+            .accessibilityIdentifier("settings.jevRouter.plausibilityTieBreak")
+            .onChange(of: tieBreak) { _, isOn in
+                JevRouterSettings.plausibilityTieBreak = isOn
+            }
+        Text("The tie-break sends relative facts as text, never photos or absolute body weight. It stays off until you turn it on.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 16)
     }
 
     private func binding(for use: JevUse) -> Binding<Bool> {

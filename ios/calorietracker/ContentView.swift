@@ -5225,10 +5225,12 @@ struct ProfileView: View {
                     .tint(.secondary)
                     }
 
-                    HStack {
+                    AdaptiveLabelValue {
                         Label {
                             HStack(spacing: 6) {
                                 Text("Default to Grams")
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                                 Button {
                                     showDefaultGramsInfo = true
                                 } label: {
@@ -5242,7 +5244,7 @@ struct ProfileView: View {
                             Image(systemName: "scalemass")
                                 .foregroundStyle(AppColors.calorie)
                         }
-                        Spacer()
+                    } value: {
                         Toggle("Default to Grams", isOn: $preferGramsByDefault)
                             .labelsHidden()
                             .tint(AppColors.calorie)
@@ -5463,42 +5465,46 @@ struct ProfileView: View {
                         }
 
                         if selectedProvider.requiresAPIKey {
-                            HStack {
+                            AdaptiveLabelValue {
                                 Label {
                                     Text("API Key")
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
                                 } icon: {
                                     Image(systemName: "key.fill")
                                         .foregroundStyle(AppColors.calorie)
                                 }
-                                Spacer()
-                                Group {
-                                    if showAPIKey {
-                                        TextField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
-                                    } else {
-                                        SecureField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
+                            } value: {
+                                HStack {
+                                    Group {
+                                        if showAPIKey {
+                                            TextField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
+                                        } else {
+                                            SecureField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
+                                        }
                                     }
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .onChange(of: apiKeyText) { _, newValue in
+                                        let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedProvider,
+                                            baseURL: resolvedPrimaryBaseURL,
+                                            apiKey: t
+                                        )
+                                    }
+                                    Button {
+                                        showAPIKey.toggle()
+                                    } label: {
+                                        Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
+                                            .foregroundStyle(.secondary)
+                                            .font(.system(size: 14))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .textFieldStyle(.plain)
-                                .multilineTextAlignment(.trailing)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .onChange(of: apiKeyText) { _, newValue in
-                                    let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
-                                    ModelCatalogService.shared.scheduleRefresh(
-                                        provider: selectedProvider,
-                                        baseURL: resolvedPrimaryBaseURL,
-                                        apiKey: t
-                                    )
-                                }
-                                Button {
-                                    showAPIKey.toggle()
-                                } label: {
-                                    Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
-                                        .foregroundStyle(.secondary)
-                                        .font(.system(size: 14))
-                                }
-                                .buttonStyle(.plain)
                             }
                         }
 

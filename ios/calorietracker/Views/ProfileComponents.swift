@@ -48,20 +48,26 @@ struct ProfileInfoRow: View {
         Button {
             action?()
         } label: {
-            HStack {
+            AdaptiveLabelValue {
                 Label {
-                    UnbrokenText(LocalizedDisplayText.text(label))
+                    Text(LocalizedDisplayText.text(label))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 } icon: {
                     Image(systemName: icon)
                         .foregroundStyle(AppColors.calorie)
                 }
-                Spacer(minLength: 8)
-                UnbrokenText(value)
-                    .foregroundStyle(.secondary)
-                if action != nil {
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+            } value: {
+                HStack(spacing: 6) {
+                    Text(value)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(.secondary)
+                    if action != nil {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
         }
@@ -1141,13 +1147,18 @@ struct NotificationSettingsView: View {
         List {
             // Master toggle
             Section {
-                Toggle(isOn: $notificationsEnabled) {
+                AdaptiveLabelValue {
                     Label {
                         Text("Notifications")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     } icon: {
                         Image(systemName: "bell.fill")
                             .foregroundStyle(AppColors.calorie)
                     }
+                } value: {
+                    Toggle("", isOn: $notificationsEnabled)
+                        .labelsHidden()
                 }
                 .tint(AppColors.calorie)
                 .onChange(of: notificationsEnabled) { _, enabled in

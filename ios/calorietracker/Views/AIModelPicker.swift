@@ -19,7 +19,8 @@ struct AIModelPickerRow: View {
             HStack {
                 Label {
                     Text("Model")
-                        .avoidsMidWordBreak()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 } icon: {
                     Image(systemName: "brain")
                         .foregroundStyle(AppColors.calorie)

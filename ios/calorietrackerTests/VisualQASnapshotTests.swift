@@ -399,7 +399,7 @@ final class VisualQASnapshotTests: XCTestCase {
             defaults.removeObject(forKey: TypeSafeSettings.endpointKey)
             defaults.removeObject(forKey: TypeSafeSettings.modelKey)
         }
-        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 2) {
+        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 3) {
             ProfileView(settingsCategory: .aiProviders)
         }
     }
@@ -416,6 +416,20 @@ final class VisualQASnapshotTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "jev.router.visual")!
         defaults.removePersistentDomain(forName: "jev.router.visual")
         let telemetry = JevRouterTelemetry(defaults: defaults)
+        for latency in [180, 180, 180, 320, 320, 360] {
+            telemetry.recordNetwork(use: .mealMatch, latencyMs: latency, inputTokens: 500)
+        }
+        telemetry.recordCacheHit(use: .mealMatch)
+        telemetry.recordCacheHit(use: .mealMatch)
+        for _ in 0..<4 {
+            telemetry.record(
+                .mealMatch,
+                .accepted(label: "chili", confidence: 0.88, llmCallsAvoided: 1),
+                preview: "chili",
+                latencyMs: 180,
+                model: "jev-1.13.0"
+            )
+        }
         telemetry.record(
             .mealMatch,
             .accepted(label: "oatmeal", confidence: 0.91, llmCallsAvoided: 1),
@@ -423,8 +437,9 @@ final class VisualQASnapshotTests: XCTestCase {
             latencyMs: 180,
             model: "jev-1.13.0"
         )
+        telemetry.record(.mealMatch, .userOverride, preview: "oatmeal", latencyMs: nil, model: nil)
         defer { defaults.removePersistentDomain(forName: "jev.router.visual") }
-        try await settingsScreen("45-jev-router-stats") {
+        try await settingsScreen("45-jev-router-stats", heightMultiplier: 3) {
             JevRouterStatsView(telemetry: telemetry)
         }
     }
@@ -455,14 +470,7 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test47CoachLocalAnswer() async throws {
-        let chat = ChatStore()
-        chat.reset()
-        chat.append(ChatMessage(role: .user, content: "how many steps have I done today?"))
-        chat.append(ChatMessage(
-            role: .assistant,
-            content: "You're at 6,420 steps today, 64% of your 10,000 goal.",
-            routerAction: .localAnswer
-        ))
+        VisualQAFixtures.seedCoachLocalAnswer()
         try await eachSize("47-coach-local-answer") { _ in
             VisualQATabShell(selected: .coach) { ChatView() }
         }
@@ -1170,6 +1178,18 @@ enum VisualQAFixtures {
         }
         service.lastSyncDate = Date().addingTimeInterval(-600)
         service.lastSyncError = nil
+    }
+
+    static func seedCoachLocalAnswer() {
+        let chat = ChatStore()
+        VisualQAGraveyard.keep(chat)
+        chat.reset()
+        chat.append(ChatMessage(role: .user, content: "how many steps have I done today?"))
+        chat.append(ChatMessage(
+            role: .assistant,
+            content: "You're at 6,420 steps today, 64% of your 10,000 goal.",
+            routerAction: .localAnswer
+        ))
     }
 
     static func seedChat() {

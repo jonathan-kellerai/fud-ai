@@ -491,10 +491,14 @@ struct FoodResultView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Matched your saved meal · \(savedMatch.entryName)")
                                     .font(.subheadline.weight(.semibold))
+                                    .lineLimit(3)
+                                    .minimumScaleFactor(0.8)
                                     .fixedSize(horizontal: false, vertical: true)
                                 if let onEstimateInstead {
                                     Button("Estimate with AI instead", action: onEstimateInstead)
                                         .buttonStyle(.bordered)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
                                         .accessibilityIdentifier("foodReview.savedMatch.estimateInstead")
                                 }
                             }

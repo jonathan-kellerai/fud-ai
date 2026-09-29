@@ -10,6 +10,19 @@ enum JevUse: String, CaseIterable, Codable, Sendable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Advanced AI row order. Estimate Check stays on the TypeSafe card.
+    static let settingsOrder: [JevUse] = [
+        .mealMatch, .coachIntent, .tierRouting, .exerciseMatch, .plausibility
+    ]
+
+    /// Exercise matching and plausibility land with their features. Until then the rows stay off.
+    var isShipped: Bool {
+        switch self {
+        case .exerciseMatch, .plausibility: false
+        case .mealMatch, .coachIntent, .tierRouting, .estimateCheck: true
+        }
+    }
+
     var title: String {
         switch self {
         case .mealMatch: "Match typed meals to saved meals"

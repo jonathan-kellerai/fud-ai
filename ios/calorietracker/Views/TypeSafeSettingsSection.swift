@@ -22,11 +22,19 @@ struct TypeSafeEstimateCheckSection: View {
             infoTopic: .estimateCheck
         )
 
-        Toggle("Check estimates with TypeSafe", isOn: $enabled)
+        Toggle(isOn: $enabled) {
+            Label("Check estimates with TypeSafe", systemImage: "checkmark.seal")
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
             .tint(AppColors.calorie)
             .accessibilityIdentifier("settings.typesafe.enabled")
 
-        Toggle("Jev router (faster, cheaper AI)", isOn: $routerEnabled)
+        Toggle(isOn: $routerEnabled) {
+            Label("Jev router (faster, cheaper AI)", systemImage: "arrow.triangle.branch")
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
             .tint(AppColors.calorie)
             .accessibilityIdentifier("settings.jevRouter.enabled")
             .onChange(of: routerEnabled) { _, isOn in
@@ -58,10 +66,14 @@ struct TypeSafeEstimateCheckSection: View {
             }
 
         if enabled || routerEnabled {
-            Picker("Service", selection: $endpoint) {
+            Picker(selection: $endpoint) {
                 ForEach(TypeSafeEndpoint.allCases) { item in
                     Text(item.title).tag(item)
                 }
+            } label: {
+                Label("Service", systemImage: "server.rack")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .pickerStyle(.menu)
             .tint(.secondary)
@@ -76,49 +88,57 @@ struct TypeSafeEstimateCheckSection: View {
                 scheduleRefresh()
             }
 
-            HStack {
+            AdaptiveLabelValue {
                 Label("API Key", systemImage: "key.fill")
-                Spacer()
-                Group {
-                    if showAPIKey {
-                        TextField(endpoint.keyPlaceholder, text: $apiKeyText)
-                    } else {
-                        SecureField(endpoint.keyPlaceholder, text: $apiKeyText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            } value: {
+                HStack {
+                    Group {
+                        if showAPIKey {
+                            TextField(endpoint.keyPlaceholder, text: $apiKeyText)
+                        } else {
+                            SecureField(endpoint.keyPlaceholder, text: $apiKeyText)
+                        }
                     }
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("settings.typesafe.apiKey")
+                    .onChange(of: apiKeyText) { _, newValue in
+                        TypeSafeSettings.setAPIKey(newValue, for: endpoint)
+                        scheduleRefresh()
+                    }
+                    Button {
+                        showAPIKey.toggle()
+                    } label: {
+                        Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showAPIKey ? "Hide API key" : "Show API key")
                 }
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.trailing)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .accessibilityIdentifier("settings.typesafe.apiKey")
-                .onChange(of: apiKeyText) { _, newValue in
-                    TypeSafeSettings.setAPIKey(newValue, for: endpoint)
-                    scheduleRefresh()
-                }
-                Button {
-                    showAPIKey.toggle()
-                } label: {
-                    Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 14))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showAPIKey ? "Hide API key" : "Show API key")
             }
 
             Button {
                 showModelPicker = true
             } label: {
-                HStack {
+                AdaptiveLabelValue {
                     Label("Model", systemImage: "cpu")
-                    Spacer()
-                    Text(AIProvider.friendlyModelName(model))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                } value: {
+                    HStack(spacing: 6) {
+                        Text(AIProvider.friendlyModelName(model))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
             .buttonStyle(.plain)
@@ -128,7 +148,9 @@ struct TypeSafeEstimateCheckSection: View {
                 Task { await testKey() }
             } label: {
                 HStack {
-                    Text("Test key")
+                    Label("Test key", systemImage: "key.viewfinder")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     Spacer()
                     if isTesting {
                         ProgressView()
@@ -142,7 +164,11 @@ struct TypeSafeEstimateCheckSection: View {
             .disabled(isTesting || apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("settings.typesafe.test")
 
-            Toggle("Also check typed meals", isOn: $checkTypedMeals)
+            Toggle(isOn: $checkTypedMeals) {
+                Label("Also check typed meals", systemImage: "text.alignleft")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
                 .tint(AppColors.calorie)
                 .accessibilityIdentifier("settings.typesafe.checkText")
                 .onChange(of: checkTypedMeals) { _, isOn in
