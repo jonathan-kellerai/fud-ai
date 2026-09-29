@@ -105,7 +105,7 @@ struct JevRouterCoreTests {
         TypeSafeStub.reset()
         TypeSafeStub.handler = { _, _ in (200, [:], Self.okJSON()) }
         let gatewayCreds = JevCredentials(endpoint: .vercelGateway, apiKey: "test-key", model: "typesafe-ai/jev")
-        let gateway = makeRouter(credentials: gatewayCreds)
+        let gateway = makeRouter(fixedCredentials: gatewayCreds)
         _ = await gateway.ask(.estimateCheck, cacheKey: nil, preview: "bowl") { model in
             TypeSafeRequest(state: .string("meal"), model: model, questions: ["ok": .noul(instructions: .string("yes?"), criteria: nil)])
         }
@@ -170,13 +170,14 @@ struct JevRouterCoreTests {
     }
 
     private func makeRouter(
+        fixedCredentials: JevCredentials? = nil,
         includeCredentials: Bool = true,
         killSwitch: Bool = false,
         telemetry: JevRouterTelemetry? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
         active: Bool = true
     ) -> JevRouter {
-        let resolved: JevCredentials? = includeCredentials ? credentials : nil
+        let resolved: JevCredentials? = fixedCredentials ?? (includeCredentials ? credentials : nil)
         return JevRouter(
             credentials: { resolved },
             isActive: { _ in active },
