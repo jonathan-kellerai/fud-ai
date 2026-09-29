@@ -421,6 +421,7 @@ final class VisualQASnapshotTests: XCTestCase {
         }
         telemetry.recordCacheHit(use: .mealMatch)
         telemetry.recordCacheHit(use: .mealMatch)
+        telemetry.recordShown(use: .mealMatch, preview: "rice", result: "accepted", latencyMs: 0, source: .cache)
         for _ in 0..<4 {
             telemetry.record(
                 .mealMatch,
@@ -485,13 +486,16 @@ final class VisualQASnapshotTests: XCTestCase {
 
     func test48PlausibilityAlert() async throws {
         try await eachSize("48-plausibility-alert") { _ in
-            PlausibilityAlertCard(
-                title: "Double-check before saving",
-                message: "Bench press set 2: 800 lb. Did you mean 80?",
-                onSave: {},
-                onEdit: {}
-            )
-            .padding()
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea()
+                PlausibilityAlertCard(
+                    title: "Double-check before saving",
+                    message: "Bench press set 2: 800 lb. Did you mean 80?",
+                    onSave: {},
+                    onEdit: {}
+                )
+                .padding(24)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(AppColors.appBackground)
         }

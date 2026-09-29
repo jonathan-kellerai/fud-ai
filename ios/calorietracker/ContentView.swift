@@ -3989,7 +3989,11 @@ struct ProgressTabView: View {
                 let seed = bodyFatStore.latestEntry?.bodyFatFraction
                     ?? userProfile.bodyFatPercentage
                     ?? 0.20
-                LogBodyFatSheet(currentFraction: seed) { fraction in
+                LogBodyFatSheet(
+                    currentFraction: seed,
+                    previousFraction: bodyFatStore.latestEntry?.bodyFatFraction,
+                    previousDate: bodyFatStore.latestEntry?.date
+                ) { fraction in
                     bodyFatStore.addEntry(BodyFatEntry(bodyFatFraction: fraction))
                 }
             }
@@ -6301,7 +6305,8 @@ struct ProfileView: View {
 
                 case .editWeight:
                     WeightPickerSheet(
-                        currentWeightKg: profile.weightKg
+                        currentWeightKg: profile.weightKg,
+                        previous: weightStore.latestEntry
                     ) { newWeight in
                         profile.weightKg = newWeight
                         // Invalidate goal weight if the new current weight makes the direction impossible.

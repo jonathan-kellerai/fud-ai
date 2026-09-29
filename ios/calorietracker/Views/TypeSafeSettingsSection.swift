@@ -240,22 +240,31 @@ struct TypeSafeEstimateCheckSection: View {
 struct AccessibleSettingToggle: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
-    let systemImage: String
+    var systemImage: String? = nil
     @Binding var isOn: Bool
 
     var body: some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
-                Label(title, systemImage: systemImage)
-                    .fixedSize(horizontal: false, vertical: true)
+                label
                 Toggle(title, isOn: $isOn)
                     .labelsHidden()
             }
         } else {
             Toggle(isOn: $isOn) {
-                Label(title, systemImage: systemImage)
-                    .fixedSize(horizontal: false, vertical: true)
+                label
             }
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if let systemImage {
+            Label(title, systemImage: systemImage)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text(title)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

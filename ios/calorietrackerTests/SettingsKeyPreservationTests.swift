@@ -46,6 +46,7 @@ struct SettingsKeyPreservationTests {
         #expect(JevRouterSettings.enabledKey == "jevRouter.enabled")
         #expect(JevRouterSettings.killSwitchKey == "jevRouter.killSwitch")
         #expect(JevRouterSettings.allowOnDeviceKey == "jevRouter.tier.allowOnDevice")
+        #expect(JevRouterSettings.allowAppleIntelligenceKey == "jevRouter.tier.allowAppleIntelligence")
         #expect(JevRouterSettings.cheapTextModelKey == "jevRouter.tier.cheapTextModel")
         #expect(JevRouterSettings.plausibilityTieBreakKey == "jevRouter.use.plausibility.jevTieBreak.enabled")
         #expect(JevRouterSettings.statsKey == "jevRouter.stats.v1")

@@ -126,6 +126,7 @@ struct JevRouterStatsView: View {
 struct JevRouterAdvancedSection: View {
     @State private var uses: [JevUse: Bool] = [:]
     @State private var allowOnDevice = JevRouterSettings.allowOnDevice
+    @State private var allowAppleIntelligence = JevRouterSettings.allowAppleIntelligence
     @State private var cheapModel = JevRouterSettings.cheapTextModel
     @State private var killSwitch = JevRouterSettings.killSwitch
     @State private var tieBreak = JevRouterSettings.plausibilityTieBreak
@@ -137,25 +138,12 @@ struct JevRouterAdvancedSection: View {
     }
 
     private var tiersOn: Bool { uses[.tierRouting] ?? JevRouterSettings.isUseEnabled(.tierRouting) }
-    private var plausibilityOn: Bool {
-        JevUse.plausibility.isShipped && (uses[.plausibility] ?? JevRouterSettings.isUseEnabled(.plausibility))
-    }
+    private var plausibilityOn: Bool { uses[.plausibility] ?? JevRouterSettings.isUseEnabled(.plausibility) }
 
     var body: some View {
         ForEach(JevUse.settingsOrder) { use in
-            if use.isShipped {
-                Toggle(use.title, isOn: binding(for: use))
-                    .tint(AppColors.calorie)
-                    .accessibilityIdentifier("settings.jevRouter.\(use.rawValue)")
-            } else {
-                Toggle(use.title, isOn: .constant(false))
-                    .tint(AppColors.calorie)
-                    .disabled(true)
-                    .accessibilityIdentifier("settings.jevRouter.\(use.rawValue)")
-                Text("Coming soon")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            routerToggle(use.title, isOn: binding(for: use))
+                .accessibilityIdentifier("settings.jevRouter.\(use.rawValue)")
             if use == .tierRouting {
                 tierOptions
             }
@@ -163,8 +151,7 @@ struct JevRouterAdvancedSection: View {
                 tieBreakOptions
             }
         }
-        Toggle("Pause all Jev calls", isOn: $killSwitch)
-            .tint(AppColors.calorie)
+        routerToggle("Pause all Jev calls", isOn: $killSwitch)
             .accessibilityIdentifier("settings.jevRouter.killSwitch")
             .onChange(of: killSwitch) { _, isOn in
                 JevRouterSettings.killSwitch = isOn
@@ -186,13 +173,25 @@ struct JevRouterAdvancedSection: View {
 
     @ViewBuilder
     private var tierOptions: some View {
-        Toggle("Allow on-device Gemma", isOn: $allowOnDevice)
-            .tint(AppColors.calorie)
+        routerToggle("Allow on-device Gemma", isOn: $allowOnDevice)
             .disabled(!tiersOn || !gemmaSelectable)
             .padding(.leading, 16)
             .onChange(of: allowOnDevice) { _, isOn in
                 JevRouterSettings.allowOnDevice = isOn
             }
+        routerToggle("Allow Apple Intelligence", isOn: $allowAppleIntelligence)
+            .disabled(!tiersOn || !JevTierRouter.appleIntelligenceDeviceAvailable)
+            .padding(.leading, 16)
+            .accessibilityIdentifier("settings.jevRouter.allowAppleIntelligence")
+            .onChange(of: allowAppleIntelligence) { _, isOn in
+                JevRouterSettings.allowAppleIntelligence = isOn
+            }
+        if !JevTierRouter.appleIntelligenceDeviceAvailable {
+            Text("Apple Intelligence needs iOS 26 and the on-device model.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 16)
+        }
         if !gemmaSelectable {
             Text("Gemma needs an 8 GB iPhone with the model downloaded.")
                 .font(.footnote)
@@ -214,8 +213,7 @@ struct JevRouterAdvancedSection: View {
 
     @ViewBuilder
     private var tieBreakOptions: some View {
-        Toggle("Jev tie-break for close calls", isOn: $tieBreak)
-            .tint(AppColors.calorie)
+        routerToggle("Jev tie-break for close calls", isOn: $tieBreak)
             .disabled(!plausibilityOn)
             .padding(.leading, 16)
             .accessibilityIdentifier("settings.jevRouter.plausibilityTieBreak")
@@ -226,6 +224,17 @@ struct JevRouterAdvancedSection: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
             .padding(.leading, 16)
+    }
+
+    @ViewBuilder
+    private func routerToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        if title.contains(" ") {
+            AccessibleSettingToggle(title: title, isOn: isOn)
+                .tint(AppColors.calorie)
+        } else {
+            Toggle(title, isOn: isOn)
+                .tint(AppColors.calorie)
+        }
     }
 
     private func binding(for use: JevUse) -> Binding<Bool> {

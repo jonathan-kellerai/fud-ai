@@ -44,23 +44,17 @@ struct WorkoutTextView: View {
             }
         }
         .onDisappear { request?.cancel() }
-        .alert("Double-check before saving", isPresented: Binding(
-            get: { plausibilityMessage != nil },
-            set: { if !$0 { plausibilityMessage = nil } }
-        )) {
-            Button("Save anyway") {
+        .plausibilityConfirmation(
+            title: "Double-check before saving",
+            message: plausibilityMessage,
+            onSave: {
                 let pending = draft
                 plausibilityMessage = nil
                 Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "workout") }
                 if let pending { commit(pending) }
-            }
-            .accessibilityIdentifier("plausibility.saveAnyway")
-            Button("Edit", role: .cancel) { plausibilityMessage = nil }
-                .accessibilityIdentifier("plausibility.edit")
-        } message: {
-            Text(plausibilityMessage ?? "")
-                .accessibilityIdentifier("plausibility.alert")
-        }
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
 
     private func submit(_ text: String) {
@@ -218,7 +212,16 @@ struct WorkoutTextView: View {
     private func save() {
         guard let draft else { return }
         let flags = draft.exercises.flatMap { exercise in
-            exercise.sets.enumerated().flatMap { index, set in
+            let history = workoutStore.exerciseLiftHistory(
+                itemID: exercise.exerciseID ?? "",
+                name: exercise.name,
+                before: selectedDate,
+                limit: 20
+            )
+            let reference = history.flatMap(\.sets)
+            let referenceLoads = reference.compactMap { Self.kilograms(weight: $0.weight, unit: $0.weightUnit) }
+            let referenceReps = reference.compactMap { Int($0.reps) }
+            return exercise.sets.enumerated().flatMap { index, set in
                 let load = Double(set.weight.replacingOccurrences(of: ",", with: ".")) ?? 0
                 let kg = exercise.unit == "lbs" ? load / 2.2046226218 : load
                 let others = exercise.sets.enumerated().filter { $0.offset != index }.compactMap {
@@ -228,8 +231,8 @@ struct WorkoutTextView: View {
                     name: exercise.name,
                     loadKg: kg,
                     reps: Int(set.reps) ?? 0,
-                    referenceLoadsKg: [],
-                    referenceReps: [],
+                    referenceLoadsKg: referenceLoads,
+                    referenceReps: referenceReps,
                     sessionLoadsKg: others.map { exercise.unit == "lbs" ? $0 / 2.2046226218 : $0 }
                 )
             }
@@ -241,6 +244,14 @@ struct WorkoutTextView: View {
             } else {
                 plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
             }
+        }
+    }
+
+    private static func kilograms(weight: String, unit: String) -> Double? {
+        guard let value = Double(weight.replacingOccurrences(of: ",", with: ".")) else { return nil }
+        switch unit.lowercased() {
+        case "lb", "lbs": return value / 2.2046226218
+        default: return value
         }
     }
 

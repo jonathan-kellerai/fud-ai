@@ -60,14 +60,22 @@ enum JevTierRouter {
         return .strong
     }
 
-    private static var appleIntelligenceAvailable: Bool {
+    /// Device support only. The user still has to turn the tier on.
+    static var appleIntelligenceDeviceAvailable: Bool {
+        #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            #if canImport(FoundationModels)
             return OnDeviceAIService.isAvailable
-            #else
-            return false
-            #endif
         }
+        #endif
+        return false
+    }
+
+    private static var appleIntelligenceEligible: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            return JevRouterSettings.allowAppleIntelligence && OnDeviceAIService.isAvailable
+        }
+        #endif
         return false
     }
 
@@ -85,7 +93,7 @@ enum JevTierRouter {
         let eligibility = eligibility ?? {
             JevTierEligibility(
                 gemma: JevRouterSettings.allowOnDevice && Gemma4LocalModelManager.isCurrentDeviceSelectable,
-                appleIntelligence: appleIntelligenceAvailable,
+                appleIntelligence: appleIntelligenceEligible,
                 cheapModel: JevRouterSettings.cheapTextModel
             )
         }

@@ -72,6 +72,18 @@ final class JevRouterTelemetry {
         scheduleWrite()
     }
 
+    func recordShown(
+        use: JevUse,
+        preview: String,
+        result: String,
+        latencyMs: Int?,
+        source: JevDecisionSource,
+        reason: String? = nil
+    ) {
+        append(use: use, preview: preview, result: result, confidence: nil, latencyMs: latencyMs, source: source, reason: reason, model: nil)
+        scheduleWrite()
+    }
+
     func recordCacheHit(use: JevUse) {
         var stats = stats(for: use)
         stats.cacheHits += 1

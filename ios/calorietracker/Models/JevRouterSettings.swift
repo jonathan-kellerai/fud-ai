@@ -15,13 +15,6 @@ enum JevUse: String, CaseIterable, Codable, Sendable, Identifiable {
         .mealMatch, .coachIntent, .tierRouting, .exerciseMatch, .plausibility
     ]
 
-    /// Uses whose screens and checks are in this build.
-    var isShipped: Bool {
-        switch self {
-        case .mealMatch, .coachIntent, .tierRouting, .exerciseMatch, .plausibility, .estimateCheck: true
-        }
-    }
-
     var title: String {
         switch self {
         case .mealMatch: "Match typed meals to saved meals"
@@ -83,6 +76,7 @@ enum JevRouterSettings {
     static let enabledKey = "jevRouter.enabled"
     static let killSwitchKey = "jevRouter.killSwitch"
     static let allowOnDeviceKey = "jevRouter.tier.allowOnDevice"
+    static let allowAppleIntelligenceKey = "jevRouter.tier.allowAppleIntelligence"
     static let cheapTextModelKey = "jevRouter.tier.cheapTextModel"
     static let plausibilityTieBreakKey = "jevRouter.use.plausibility.jevTieBreak.enabled"
     static let statsKey = "jevRouter.stats.v1"
@@ -108,6 +102,12 @@ enum JevRouterSettings {
     static var allowOnDevice: Bool {
         get { UserDefaults.standard.bool(forKey: allowOnDeviceKey) }
         set { UserDefaults.standard.set(newValue, forKey: allowOnDeviceKey) }
+    }
+
+    /// Off until the user opts in. Still requires a device that can run Apple Intelligence.
+    static var allowAppleIntelligence: Bool {
+        get { UserDefaults.standard.bool(forKey: allowAppleIntelligenceKey) }
+        set { UserDefaults.standard.set(newValue, forKey: allowAppleIntelligenceKey) }
     }
 
     static var cheapTextModel: String {
@@ -150,6 +150,7 @@ enum JevRouterSettings {
         defaults.removeObject(forKey: enabledKey)
         defaults.removeObject(forKey: killSwitchKey)
         defaults.removeObject(forKey: allowOnDeviceKey)
+        defaults.removeObject(forKey: allowAppleIntelligenceKey)
         defaults.removeObject(forKey: cheapTextModelKey)
         defaults.removeObject(forKey: plausibilityTieBreakKey)
         defaults.removeObject(forKey: statsKey)

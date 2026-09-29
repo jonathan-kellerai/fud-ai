@@ -215,13 +215,16 @@ struct WeightPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     let currentWeightKg: Double
+    var previous: WeightEntry? = nil
     let onSave: (Double) -> Void
 
     @State private var wholeNumber: Int
     @State private var decimal: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentWeightKg: Double, onSave: @escaping (Double) -> Void) {
+    init(currentWeightKg: Double, previous: WeightEntry? = nil, onSave: @escaping (Double) -> Void) {
         self.currentWeightKg = currentWeightKg
+        self.previous = previous
         self.onSave = onSave
         // Respect the stored preference at the time the sheet is created.
         let metric = UserDefaults.standard.string(forKey: "weightUnit") == "kg"
@@ -294,8 +297,17 @@ struct WeightPickerSheet: View {
                 Button {
                     let value = Double(wholeNumber) + Double(decimal) / 10.0
                     let weightKg = useMetric ? value : value / 2.20462
-                    onSave(weightKg)
-                    dismiss()
+                    let days = previous.map { max(1, Calendar.current.dateComponents([.day], from: $0.date, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.weight(newKg: weightKg, previousKg: previous?.weightKg, days: days)
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(weightKg)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -319,6 +331,20 @@ struct WeightPickerSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .plausibilityConfirmation(
+            title: "Save \(String(format: "%.1f %@", Double(wholeNumber) + Double(decimal) / 10.0, useMetric ? "kg" : "lb"))?",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                let value = Double(wholeNumber) + Double(decimal) / 10.0
+                let weightKg = useMetric ? value : value / 2.20462
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "weight") }
+                onSave(weightKg)
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
 }
 
@@ -908,6 +934,7 @@ struct NutritionPickerSheet: View {
     let guidanceUpperLimit: Int?
     let customValueDetail: ((Int) -> String?)?
     let onSave: (Int) -> Void
+    var shouldSave: ((Int) async -> Bool)? = nil
     /// Optional callback to revert this macro to auto-balanced (custom value cleared).
     /// When provided, a button labeled `resetLabel` appears in the sheet.
     var onResetToAuto: (() -> Void)? = nil
@@ -932,6 +959,7 @@ struct NutritionPickerSheet: View {
         guidanceUpperLimit: Int? = nil,
         customValueDetail: ((Int) -> String?)? = nil,
         onSave: @escaping (Int) -> Void,
+        shouldSave: ((Int) async -> Bool)? = nil,
         onResetToAuto: (() -> Void)? = nil,
         resetLabel: String = "Reset to Auto-balance",
         onValueChange: ((Int) -> Void)? = nil
@@ -945,6 +973,7 @@ struct NutritionPickerSheet: View {
         self.guidanceUpperLimit = guidanceUpperLimit
         self.customValueDetail = customValueDetail
         self.onSave = onSave
+        self.shouldSave = shouldSave
         self.onResetToAuto = onResetToAuto
         self.resetLabel = resetLabel
         self.onValueChange = onValueChange
@@ -1058,8 +1087,12 @@ struct NutritionPickerSheet: View {
 
                 Button {
                     guard let valueToSave else { return }
-                    onSave(valueToSave)
-                    dismiss()
+                    let save = shouldSave
+                    Task {
+                        if let save, await save(valueToSave) == false { return }
+                        onSave(valueToSave)
+                        dismiss()
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))

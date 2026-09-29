@@ -67,24 +67,18 @@ struct ProgramV2WorkoutLogView: View {
             } message: {
                 Text("Your workout has been logged and synced.")
             }
-            .alert("Double-check before saving", isPresented: Binding(
-                get: { plausibilityMessage != nil },
-                set: { if !$0 { plausibilityMessage = nil } }
-            )) {
-                Button("Save anyway") {
+            .plausibilityConfirmation(
+                title: "Double-check before saving",
+                message: plausibilityMessage,
+                onSave: {
                     plausibilityMessage = nil
                     Task {
                         await JevRouter.shared.report(.plausibility, .userOverride, preview: "workout")
                         await saveWorkout()
                     }
-                }
-                .accessibilityIdentifier("plausibility.saveAnyway")
-                Button("Edit", role: .cancel) { plausibilityMessage = nil }
-                    .accessibilityIdentifier("plausibility.edit")
-            } message: {
-                Text(plausibilityMessage ?? "")
-                    .accessibilityIdentifier("plausibility.alert")
-            }
+                },
+                onEdit: { plausibilityMessage = nil }
+            )
             .alert("Could Not Save", isPresented: Binding(
                 get: { saveError != nil },
                 set: { if !$0 { saveError = nil } }
