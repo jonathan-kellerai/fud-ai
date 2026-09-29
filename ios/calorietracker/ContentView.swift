@@ -118,6 +118,7 @@ struct ContentView: View {
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
     @State private var appUpdateState: AppUpdateState = .idle
     @State private var selectedTab: AppTab = .home
+    private let routerHandoff = RouterHandoff.shared
     @State private var quickActionRequest: QuickActionRequest?
     @State private var foodLogMethodRequest: FoodLogMethodRequest?
     // One-time post-update prompts for existing users (see PostUpdatePrompts).
@@ -176,6 +177,12 @@ struct ContentView: View {
                 if newPhase == .active {
                     consumePendingLaunchRoutes()
                 }
+            }
+            .onChange(of: routerHandoff.pendingFoodText) { _, text in
+                if text != nil { selectedTab = .home }
+            }
+            .onChange(of: routerHandoff.pendingOpenTodayWorkout) { _, open in
+                if open { selectedTab = .train }
             }
     }
 
@@ -988,6 +995,8 @@ struct HomeView: View {
     @State private var pendingSharedMeals: [FoodEntry] = []
 
     @State private var currentFoodResult: GeminiService.FoodAnalysis?
+    @State private var savedMatchContext: SavedMatchContext?
+    private let routerHandoff = RouterHandoff.shared
     @State private var currentImage: UIImage?
     @State private var currentImages: [UIImage] = []
     @State private var currentEmoji: String?
@@ -1269,9 +1278,16 @@ struct HomeView: View {
                     JevCredentials.refresh()
                     checkAndConsumeSharedImage()
                     homeRefreshToken += 1
+                    consumeRouterFoodHandoff()
                 } else if newPhase == .background {
                     JevRouterTelemetry.shared.flush()
                 }
+            }
+            .onAppear {
+                consumeRouterFoodHandoff()
+            }
+            .onChange(of: routerHandoff.pendingFoodText) { _, _ in
+                consumeRouterFoodHandoff()
             }
             .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in
                 retryRequest = nil
@@ -1778,11 +1794,24 @@ struct HomeView: View {
                             entriesForDate: { foodStore.entries(for: $0) },
                             weightMetric: weightUnitRaw == "kg",
                             onLog: { entry in
+                                if savedMatchContext != nil {
+                                    let preview = savedMatchContext?.entryName ?? entry.name
+                                    Task { await JevRouter.shared.report(.mealMatch, .loggedAfterMatch, preview: preview) }
+                                }
                                 if !foodStore.addEntry(entry) { showFoodLoggingBlocked = true }
                             },
                             estimateCheck: estimateCheckMode(for: result),
                             onReestimate: reestimateUsed ? nil : { direction in
                                 reestimateFood(direction: direction, calories: result.calories, name: result.name)
+                            },
+                            savedMatch: savedMatchContext.map { SavedMatchBanner(entryName: $0.entryName) },
+                            onEstimateInstead: savedMatchContext.map { context in
+                                {
+                                    let original = context.originalDescription
+                                    Task { await JevRouter.shared.report(.mealMatch, .userOverride, preview: original) }
+                                    currentFoodSource = .textInput
+                                    startTextAnalysis(original, bypassSavedMatch: true)
+                                }
                             }
                         )
                     }
@@ -1815,46 +1844,8 @@ struct HomeView: View {
                     currentImage = currentImages.first
                     currentEmoji = entry.emoji
                     currentFoodSource = entry.source
-                    currentFoodResult = GeminiService.FoodAnalysis(
-                        name: entry.name,
-                        calories: entry.calories,
-                        protein: entry.protein,
-                        carbs: entry.carbs,
-                        fat: entry.fat,
-                        servingSizeGrams: entry.reviewServingReference,
-                        emoji: entry.emoji,
-                        sugar: entry.sugar,
-                        addedSugar: entry.addedSugar,
-                        fiber: entry.fiber,
-                        saturatedFat: entry.saturatedFat,
-                        monounsaturatedFat: entry.monounsaturatedFat,
-                        polyunsaturatedFat: entry.polyunsaturatedFat,
-                        cholesterol: entry.cholesterol,
-                        caffeine: entry.caffeine,
-                        supplementalNutrients: entry.supplementalNutrients,
-                        sodium: entry.sodium,
-                        potassium: entry.potassium,
-                        transFat: entry.transFat,
-                        calcium: entry.calcium,
-                        iron: entry.iron,
-                        magnesium: entry.magnesium,
-                        zinc: entry.zinc,
-                        vitaminA: entry.vitaminA,
-                        vitaminC: entry.vitaminC,
-                        vitaminD: entry.vitaminD,
-                        vitaminB12: entry.vitaminB12,
-                        vitaminE: entry.vitaminE,
-                        vitaminK: entry.vitaminK,
-                        folate: entry.folate,
-                        omega3: entry.omega3,
-                        servingUnitOptions: entry.reviewServingUnitOptions,
-                        selectedServingUnit: entry.reviewSelectedServingUnit,
-                        selectedServingQuantity: entry.reviewSelectedServingQuantity,
-                        servingSizeIsKnown: entry.hasKnownServingSize,
-                        progressiveMeal: entry.progressiveMeal,
-                        ingredients: entry.ingredients,
-                        productMetadata: entry.productMetadata
-                    )
+                    savedMatchContext = nil
+                    currentFoodResult = GeminiService.FoodAnalysis(savedEntry: entry)
                     foodLogPhase = .result
                     activeSheet = .foodResult
                 })
@@ -2155,6 +2146,7 @@ struct HomeView: View {
     }
 
     private func estimateCheckMode(for result: GeminiService.FoodAnalysis) -> EstimateCheckMode {
+        if savedMatchContext != nil { return .off }
         guard TypeSafeSettings.isConfigured else { return .off }
         let name = result.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard result.calories > 0, !name.isEmpty else { return .off }
@@ -2230,14 +2222,21 @@ struct HomeView: View {
         }
     }
 
-    private func startTextAnalysis(_ description: String, isReestimate: Bool = false) {
+    private func startTextAnalysis(_ description: String, isReestimate: Bool = false, bypassSavedMatch: Bool = false) {
         let request = RetryRequest.text(description)
         retryRequest = request
         lastEstimateRequest = request
         reestimateUsed = isReestimate
+        savedMatchContext = nil
         presentFoodLogLoading(.analyzingText)
         analysisTask?.cancel()
         analysisTask = Task {
+            if !bypassSavedMatch, !isReestimate,
+               let entry = await SavedMealMatcher.match(description, store: foodStore) {
+                if Task.isCancelled { return }
+                presentSavedMatch(entry, description: description)
+                return
+            }
             do {
                 let result = try await GeminiService.analyzeTextInput(description: description)
                 try Task.checkCancellation()
@@ -2251,6 +2250,26 @@ struct HomeView: View {
                 presentAnalysisError(error)
             }
         }
+    }
+
+    @MainActor
+    private func presentSavedMatch(_ entry: FoodEntry, description: String) {
+        lastEstimateRequest = .text(description)
+        currentImage = nil
+        currentImages = []
+        currentEmoji = entry.emoji
+        currentFoodSource = entry.source
+        retryRequest = nil
+        savedMatchContext = SavedMatchContext(entryName: entry.name, originalDescription: description)
+        presentFoodResult(GeminiService.FoodAnalysis(savedEntry: entry))
+    }
+
+    private func consumeRouterFoodHandoff() {
+        guard let text = routerHandoff.pendingFoodText else { return }
+        routerHandoff.pendingFoodText = nil
+        guard canBeginFoodLogging() else { return }
+        currentFoodSource = .textInput
+        startTextAnalysis(text)
     }
 
     /// Dismiss the loading sheet first, then present the alert after the sheet

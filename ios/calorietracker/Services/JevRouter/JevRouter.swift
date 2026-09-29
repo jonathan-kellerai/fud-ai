@@ -44,6 +44,8 @@ enum JevDecision: Sendable {
     case localShortcut(label: String, llmCallsAvoided: Int)
     case fellBack(JevFallback)
     case userOverride
+    /// Precision proxy: the user logged a meal that was filled from a saved match.
+    case loggedAfterMatch
 }
 
 private struct JevBudgetExceeded: Error {}

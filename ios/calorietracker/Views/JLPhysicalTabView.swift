@@ -16,6 +16,7 @@ struct JLPhysicalTabView: View {
     @State private var isLoadingRecent = false
     
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let routerHandoff = RouterHandoff.shared
     private var neonBridge = NeonBridgeService.shared
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
@@ -64,8 +65,30 @@ struct JLPhysicalTabView: View {
             .task {
                 await loadActiveProgram()
                 await loadRecentWorkouts()
+                consumeWorkoutHandoff()
+            }
+            .onAppear {
+                consumeWorkoutHandoff()
+            }
+            .onChange(of: routerHandoff.pendingOpenTodayWorkout) { _, _ in
+                consumeWorkoutHandoff()
             }
         }
+    }
+
+    private func consumeWorkoutHandoff() {
+        guard routerHandoff.pendingOpenTodayWorkout else { return }
+        routerHandoff.pendingOpenTodayWorkout = false
+        if let body = ActiveProgramCache.load()?.body {
+            programBody = body
+        }
+        guard case .session(let dayIndex, let name, _) = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date()) else {
+            return
+        }
+        let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
+            ?? programBody.days.first { $0.dayIndex == dayIndex }
+        guard let day else { return }
+        loggingDay = day.asProgramV2Day()
     }
 
     private var todaysWorkoutCard: some View {

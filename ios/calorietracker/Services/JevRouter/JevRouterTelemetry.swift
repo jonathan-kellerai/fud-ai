@@ -110,6 +110,8 @@ final class JevRouterTelemetry {
             stats.userOverrides += 1
             snapshot.uses[use.rawValue] = stats
             append(use: use, preview: preview, result: "override", confidence: nil, latencyMs: nil, source: .local, model: nil)
+        case .loggedAfterMatch:
+            append(use: use, preview: preview, result: "logged after match", confidence: nil, latencyMs: nil, source: .local, model: nil)
         }
         scheduleWrite()
     }

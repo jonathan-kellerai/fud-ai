@@ -23,6 +23,8 @@ struct FoodResultView: View {
     let productMetadata: FoodProductMetadata?
     let estimateCheck: EstimateCheckMode
     let onReestimate: ((EstimateDirection) -> Void)?
+    let savedMatch: SavedMatchBanner?
+    let onEstimateInstead: (() -> Void)?
     private let originalCalories: Int
     private let originalProtein: Double
     private let originalCarbs: Double
@@ -176,7 +178,9 @@ struct FoodResultView: View {
         weightMetric: Bool,
         onLog: @escaping (FoodEntry) -> Void,
         estimateCheck: EstimateCheckMode = .off,
-        onReestimate: ((EstimateDirection) -> Void)? = nil
+        onReestimate: ((EstimateDirection) -> Void)? = nil,
+        savedMatch: SavedMatchBanner? = nil,
+        onEstimateInstead: (() -> Void)? = nil
     ) {
         let normalizedServingUnitOptions = servingSizeIsKnown
             ? ServingUnitOption.normalizedOptions(servingUnitOptions, totalGrams: servingSizeGrams)
@@ -229,6 +233,8 @@ struct FoodResultView: View {
         self.originalFat = headerFat
         self.estimateCheck = estimateCheck
         self.onReestimate = onReestimate
+        self.savedMatch = savedMatch
+        self.onEstimateInstead = onEstimateInstead
         if case .preview(let outcome) = estimateCheck {
             self._estimateOutcome = State(initialValue: outcome)
         } else {
@@ -478,6 +484,22 @@ struct FoodResultView: View {
                             )
                         }
                         .listRowBackground(AppColors.appCard)
+                    }
+
+                    if let savedMatch {
+                        Section {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Matched your saved meal · \(savedMatch.entryName)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let onEstimateInstead {
+                                    Button("Estimate with AI instead", action: onEstimateInstead)
+                                        .buttonStyle(.bordered)
+                                        .accessibilityIdentifier("foodReview.savedMatch.estimateInstead")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
 
                     Section("Food Details") {

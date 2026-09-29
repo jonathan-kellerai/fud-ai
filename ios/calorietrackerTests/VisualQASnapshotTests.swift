@@ -429,6 +429,45 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    func test46FoodReviewSavedMatch() async throws {
+        try await eachSize("46-food-review-saved-match", sheet: {
+            FoodResultView(
+                emoji: "🌯",
+                source: .textInput,
+                name: "Chicken burrito bowl",
+                calories: 640,
+                protein: 42,
+                carbs: 58,
+                fat: 22,
+                servingSizeGrams: 450,
+                profile: .default,
+                entriesForDate: { _ in [] },
+                weightMetric: false,
+                onLog: { _ in },
+                savedMatch: SavedMatchBanner(entryName: "Chicken burrito bowl"),
+                onEstimateInstead: {}
+            )
+        }) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
+    func test47CoachLocalAnswer() async throws {
+        let chat = ChatStore()
+        chat.reset()
+        chat.append(ChatMessage(role: .user, content: "how many steps have I done today?"))
+        chat.append(ChatMessage(
+            role: .assistant,
+            content: "You're at 6,420 steps today, 64% of your 10,000 goal.",
+            routerAction: .localAnswer
+        ))
+        try await eachSize("47-coach-local-answer") { _ in
+            VisualQATabShell(selected: .coach) { ChatView() }
+        }
+    }
+
     private func settingsScreen<Content: View>(
         _ name: String,
         heightMultiplier: CGFloat = 1,
