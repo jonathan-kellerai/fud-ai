@@ -6,17 +6,23 @@ enum CoachIntentRouter {
         _ text: String,
         hasImage: Bool = false,
         router: JevRouter = .shared,
-        isEnabled: () -> Bool = { JevRouterSettings.isActive(.coachIntent) },
-        stepsToday: () async throws -> Int = { try await StepsTrackingService.shared.fetchTodaySteps() },
-        stepsYesterday: () async throws -> Int = { try await StepsTrackingService.shared.fetchYesterdaySteps() },
-        stepsLast7: () async throws -> [Int] = {
-            try await StepsTrackingService.shared.fetchLast7Days().map { $0.steps ?? 0 }
-        },
-        stepGoal: () -> Int = { StepsGoal.current },
-        program: () -> TrainingProgramBody? = { ActiveProgramCache.load()?.body },
+        isEnabled: (() -> Bool)? = nil,
+        stepsToday: (() async throws -> Int)? = nil,
+        stepsYesterday: (() async throws -> Int)? = nil,
+        stepsLast7: (() async throws -> [Int])? = nil,
+        stepGoal: (() -> Int)? = nil,
+        program: (() -> TrainingProgramBody?)? = nil,
         now: () -> Date = { Date() },
         calendar: Calendar = .current
     ) async -> ChatMessage? {
+        let isEnabled = isEnabled ?? { JevRouterSettings.isActive(.coachIntent) }
+        let stepsToday = stepsToday ?? { try await StepsTrackingService.shared.fetchTodaySteps() }
+        let stepsYesterday = stepsYesterday ?? { try await StepsTrackingService.shared.fetchYesterdaySteps() }
+        let stepsLast7 = stepsLast7 ?? {
+            try await StepsTrackingService.shared.fetchLast7Days().map { $0.steps ?? 0 }
+        }
+        let stepGoal = stepGoal ?? { StepsGoal.current }
+        let program = program ?? { ActiveProgramCache.load()?.body }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isEnabled() else { return nil }
         if hasImage || trimmed.count > 300 {

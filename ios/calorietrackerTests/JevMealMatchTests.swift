@@ -207,12 +207,12 @@ struct JevMealMatchTests {
             source: .textInput,
             sugar: 4,
             fiber: 8,
+            supplementalNutrients: ["creatine": 5.0],
             sodium: 900,
             servingSizeGrams: 450,
             servingUnitOptions: [option],
             selectedServingUnit: "bowl",
-            selectedServingQuantity: 1,
-            supplementalNutrients: ["creatine": 5.0]
+            selectedServingQuantity: 1
         )
         let analysis = GeminiService.FoodAnalysis(savedEntry: entry)
         #expect(analysis.name == entry.name)
