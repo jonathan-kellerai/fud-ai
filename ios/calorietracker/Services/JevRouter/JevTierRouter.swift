@@ -60,6 +60,17 @@ enum JevTierRouter {
         return .strong
     }
 
+    private static var appleIntelligenceAvailable: Bool {
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            return OnDeviceAIService.isAvailable
+            #else
+            return false
+            #endif
+        }
+        return false
+    }
+
     static func routes(hasImage: Bool, hosted: Bool) -> Bool {
         !hasImage && !hosted
     }
@@ -74,7 +85,7 @@ enum JevTierRouter {
         let eligibility = eligibility ?? {
             JevTierEligibility(
                 gemma: JevRouterSettings.allowOnDevice && Gemma4LocalModelManager.isCurrentDeviceSelectable,
-                appleIntelligence: OnDeviceAIService.isAvailable,
+                appleIntelligence: appleIntelligenceAvailable,
                 cheapModel: JevRouterSettings.cheapTextModel
             )
         }
