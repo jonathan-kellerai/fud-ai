@@ -32,7 +32,7 @@ nonisolated final class TypeSafeStub: URLProtocol, @unchecked Sendable {
             Self.requests.append((currentRequest, currentBody))
             do {
                 let (status, headers, data) = try Self.handler!(currentRequest, currentBody)
-                let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!
+                let response = HTTPURLResponse(url: currentRequest.url!, statusCode: status, httpVersion: nil, headerFields: headers)!
                 self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
                 self.client?.urlProtocol(self, didLoad: data)
                 self.client?.urlProtocolDidFinishLoading(self)
