@@ -25,11 +25,13 @@ nonisolated final class TypeSafeStub: URLProtocol, @unchecked Sendable {
         }
         let delay = Self.delay
         let generation = Self.generation
+        let currentRequest = request
+        let currentBody = body
         let deliver = {
             guard generation == Self.generation else { return }
-            Self.requests.append((request, body))
+            Self.requests.append((currentRequest, currentBody))
             do {
-                let (status, headers, data) = try Self.handler!(request, body)
+                let (status, headers, data) = try Self.handler!(currentRequest, currentBody)
                 let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!
                 self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
                 self.client?.urlProtocol(self, didLoad: data)
