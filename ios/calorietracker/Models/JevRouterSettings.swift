@@ -15,11 +15,10 @@ enum JevUse: String, CaseIterable, Codable, Sendable, Identifiable {
         .mealMatch, .coachIntent, .tierRouting, .exerciseMatch, .plausibility
     ]
 
-    /// Exercise matching and plausibility land with their features. Until then the rows stay off.
+    /// Uses whose screens and checks are in this build.
     var isShipped: Bool {
         switch self {
-        case .exerciseMatch, .plausibility: false
-        case .mealMatch, .coachIntent, .tierRouting, .estimateCheck: true
+        case .mealMatch, .coachIntent, .tierRouting, .exerciseMatch, .plausibility, .estimateCheck: true
         }
     }
 
@@ -159,6 +158,7 @@ enum JevRouterSettings {
             defaults.removeObject(forKey: useKey(use))
         }
         JevCredentials.clear()
+        ExerciseAliasCache.shared.clear()
         Task { await JevRouter.shared.reset() }
     }
 }

@@ -18,6 +18,7 @@ struct WorkoutTextView: View {
     @FocusState private var inputFocused: Bool
     @State private var busy = false
     @State private var error: String?
+    @State private var plausibilityMessage: String?
     @State private var request: Task<Void, Never>?
     private var library: [ExerciseLibraryItem] { workoutStore.exerciseLibrary.exercises }
 
@@ -43,6 +44,23 @@ struct WorkoutTextView: View {
             }
         }
         .onDisappear { request?.cancel() }
+        .alert("Double-check before saving", isPresented: Binding(
+            get: { plausibilityMessage != nil },
+            set: { if !$0 { plausibilityMessage = nil } }
+        )) {
+            Button("Save anyway") {
+                let pending = draft
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "workout") }
+                if let pending { commit(pending) }
+            }
+            .accessibilityIdentifier("plausibility.saveAnyway")
+            Button("Edit", role: .cancel) { plausibilityMessage = nil }
+                .accessibilityIdentifier("plausibility.edit")
+        } message: {
+            Text(plausibilityMessage ?? "")
+                .accessibilityIdentifier("plausibility.alert")
+        }
     }
 
     private func submit(_ text: String) {
@@ -199,6 +217,34 @@ struct WorkoutTextView: View {
 
     private func save() {
         guard let draft else { return }
+        let flags = draft.exercises.flatMap { exercise in
+            exercise.sets.enumerated().flatMap { index, set in
+                let load = Double(set.weight.replacingOccurrences(of: ",", with: ".")) ?? 0
+                let kg = exercise.unit == "lbs" ? load / 2.2046226218 : load
+                let others = exercise.sets.enumerated().filter { $0.offset != index }.compactMap {
+                    Double($0.element.weight.replacingOccurrences(of: ",", with: "."))
+                }
+                return PlausibilityRules.sets(
+                    name: exercise.name,
+                    loadKg: kg,
+                    reps: Int(set.reps) ?? 0,
+                    referenceLoadsKg: [],
+                    referenceReps: [],
+                    sessionLoadsKg: others.map { exercise.unit == "lbs" ? $0 / 2.2046226218 : $0 }
+                )
+            }
+        }
+        Task {
+            let visible = await PlausibilityReview.visible(flags)
+            if visible.isEmpty {
+                commit(draft)
+            } else {
+                plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+            }
+        }
+    }
+
+    private func commit(_ draft: WorkoutTextDraft) {
         do {
             try workoutStore.addTextWorkout(draft, library: library)
             if let date = StrengthWorkoutDate.date(for: draft.date) { onAdded(date) }

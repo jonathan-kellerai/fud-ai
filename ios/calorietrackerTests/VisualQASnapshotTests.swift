@@ -476,6 +476,20 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    func test48PlausibilityAlert() async throws {
+        try await eachSize("48-plausibility-alert") { _ in
+            PlausibilityAlertCard(
+                title: "Double-check before saving",
+                message: "Bench press set 2: 800 lb. Did you mean 80?",
+                onSave: {},
+                onEdit: {}
+            )
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppColors.appBackground)
+        }
+    }
+
     private func settingsScreen<Content: View>(
         _ name: String,
         heightMultiplier: CGFloat = 1,

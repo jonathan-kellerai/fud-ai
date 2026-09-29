@@ -50,6 +50,8 @@ indirect enum TypeSafeJSON: Codable, Equatable, Sendable {
 enum TypeSafeQuestion: Encodable, Equatable, Sendable {
     case noul(instructions: TypeSafeJSON, criteria: (true: String, false: String)?)
     case choice(instructions: TypeSafeJSON, criteria: [(key: String, description: String?)])
+    /// Choice whose option values are JSON objects, still encoded as type "choice".
+    case choiceJSON(instructions: TypeSafeJSON, criteria: [(key: String, value: TypeSafeJSON)])
     case score(instructions: TypeSafeJSON, levels: [String])
 
     private enum CodingKeys: String, CodingKey {
@@ -73,6 +75,14 @@ enum TypeSafeQuestion: Encodable, Equatable, Sendable {
                 object[pair.key] = pair.description
             }
             try container.encode(object, forKey: .criteria)
+        case .choiceJSON(let instructions, let criteria):
+            try container.encode("choice", forKey: .type)
+            try container.encode(instructions, forKey: .instructions)
+            var object: [String: TypeSafeJSON] = [:]
+            for pair in criteria {
+                object[pair.key] = pair.value
+            }
+            try container.encode(object, forKey: .criteria)
         case .score(let instructions, let levels):
             try container.encode("score", forKey: .type)
             try container.encode(instructions, forKey: .instructions)
@@ -87,6 +97,8 @@ enum TypeSafeQuestion: Encodable, Equatable, Sendable {
                 && leftCriteria?.true == rightCriteria?.true
                 && leftCriteria?.false == rightCriteria?.false
         case let (.choice(leftInstructions, leftCriteria), .choice(rightInstructions, rightCriteria)):
+            return leftInstructions == rightInstructions && leftCriteria.elementsEqual(rightCriteria, by: { $0 == $1 })
+        case let (.choiceJSON(leftInstructions, leftCriteria), .choiceJSON(rightInstructions, rightCriteria)):
             return leftInstructions == rightInstructions && leftCriteria.elementsEqual(rightCriteria, by: { $0 == $1 })
         case let (.score(leftInstructions, leftLevels), .score(rightInstructions, rightLevels)):
             return leftInstructions == rightInstructions && leftLevels == rightLevels

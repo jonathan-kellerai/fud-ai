@@ -25,6 +25,7 @@ struct ProgramV2WorkoutLogView: View {
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false
     @State private var saveError: String?
+    @State private var plausibilityMessage: String?
     
     private var neonBridge = NeonBridgeService.shared
     
@@ -65,6 +66,24 @@ struct ProgramV2WorkoutLogView: View {
                 }
             } message: {
                 Text("Your workout has been logged and synced.")
+            }
+            .alert("Double-check before saving", isPresented: Binding(
+                get: { plausibilityMessage != nil },
+                set: { if !$0 { plausibilityMessage = nil } }
+            )) {
+                Button("Save anyway") {
+                    plausibilityMessage = nil
+                    Task {
+                        await JevRouter.shared.report(.plausibility, .userOverride, preview: "workout")
+                        await saveWorkout()
+                    }
+                }
+                .accessibilityIdentifier("plausibility.saveAnyway")
+                Button("Edit", role: .cancel) { plausibilityMessage = nil }
+                    .accessibilityIdentifier("plausibility.edit")
+            } message: {
+                Text(plausibilityMessage ?? "")
+                    .accessibilityIdentifier("plausibility.alert")
             }
             .alert("Could Not Save", isPresented: Binding(
                 get: { saveError != nil },
@@ -318,9 +337,7 @@ struct ProgramV2WorkoutLogView: View {
     
     private var saveButton: some View {
         Button {
-            Task {
-                await saveWorkout()
-            }
+            Task { await reviewThenSave() }
         } label: {
             if isSaving {
                 ProgressView()
@@ -339,6 +356,32 @@ struct ProgramV2WorkoutLogView: View {
         conditioningCompleted || !workoutSets.isEmpty
     }
     
+    private func reviewThenSave() async {
+        var flags: [PlausibilityFlag] = []
+        for exercise in day.exercises {
+            let sets = workoutSets[exercise.name] ?? []
+            let loads = sets.map(\.weight)
+            let previousLb = previousSessionLoad(for: exercise)
+            for (index, set) in sets.enumerated() {
+                let others = loads.enumerated().filter { $0.offset != index }.map(\.element)
+                flags.append(contentsOf: PlausibilityRules.sets(
+                    name: exercise.name,
+                    loadKg: set.weight / 2.2046226218,
+                    reps: set.reps,
+                    referenceLoadsKg: previousLb.map { [$0 / 2.2046226218] } ?? [],
+                    referenceReps: [],
+                    sessionLoadsKg: others.map { $0 / 2.2046226218 }
+                ))
+            }
+        }
+        let visible = await PlausibilityReview.visible(flags)
+        if visible.isEmpty {
+            await saveWorkout()
+        } else {
+            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+        }
+    }
+
     private func saveWorkout() async {
         isSaving = true
         defer {

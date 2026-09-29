@@ -805,13 +805,16 @@ struct LogWeightSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     let currentWeightKg: Double
+    var previous: WeightEntry? = nil
     let onSave: (Double) -> Void
 
     @State private var wholeNumber: Int
     @State private var decimal: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentWeightKg: Double, onSave: @escaping (Double) -> Void) {
+    init(currentWeightKg: Double, previous: WeightEntry? = nil, onSave: @escaping (Double) -> Void) {
         self.currentWeightKg = currentWeightKg
+        self.previous = previous
         self.onSave = onSave
         // Respect @AppStorage at the time the sheet is created.
         let metric = UserDefaults.standard.string(forKey: "weightUnit") == "kg"
@@ -893,8 +896,17 @@ struct LogWeightSheet: View {
                 }
 
                 Button {
-                    onSave(selectedKg)
-                    dismiss()
+                    let days = previous.map { max(1, Calendar.current.dateComponents([.day], from: $0.date, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.weight(newKg: selectedKg, previousKg: previous?.weightKg, days: days)
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(selectedKg)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -918,6 +930,24 @@ struct LogWeightSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .alert("Save this weight?", isPresented: Binding(
+            get: { plausibilityMessage != nil },
+            set: { if !$0 { plausibilityMessage = nil } }
+        )) {
+            Button("Save") {
+                let kg = selectedKg
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "weight") }
+                onSave(kg)
+                dismiss()
+            }
+            .accessibilityIdentifier("plausibility.saveAnyway")
+            Button("Edit", role: .cancel) { plausibilityMessage = nil }
+                .accessibilityIdentifier("plausibility.edit")
+        } message: {
+            Text(plausibilityMessage ?? "")
+                .accessibilityIdentifier("plausibility.alert")
+        }
     }
 }
 

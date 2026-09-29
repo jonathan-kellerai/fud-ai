@@ -3977,7 +3977,8 @@ struct ProgressTabView: View {
             }
             .sheet(isPresented: $showLogWeight) {
                 LogWeightSheet(
-                    currentWeightKg: weightStore.latestEntry?.weightKg ?? userProfile.weightKg
+                    currentWeightKg: weightStore.latestEntry?.weightKg ?? userProfile.weightKg,
+                    previous: weightStore.latestEntry
                 ) { weightKg in
                     weightStore.addEntry(WeightEntry(weightKg: weightKg))
                 }

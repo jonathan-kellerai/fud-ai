@@ -91,6 +91,10 @@ jobs:
           -only-testing:calorietrackerTests/JevRouterCoreTests \
           -only-testing:calorietrackerTests/JevMealMatchTests \
           -only-testing:calorietrackerTests/JevCoachIntentTests \
+          -only-testing:calorietrackerTests/JevExerciseMatchTests \
+          -only-testing:calorietrackerTests/JevTierRoutingTests \
+          -only-testing:calorietrackerTests/PlausibilityRulesTests \
+          -only-testing:calorietrackerTests/JevPlausibilityTests \
           -parallel-testing-enabled NO \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
