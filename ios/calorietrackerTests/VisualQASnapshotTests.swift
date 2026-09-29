@@ -438,6 +438,13 @@ final class VisualQASnapshotTests: XCTestCase {
             model: "jev-1.13.0"
         )
         telemetry.record(.mealMatch, .userOverride, preview: "oatmeal", latencyMs: nil, model: nil)
+        telemetry.record(
+            .mealMatch,
+            .fellBack(.lowConfidence),
+            preview: "chili",
+            latencyMs: 420,
+            model: "jev-1.13.0"
+        )
         defer { defaults.removePersistentDomain(forName: "jev.router.visual") }
         try await settingsScreen("45-jev-router-stats", heightMultiplier: 3) {
             JevRouterStatsView(telemetry: telemetry)

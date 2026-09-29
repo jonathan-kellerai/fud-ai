@@ -926,6 +926,51 @@ private enum MarkdownMessageBlockCache {
     }
 }
 
+private struct CoachLocalCaption: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var onAskCoach: () -> Void
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            stacked
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    answered
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    askButton
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                stacked
+            }
+        }
+    }
+
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            answered
+            askButton
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var answered: some View {
+        Text("Answered on device")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var askButton: some View {
+        Button("Ask Coach instead", action: onAskCoach)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(AppColors.calorie)
+            .accessibilityIdentifier("coach.router.askCoach")
+    }
+}
+
 private struct MessageBubble: View {
     let message: ChatMessage
     var onLogFood: (String) -> Void = { _ in }
@@ -1005,14 +1050,7 @@ private struct MessageBubble: View {
                     case .localAnswer:
                         EmptyView()
                     }
-                    HStack(spacing: 4) {
-                        Text("Answered on device")
-                        Text("·")
-                        Button("Ask Coach instead", action: onAskCoach)
-                            .accessibilityIdentifier("coach.router.askCoach")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    CoachLocalCaption(onAskCoach: onAskCoach)
                 }
             }
         }

@@ -102,7 +102,7 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true

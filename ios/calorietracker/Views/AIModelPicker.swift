@@ -16,23 +16,24 @@ struct AIModelPickerRow: View {
         Button {
             showSheet = true
         } label: {
-            HStack {
+            AdaptiveLabelValue {
                 Label {
                     Text("Model")
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.7)
                 } icon: {
                     Image(systemName: "brain")
                         .foregroundStyle(AppColors.calorie)
                 }
-                Spacer()
-                Text(model.isEmpty ? "Choose a model" : AIProvider.friendlyModelName(model))
-                    .foregroundStyle(.secondary)
-                    .avoidsMidWordBreak()
-                    .truncationMode(.tail)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+            } value: {
+                HStack(spacing: 6) {
+                    Text(model.isEmpty ? "Choose a model" : AIProvider.friendlyModelName(model))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .buttonStyle(.plain)

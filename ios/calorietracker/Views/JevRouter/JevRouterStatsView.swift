@@ -51,10 +51,10 @@ struct JevRouterStatsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(record.use.title)
                                 .font(.system(.body, design: .rounded, weight: .medium))
-                            Text(record.preview.isEmpty ? record.result : record.preview)
+                            Text(decisionDetail(record))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -88,6 +88,26 @@ struct JevRouterStatsView: View {
         let formatted = String(format: "%.4f", spend)
         if formatted == "0.0000" { return "< $0.01" }
         return "~$\(formatted)"
+    }
+
+    private func decisionDetail(_ record: JevDecisionRecord) -> String {
+        var parts: [String] = []
+        if !record.preview.isEmpty { parts.append(record.preview) }
+        parts.append(outcomeText(record))
+        if let latencyMs = record.latencyMs { parts.append("\(latencyMs) ms") }
+        parts.append(record.source.rawValue)
+        return parts.joined(separator: " · ")
+    }
+
+    private func outcomeText(_ record: JevDecisionRecord) -> String {
+        if record.result == "fallback" {
+            let reason = record.reason?.replacingOccurrences(of: "([A-Z])", with: " $1", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+                .lowercased() ?? "fallback"
+            return "fell back (\(reason))"
+        }
+        if record.result == "override" { return "user override" }
+        return record.result
     }
 
     private static func hasActivity(_ stats: JevUseStats) -> Bool {

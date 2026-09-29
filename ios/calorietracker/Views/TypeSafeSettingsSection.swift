@@ -22,19 +22,19 @@ struct TypeSafeEstimateCheckSection: View {
             infoTopic: .estimateCheck
         )
 
-        Toggle(isOn: $enabled) {
-            Label("Check estimates with TypeSafe", systemImage: "checkmark.seal")
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
+        AccessibleSettingToggle(
+            title: "Check estimates with TypeSafe",
+            systemImage: "checkmark.seal",
+            isOn: $enabled
+        )
             .tint(AppColors.calorie)
             .accessibilityIdentifier("settings.typesafe.enabled")
 
-        Toggle(isOn: $routerEnabled) {
-            Label("Jev router (faster, cheaper AI)", systemImage: "arrow.triangle.branch")
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
+        AccessibleSettingToggle(
+            title: "Jev router (faster, cheaper AI)",
+            systemImage: "arrow.triangle.branch",
+            isOn: $routerEnabled
+        )
             .tint(AppColors.calorie)
             .accessibilityIdentifier("settings.jevRouter.enabled")
             .onChange(of: routerEnabled) { _, isOn in
@@ -73,7 +73,7 @@ struct TypeSafeEstimateCheckSection: View {
             } label: {
                 Label("Service", systemImage: "server.rack")
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.7)
             }
             .pickerStyle(.menu)
             .tint(.secondary)
@@ -91,7 +91,7 @@ struct TypeSafeEstimateCheckSection: View {
             AdaptiveLabelValue {
                 Label("API Key", systemImage: "key.fill")
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.7)
             } value: {
                 HStack {
                     Group {
@@ -126,9 +126,13 @@ struct TypeSafeEstimateCheckSection: View {
                 showModelPicker = true
             } label: {
                 AdaptiveLabelValue {
-                    Label("Model", systemImage: "cpu")
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                    Label {
+                        Text("Model")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    } icon: {
+                        Image(systemName: "cpu")
+                    }
                 } value: {
                     HStack(spacing: 6) {
                         Text(AIProvider.friendlyModelName(model))
@@ -149,8 +153,7 @@ struct TypeSafeEstimateCheckSection: View {
             } label: {
                 HStack {
                     Label("Test key", systemImage: "key.viewfinder")
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     if isTesting {
                         ProgressView()
@@ -164,11 +167,11 @@ struct TypeSafeEstimateCheckSection: View {
             .disabled(isTesting || apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("settings.typesafe.test")
 
-            Toggle(isOn: $checkTypedMeals) {
-                Label("Also check typed meals", systemImage: "text.alignleft")
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+            AccessibleSettingToggle(
+                title: "Also check typed meals",
+                systemImage: "text.alignleft",
+                isOn: $checkTypedMeals
+            )
                 .tint(AppColors.calorie)
                 .accessibilityIdentifier("settings.typesafe.checkText")
                 .onChange(of: checkTypedMeals) { _, isOn in
@@ -229,6 +232,30 @@ struct TypeSafeEstimateCheckSection: View {
             testMessage = "Key rejected"
         } catch {
             testMessage = "Couldn't reach TypeSafe"
+        }
+    }
+}
+
+/// Multi-word settings sit above the switch at accessibility sizes so the words can wrap.
+struct AccessibleSettingToggle: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let title: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(title, systemImage: systemImage)
+                    .fixedSize(horizontal: false, vertical: true)
+                Toggle(title, isOn: $isOn)
+                    .labelsHidden()
+            }
+        } else {
+            Toggle(isOn: $isOn) {
+                Label(title, systemImage: systemImage)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }

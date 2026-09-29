@@ -4146,8 +4146,7 @@ struct AISettingsSubsectionHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Label {
-                Text(title)
-                    .textCase(.uppercase)
+                subsectionTitle(title)
             } icon: {
                 Image(systemName: systemImage)
             }
@@ -4173,6 +4172,27 @@ struct AISettingsSubsectionHeader: View {
             Button("Got it", role: .cancel) { }
         } message: {
             Text(infoTopic.message)
+        }
+    }
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// One uppercase word per line at accessibility sizes, so "TYPESAFE" is not hyphenated.
+    @ViewBuilder
+    private func subsectionTitle(_ title: String) -> some View {
+        let words = title.split(separator: " ").map { String($0).uppercased() }
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(words, id: \.self) { word in
+                    Text(word)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        } else {
+            Text(words.joined(separator: " "))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 }
@@ -5230,8 +5250,7 @@ struct ProfileView: View {
                         Label {
                             HStack(spacing: 6) {
                                 Text("Default to Grams")
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Button {
                                     showDefaultGramsInfo = true
                                 } label: {
