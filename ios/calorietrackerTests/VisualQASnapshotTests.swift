@@ -297,6 +297,53 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Logger supersets and history
+
+    func test25SupersetPair() async throws {
+        let full = TrainingProgramBody.bundledV2().days[3].asProgramV2Day()
+        let day = ProgramV2Day(
+            id: full.id,
+            title: full.title,
+            conditioning: full.conditioning,
+            conditioningMinimum: full.conditioningMinimum,
+            exercises: full.exercises.filter { $0.supersetGroup != nil }
+        )
+        let drafts = WorkoutDraftStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("visual-qa-superset-\(UUID().uuidString)", isDirectory: true)
+        )
+        drafts.update(day) { draft in
+            for (index, exercise) in day.exercises.enumerated() {
+                let load: Double = exercise.startLoadLb ?? 25
+                draft.sets[exercise.name] = [
+                    LoggedSet(weight: load, reps: 14 - index, rir: 2, rpeText: ""),
+                    LoggedSet(weight: load, reps: 0, rir: 2, rpeText: ""),
+                ]
+            }
+        }
+        VisualQAGraveyard.keep(drafts)
+        // The draft store goes on the logger itself so it wins over the one stores.inject adds outside it.
+        try await eachSize("25-superset-pair", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+                .environment(drafts)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    func test26LastTimeLine() async throws {
+        let day = VisualQAFixtures.liftingDay()
+        try await eachSize("26-last-time-line", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
     // MARK: - Rendering
 
     private func eachSize<Content: View>(
@@ -889,6 +936,32 @@ enum VisualQAFixtures {
         return WorkoutDetailResponse(workout: workout, sets: sets)
     }
 
+    static let upperPhysiqueWorkoutID = "qa-workout-4"
+
+    /// Day 4 session with the curl + pressdown superset, for the logger's Last line.
+    static func upperPhysiqueWorkoutDetail() -> WorkoutDetailResponse {
+        let workout = sampleWorkouts()[3]
+        let rows: [(String, Double, Int, Int?)] = [
+            ("Cable or DB curl", 25, 15, 4),
+            ("Triceps pressdown", 125, 14, 2),
+            ("Cable or DB curl", 25, 14, 3),
+            ("Triceps pressdown", 125, 12, 1),
+        ]
+        let sets = rows.enumerated().map { index, row in
+            RemoteWorkoutSet(
+                id: "qa-set-4-\(index + 1)",
+                workoutId: workout.id,
+                setOrder: index + 1,
+                exercise: row.0,
+                loadLb: row.1,
+                reps: row.2,
+                rir: row.3,
+                rpe: nil
+            )
+        }
+        return WorkoutDetailResponse(workout: workout, sets: sets)
+    }
+
     static func peptideTodayJSON() -> String {
         let today = isoDay(offset: 0)
         return """
@@ -920,6 +993,7 @@ enum VisualQAFixtures {
         return [
             "/api/workouts": json(ListWorkoutsResponse(workouts: sampleWorkouts())),
             "/api/workouts/\(workoutID)": json(sampleWorkoutDetail()),
+            "/api/workouts/\(upperPhysiqueWorkoutID)": json(upperPhysiqueWorkoutDetail()),
             "/api/programs": json(TrainingProgramListResponse(programs: [program])),
             "/api/programs/active": json(program),
             "/api/programs/\(program.id)": json(program),

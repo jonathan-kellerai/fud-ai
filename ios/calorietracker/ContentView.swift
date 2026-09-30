@@ -7136,4 +7136,5 @@ private struct LabReportAllergenConfirmationSheet: View {
     ContentView()
         .environment(FoodStore())
         .environment(WeightStore())
+        .environment(WorkoutDraftStore())
 }
