@@ -30,27 +30,16 @@ struct WorkoutLoggingSettingsSection: View {
             )
 
             WorkoutRPEScalePickerRow(
-                title: "RPE Scale",
+                title: "Effort Scale",
                 systemImage: "gauge.with.dots.needle.50percent",
                 selection: $draft.rpeScale
             )
 
-            NavigationLink {
-                BridgeSettingsView()
-            } label: {
-                Label {
-                    Text("Neon Bridge Sync")
-                } icon: {
-                    Image(systemName: "server.rack")
-                        .foregroundStyle(.blue)
-                }
-            }
-
             rpeScaleGuide
         } header: {
-            Text("Workout")
+            Text("Legacy Fud logger · not used by Program V2")
         } footer: {
-            Text("Off by default. When enabled, Walking and Running appear in the Workouts + menu for quick outdoor logging.")
+            Text("Off by default. When enabled, Walking and Running appear in the legacy logger for quick outdoor logging.")
         }
         .listRowBackground(AppColors.appCard)
         .onAppear(perform: loadPreferences)

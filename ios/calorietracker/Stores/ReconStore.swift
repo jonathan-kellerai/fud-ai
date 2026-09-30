@@ -172,8 +172,8 @@ final class ReconBenchStore {
         return directory.appendingPathComponent("recon_bench_v1.json")
     }
 
-    private static let defaultsKey = "recon.bench.v1"
-    private static let bridgeKey = "recon.bridgeSyncEnabled"
+    static let defaultsKey = "recon.bench.v1"
+    static let bridgeKey = "recon.bridgeSyncEnabled"
 
     private struct Snapshot: Codable {
         var cards: [String: [String: ReconMath.Card]]

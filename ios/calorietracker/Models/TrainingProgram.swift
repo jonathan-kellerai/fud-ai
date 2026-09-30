@@ -76,7 +76,7 @@ struct TrainingProgramConditioning: Codable, Equatable, Hashable {
 }
 
 enum ExerciseRest {
-    static let fallbackSeconds = 90
+    static var fallbackSeconds: Int { RestTimerSettings.defaultSeconds }
 
     static func resolvedSeconds(restSec: Int?, notes: String?, exerciseName: String) -> Int {
         if let restSec { return restSec }
@@ -587,7 +587,7 @@ struct ProgramReviseRequest: Encodable {
 }
 
 enum ActiveProgramCache {
-    private static let storageKey = "jl.physical.activeProgram.v1"
+    static let storageKey = "jl.physical.activeProgram.v1"
 
     static func load() -> TrainingProgramRecord? {
         guard let data = UserDefaults.standard.data(forKey: storageKey) else { return nil }

@@ -80,7 +80,7 @@ final class StepsTrackingService {
             days.append(StepsDay(
                 date: dateString,
                 steps: steps,
-                met: steps >= 10000,
+                met: steps >= StepsGoal.current,
                 logged: steps > 0,
                 source: "Apple Health",
                 device: "Apple Health",

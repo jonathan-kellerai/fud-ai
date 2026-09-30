@@ -478,13 +478,16 @@ struct LogWeightSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     let currentWeightKg: Double
+    var previous: WeightEntry? = nil
     let onSave: (Double) -> Void
 
     @State private var wholeNumber: Int
     @State private var decimal: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentWeightKg: Double, onSave: @escaping (Double) -> Void) {
+    init(currentWeightKg: Double, previous: WeightEntry? = nil, onSave: @escaping (Double) -> Void) {
         self.currentWeightKg = currentWeightKg
+        self.previous = previous
         self.onSave = onSave
         // Respect @AppStorage at the time the sheet is created.
         let metric = UserDefaults.standard.string(forKey: "weightUnit") == "kg"
@@ -566,8 +569,17 @@ struct LogWeightSheet: View {
                 }
 
                 Button {
-                    onSave(selectedKg)
-                    dismiss()
+                    let days = previous.map { max(1, Calendar.current.dateComponents([.day], from: $0.date, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.weight(newKg: selectedKg, previousKg: previous?.weightKg, days: days)
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(selectedKg)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -591,6 +603,23 @@ struct LogWeightSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .plausibilityConfirmation(
+            title: "Save \(weightPrompt)?",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                let kg = selectedKg
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "weight") }
+                onSave(kg)
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
+    }
+
+    private var weightPrompt: String {
+        String(format: "%.1f %@", selectedValue, useMetric ? "kg" : "lb")
     }
 }
 
@@ -835,12 +864,17 @@ private func displayBodyFat(_ fraction: Double) -> String {
 struct LogBodyFatSheet: View {
     @Environment(\.dismiss) private var dismiss
     let currentFraction: Double
+    var previousFraction: Double? = nil
+    var previousDate: Date? = nil
     let onSave: (Double) -> Void
 
     @State private var percentage: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentFraction: Double, onSave: @escaping (Double) -> Void) {
+    init(currentFraction: Double, previousFraction: Double? = nil, previousDate: Date? = nil, onSave: @escaping (Double) -> Void) {
         self.currentFraction = currentFraction
+        self.previousFraction = previousFraction
+        self.previousDate = previousDate
         self.onSave = onSave
         _percentage = State(initialValue: Int(currentFraction * 100))
     }
@@ -869,8 +903,22 @@ struct LogBodyFatSheet: View {
                 }
 
                 Button {
-                    onSave(Double(percentage) / 100.0)
-                    dismiss()
+                    let fraction = Double(percentage) / 100.0
+                    let days = previousDate.map { max(1, Calendar.current.dateComponents([.day], from: $0, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.bodyFat(
+                        newPercent: Double(percentage),
+                        previousPercent: previousFraction.map { $0 * 100 },
+                        days: days
+                    )
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(fraction)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -894,6 +942,19 @@ struct LogBodyFatSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .plausibilityConfirmation(
+            title: "Save \(percentage)% body fat?",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                let fraction = Double(percentage) / 100.0
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "body fat") }
+                onSave(fraction)
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
 }
 
@@ -1036,6 +1097,8 @@ struct BodyMeasurementsDetailView: View {
             MeasurementEditSheet(
                 site: site,
                 currentCm: latest?.value(for: site),
+                previousCm: previousMeasurement(site, in: store)?.cm,
+                previousDate: previousMeasurement(site, in: store)?.date,
                 onSave: { cm in store.setValue(site, cm: cm) },
                 onClear: { store.setValue(site, cm: nil) }
             )
@@ -1052,6 +1115,15 @@ struct BodyMeasurementsDetailView: View {
     }
 }
 
+/// Latest value for a site before today, for the plausibility check.
+private func previousMeasurement(_ site: BodyMeasurement.Site, in store: BodyMeasurementStore) -> (cm: Double, date: Date)? {
+    for entry in store.sortedEntries {
+        guard let value = entry.value(for: site), !Calendar.current.isDateInToday(entry.date) else { continue }
+        return (value, entry.date)
+    }
+    return nil
+}
+
 /// Editor for one measurement site. The cm|in switcher persists the shared
 /// length standard (same pref as the Height editor), and — matching the
 /// height/weight editors — flipping it converts the value currently on the
@@ -1059,20 +1131,29 @@ struct BodyMeasurementsDetailView: View {
 private struct MeasurementEditSheet: View {
     let site: BodyMeasurement.Site
     let hasCurrent: Bool
+    var previousCm: Double? = nil
+    var previousDate: Date? = nil
     let onSave: (Double) -> Void
     let onClear: () -> Void
 
     @AppStorage("heightUnit") private var heightUnitRaw = "ftin"
     @State private var displayValue: Int
+    @State private var plausibilityMessage: String?
+    @State private var pendingCm: Double?
+    @Environment(\.dismiss) private var dismiss
 
     init(
         site: BodyMeasurement.Site,
         currentCm: Double?,
+        previousCm: Double? = nil,
+        previousDate: Date? = nil,
         onSave: @escaping (Double) -> Void,
         onClear: @escaping () -> Void
     ) {
         self.site = site
         self.hasCurrent = currentCm != nil
+        self.previousCm = previousCm
+        self.previousDate = previousDate
         self.onSave = onSave
         self.onClear = onClear
         let metric = UserDefaults.standard.string(forKey: "heightUnit") == "cm"
@@ -1115,7 +1196,19 @@ private struct MeasurementEditSheet: View {
                 currentValue: displayValue,
                 range: useMetric ? 10...250 : 4...100,
                 step: 1,
-                onSave: { value in onSave(useMetric ? Double(value) : Double(value) * 2.54) },
+                onSave: { value in
+                    onSave(useMetric ? Double(value) : Double(value) * 2.54)
+                },
+                shouldSave: { value in
+                    let cm = useMetric ? Double(value) : Double(value) * 2.54
+                    let days = previousDate.map { max(1, Calendar.current.dateComponents([.day], from: $0, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.measurement(newCm: cm, previousCm: previousCm, days: days)
+                    let visible = await PlausibilityReview.visible(flags)
+                    if visible.isEmpty { return true }
+                    pendingCm = cm
+                    plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                    return false
+                },
                 onResetToAuto: hasCurrent ? onClear : nil,
                 resetLabel: "Clear",
                 onValueChange: { displayValue = $0 }
@@ -1124,6 +1217,18 @@ private struct MeasurementEditSheet: View {
             // converted above (its selection state is set once, in init).
             .id(heightUnitRaw)
         }
+        .plausibilityConfirmation(
+            title: "Double-check before saving",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                if let pendingCm { onSave(pendingCm) }
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "measurement") }
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
 }
 

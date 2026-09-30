@@ -231,7 +231,8 @@ struct ProgressTabView: View {
             }
             .sheet(isPresented: $showLogWeight) {
                 LogWeightSheet(
-                    currentWeightKg: weightStore.latestEntry?.weightKg ?? userProfile.weightKg
+                    currentWeightKg: weightStore.latestEntry?.weightKg ?? userProfile.weightKg,
+                    previous: weightStore.latestEntry
                 ) { weightKg in
                     weightStore.addEntry(WeightEntry(weightKg: weightKg))
                 }
@@ -242,7 +243,11 @@ struct ProgressTabView: View {
                 let seed = bodyFatStore.latestEntry?.bodyFatFraction
                     ?? userProfile.bodyFatPercentage
                     ?? 0.20
-                LogBodyFatSheet(currentFraction: seed) { fraction in
+                LogBodyFatSheet(
+                    currentFraction: seed,
+                    previousFraction: bodyFatStore.latestEntry?.bodyFatFraction,
+                    previousDate: bodyFatStore.latestEntry?.date
+                ) { fraction in
                     bodyFatStore.addEntry(BodyFatEntry(bodyFatFraction: fraction))
                 }
             }

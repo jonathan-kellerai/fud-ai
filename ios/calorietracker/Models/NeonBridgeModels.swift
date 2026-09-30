@@ -245,20 +245,30 @@ protocol BridgeKeySecretStore {
 struct KeychainBridgeKeyStore: BridgeKeySecretStore {
     let account: String
 
-    func upsert(_ value: String) -> Bool { KeychainHelper.upsert(key: account, value: value) }
-    func load() -> String? { KeychainHelper.load(key: account) }
-    func delete() { KeychainHelper.delete(key: account) }
+    /// The bridge account goes through NeonBridgeKeychain, so the key is stored
+    /// ThisDeviceOnly (out of iCloud backup) and its test hooks apply.
+    private var isBridgeAccount: Bool { account == NeonBridgeKeychain.account }
+
+    func upsert(_ value: String) -> Bool {
+        isBridgeAccount ? NeonBridgeKeychain.save(value) : KeychainHelper.upsert(key: account, value: value)
+    }
+    func load() -> String? {
+        isBridgeAccount ? NeonBridgeKeychain.load() : KeychainHelper.load(key: account)
+    }
+    func delete() {
+        isBridgeAccount ? NeonBridgeKeychain.delete() : KeychainHelper.delete(key: account)
+    }
 }
 
 struct NeonBridgeSettings: Codable {
     var baseURL: String
     var apiKey: String?
-    
+
     static let defaultBaseURL = "https://jl-workout-ingest.vercel.app"
     
     static let storageKey = "neonBridgeSettings"
     /// The bridge key lives in the Keychain under this account, never in UserDefaults.
-    static let apiKeyKeychainAccount = "neonBridgeApiKey"
+    static let apiKeyKeychainAccount = NeonBridgeKeychain.account
     /// Set only when save() could not write the Keychain and kept the key in defaults.
     static let pendingKeychainWriteKey = "neonBridgeApiKeyPendingKeychainWrite"
     /// Where the key is kept. The Keychain in the app; tests swap in a memory store

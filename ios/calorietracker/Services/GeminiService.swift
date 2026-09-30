@@ -304,6 +304,10 @@ struct GeminiService {
         guard !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, description.count <= 16000 else {
             throw WorkoutTextError.invalid("The workout conversation is too long. Please start over.")
         }
+        if !description.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{"),
+           let draft = await WorkoutFastPath.draft(description: description, date: date, unit: unit, library: library) {
+            return draft
+        }
         return try await runWithHostedQuota(.workoutAI) {
             let searchResponse = try await callAI(prompt: WorkoutTextDraft.searchPrompt(description: description), image: nil)
             let queries = WorkoutTextDraft.searchQueries(searchResponse, fallback: description)
@@ -774,7 +778,9 @@ struct GeminiService {
             )
             return try parseFoodAnalysis(from: text)
         }
-        let primary = AIProviderSettings.currentConfig(requiresVision: false)
+        let base = AIProviderSettings.currentConfig(requiresVision: false)
+        let plan = await JevTierRouter.plan(.textFood(description), base: base)
+        let primary = plan.primary
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
             throw AnalysisError.noAPIKey
         }
@@ -790,6 +796,22 @@ struct GeminiService {
             )
         } catch {
             if error is CancellationError { throw error }
+            if plan.tier != .strong {
+                do {
+                    return try await dispatchFoodAnalysis(
+                        provider: plan.strong.provider,
+                        model: plan.strong.model,
+                        baseURL: plan.strong.baseURL,
+                        apiKey: plan.strong.apiKey,
+                        prompt: prompt,
+                        description: description
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // The cheaper tier failed. Continue with the strong result's error into the existing fallback.
+                }
+            }
             guard let fallback = AIProviderSettings.currentTextFallbackConfig(
                 excludingPrimary: primary.provider,
                 model: primary.model

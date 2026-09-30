@@ -114,6 +114,39 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// User-facing model name. Preset ids such as `gemini-3.5-flash-lite` stay out of subtitles.
+    static func friendlyModelName(_ modelID: String) -> String {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return trimmed }
+        if let known = friendlyModelNames[trimmed] { return known }
+        let leaf = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        if let known = friendlyModelNames[leaf] { return known }
+        var words: [String] = []
+        let tokens = leaf.split(separator: "-").map(String.init)
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            if token.lowercased() == "flash",
+               index + 1 < tokens.count,
+               tokens[index + 1].lowercased() == "lite" {
+                words.append("Flash-Lite")
+                index += 2
+                continue
+            }
+            if token.allSatisfy({ $0.isNumber || $0 == "." }) {
+                words.append(token)
+            } else {
+                words.append(token.prefix(1).uppercased() + token.dropFirst())
+            }
+            index += 1
+        }
+        return words.joined(separator: " ")
+    }
+
+    private static let friendlyModelNames: [String: String] = [
+        "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
+    ]
+
     static func normalizedModelID(_ model: String) -> String {
         switch model.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "gemini-3.1-flash-lite-preview":

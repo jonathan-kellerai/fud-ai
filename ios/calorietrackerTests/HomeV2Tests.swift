@@ -114,7 +114,7 @@ struct HomeV2Tests {
                 calendar: calendar,
                 programStartDate: "2026-09-28",
                 reductionWeek: 4
-            ) == "Reduction week Oct 19"
+            ) == "Deload Week Oct 19"
         )
     }
 
@@ -137,7 +137,7 @@ struct HomeV2Tests {
         #expect(snapshot.stepDaysHit == 1)
         #expect(snapshot.daysElapsed == 1)
         #expect(snapshot.averageProtein == 150)
-        #expect(snapshot.milestone == "Reduction week Oct 19")
+        #expect(snapshot.milestone == "Deload Week Oct 19")
     }
 
     @Test func sessionSummaryKeepsTheHeaviestSet() {

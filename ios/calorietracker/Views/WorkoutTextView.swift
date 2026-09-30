@@ -18,6 +18,7 @@ struct WorkoutTextView: View {
     @FocusState private var inputFocused: Bool
     @State private var busy = false
     @State private var error: String?
+    @State private var plausibilityMessage: String?
     @State private var request: Task<Void, Never>?
     private var library: [ExerciseLibraryItem] { workoutStore.exerciseLibrary.exercises }
 
@@ -43,6 +44,17 @@ struct WorkoutTextView: View {
             }
         }
         .onDisappear { request?.cancel() }
+        .plausibilityConfirmation(
+            title: "Double-check before saving",
+            message: plausibilityMessage,
+            onSave: {
+                let pending = draft
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "workout") }
+                if let pending { commit(pending) }
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
 
     private func submit(_ text: String) {
@@ -199,6 +211,56 @@ struct WorkoutTextView: View {
 
     private func save() {
         guard let draft else { return }
+        let flags: [PlausibilityFlag] = draft.exercises.flatMap { exercise -> [PlausibilityFlag] in
+            let history = workoutStore.exerciseLiftHistory(
+                itemID: exercise.exerciseID ?? "",
+                name: exercise.name,
+                before: selectedDate,
+                limit: 20
+            )
+            // Loads and reps stay paired so the Epley reference uses each set's own reps.
+            let reference: [(kg: Double, reps: Int)] = history.flatMap(\.sets).compactMap { lift in
+                guard let kg = Self.kilograms(weight: lift.weight, unit: lift.weightUnit), kg > 0,
+                      let reps = Int(lift.reps) else { return nil }
+                return (kg: kg, reps: reps)
+            }
+            let referenceLoads = reference.map { $0.kg }
+            let referenceReps = reference.map { $0.reps }
+            return exercise.sets.enumerated().flatMap { (index, set) -> [PlausibilityFlag] in
+                let load = Double(set.weight.replacingOccurrences(of: ",", with: ".")) ?? 0
+                let kg = exercise.unit == "lbs" ? load / 2.2046226218 : load
+                let others = exercise.sets.enumerated().filter { $0.offset != index }.compactMap {
+                    Double($0.element.weight.replacingOccurrences(of: ",", with: "."))
+                }
+                return PlausibilityRules.sets(
+                    name: exercise.name,
+                    loadKg: kg,
+                    reps: Int(set.reps) ?? 0,
+                    referenceLoadsKg: referenceLoads,
+                    referenceReps: referenceReps,
+                    sessionLoadsKg: others.map { exercise.unit == "lbs" ? $0 / 2.2046226218 : $0 }
+                )
+            }
+        }
+        Task {
+            let visible = await PlausibilityReview.visible(flags)
+            if visible.isEmpty {
+                commit(draft)
+            } else {
+                plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+            }
+        }
+    }
+
+    private static func kilograms(weight: String, unit: String) -> Double? {
+        guard let value = Double(weight.replacingOccurrences(of: ",", with: ".")) else { return nil }
+        switch unit.lowercased() {
+        case "lb", "lbs": return value / 2.2046226218
+        default: return value
+        }
+    }
+
+    private func commit(_ draft: WorkoutTextDraft) {
         do {
             try workoutStore.addTextWorkout(draft, library: library)
             if let date = StrengthWorkoutDate.date(for: draft.date) { onAdded(date) }

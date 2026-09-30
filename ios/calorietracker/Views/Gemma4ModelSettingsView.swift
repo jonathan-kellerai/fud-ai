@@ -32,11 +32,15 @@ struct Gemma4ModelSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(localized("gemma.name", "Gemma 4 E2B"), systemImage: "cpu")
-                    .font(.body.weight(.medium))
-                Spacer()
-                Text(statusLabel)
+            AdaptiveLabelValue {
+                Label {
+                    UnbrokenText(localized("gemma.name", "Gemma 4 E2B"))
+                } icon: {
+                    Image(systemName: "cpu")
+                }
+                .font(.body.weight(.medium))
+            } value: {
+                UnbrokenText(statusLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(statusColor)
             }

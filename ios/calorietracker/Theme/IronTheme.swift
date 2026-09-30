@@ -5,6 +5,9 @@ import UIKit
 /// Alternate-icon gradients live here too so views do not carry hex literals.
 enum IronTheme {
     static let cardRadius: CGFloat = 6
+    /// iPhone SE's floating tab bar starts about 82pt from the bottom. Lists need
+    /// at least that much trailing inset or the last row sits underneath it.
+    static let floatingTabClearance: CGFloat = 88
     static let buttonRadius: CGFloat = 4
     static let ruleWidth: CGFloat = 3
     static let motionDuration: Double = 0.18
@@ -174,6 +177,76 @@ extension Color {
             blue: Double(hex & 255) / 255,
             opacity: opacity
         )
+    }
+}
+
+extension View {
+    /// Keeps the last row of a settings list above the floating tab bar.
+    func settingsFloatingTabClearance() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: IronTheme.floatingTabClearance)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Lets a short label use a second line and scale slightly instead of hyphenating mid-word.
+    func avoidsMidWordBreak() -> some View {
+        lineLimit(2)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
+    }
+}
+
+/// Text that may scale or wrap onto a second line, but does not hyphenate inside a word.
+struct UnbrokenText: View {
+    private let content: Text
+
+    init(_ string: String) {
+        content = Text(Self.attributed(string))
+    }
+
+    init(_ resource: LocalizedStringResource) {
+        content = Text(Self.attributed(String(localized: resource)))
+    }
+
+    var body: some View {
+        content
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
+    }
+
+    private static func attributed(_ string: String) -> AttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.hyphenationFactor = 0
+        paragraph.lineBreakStrategy = .pushOut
+        let raw = NSAttributedString(string: string, attributes: [.paragraphStyle: paragraph])
+        return AttributedString(raw)
+    }
+}
+
+struct AdaptiveLabelValue<Label: View, Value: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Rows whose value is a control (a Toggle) use `.center`, so the switch stays level with the label.
+    var alignment: VerticalAlignment = .firstTextBaseline
+    @ViewBuilder var label: () -> Label
+    @ViewBuilder var value: () -> Value
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                label()
+                value()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: alignment, spacing: 12) {
+                label()
+                Spacer(minLength: 8)
+                value()
+            }
+        }
     }
 }
 

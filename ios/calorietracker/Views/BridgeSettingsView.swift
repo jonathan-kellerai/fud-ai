@@ -15,6 +15,8 @@ struct BridgeSettingsView: View {
     @State private var testResult: String?
     @State private var testSuccess = false
     @State private var syncService = WorkoutSyncService.shared
+    @State private var stepsService = StepsTrackingService.shared
+    @State private var reconStore = ReconBenchStore()
     
     init() {
         let settings = NeonBridgeService.shared.settings
@@ -34,7 +36,7 @@ struct BridgeSettingsView: View {
                 }
                 .disabled(baseURL == NeonBridgeSettings.defaultBaseURL)
             } header: {
-                Text("Connection")
+                IronSectionTitle(title: "Connection")
             } footer: {
                 Text("The Neon training bridge endpoint for workout and steps sync.")
             }
@@ -43,23 +45,23 @@ struct BridgeSettingsView: View {
                 SecureField("API Key (optional)", text: $apiKey)
                     .autocapitalization(.none)
             } header: {
-                Text("Authentication")
+                IronSectionTitle(title: "Authentication")
             } footer: {
                 Text("Optional Bearer token for authenticated requests.")
             }
             
             Section {
                 Button {
-                    Task { await testConnection() }
+                    Task { await saveAndTest() }
                 } label: {
                     HStack {
                         if isTestingConnection {
                             ProgressView()
                                 .padding(.trailing, 8)
                         }
-                        Text("Test Connection")
+                        Text("Save & Test")
                         Spacer()
-                        if let result = testResult {
+                        if testResult != nil {
                             Image(systemName: testSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
                                 .foregroundStyle(testSuccess ? .green : .red)
                         }
@@ -81,8 +83,13 @@ struct BridgeSettingsView: View {
                     Text("\(syncService.syncQueue.count)")
                         .foregroundStyle(.secondary)
                 }
+
+                LabeledContent("Last Steps Sync") {
+                    Text(lastStepsSyncLabel)
+                        .foregroundStyle(.secondary)
+                }
                 
-                if let error = syncService.lastSyncError {
+                if let error = syncService.lastSyncError ?? stepsService.lastSyncError {
                     VStack(alignment: .leading) {
                         Text("Last Error")
                             .font(.caption.weight(.semibold))
@@ -92,32 +99,35 @@ struct BridgeSettingsView: View {
                     }
                 }
             } header: {
-                Text("Sync Status")
+                IronSectionTitle(title: "Sync Status")
             }
-            
+
             Section {
-                Button("Save Settings") {
-                    saveSettings()
-                }
-                .disabled(baseURL.isEmpty)
+                Toggle("Sync Peptide Doses", isOn: Binding(
+                    get: { reconStore.bridgeSyncEnabled },
+                    set: { reconStore.bridgeSyncEnabled = $0 }
+                ))
+            } footer: {
+                Text("Off by default. Taken Recon doses stay on this phone until this is on.")
             }
         }
-        .navigationTitle("Training Bridge")
+        .settingsFloatingTabClearance()
+        .navigationTitle("Neon Bridge")
         .navigationBarTitleDisplayMode(.inline)
     }
+
+    private var lastStepsSyncLabel: String {
+        guard let date = stepsService.lastSyncDate else { return "Never" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
     
-    private func testConnection() async {
+    private func saveAndTest() async {
         isTestingConnection = true
         testResult = nil
         defer { isTestingConnection = false }
-        
-        // Temporarily update service settings for test
-        let originalSettings = NeonBridgeService.shared.settings
-        NeonBridgeService.shared.settings = NeonBridgeSettings(
-            baseURL: baseURL,
-            apiKey: apiKey.isEmpty ? nil : apiKey
-        )
-        
+
+        saveSettings()
+
         do {
             let health = try await NeonBridgeService.shared.checkHealth()
             testSuccess = health.ok
@@ -125,11 +135,6 @@ struct BridgeSettingsView: View {
         } catch {
             testSuccess = false
             testResult = error.localizedDescription
-        }
-        
-        // Restore original settings if test failed
-        if !testSuccess {
-            NeonBridgeService.shared.settings = originalSettings
         }
     }
     
@@ -140,7 +145,5 @@ struct BridgeSettingsView: View {
         )
         settings.save()
         NeonBridgeService.shared.settings = settings
-        testResult = "Settings saved"
-        testSuccess = true
     }
 }

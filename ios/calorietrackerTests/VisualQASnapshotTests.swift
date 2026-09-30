@@ -110,9 +110,8 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test10More() async throws {
-        // ProfileView's init is file-private to ContentView, so render the real ContentView
-        // and switch its tab bar to More the way a tap would.
         PostUpdatePrompts.markAllSeenForFreshInstall()
+        seedSettingsSubtitles()
         try await eachSize("10-more-settings", afterAppear: { window in
             VisualQAUIKit.selectTab(4, in: window)
         }) { _ in
@@ -261,15 +260,304 @@ final class VisualQASnapshotTests: XCTestCase {
     // MARK: - AI providers
 
     func test23AIProvidersOnDeviceModel() async throws {
-        // ProfileView (which hosts the full AI Providers & Fallbacks list) has a
-        // file-private init in ContentView, so render its On-Device Model section
-        // with the real Gemma4ModelSettingsView in the download-in-progress state.
+        // ProfileView's update-state initializer is fileprivate. This harness draws
+        // the Gemma card in downloading, not-downloaded, and ready states.
         try await eachSize("23-ai-providers-on-device-download") { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "More") { VisualQAOnDeviceModelSection() }
             }
         }
     }
+
+    // MARK: - Settings
+
+    func test24SettingsTraining() async throws {
+        try await settingsScreen("24-settings-training") { ProfileView(settingsCategory: .training) }
+    }
+
+    func test25SettingsFoodAI() async throws {
+        try await settingsScreen("25-settings-food-ai") { ProfileView(settingsCategory: .foodAI) }
+    }
+
+    func test26SettingsDailyTargets() async throws {
+        try await settingsScreen("26-settings-daily-targets") { ProfileView(settingsCategory: .dailyTargets) }
+    }
+
+    func test27SettingsWaterFasting() async throws {
+        try await settingsScreen("27-settings-water-fasting") { ProfileView(settingsCategory: .waterFasting) }
+    }
+
+    func test28SettingsShortcutsSiri() async throws {
+        try await settingsScreen("28-settings-shortcuts-siri") { ShortcutsAndSiriSettingsView() }
+    }
+
+    func test29SettingsHomeMenu() async throws {
+        try await settingsScreen("29-settings-home-menu") { AddMenuSettingsView() }
+    }
+
+    func test30SettingsAIProviders() async throws {
+        try await settingsScreen("30-settings-ai-providers") { ProfileView(settingsCategory: .aiProviders) }
+    }
+
+    func test31SettingsOnDeviceModels() async throws {
+        try await settingsScreen("31-settings-on-device-models") { ProfileView(settingsCategory: .onDeviceModels) }
+    }
+
+    func test32SettingsAdvancedAI() async throws {
+        try await settingsScreen("32-settings-advanced-ai", heightMultiplier: 3) {
+            ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    func test33SettingsBodyHealth() async throws {
+        try await settingsScreen("33-settings-body-health", heightMultiplier: 1.8) {
+            ProfileView(settingsCategory: .bodyHealth)
+        }
+    }
+
+    func test34SettingsProfile() async throws {
+        try await settingsScreen("34-settings-profile") { ProfileView(settingsCategory: .profile) }
+    }
+
+    func test35SettingsDataSync() async throws {
+        try await settingsScreen("35-settings-data-sync") { ProfileView(settingsCategory: .dataSync) }
+    }
+
+    func test36SettingsNeonBridge() async throws {
+        try await settingsScreen("36-settings-neon-bridge") { BridgeSettingsView() }
+    }
+
+    func test37SettingsNotifications() async throws {
+        try await settingsScreen("37-settings-notifications", heightMultiplier: 3) { NotificationSettingsView() }
+    }
+
+    func test38SettingsAbout() async throws {
+        try await settingsScreen("38-settings-about") { AboutView() }
+    }
+
+    func test39SettingsAcknowledgements() async throws {
+        try await settingsScreen("39-settings-acknowledgements") { AcknowledgementsView() }
+    }
+
+    func test40RestTimerMuted() async throws {
+        let day = VisualQAFixtures.liftingDay()
+        try await eachSize("40-rest-timer-muted", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+        }, secondSheet: {
+            RestTimerSheet(defaultSeconds: 90, initiallyMuted: true)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    func test41ReconCalendarSyncStatus() async throws {
+        VisualQAFixtures.seedReconCalendar()
+        try await settingsScreen("41-recon-calendar-sync-status", heightMultiplier: 3) {
+            ReconView(initialSection: .calendar)
+        }
+    }
+
+    func test42FoodReviewEstimateLooksOff() async throws {
+        try await eachSize("42-food-review-estimate-looks-off", sheet: {
+            FoodResultView(
+                emoji: "🥗",
+                source: .snapFood,
+                name: "Chicken rice bowl",
+                calories: 640,
+                protein: 48,
+                carbs: 72,
+                fat: 16,
+                servingSizeGrams: 420,
+                fiber: 6,
+                profile: .default,
+                entriesForDate: { _ in [] },
+                weightMetric: false,
+                onLog: { _ in },
+                estimateCheck: .preview(.looksOff(
+                    direction: .tooLow,
+                    expectedBandLabel: "1,000–1,500 kcal (a very large or restaurant-size meal)",
+                    model: "jev-1.13.0"
+                )),
+                onReestimate: { _ in }
+            )
+        }) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
+    func test43SettingsAIProvidersEstimateCheck() async throws {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: TypeSafeSettings.enabledKey)
+        defaults.set(TypeSafeEndpoint.direct.rawValue, forKey: TypeSafeSettings.endpointKey)
+        defaults.set("jev-latest", forKey: TypeSafeSettings.modelKey)
+        defer {
+            defaults.removeObject(forKey: TypeSafeSettings.enabledKey)
+            defaults.removeObject(forKey: TypeSafeSettings.endpointKey)
+            defaults.removeObject(forKey: TypeSafeSettings.modelKey)
+        }
+        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 4) {
+            ProfileView(settingsCategory: .aiProviders)
+        }
+    }
+
+    func test44SettingsAdvancedAIJevRouter() async throws {
+        JevRouterSettings.visualPreview = true
+        defer { JevRouterSettings.visualPreview = false }
+        try await settingsScreen("44-settings-advanced-ai-jev-router", heightMultiplier: 3) {
+            ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    /// The Jev Router section alone, so the largest text size shows every wrapped toggle.
+    func test44bJevRouterSection() async throws {
+        JevRouterSettings.visualPreview = true
+        defer { JevRouterSettings.visualPreview = false }
+        try await settingsScreen("44b-jev-router-section", heightMultiplier: 3) {
+            List {
+                Section {
+                    JevRouterAdvancedSection()
+                } header: {
+                    IronInfoSectionHeader(title: "Jev Router", infoTopic: .jevRouter)
+                }
+                .listRowBackground(AppColors.appCard)
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppColors.appBackground)
+            .navigationTitle(Text("Advanced AI"))
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    func test45JevRouterStats() async throws {
+        let defaults = UserDefaults(suiteName: "jev.router.visual")!
+        defaults.removePersistentDomain(forName: "jev.router.visual")
+        let telemetry = JevRouterTelemetry(defaults: defaults)
+        for latency in [180, 180, 180, 320, 320, 360] {
+            telemetry.recordNetwork(use: .mealMatch, latencyMs: latency, inputTokens: 500)
+        }
+        telemetry.recordCacheHit(use: .mealMatch)
+        telemetry.recordCacheHit(use: .mealMatch)
+        telemetry.recordShown(use: .mealMatch, preview: "rice", result: "accepted", latencyMs: 0, source: .cache)
+        for _ in 0..<4 {
+            telemetry.record(
+                .mealMatch,
+                .accepted(label: "chili", confidence: 0.88, llmCallsAvoided: 1),
+                preview: "chili",
+                latencyMs: 180,
+                model: "jev-1.13.0"
+            )
+        }
+        telemetry.record(
+            .mealMatch,
+            .accepted(label: "oatmeal", confidence: 0.91, llmCallsAvoided: 1),
+            preview: "oatmeal",
+            latencyMs: 180,
+            model: "jev-1.13.0"
+        )
+        telemetry.record(.mealMatch, .userOverride, preview: "oatmeal", latencyMs: nil, model: nil)
+        telemetry.record(
+            .mealMatch,
+            .fellBack(.lowConfidence),
+            preview: "chili",
+            latencyMs: 420,
+            model: "jev-1.13.0"
+        )
+        defer { defaults.removePersistentDomain(forName: "jev.router.visual") }
+        try await settingsScreen("45-jev-router-stats", heightMultiplier: 3) {
+            JevRouterStatsView(telemetry: telemetry)
+        }
+    }
+
+    func test46FoodReviewSavedMatch() async throws {
+        try await eachSize("46-food-review-saved-match", sheet: {
+            FoodResultView(
+                emoji: "🌯",
+                source: .textInput,
+                name: "Chicken burrito bowl",
+                calories: 640,
+                protein: 42,
+                carbs: 58,
+                fat: 22,
+                servingSizeGrams: 450,
+                profile: .default,
+                entriesForDate: { _ in [] },
+                weightMetric: false,
+                onLog: { _ in },
+                savedMatch: SavedMatchBanner(entryName: "Chicken burrito bowl"),
+                onEstimateInstead: {}
+            )
+        }) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
+    func test47CoachLocalAnswer() async throws {
+        VisualQAFixtures.seedCoachLocalAnswer()
+        try await eachSize("47-coach-local-answer") { _ in
+            VisualQATabShell(selected: .coach) { ChatView() }
+        }
+    }
+
+    func test48PlausibilityAlert() async throws {
+        // The shared modifier every save point uses, active over a real screen.
+        // The loggers keep their flag message in private @State, so the host passes it directly.
+        try await eachSize("48-plausibility-alert") { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+            .plausibilityConfirmation(
+                title: "Double-check before saving",
+                message: "Bench press set 2: 800 lb. Did you mean 80?",
+                onSave: {},
+                onEdit: {}
+            )
+        }
+        // Body-metric copy: "Save <value> <unit>?" with a plain Save button.
+        try await eachSize("48b-plausibility-weight") { _ in
+            VisualQATabShell(selected: .progress) { ProgressTabView() }
+                .plausibilityConfirmation(
+                    title: "Save 95.0 kg?",
+                    message: "This weight looks like a kg/lb unit mix-up.",
+                    saveTitle: "Save",
+                    onSave: {},
+                    onEdit: {}
+                )
+        }
+    }
+
+    private func settingsScreen<Content: View>(
+        _ name: String,
+        heightMultiplier: CGFloat = 1,
+        @ViewBuilder content: @escaping () -> Content
+    ) async throws {
+        seedSettingsSubtitles()
+        try await eachSize(name, heightMultiplier: heightMultiplier) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { content() }
+            }
+        }
+    }
+
+    private func seedSettingsSubtitles() {
+        AIProviderSettings.selectedProvider = .gemini
+        AIProviderSettings.selectedModel = AIProvider.gemini.defaultModel
+        AIProviderSettings.setAPIKey("visual-qa-key", for: .gemini)
+        VisualQAFixtures.icloudLastBackupISO = ISO8601DateFormatter().string(
+            from: Date().addingTimeInterval(-2 * 60 * 60)
+        )
+        UserDefaults.standard.set(true, forKey: "healthKitEnabled")
+        UserDefaults.standard.set("lbs", forKey: "weightUnit")
+        UserDefaults.standard.set(true, forKey: "notificationsEnabled")
+        let bridge = NeonBridgeSettings(baseURL: NeonBridgeSettings.defaultBaseURL, apiKey: nil)
+        bridge.save()
+    }
+
 
     // MARK: - Workout draft
 
@@ -452,6 +740,9 @@ final class VisualQASnapshotTests: XCTestCase {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let fileName = "\(VisualQAOutput.deviceLabel)_\(sizeLabel)_\(name).png"
+        if name == "10-more-settings", sizeLabel == "default", window.bounds.height <= 700 {
+            VisualQADiagnostics.assertHubRowsAboveTabBar(in: window)
+        }
         VisualQADiagnostics.recordNavigationBars(in: window, for: fileName)
         if let data = image.pngData() {
             VisualQAOutput.write(data, named: fileName)
@@ -516,6 +807,170 @@ enum VisualQADiagnostics {
         let text = lines.joined(separator: "\n") + "\n"
         VisualQAOutput.write(Data(text.utf8), named: "navbar-\(VisualQAOutput.deviceLabel).txt")
     }
+
+    static func assertHubRowsAboveTabBar(in window: UIWindow) {
+        let rows = [
+            ("settings.category.reconBench", "Recon Bench"),
+            ("settings.category.training", "Training"),
+            ("settings.category.foodAI", "Food & AI"),
+            ("settings.category.bodyHealth", "Body & Health"),
+            ("settings.category.dataSync", "Data & Sync"),
+            ("settings.category.notifications", "Notifications"),
+            ("settings.category.about", "About"),
+        ]
+        let identifiers = Set(rows.map(\.0))
+        scrollHubToTop(window)
+        window.layoutIfNeeded()
+        guard let tabBar = findTabBar(in: window) else {
+            XCTFail("Missing tab bar")
+            return
+        }
+        if let items = tabBar.items, items.count > 4 {
+            XCTAssertNil(items[4].badgeValue, "More tab shows an update badge")
+        }
+        let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
+        if let scroll = tallestScrollView(in: window) {
+            let coveredByTab = window.bounds.maxY - tabTop
+            XCTAssertGreaterThanOrEqual(
+                scroll.adjustedContentInset.bottom,
+                coveredByTab,
+                "More list clearance is shorter than the tab bar"
+            )
+        } else {
+            XCTFail("Missing More hub scroll view")
+        }
+        let frames = hubRowFrames(in: window, identifiers: identifiers)
+        for (identifier, title) in rows {
+            guard let rest = frames[identifier] else {
+                XCTFail("Missing More hub row \(title). \(hubLookupDebug)")
+                continue
+            }
+            XCTAssertLessThan(rest.maxY, tabTop + 1, "\(title) sits under the tab bar at rest on iPhone SE")
+        }
+        scrollHubToBottom(window)
+        window.layoutIfNeeded()
+        writeHubScreenshot(of: window, named: "10b-more-settings-scrolled")
+        let scrolled = hubRowFrames(in: window, identifiers: identifiers)
+        for (identifier, title) in rows {
+            guard let frame = scrolled[identifier] else {
+                XCTFail("\(title) disappeared after scrolling the More hub")
+                continue
+            }
+            XCTAssertLessThanOrEqual(frame.maxY, tabTop + 1, "\(title) can't be scrolled above the tab bar on iPhone SE")
+        }
+        scrollHubToTop(window)
+        window.layoutIfNeeded()
+    }
+
+    private static func tallestScrollView(in view: UIView) -> UIScrollView? {
+        var best: UIScrollView?
+        func walk(_ candidate: UIView) {
+            if let scroll = candidate as? UIScrollView,
+               scroll.contentSize.height > (best?.contentSize.height ?? 0) {
+                best = scroll
+            }
+            for subview in candidate.subviews { walk(subview) }
+        }
+        walk(view)
+        return best
+    }
+
+    private static func writeHubScreenshot(of window: UIWindow, named name: String) {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.windowScene?.screen.scale ?? 2
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        if let data = image.pngData() {
+            VisualQAOutput.write(data, named: "\(VisualQAOutput.deviceLabel)_default_\(name).png")
+        }
+    }
+
+    private static var hubLookupDebug = ""
+
+    private static func scrollHubToTop(_ view: UIView) {
+        if let scroll = view as? UIScrollView {
+            scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        }
+        for subview in view.subviews { scrollHubToTop(subview) }
+    }
+
+    private static func scrollHubToBottom(_ view: UIView) {
+        if let scroll = view as? UIScrollView {
+            let bottom = max(-scroll.adjustedContentInset.top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+            scroll.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        }
+        for subview in view.subviews { scrollHubToBottom(subview) }
+    }
+
+    private static func hubRowFrames(in window: UIWindow, identifiers: Set<String>) -> [String: CGRect] {
+        var frames: [String: CGRect] = [:]
+        var seen = Set<ObjectIdentifier>()
+        var notes: [String] = []
+        func keep(_ identifier: String, _ frame: CGRect) {
+            guard identifiers.contains(identifier), frame.width > 40, frame.height > 20, frame.height < 220 else { return }
+            if let existing = frames[identifier], existing.height >= frame.height { return }
+            frames[identifier] = frame
+        }
+        func rowFrame(for view: UIView) -> CGRect {
+            var current: UIView? = view
+            while let candidate = current, candidate !== window {
+                let rect = candidate.convert(candidate.bounds, to: window)
+                if rect.width > 40, rect.height > 20, rect.height < 220 {
+                    return rect
+                }
+                current = candidate.superview
+            }
+            return view.convert(view.bounds, to: window)
+        }
+        func consider(_ object: NSObject) {
+            let token = ObjectIdentifier(object)
+            guard seen.insert(token).inserted else { return }
+            let accessibilityIdentifier = (object as? UIAccessibilityIdentification)?.accessibilityIdentifier
+            let layerName = (object as? UIView)?.layer.name
+            let identifier = [accessibilityIdentifier, layerName].compactMap { $0 }.first { !$0.isEmpty }
+            if let identifier {
+                let frame: CGRect
+                if let view = object as? UIView {
+                    frame = rowFrame(for: view)
+                } else if let space = window.windowScene?.screen.coordinateSpace {
+                    frame = window.convert(object.accessibilityFrame, from: space)
+                } else {
+                    frame = window.convert(object.accessibilityFrame, from: nil)
+                }
+                if notes.count < 12, identifier.contains("settings") {
+                    notes.append("\(identifier) \(Int(frame.width))x\(Int(frame.height))")
+                }
+                keep(identifier, frame)
+            }
+            guard let view = object as? UIView else { return }
+            if let elements = view.accessibilityElements {
+                for case let element as NSObject in elements {
+                    consider(element)
+                }
+            }
+            let count = view.accessibilityElementCount()
+            if count > 0, count < 10_000 {
+                for index in 0..<count {
+                    if let element = view.accessibilityElement(at: index) as? NSObject {
+                        consider(element)
+                    }
+                }
+            }
+            for subview in view.subviews { consider(subview) }
+        }
+        consider(window)
+        hubLookupDebug = notes.isEmpty ? "no settings identifiers in the window" : notes.joined(separator: "; ")
+        return frames
+    }
+
+    private static func findTabBar(in view: UIView) -> UITabBar? {
+        if let bar = view as? UITabBar { return bar }
+        for subview in view.subviews {
+            if let bar = findTabBar(in: subview) { return bar }
+        }
+        return nil
+    }
 }
 
 // MARK: - Output
@@ -536,7 +991,9 @@ enum VisualQAOutput {
         if let name = env["SIMULATOR_DEVICE_NAME"], !name.isEmpty {
             return name.filter { $0.isLetter || $0.isNumber }
         }
-        let bounds = UIScreen.main.bounds
+        let bounds = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.bounds ?? .zero
         return "\(Int(bounds.width))x\(Int(bounds.height))"
     }
 
@@ -690,36 +1147,35 @@ struct VisualQAStepsEdgeCases: View {
     }
 }
 
-/// Mirrors the "On-Device Model" block of Settings > AI Providers & Fallbacks.
+/// Gemma card states for visual QA. ProfileView hosts the live On-Device Models screen.
 struct VisualQAOnDeviceModelSection: View {
     var body: some View {
         List {
             Section {
-                onDeviceHeader
                 Gemma4ModelSettingsView(previewState: .downloading(0.42)) {}
+            } header: {
+                IronSectionTitle(title: "Downloading")
             }
             .listRowBackground(AppColors.appCard)
 
             Section {
-                onDeviceHeader
                 Gemma4ModelSettingsView(previewState: .notDownloaded) {}
+            } header: {
+                IronSectionTitle(title: "Not Downloaded")
+            }
+            .listRowBackground(AppColors.appCard)
+
+            Section {
+                Gemma4ModelSettingsView(previewState: .ready) {}
+            } header: {
+                IronSectionTitle(title: "Ready")
             }
             .listRowBackground(AppColors.appCard)
         }
         .scrollContentBackground(.hidden)
         .background(IronTheme.canvas)
-        .navigationTitle("AI Providers & Fallbacks")
+        .navigationTitle("On-Device Models")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var onDeviceHeader: some View {
-        Label(
-            LocalModelStrings.text("settings.onDeviceModel", defaultValue: "On-Device Model"),
-            systemImage: "iphone.gen3.radiowaves.left.and.right"
-        )
-        .font(.system(.subheadline, design: .rounded, weight: .bold))
-        .foregroundStyle(AppColors.calorie)
-        .textCase(.uppercase)
     }
 }
 
@@ -754,6 +1210,10 @@ final class VisualQAStores {
         strength = StrengthWorkoutStore(defaults: defaults)
         importedWorkouts = ImportedHealthWorkoutStore(defaults: defaults)
         weeklyChallenge = WeeklyChallengeStore(defaults: defaults)
+        if let iso = VisualQAFixtures.icloudLastBackupISO {
+            defaults.set(iso, forKey: CloudBackupService.lastAtKey)
+            defaults.set(true, forKey: CloudBackupService.enabledKey)
+        }
         workoutDraft = WorkoutDraftStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true))
         cloudBackup = CloudBackupService(defaults: defaults)
         bodyFat = BodyFatStore(observesExternalChanges: false)
@@ -804,6 +1264,7 @@ final class VisualQAStores {
 enum VisualQAFixtures {
     nonisolated static let host = VisualQAStubStorage.host
     static let workoutID = "qa-workout-1"
+    static var icloudLastBackupISO: String?
     private static var savedSettings: NeonBridgeSettings?
 
     static func install() {
@@ -871,6 +1332,18 @@ enum VisualQAFixtures {
         }
         service.lastSyncDate = Date().addingTimeInterval(-600)
         service.lastSyncError = nil
+    }
+
+    static func seedCoachLocalAnswer() {
+        let chat = ChatStore()
+        VisualQAGraveyard.keep(chat)
+        chat.reset()
+        chat.append(ChatMessage(role: .user, content: "how many steps have I done today?"))
+        chat.append(ChatMessage(
+            role: .assistant,
+            content: "You're at 6,420 steps today, 64% of your 10,000 goal.",
+            routerAction: .localAnswer
+        ))
     }
 
     static func seedChat() {

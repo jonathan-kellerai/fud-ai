@@ -118,6 +118,7 @@ struct ContentView: View {
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
     @State private var appUpdateState: AppUpdateState = .idle
     @State private var selectedTab: AppTab = .home
+    private let routerHandoff = RouterHandoff.shared
     @State private var quickActionRequest: QuickActionRequest?
     @State private var foodLogMethodRequest: FoodLogMethodRequest?
     // One-time post-update prompts for existing users (see PostUpdatePrompts).
@@ -130,8 +131,12 @@ struct ContentView: View {
             .tint(AppThemeColor.color(for: appThemeColorRaw).color)
             .task {
                 consumePendingLaunchRoutes()
-                await refreshAppUpdateState()
-                await runPostUpdatePromptsIfNeeded()
+                if JLFeatureFlags.fudUpdateCheck {
+                    await refreshAppUpdateState()
+                }
+                if JLFeatureFlags.fudHostedAI || JLFeatureFlags.fudMarketing {
+                    await runPostUpdatePromptsIfNeeded()
+                }
             }
             .alert("Optional: let us handle the AI keys", isPresented: $showHostedUpsellPrompt) {
                 Button("See Plus & Pro plans") {
@@ -172,6 +177,12 @@ struct ContentView: View {
                 if newPhase == .active {
                     consumePendingLaunchRoutes()
                 }
+            }
+            .onChange(of: routerHandoff.pendingFoodText) { _, text in
+                if text != nil { selectedTab = .home }
+            }
+            .onChange(of: routerHandoff.pendingOpenTodayWorkout) { _, open in
+                if open { selectedTab = .train }
             }
     }
 
@@ -225,7 +236,7 @@ struct ContentView: View {
                     Image(systemName: "ellipsis")
                     Text("More")
                 }
-                .badge(appUpdateState.isUpdateAvailable ? "!" : nil)
+                .badge(JLFeatureFlags.fudUpdateCheck && appUpdateState.isUpdateAvailable ? "!" : nil)
         }
     }
 
@@ -852,6 +863,8 @@ struct HomeView: View {
         case barcode(String)
     }
     @State private var retryRequest: RetryRequest?
+    @State private var lastEstimateRequest: RetryRequest?
+    @State private var reestimateUsed = false
     /// The in-flight photo/text/barcode analysis behind the analyzing sheet, so Cancel can abort it.
     @State private var analysisTask: Task<Void, Never>?
     @State private var selectedDate: Date = .now
@@ -982,6 +995,8 @@ struct HomeView: View {
     @State private var pendingSharedMeals: [FoodEntry] = []
 
     @State private var currentFoodResult: GeminiService.FoodAnalysis?
+    @State private var savedMatchContext: SavedMatchContext?
+    private let routerHandoff = RouterHandoff.shared
     @State private var currentImage: UIImage?
     @State private var currentImages: [UIImage] = []
     @State private var currentEmoji: String?
@@ -1260,9 +1275,19 @@ struct HomeView: View {
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
+                    JevCredentials.refresh()
                     checkAndConsumeSharedImage()
                     homeRefreshToken += 1
+                    consumeRouterFoodHandoff()
+                } else if newPhase == .background {
+                    JevRouterTelemetry.shared.flush()
                 }
+            }
+            .onAppear {
+                consumeRouterFoodHandoff()
+            }
+            .onChange(of: routerHandoff.pendingFoodText) { _, _ in
+                consumeRouterFoodHandoff()
             }
             .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in
                 retryRequest = nil
@@ -1769,7 +1794,24 @@ struct HomeView: View {
                             entriesForDate: { foodStore.entries(for: $0) },
                             weightMetric: weightUnitRaw == "kg",
                             onLog: { entry in
+                                if savedMatchContext != nil {
+                                    let preview = savedMatchContext?.entryName ?? entry.name
+                                    Task { await JevRouter.shared.report(.mealMatch, .loggedAfterMatch, preview: preview) }
+                                }
                                 if !foodStore.addEntry(entry) { showFoodLoggingBlocked = true }
+                            },
+                            estimateCheck: estimateCheckMode(for: result),
+                            onReestimate: reestimateUsed ? nil : { direction in
+                                reestimateFood(direction: direction, calories: result.calories, name: result.name)
+                            },
+                            savedMatch: savedMatchContext.map { SavedMatchBanner(entryName: $0.entryName) },
+                            onEstimateInstead: savedMatchContext.map { context in
+                                {
+                                    let original = context.originalDescription
+                                    Task { await JevRouter.shared.report(.mealMatch, .userOverride, preview: original) }
+                                    currentFoodSource = .textInput
+                                    startTextAnalysis(original, bypassSavedMatch: true)
+                                }
                             }
                         )
                     }
@@ -1797,50 +1839,13 @@ struct HomeView: View {
             }
             .sheet(item: $savedMealsMode, content: { mode in
                 RecentsView(mode: mode, logDate: logDateForSelectedDay, onReview: { entry in
+                    lastEstimateRequest = nil
                     currentImages = entry.allImageData.compactMap(UIImage.init(data:))
                     currentImage = currentImages.first
                     currentEmoji = entry.emoji
                     currentFoodSource = entry.source
-                    currentFoodResult = GeminiService.FoodAnalysis(
-                        name: entry.name,
-                        calories: entry.calories,
-                        protein: entry.protein,
-                        carbs: entry.carbs,
-                        fat: entry.fat,
-                        servingSizeGrams: entry.reviewServingReference,
-                        emoji: entry.emoji,
-                        sugar: entry.sugar,
-                        addedSugar: entry.addedSugar,
-                        fiber: entry.fiber,
-                        saturatedFat: entry.saturatedFat,
-                        monounsaturatedFat: entry.monounsaturatedFat,
-                        polyunsaturatedFat: entry.polyunsaturatedFat,
-                        cholesterol: entry.cholesterol,
-                        caffeine: entry.caffeine,
-                        supplementalNutrients: entry.supplementalNutrients,
-                        sodium: entry.sodium,
-                        potassium: entry.potassium,
-                        transFat: entry.transFat,
-                        calcium: entry.calcium,
-                        iron: entry.iron,
-                        magnesium: entry.magnesium,
-                        zinc: entry.zinc,
-                        vitaminA: entry.vitaminA,
-                        vitaminC: entry.vitaminC,
-                        vitaminD: entry.vitaminD,
-                        vitaminB12: entry.vitaminB12,
-                        vitaminE: entry.vitaminE,
-                        vitaminK: entry.vitaminK,
-                        folate: entry.folate,
-                        omega3: entry.omega3,
-                        servingUnitOptions: entry.reviewServingUnitOptions,
-                        selectedServingUnit: entry.reviewSelectedServingUnit,
-                        selectedServingQuantity: entry.reviewSelectedServingQuantity,
-                        servingSizeIsKnown: entry.hasKnownServingSize,
-                        progressiveMeal: entry.progressiveMeal,
-                        ingredients: entry.ingredients,
-                        productMetadata: entry.productMetadata
-                    )
+                    savedMatchContext = nil
+                    currentFoodResult = GeminiService.FoodAnalysis(savedEntry: entry)
                     foodLogPhase = .result
                     activeSheet = .foodResult
                 })
@@ -2056,14 +2061,18 @@ struct HomeView: View {
         images: [UIImage],
         mode: CameraMode,
         description: String? = nil,
-        progressiveMeal: Bool = false
+        progressiveMeal: Bool = false,
+        isReestimate: Bool = false
     ) {
-        retryRequest = .analysis(
+        let request = RetryRequest.analysis(
             images: images,
             mode: mode,
             description: description,
             progressiveMeal: progressiveMeal
         )
+        retryRequest = request
+        lastEstimateRequest = request
+        reestimateUsed = isReestimate
         presentFoodLogLoading(.analyzing)
 
         analysisTask?.cancel()
@@ -2136,6 +2145,49 @@ struct HomeView: View {
         activeSheet = .foodResult
     }
 
+    private func estimateCheckMode(for result: GeminiService.FoodAnalysis) -> EstimateCheckMode {
+        if savedMatchContext != nil { return .off }
+        guard TypeSafeSettings.isConfigured else { return .off }
+        let name = result.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.calories > 0, !name.isEmpty else { return .off }
+        let allowed = currentFoodSource == .snapFood
+            || (currentFoodSource == .textInput && TypeSafeSettings.checkTypedMeals)
+        guard allowed else { return .off }
+        return .live(EstimateCheckInput(analysis: result, userNote: estimateUserNote))
+    }
+
+    private var estimateUserNote: String? {
+        switch lastEstimateRequest {
+        case .analysis(_, _, let description, _):
+            return description
+        case .text(let description):
+            return description
+        default:
+            return nil
+        }
+    }
+
+    private func reestimateFood(direction: EstimateDirection, calories: Int, name: String) {
+        guard !reestimateUsed, let lastEstimateRequest else { return }
+        Task { await JevRouter.shared.report(.estimateCheck, .userOverride, preview: name) }
+        let hint = "A plausibility check flagged the previous estimate (\(calories) kcal for \(name)) as likely too \(direction.phrase). Re-check portion size and calorie density carefully."
+        switch lastEstimateRequest {
+        case .analysis(let images, _, let description, let progressiveMeal):
+            startAnalysis(
+                images: images,
+                mode: .snapFoodWithContext,
+                description: (description ?? "") + hint,
+                progressiveMeal: progressiveMeal,
+                isReestimate: true
+            )
+        case .text(let description):
+            currentFoodSource = .textInput
+            startTextAnalysis(description + "\n" + hint, isReestimate: true)
+        case .barcode:
+            break
+        }
+    }
+
     private func startBarcodeLookup(_ barcode: String) {
         let trimmedBarcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBarcode.isEmpty else { return }
@@ -2170,11 +2222,21 @@ struct HomeView: View {
         }
     }
 
-    private func startTextAnalysis(_ description: String) {
-        retryRequest = .text(description)
+    private func startTextAnalysis(_ description: String, isReestimate: Bool = false, bypassSavedMatch: Bool = false) {
+        let request = RetryRequest.text(description)
+        retryRequest = request
+        lastEstimateRequest = request
+        reestimateUsed = isReestimate
+        savedMatchContext = nil
         presentFoodLogLoading(.analyzingText)
         analysisTask?.cancel()
         analysisTask = Task {
+            if !bypassSavedMatch, !isReestimate,
+               let entry = await SavedMealMatcher.match(description, store: foodStore) {
+                if Task.isCancelled { return }
+                presentSavedMatch(entry, description: description)
+                return
+            }
             do {
                 let result = try await GeminiService.analyzeTextInput(description: description)
                 try Task.checkCancellation()
@@ -2188,6 +2250,26 @@ struct HomeView: View {
                 presentAnalysisError(error)
             }
         }
+    }
+
+    @MainActor
+    private func presentSavedMatch(_ entry: FoodEntry, description: String) {
+        lastEstimateRequest = .text(description)
+        currentImage = nil
+        currentImages = []
+        currentEmoji = entry.emoji
+        currentFoodSource = entry.source
+        retryRequest = nil
+        savedMatchContext = SavedMatchContext(entryName: entry.name, originalDescription: description)
+        presentFoodResult(GeminiService.FoodAnalysis(savedEntry: entry))
+    }
+
+    private func consumeRouterFoodHandoff() {
+        guard let text = routerHandoff.pendingFoodText else { return }
+        routerHandoff.pendingFoodText = nil
+        guard canBeginFoodLogging() else { return }
+        currentFoodSource = .textInput
+        startTextAnalysis(text)
     }
 
     /// Dismiss the loading sheet first, then present the alert after the sheet
@@ -2283,7 +2365,7 @@ extension HomeView {
         let config = AddMenuSettings.load()
         if config.usesFlatLayout {
             Section {
-                ForEach(config.flatMethods) { method in
+                ForEach(config.flatMethods.filter { $0 != .siriPhrases }) { method in
                     addMenuButton(for: method)
                 }
             }
@@ -2291,7 +2373,7 @@ extension HomeView {
             ForEach(config.groups.filter { !$0.methods.isEmpty }) { group in
                 Section {
                     Menu {
-                        ForEach(group.methods) { method in
+                        ForEach(group.methods.filter { $0 != .siriPhrases }) { method in
                             addMenuButton(for: method)
                         }
                     } label: {
@@ -3673,15 +3755,19 @@ enum AISettingsInfoTopic {
     case imageFallback
     case speechToText
     case speechFallback
+    case estimateCheck
+    case jevRouter
 
     var title: String {
         switch self {
         case .primaryAI: "Primary AI"
         case .textAI: "Text AI"
-        case .textFallback: "Text AI Fallback"
+        case .textFallback: "Text Fallback"
         case .imageFallback: "Image AI Fallback"
         case .speechToText: "Speech-to-Text"
-        case .speechFallback: "STT Fallback"
+        case .speechFallback: "Voice Fallback"
+        case .estimateCheck: "Estimate Check"
+        case .jevRouter: "Jev Router"
         }
     }
 
@@ -3699,11 +3785,56 @@ enum AISettingsInfoTopic {
             "Converts microphone audio into text only. The transcript then follows the normal text route: Text AI when enabled, otherwise Primary AI. Matching provider API keys are reused unless you save a separate STT key."
         case .speechFallback:
             "Retries transcription when the selected remote STT provider fails. It only produces a transcript; that transcript still follows the normal text AI route. Native iOS speech already uses Apple's offline and online recognition recovery, so a separate STT fallback is available only for remote providers."
+        case .estimateCheck:
+            "Jev makes quick yes/no and multiple-choice decisions so the app can skip or shrink AI calls. It only receives text (never photos). Nothing is logged without your review. Estimate Check still only sends the food name, item names, and portion sizes."
+        case .jevRouter:
+            "The router asks Jev short questions before a bigger AI call. It is off until you turn it on, and it does nothing without a TypeSafe or AI Gateway key. Plausibility checks can flag typos on this iPhone without a key. The optional tie-break sends relative facts as text, never photos or your absolute body weight."
         }
     }
 }
 
-private struct AISettingsSubsectionHeader: View {
+enum NotificationsHubSubtitle {
+    static func text(masterEnabled: Bool, reminderCount: Int) -> String {
+        guard masterEnabled else { return "Off" }
+        return reminderCount == 1 ? "1 reminder on" : "\(reminderCount) reminders on"
+    }
+}
+
+struct IronInfoSectionHeader: View {
+    let title: String
+    let infoTopic: AISettingsInfoTopic
+    @State private var isShowingInfo = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.textSecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            Button {
+                isShowingInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(IronTheme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About \(title)")
+            Spacer(minLength: 0)
+        }
+        .alert(infoTopic.title, isPresented: $isShowingInfo) {
+            Button("Got it", role: .cancel) { }
+        } message: {
+            Text(infoTopic.message)
+        }
+    }
+}
+
+struct AISettingsSubsectionHeader: View {
     let title: String
     let systemImage: String
     let infoTopic: AISettingsInfoTopic
@@ -3713,12 +3844,12 @@ private struct AISettingsSubsectionHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Label {
-                Text(title)
-                    .textCase(.uppercase)
+                subsectionTitle(title)
             } icon: {
                 Image(systemName: systemImage)
             }
             .accessibilityAddTraits(.isHeader)
+            .layoutPriority(1)
 
             Spacer(minLength: 8)
 
@@ -3742,63 +3873,97 @@ private struct AISettingsSubsectionHeader: View {
             Text(infoTopic.message)
         }
     }
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// One uppercase word per line at accessibility sizes, so "TYPESAFE" is not hyphenated.
+    @ViewBuilder
+    private func subsectionTitle(_ title: String) -> some View {
+        let words = title.split(separator: " ").map { String($0).uppercased() }
+        if dynamicTypeSize.isAccessibilitySize {
+            // Capped so a long single word ("TYPESAFE") fits beside the icon and info button.
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(words, id: \.self) { word in
+                    Text(word)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+            }
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        } else {
+            Text(words.joined(separator: " "))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
 }
 
 enum ProfileSettingsCategory: String, CaseIterable, Identifiable, Hashable {
-    case personalInfo
-    case goalsNutrition
-    case trackingReminders
-    case notifications
-    case aiAccess
+    case training
+    case trainingAdvanced
+    case foodAI
+    case dailyTargets
+    case mealTimes
+    case waterFasting
+    case homeMenu
+    case shortcutsSiri
     case aiProviders
-    case speechToText
-    case appPreferences
-    case workout
-    case healthData
-    case dataManagement
+    case onDeviceModels
+    case advancedAI
+    case bodyHealth
+    case profile
+    case dataSync
+    case notifications
+    case about
+    case acknowledgements
+    case aiAccess
     case appUpdates
     case support
     case helpFeedback
     case community
     case legal
 
-    static let preferenceCases: [Self] = [
-        .personalInfo,
-        .goalsNutrition,
-        .trackingReminders,
-        .notifications,
-        .aiAccess,
-        .aiProviders,
-        .speechToText,
-        .appPreferences,
-        .workout,
-        .healthData,
-        .dataManagement
-    ]
+    static var preferenceCases: [Self] {
+        var rows: [Self] = [.training, .foodAI, .bodyHealth, .dataSync]
+        if JLFeatureFlags.fudHostedAI {
+            rows.append(.aiAccess)
+        }
+        return rows
+    }
 
-    static let appInfoCases: [Self] = [
-        .appUpdates,
-        .support,
-        .helpFeedback,
-        .community,
-        .legal
-    ]
+    static var appInfoCases: [Self] {
+        var rows: [Self] = [.notifications, .about]
+        if JLFeatureFlags.fudUpdateCheck {
+            rows.insert(.appUpdates, at: 0)
+        }
+        if JLFeatureFlags.fudMarketing {
+            rows.append(contentsOf: [.support, .helpFeedback, .community, .legal])
+        }
+        return rows
+    }
 
     var id: Self { self }
 
     var title: LocalizedStringResource {
         switch self {
-        case .personalInfo: "Personal Info"
-        case .goalsNutrition: "Goals & Nutrition"
-        case .trackingReminders: "Tracking & Reminders"
+        case .training: "Training"
+        case .trainingAdvanced: "Advanced"
+        case .foodAI: "Food & AI"
+        case .dailyTargets: "Daily Targets"
+        case .mealTimes: "Meal Times"
+        case .waterFasting: "Water & Fasting"
+        case .homeMenu: "Home + Menu"
+        case .shortcutsSiri: "Shortcuts & Siri"
+        case .aiProviders: "AI Providers"
+        case .onDeviceModels: "On-Device Models"
+        case .advancedAI: "Advanced AI"
+        case .bodyHealth: "Body & Health"
+        case .profile: "Profile"
+        case .dataSync: "Data & Sync"
         case .notifications: "Notifications"
+        case .about: "About"
+        case .acknowledgements: "Acknowledgements"
         case .aiAccess: "AI Access"
-        case .aiProviders: "AI Providers & Fallbacks"
-        case .speechToText: "Speech-to-Text"
-        case .appPreferences: "App Settings"
-        case .workout: "Workout"
-        case .healthData: "Health & Data"
-        case .dataManagement: "Data Management"
         case .appUpdates: "App & Updates"
         case .support: "Support JL Physical"
         case .helpFeedback: "Help & Feedback"
@@ -3809,17 +3974,24 @@ enum ProfileSettingsCategory: String, CaseIterable, Identifiable, Hashable {
 
     var systemImage: String {
         switch self {
-        case .personalInfo: "person.crop.circle"
-        case .goalsNutrition: "target"
-        case .trackingReminders: "timer"
-        case .notifications: "bell"
-        case .aiAccess: "key.horizontal"
+        case .training: "figure.strengthtraining.traditional"
+        case .trainingAdvanced: "wrench.and.screwdriver"
+        case .foodAI: "fork.knife"
+        case .dailyTargets: "target"
+        case .mealTimes: "clock"
+        case .waterFasting: "drop"
+        case .homeMenu: "plus.circle"
+        case .shortcutsSiri: "bolt.fill"
         case .aiProviders: "sparkles"
-        case .speechToText: "waveform"
-        case .appPreferences: "slider.horizontal.3"
-        case .workout: "dumbbell"
-        case .healthData: "heart"
-        case .dataManagement: "externaldrive"
+        case .onDeviceModels: "iphone.gen3"
+        case .advancedAI: "slider.horizontal.3"
+        case .bodyHealth: "heart"
+        case .profile: "person.crop.circle"
+        case .dataSync: "externaldrive"
+        case .notifications: "bell"
+        case .about: "info.circle"
+        case .acknowledgements: "text.book.closed"
+        case .aiAccess: "key.horizontal"
         case .appUpdates: "arrow.triangle.2.circlepath.circle.fill"
         case .support: "heart.fill"
         case .helpFeedback: "exclamationmark.bubble.fill"
@@ -3840,21 +4012,71 @@ enum ProfileSettingsCategory: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+struct SettingsHubRowLabel: View {
+    let title: LocalizedStringResource
+    let systemImage: String
+    let subtitle: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                UnbrokenText(title)
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                UnbrokenText(subtitle)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.brass)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(IronTheme.bloodText)
+                .frame(width: 24)
+        }
+    }
+}
+
 private struct ProfileSettingsCategoryRow: View {
     let category: ProfileSettingsCategory
+    let subtitle: String
 
     var body: some View {
         NavigationLink(value: category) {
-            Label {
-                Text(category.title)
-                    .font(.system(.body, design: .rounded, weight: .medium))
-            } icon: {
-                Image(systemName: category.systemImage)
-                    .foregroundStyle(AppColors.calorie)
-                    .frame(width: 24)
-            }
+            SettingsHubRowLabel(title: category.title, systemImage: category.systemImage, subtitle: subtitle)
         }
         .accessibilityIdentifier("settings.category.\(category.rawValue)")
+        .overlay {
+            SettingsHubRowAnchor(identifier: "settings.category.\(category.rawValue)")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Clear overlay so visual QA can measure hub rows without reading SwiftUI text views.
+private struct SettingsHubRowAnchor: UIViewRepresentable {
+    let identifier: String
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        apply(identifier, to: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        uiView.isUserInteractionEnabled = false
+        uiView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        apply(identifier, to: uiView)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 320, height: 52))
+    }
+
+    private func apply(_ identifier: String, to view: UIView) {
+        view.accessibilityIdentifier = identifier
+        view.layer.name = identifier
     }
 }
 
@@ -3879,7 +4101,6 @@ struct ProfileView: View {
     private var profileBinding: Binding<UserProfile> {
         Binding(get: { profileStore.profile }, set: { profileStore.profile = $0 })
     }
-    @AppStorage("appearanceMode") private var appearanceMode = "system"
     @AppStorage("heightUnit") private var heightUnitRaw = "ftin"
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
@@ -3904,6 +4125,14 @@ struct ProfileView: View {
     @Binding private var updateState: AppUpdateState
     private let refreshUpdateState: () async -> Void
     private let settingsCategory: ProfileSettingsCategory?
+
+    init(settingsCategory: ProfileSettingsCategory? = nil) {
+        self.init(
+            updateState: .constant(.idle),
+            refreshUpdateState: {},
+            settingsCategory: settingsCategory
+        )
+    }
 
     fileprivate init(
         updateState: Binding<AppUpdateState>,
@@ -3980,6 +4209,10 @@ struct ProfileView: View {
     @State private var speechFallbackApiKeyText: String = SpeechSettings.apiKey(for: SpeechSettings.selectedFallbackProvider) ?? ""
     @State private var showSpeechFallbackAPIKey = false
     @State private var showExerciseLibrary = false
+    @State private var showLegacyLogger = false
+    @State private var restSoundPreview = RestTimerService()
+    @State private var reconBenchStore = ReconBenchStore()
+    @Environment(CloudBackupService.self) private var cloudBackup
 
     private var heightMetric: Bool { heightUnitRaw == "cm" }
     private var weightMetric: Bool { weightUnitRaw == "kg" }
@@ -4046,11 +4279,24 @@ struct ProfileView: View {
                 NavigationStack {
                     settingsHub
                         .navigationDestination(for: ProfileSettingsCategory.self) { category in
-                            if category == .notifications {
+                            switch category {
+                            case .notifications:
                                 NotificationSettingsView()
-                            } else if category == .aiAccess {
-                                HostedAISettingsView()
-                            } else {
+                            case .mealTimes:
+                                MealTimeSettingsView()
+                            case .homeMenu:
+                                AddMenuSettingsView()
+                            case .shortcutsSiri:
+                                ShortcutsAndSiriSettingsView()
+                            case .about:
+                                AboutView()
+                            case .acknowledgements:
+                                AcknowledgementsView()
+                            case .aiAccess:
+                                if JLFeatureFlags.fudHostedAI {
+                                    HostedAISettingsView()
+                                }
+                            default:
                                 ProfileView(
                                     updateState: $updateState,
                                     refreshUpdateState: refreshUpdateState,
@@ -4066,67 +4312,242 @@ struct ProfileView: View {
     private var settingsHub: some View {
         List {
             Section {
-                Button {
-                    showExerciseLibrary = true
-                } label: {
-                    Label {
-                        Text("Exercise Library")
-                            .font(.system(.body, design: .rounded, weight: .medium))
-                    } icon: {
-                        Image(systemName: "dumbbell.fill")
-                            .foregroundStyle(AppColors.calorie)
-                            .frame(width: 24)
-                    }
-                }
-                .buttonStyle(.plain)
                 NavigationLink {
                     ReconView()
                 } label: {
-                    Label {
-                        Text("Recon Bench")
-                            .font(.system(.body, design: .rounded, weight: .medium))
-                    } icon: {
-                        Image(systemName: "cross.vial.fill")
-                            .foregroundStyle(AppColors.calorie)
-                            .frame(width: 24)
-                    }
+                    SettingsHubRowLabel(
+                        title: "Recon Bench",
+                        systemImage: "cross.vial.fill",
+                        subtitle: reconHubSubtitle
+                    )
+                }
+                .accessibilityIdentifier("settings.category.reconBench")
+                .overlay {
+                    SettingsHubRowAnchor(identifier: "settings.category.reconBench")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
                 }
             }
             .listRowBackground(AppColors.appCard)
 
             Section {
                 ForEach(ProfileSettingsCategory.preferenceCases) { category in
-                    ProfileSettingsCategoryRow(category: category)
+                    ProfileSettingsCategoryRow(category: category, subtitle: hubSubtitle(for: category))
                 }
+            } header: {
+                IronSectionTitle(title: "Settings")
             }
             .listRowBackground(AppColors.appCard)
 
             Section {
                 ForEach(ProfileSettingsCategory.appInfoCases) { category in
-                    ProfileSettingsCategoryRow(category: category)
+                    ProfileSettingsCategoryRow(category: category, subtitle: hubSubtitle(for: category))
                 }
+            } header: {
+                IronSectionTitle(title: "App")
             }
             .listRowBackground(AppColors.appCard)
 
-            AboutFooterSection()
-
-            Color.clear
-                .frame(height: 72)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
         }
+        .listSectionSpacing(4)
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 12))
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showExerciseLibrary) {
-            WorkoutsView(presentedAsSheet: true)
+            WorkoutsView(presentedAsSheet: true, libraryOnly: true)
+        }
+        .sheet(isPresented: $showLegacyLogger) {
+            WorkoutsView(presentedAsSheet: true, forcedMode: .log)
+        }
+    }
+
+    private var reconHubSubtitle: String {
+        let today = ReconMath.todayISO()
+        let count = reconBenchStore.entries.reduce(into: 0) { partial, entry in
+            partial += ReconMath.expandEntry(entry).filter { $0.date == today }.count
+        }
+        return count == 1 ? "1 dose today" : "\(count) doses today"
+    }
+
+    private func hubSubtitle(for category: ProfileSettingsCategory) -> String {
+        switch category {
+        case .training:
+            let name = ActiveProgramCache.load()?.name ?? "Program V2"
+            return "\(name) · rest \(RestTimerSettings.defaultRestLabel)"
+        case .foodAI:
+            let model = AIProvider.friendlyModelName(AIProviderSettings.selectedModel)
+            return "\(model) · \(gemmaStatusLabel)"
+        case .bodyHealth:
+            let health = healthKitEnabled ? "Apple Health on" : "Apple Health off"
+            let unit = weightUnitRaw == "kg" ? "kg" : "lb"
+            return "\(health) · \(unit)"
+        case .dataSync:
+            return "\(bridgeStatusLabel) · \(iCloudStatusLabel)"
+        case .notifications:
+            return NotificationsHubSubtitle.text(
+                masterEnabled: UserDefaults.standard.bool(forKey: "notificationsEnabled"),
+                reminderCount: enabledReminderCount
+            )
+        case .about:
+            return "\(JLAppVersion.shortAndBuild) · based on Fud AI"
+        default:
+            return ""
+        }
+    }
+
+    private var gemmaStatusLabel: String {
+        Gemma4LocalModelManager.shared.settingsSubtitle
+    }
+
+    private var bridgeStatusLabel: String {
+        let pending = WorkoutSyncService.shared.syncQueue.count
+        if pending > 0 { return "Bridge \(pending) pending" }
+        let settings = NeonBridgeSettings.load()
+        return settings.baseURL.isEmpty ? "Bridge off" : "Bridge OK"
+    }
+
+    private var iCloudStatusLabel: String {
+        guard let raw = cloudBackup.lastAt, let date = ISO8601DateFormatter().date(from: raw) else {
+            return cloudBackup.enabled ? "iCloud on" : "iCloud off"
+        }
+        let hours = Int(Date().timeIntervalSince(date) / 3600)
+        if hours < 1 { return "iCloud just now" }
+        if hours < 48 { return "iCloud \(hours) h ago" }
+        return "iCloud \(hours / 24) d ago"
+    }
+
+    private var profileHubSubtitle: String {
+        let gender = profile.gender.displayName
+        return "\(gender) · \(profile.age) · \(heightDisplay)"
+    }
+
+    private var dailyTargetsSubtitle: String {
+        "\(profile.effectiveCalories.formatted()) kcal · \(profile.effectiveProtein) g P"
+    }
+
+    private var waterFastingSubtitle: String {
+        let water = waterTrackingEnabled ? "Water on" : "Water off"
+        let fasting = fastingTrackingEnabled ? "Fasting on" : "Fasting off"
+        return "\(water) · \(fasting)"
+    }
+
+    private var aiProvidersSubtitle: String {
+        let model = AIProvider.friendlyModelName(AIProviderSettings.selectedModel)
+        return "\(AIProviderSettings.selectedProvider.displayName) · \(model)"
+    }
+
+    private var otherNutrientsSubtitle: String {
+        let count = OptionalNutrient.allCases.filter { OptionalNutrientGoals.current.goal(for: $0) > 0 }.count
+        return "\(count) set"
+    }
+
+    private func autosaveCustomInstructions() {
+        guard customAIInstructions != AIProviderSettings.userContext else { return }
+        AIProviderSettings.userContext = customAIInstructions
+        savedAIInstructions = AIProviderSettings.userContext
+        customAIInstructions = savedAIInstructions
+    }
+
+    private var enabledReminderCount: Int {
+        let keys: [(String, Bool)] = [
+            ("breakfastReminderEnabled", true),
+            ("lunchReminderEnabled", true),
+            ("dinnerReminderEnabled", true),
+            ("streakReminderEnabled", true),
+            ("dailySummaryEnabled", true),
+            ("weightLogReminderEnabled", true),
+            ("bodyFatLogReminderEnabled", false),
+        ]
+        return keys.reduce(into: 0) { count, item in
+            let on = UserDefaults.standard.object(forKey: item.0) == nil
+                ? item.1
+                : UserDefaults.standard.bool(forKey: item.0)
+            if on { count += 1 }
         }
     }
 
     private var settingsList: some View {
             List {
+                if settingsCategory == .training {
+                    Section {
+                        NavigationLink {
+                            ProgramLibraryView()
+                        } label: {
+                            SettingsHubRowLabel(
+                                title: "Programs",
+                                systemImage: "list.bullet",
+                                subtitle: ActiveProgramCache.load()?.name ?? "Program V2"
+                            )
+                        }
+                        Button {
+                            showExerciseLibrary = true
+                        } label: {
+                            HStack {
+                                SettingsHubRowLabel(
+                                    title: "Exercise Library",
+                                    systemImage: "dumbbell.fill",
+                                    subtitle: "Browse movements"
+                                )
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(IronTheme.textPrimary)
+                    } header: {
+                        IronSectionTitle(title: "Program")
+                    }
+                    .listRowBackground(AppColors.appCard)
+
+                    Section {
+                        Stepper(value: Binding(
+                            get: { RestTimerSettings.defaultSeconds },
+                            set: { RestTimerSettings.defaultSeconds = $0 }
+                        ), in: 15...300, step: 15) {
+                            AdaptiveLabelValue {
+                                UnbrokenText("Default Rest")
+                            } value: {
+                                UnbrokenText(RestTimerSettings.defaultRestLabel)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Toggle("10-Second Clack", isOn: Binding(
+                            get: { RestTimerSettings.clackEnabled },
+                            set: { RestTimerSettings.clackEnabled = $0 }
+                        ))
+                        Toggle("Bell at Zero", isOn: Binding(
+                            get: { RestTimerSettings.bellEnabled },
+                            set: { RestTimerSettings.bellEnabled = $0 }
+                        ))
+                        Toggle("Haptic at Zero", isOn: Binding(
+                            get: { RestTimerSettings.hapticEnabled },
+                            set: { RestTimerSettings.hapticEnabled = $0 }
+                        ))
+                        Button("Test Sounds") {
+                            restSoundPreview.testSounds()
+                        }
+                    } header: {
+                        IronSectionTitle(title: "Rest Timer")
+                    } footer: {
+                        Text("Cues play over your music without pausing it. Per-exercise rest still overrides Default Rest.")
+                    }
+                    .listRowBackground(AppColors.appCard)
+
+                    if JLFeatureFlags.legacyWorkoutLogger {
+                        NavigationLink(value: ProfileSettingsCategory.trainingAdvanced) {
+                            SettingsHubRowLabel(title: "Advanced", systemImage: "wrench.and.screwdriver", subtitle: "Legacy Fud logger")
+                        }
+                        .listRowBackground(AppColors.appCard)
+                    }
+                }
+
                 // Section 1: Personal Info
-                if settingsCategory == .personalInfo {
+                if settingsCategory == .profile {
                 Section {
                     Picker(selection: profileBinding.gender) {
                         Text("Male").tag(Gender.male)
@@ -4164,20 +4585,6 @@ struct ProfileView: View {
                         activeSheet = .editBodyFat
                     }
 
-                    // Only surface the goal row to users who have a current
-                    // body-fat value — feature was scoped to "skippable, no
-                    // math impact, only visible if the user opted in to the
-                    // body-fat track in onboarding (or set one later here)."
-                    if profile.bodyFatPercentage != nil {
-                        ProfileInfoRow(
-                            icon: "target",
-                            label: "Goal Body Fat",
-                            value: profile.goalBodyFatPercentage != nil ? "\(Int(profile.goalBodyFatPercentage! * 100))%" : "Not set"
-                        ) {
-                            activeSheet = .editGoalBodyFat
-                        }
-                    }
-
                     // Optional tape-measure circumferences. Extra signal for the AI goal calc +
                     // Coach (waist-to-hip, waist-to-height, Navy body-fat %, frame). Never edits BMR.
                     NavigationLink {
@@ -4204,7 +4611,7 @@ struct ProfileView: View {
                     } label: {
                         Label {
                             HStack {
-                                Text("Allergen sensitivities")
+                                Text("Allergen Sensitivities")
                                 Spacer()
                                 Text(allergenSummary.isEmpty ? "Not set" : allergenSummary)
                                     .foregroundStyle(.secondary)
@@ -4221,7 +4628,55 @@ struct ProfileView: View {
 
                 // Section 2: Goal plan and automation. Daily nutrition targets live in a
                 // separate card below so this section stays easy to scan.
-                if settingsCategory == .goalsNutrition {
+                if settingsCategory == .bodyHealth {
+                Section {
+                    NavigationLink(value: ProfileSettingsCategory.profile) {
+                        SettingsHubRowLabel(
+                            title: "Profile",
+                            systemImage: "person.crop.circle",
+                            subtitle: profileHubSubtitle
+                        )
+                    }
+                } header: {
+                    IronSectionTitle(title: "You")
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Weight")
+                            .avoidsMidWordBreak()
+                        Picker("Weight", selection: $weightUnitRaw) {
+                            Text("lb").tag("lbs")
+                            Text("kg").tag("kg")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                    .accessibilityElement(children: .contain)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Height & Length")
+                            .avoidsMidWordBreak()
+                        Picker("Height & Length", selection: $heightUnitRaw) {
+                            Text("ft-in").tag("ftin")
+                            Text("cm").tag("cm")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                    .accessibilityElement(children: .contain)
+                    Picker(selection: $weekStartsOnMonday) {
+                        Text("Sunday").tag(false)
+                        Text("Monday").tag(true)
+                    } label: {
+                        Text("Week Starts On")
+                    }
+                    .pickerStyle(.menu)
+                } header: {
+                    IronSectionTitle(title: "Units")
+                }
+                .listRowBackground(AppColors.appCard)
+
                 Section {
                     Picker(selection: profileBinding.goal) {
                         ForEach(WeightGoal.allCases, id: \.self) { goal in
@@ -4229,7 +4684,7 @@ struct ProfileView: View {
                         }
                     } label: {
                         Label {
-                            Text("Weight Goal")
+                            Text("Goal")
                         } icon: {
                             Image(systemName: profile.goal.icon)
                                 .foregroundStyle(AppColors.calorie)
@@ -4309,6 +4764,92 @@ struct ProfileView: View {
                         }
                     }
 
+                    if profile.bodyFatPercentage != nil {
+                        ProfileInfoRow(
+                            icon: "target",
+                            label: "Goal Body Fat",
+                            value: profile.goalBodyFatPercentage != nil ? "\(Int(profile.goalBodyFatPercentage! * 100))%" : "Not set"
+                        ) {
+                            activeSheet = .editGoalBodyFat
+                        }
+                    }
+                } header: {
+                    IronSectionTitle(title: "Goal")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .dailyTargets {
+                Section {
+                    lockableGoalRow(
+                        icon: "flame",
+                        label: "Calories",
+                        valueText: "\(profile.effectiveCalories.formatted()) kcal",
+                        macro: nil,
+                        sheet: .editCalories
+                    )
+
+                    lockableGoalRow(icon: "p.circle", label: "Protein", valueText: "\(profile.effectiveProtein)g", macro: .protein, sheet: .editProtein)
+                    lockableGoalRow(icon: "c.circle", label: "Carbs", valueText: "\(profile.effectiveCarbs)g", macro: .carbs, sheet: .editCarbs)
+                    lockableGoalRow(icon: "f.circle", label: "Fat", valueText: "\(profile.effectiveFat)g", macro: .fat, sheet: .editFat)
+
+                    NavigationLink {
+                        OptionalNutrientGoalsSettingsView(profile: profile)
+                    } label: {
+                        Label {
+                            HStack {
+                                Text("Other Nutrients")
+                                Spacer()
+                                Text(otherNutrientsSubtitle)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "list.bullet.clipboard")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    }
+
+                    Button {
+                        recalculateGoalsNow()
+                    } label: {
+                        Label {
+                            HStack {
+                                Text("Recalculate Goals")
+                                Spacer()
+                                if isRecalculatingGoals {
+                                    ProgressView()
+                                } else if goalsNeedRecalc {
+                                    // Soft nudge: a goal input changed since the last recalc. A CTA
+                                    // on the row's right edge, not a wrapped line below it.
+                                    Text("Tap to update")
+                                        .font(.caption)
+                                        .foregroundStyle(AppColors.calorie)
+                                }
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    }
+                    .tint(.primary)
+                    .disabled(isRecalculatingGoals)
+
+                    Button {
+                        showCalculationMethods = true
+                    } label: {
+                        Label {
+                            Text("How Targets Are Calculated")
+                        } icon: {
+                            Image(systemName: "book")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    }
+                    .tint(.primary)
+                } header: {
+                    IronSectionTitle(title: "Targets")
+                }
+                .listRowBackground(AppColors.appCard)
+                Section {
                     HStack {
                         Label {
                             Text("Adaptive Goals")
@@ -4371,97 +4912,20 @@ struct ProfileView: View {
                             }
                     }
 
-                }
-                .listRowBackground(AppColors.appCard)
-
-                Section("Daily Targets") {
-                    lockableGoalRow(
-                        icon: "flame",
-                        label: "Calories",
-                        valueText: "\(profile.effectiveCalories.formatted()) kcal",
-                        macro: nil,
-                        sheet: .editCalories
-                    )
-
-                    lockableGoalRow(icon: "p.circle", label: "Protein", valueText: "\(profile.effectiveProtein)g", macro: .protein, sheet: .editProtein)
-                    lockableGoalRow(icon: "c.circle", label: "Carbs", valueText: "\(profile.effectiveCarbs)g", macro: .carbs, sheet: .editCarbs)
-                    lockableGoalRow(icon: "f.circle", label: "Fat", valueText: "\(profile.effectiveFat)g", macro: .fat, sheet: .editFat)
-
-                    NavigationLink {
-                        OptionalNutrientGoalsSettingsView(profile: profile)
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Other Nutrients")
-                                Spacer()
-                                Text("Sugar, Fiber, Sodium")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "list.bullet.clipboard")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-
-                    Button {
-                        recalculateGoalsNow()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Recalculate Goals")
-                                Spacer()
-                                if isRecalculatingGoals {
-                                    ProgressView()
-                                } else if goalsNeedRecalc {
-                                    // Soft nudge: a goal input changed since the last recalc. A CTA
-                                    // on the row's right edge, not a wrapped line below it.
-                                    Text("Tap to update")
-                                        .font(.caption)
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-                    .tint(.primary)
-                    .disabled(isRecalculatingGoals)
-
-                    Button {
-                        showCalculationMethods = true
-                    } label: {
-                        Label {
-                            Text("Calculation Methods")
-                        } icon: {
-                            Image(systemName: "book")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-                    .tint(.primary)
+                } header: {
+                    IronSectionTitle(title: "Adaptive")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
                 // Section 3: Display and input preferences. Tracking features are grouped
                 // separately below so the card does not read as one long control wall.
-                if settingsCategory == .appPreferences {
+                if settingsCategory == .foodAI {
                 Section {
-                    Picker(selection: $appearanceMode) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    } label: {
-                        Label {
-                            Text("Appearance")
-                        } icon: {
-                            Image(systemName: "circle.lefthalf.filled")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.dailyTargets) {
+                        SettingsHubRowLabel(title: "Daily Targets", systemImage: "target", subtitle: dailyTargetsSubtitle)
                     }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
-
+                    if JLFeatureFlags.themeColorPicker {
                     Picker(selection: $appThemeColorRaw) {
                         ForEach(AppThemeColor.allCases) { themeColor in
                             Label {
@@ -4481,11 +4945,13 @@ struct ProfileView: View {
                     }
                     .pickerStyle(.menu)
                     .tint(.secondary)
+                    }
 
-                    HStack {
+                    AdaptiveLabelValue(alignment: .center) {
                         Label {
                             HStack(spacing: 6) {
                                 Text("Default to Grams")
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Button {
                                     showDefaultGramsInfo = true
                                 } label: {
@@ -4499,7 +4965,7 @@ struct ProfileView: View {
                             Image(systemName: "scalemass")
                                 .foregroundStyle(AppColors.calorie)
                         }
-                        Spacer()
+                    } value: {
                         Toggle("Default to Grams", isOn: $preferGramsByDefault)
                             .labelsHidden()
                             .tint(AppColors.calorie)
@@ -4508,13 +4974,13 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Label {
-                                Text("Save to Photos")
+                                Text("Save Meal Photos")
                             } icon: {
                                 Image(systemName: "square.and.arrow.down")
                                     .foregroundStyle(AppColors.calorie)
                             }
                             Spacer()
-                            Toggle("Save to Photos", isOn: $saveMealPhotosToGallery)
+                            Toggle("Save Meal Photos", isOn: $saveMealPhotosToGallery)
                                 .labelsHidden()
                                 .tint(AppColors.calorie)
                         }
@@ -4524,76 +4990,41 @@ struct ProfileView: View {
                             .padding(.leading, 32)
                     }
 
-                    Picker(selection: $weekStartsOnMonday) {
-                        Text("Sunday").tag(false)
-                        Text("Monday").tag(true)
-                    } label: {
-                        Label {
-                            Text("Week Starts On")
-                        } icon: {
-                            Image(systemName: "calendar")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.mealTimes) {
+                        SettingsHubRowLabel(title: "Meal Times", systemImage: "clock", subtitle: "Breakfast, lunch, dinner")
                     }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
-
-                    NavigationLink {
-                        QuickActionsSettingsView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Quick Actions")
-                                Spacer()
-                                Text("Customize")
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        } icon: {
-                            Image(systemName: "bolt.fill")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.waterFasting) {
+                        SettingsHubRowLabel(title: "Water & Fasting", systemImage: "drop", subtitle: waterFastingSubtitle)
                     }
-
-                    NavigationLink {
-                        AddMenuSettingsView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("+ Menu")
-                                Spacer()
-                                Text("Customize")
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        } icon: {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.homeMenu) {
+                        SettingsHubRowLabel(title: "Home + Menu", systemImage: "plus.circle", subtitle: "Home + button")
                     }
+                    NavigationLink(value: ProfileSettingsCategory.shortcutsSiri) {
+                        SettingsHubRowLabel(title: "Shortcuts & Siri", systemImage: "bolt.fill", subtitle: "App icon and Siri")
+                    }
+                } header: {
+                    IronSectionTitle(title: "Food Logging")
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
+                    NavigationLink(value: ProfileSettingsCategory.aiProviders) {
+                        SettingsHubRowLabel(title: "AI Providers", systemImage: "sparkles", subtitle: aiProvidersSubtitle)
+                    }
+                    NavigationLink(value: ProfileSettingsCategory.onDeviceModels) {
+                        SettingsHubRowLabel(title: "On-Device Models", systemImage: "iphone.gen3", subtitle: gemmaStatusLabel)
+                    }
+                    NavigationLink(value: ProfileSettingsCategory.advancedAI) {
+                        SettingsHubRowLabel(title: "Advanced AI", systemImage: "slider.horizontal.3", subtitle: "Fallbacks, timeout, instructions")
+                    }
+                } header: {
+                    IronSectionTitle(title: "AI")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .trackingReminders {
+                if settingsCategory == .waterFasting {
                 Section {
-                    NavigationLink {
-                        MealTimeSettingsView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Meal Times")
-                                Spacer()
-                                Text("Customize")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "clock")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-
                     HStack {
                         Label {
                             Text("Water Tracking")
@@ -4683,14 +5114,14 @@ struct ProfileView: View {
                         } label: {
                             HStack {
                                 Label {
-                                    Text("Default Fasting Goal")
+                                    UnbrokenText("Default Fasting Goal")
                                 } icon: {
                                     Image(systemName: "target")
                                         .foregroundStyle(AppColors.calorie)
                                 }
                                 .foregroundStyle(.primary)
-                                Spacer()
-                                Text(FastingDurationFormatter.goal(minutes: fastingDefaultGoalMinutes))
+                                Spacer(minLength: 8)
+                                UnbrokenText(FastingDurationFormatter.goal(minutes: fastingDefaultGoalMinutes))
                                     .foregroundStyle(.secondary)
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
@@ -4700,14 +5131,17 @@ struct ProfileView: View {
                         .buttonStyle(.plain)
                     }
 
+                } footer: {
+                    Text("Water and fasting reminders: Notifications")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .aiProviders {
+                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels {
                 Section {
+                    if settingsCategory == .aiProviders {
                         AISettingsSubsectionHeader(
-                            title: "Primary AI",
+                            title: "Photo & Text",
                             systemImage: "sparkles",
                             infoTopic: .primaryAI
                         )
@@ -4752,49 +5186,53 @@ struct ProfileView: View {
                         }
 
                         if selectedProvider.requiresAPIKey {
-                            HStack {
+                            AdaptiveLabelValue {
                                 Label {
                                     Text("API Key")
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
                                 } icon: {
                                     Image(systemName: "key.fill")
                                         .foregroundStyle(AppColors.calorie)
                                 }
-                                Spacer()
-                                Group {
-                                    if showAPIKey {
-                                        TextField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
-                                    } else {
-                                        SecureField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
+                            } value: {
+                                HStack {
+                                    Group {
+                                        if showAPIKey {
+                                            TextField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
+                                        } else {
+                                            SecureField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
+                                        }
                                     }
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .onChange(of: apiKeyText) { _, newValue in
+                                        let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedProvider,
+                                            baseURL: resolvedPrimaryBaseURL,
+                                            apiKey: t
+                                        )
+                                    }
+                                    Button {
+                                        showAPIKey.toggle()
+                                    } label: {
+                                        Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
+                                            .foregroundStyle(.secondary)
+                                            .font(.system(size: 14))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .textFieldStyle(.plain)
-                                .multilineTextAlignment(.trailing)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .onChange(of: apiKeyText) { _, newValue in
-                                    let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
-                                    ModelCatalogService.shared.scheduleRefresh(
-                                        provider: selectedProvider,
-                                        baseURL: resolvedPrimaryBaseURL,
-                                        apiKey: t
-                                    )
-                                }
-                                Button {
-                                    showAPIKey.toggle()
-                                } label: {
-                                    Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
-                                        .foregroundStyle(.secondary)
-                                        .font(.system(size: 14))
-                                }
-                                .buttonStyle(.plain)
                             }
                         }
 
                         if selectedProvider == .ollama || selectedProvider.requiresCustomEndpoint {
                             HStack {
                                 Label {
-                                    Text(selectedProvider.requiresCustomEndpoint ? "Base URL" : "Server URL")
+                                    Text("Server URL")
                                 } icon: {
                                     Image(systemName: "link")
                                         .foregroundStyle(AppColors.calorie)
@@ -4823,62 +5261,14 @@ struct ProfileView: View {
                                         )
                                     }
                             }
-
-                            HStack {
-                                Label {
-                                    Text("Request Timeout")
-                                } icon: {
-                                    Image(systemName: "timer")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                requestTimeoutInput
-                                Text("sec")
-                                    .foregroundStyle(.secondary)
-                            }
                         }
 
-                        if selectedProvider == .openrouter
-                            || (separateTextProviderEnabled && selectedTextProvider == .openrouter)
-                            || (fallbackEnabled && selectedFallbackProvider == .openrouter)
-                            || (textFallbackEnabled && selectedTextFallbackProvider == .openrouter) {
-                            Picker("OpenRouter Reasoning Effort", selection: $openRouterReasoningEffort) {
-                                ForEach(OpenRouterReasoningEffort.allCases) { effort in
-                                    Text(effort.title).tag(effort)
-                                }
-                            }
-                            Text("Applies to all OpenRouter requests. Supported levels vary by model. Higher effort may take longer and cost more. Auto keeps the model default; incomplete responses retry with Low.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Handles photos and text. Separate text AI and fallbacks: Advanced AI")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
 
-                        // Only OpenAI-compatible + Anthropic send a token cap; Gemini is
-                        // left uncapped, so hide this for Gemini.
-                        if selectedProvider.apiFormat != .gemini {
-                            HStack {
-                                Label {
-                                    Text("Max Response Tokens")
-                                } icon: {
-                                    Image(systemName: "text.append")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                maxResponseTokensInput
-                            }
-                        }
-
-                        Label(
-                            LocalModelStrings.text(
-                                "settings.onDeviceModel",
-                                defaultValue: "On-Device Model"
-                            ),
-                            systemImage: "iphone.gen3.radiowaves.left.and.right"
-                        )
-                            .font(.system(.subheadline, design: .rounded, weight: .bold))
-                            .foregroundStyle(AppColors.calorie)
-                            .textCase(.uppercase)
-                            .accessibilityAddTraits(.isHeader)
-
+                    if settingsCategory == .onDeviceModels {
                         Gemma4ModelSettingsView {
                             selectedProvider = AIProviderSettings.selectedProvider
                             selectedModel = AIProviderSettings.selectedModel
@@ -4893,13 +5283,23 @@ struct ProfileView: View {
                             textFallbackEnabled = AIProviderSettings.textFallbackEnabled
                             localModelAvailabilityRevision += 1
                         }
+                    }
 
-                        AISettingsSubsectionHeader(
-                            title: "Text AI",
-                            systemImage: "text.bubble.fill",
-                            infoTopic: .textAI
-                        )
+                }
+                .listRowBackground(AppColors.appCard)
+                }
 
+                if settingsCategory == .aiProviders {
+                Section {
+                    TypeSafeEstimateCheckSection()
+                } footer: {
+                    TypeSafeEstimateCheckFooter()
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .advancedAI {
+                Section {
                     Toggle(isOn: $separateTextProviderEnabled) {
                         Label {
                             Text("Use Separate Text Provider")
@@ -4964,7 +5364,9 @@ struct ProfileView: View {
                             }
                         }
 
-                        if selectedTextProvider.requiresAPIKey {
+                        if selectedTextProvider.requiresAPIKey && selectedTextProvider == selectedProvider {
+                            LabeledContent("API Key", value: "Uses key from AI Providers")
+                        } else if selectedTextProvider.requiresAPIKey {
                             HStack {
                                 Label("API Key", systemImage: "key.fill")
                                 Spacer()
@@ -5000,10 +5402,7 @@ struct ProfileView: View {
 
                         if selectedTextProvider == .ollama || selectedTextProvider.requiresCustomEndpoint {
                             HStack {
-                                Label(
-                                    selectedTextProvider.requiresCustomEndpoint ? "Base URL" : "Server URL",
-                                    systemImage: "link"
-                                )
+                                Label("Server URL", systemImage: "link")
                                 Spacer()
                                 TextField(
                                     selectedTextProvider.requiresCustomEndpoint
@@ -5027,34 +5426,18 @@ struct ProfileView: View {
                                     )
                                 }
                             }
-
-                            if !selectedProvider.usesConfigurableRequestTimeout {
-                                HStack {
-                                    Label("Request Timeout", systemImage: "timer")
-                                    Spacer()
-                                    requestTimeoutInput
-                                    Text("sec").foregroundStyle(.secondary)
-                                }
-                            }
                         }
                     }
 
-                        AISettingsSubsectionHeader(
-                            title: "Text AI Fallback",
-                            systemImage: "text.bubble.fill",
-                            infoTopic: .textFallback
-                        )
-                        textFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Text AI", infoTopic: .textAI)
+                }
+                .listRowBackground(AppColors.appCard)
 
-                        AISettingsSubsectionHeader(
-                            title: "Image AI Fallback",
-                            systemImage: "photo.badge.arrow.down",
-                            infoTopic: .imageFallback
-                        )
-
+                Section {
                         Toggle(isOn: $fallbackEnabled) {
                             Label {
-                                Text("Enable Image Fallback")
+                                Text("Photo Fallback")
                             } icon: {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .foregroundStyle(AppColors.calorie)
@@ -5107,7 +5490,9 @@ struct ProfileView: View {
                                 AIProviderSettings.selectedFallbackModel = newModel
                             }
 
-                            if selectedFallbackProvider.requiresAPIKey {
+                            if selectedFallbackProvider.requiresAPIKey && selectedFallbackProvider == selectedProvider {
+                                LabeledContent("API Key", value: "Uses key from AI Providers")
+                            } else if selectedFallbackProvider.requiresAPIKey {
                                 HStack {
                                     Label {
                                         Text("API Key")
@@ -5150,7 +5535,7 @@ struct ProfileView: View {
                             if selectedFallbackProvider == .ollama || selectedFallbackProvider.requiresCustomEndpoint {
                                 HStack {
                                     Label {
-                                        Text(selectedFallbackProvider.requiresCustomEndpoint ? "Base URL" : "Server URL")
+                                        Text("Server URL")
                                     } icon: {
                                         Image(systemName: "link")
                                             .foregroundStyle(AppColors.calorie)
@@ -5178,31 +5563,97 @@ struct ProfileView: View {
                                         )
                                     }
                                 }
-
-                                if !selectedProvider.usesConfigurableRequestTimeout {
-                                    HStack {
-                                        Label {
-                                            Text("Request Timeout")
-                                        } icon: {
-                                            Image(systemName: "timer")
-                                                .foregroundStyle(AppColors.calorie)
-                                        }
-                                        Spacer()
-                                        requestTimeoutInput
-                                        Text("sec")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
                             }
                         }
+                } header: {
+                    IronInfoSectionHeader(title: "Photo Fallback", infoTopic: .imageFallback)
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                        textFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Text Fallback", infoTopic: .textFallback)
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .speechToText {
+                if settingsCategory == .onDeviceModels {
                 Section {
+                    appleIntelligenceAvailabilityRow
+                    Button("Use for text") {
+                        separateTextProviderEnabled = true
+                        AIProviderSettings.separateTextProviderEnabled = true
+                        selectedTextProvider = .appleIntelligence
+                        AIProviderSettings.selectedTextProvider = .appleIntelligence
+                        selectedTextModel = AIProvider.appleIntelligence.defaultTextModel
+                        AIProviderSettings.selectedTextModel = selectedTextModel
+                    }
+                    .disabled(!appleIntelligenceIsAvailable)
+                    .opacity(appleIntelligenceIsAvailable ? 1 : 0.45)
+                } header: {
+                    IronSectionTitle(title: "Apple Intelligence")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .advancedAI {
+                Section {
+                    speechFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Voice Fallback", infoTopic: .speechFallback)
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                    AdaptiveLabelValue {
+                        Label {
+                            UnbrokenText("Request Timeout")
+                        } icon: {
+                            Image(systemName: "timer")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    } value: {
+                        HStack(spacing: 6) {
+                            requestTimeoutInput
+                            Text("sec")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack {
+                        Label {
+                            Text("Max Response Tokens")
+                        } icon: {
+                            Image(systemName: "text.append")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                        Spacer()
+                        maxResponseTokensInput
+                    }
+                    if selectedProvider == .openrouter
+                        || (separateTextProviderEnabled && selectedTextProvider == .openrouter)
+                        || (fallbackEnabled && selectedFallbackProvider == .openrouter)
+                        || (textFallbackEnabled && selectedTextFallbackProvider == .openrouter) {
+                        Picker("OpenRouter Reasoning Effort", selection: $openRouterReasoningEffort) {
+                            ForEach(OpenRouterReasoningEffort.allCases) { effort in
+                                Text(effort.title).tag(effort)
+                            }
+                        }
+                        Text("Applies to all OpenRouter requests. Supported levels vary by model. Higher effort may take longer and cost more. Auto keeps the model default; incomplete responses retry with Low.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    IronSectionTitle(title: "Requests")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels {
+                Section {
+                    if settingsCategory == .aiProviders {
                         AISettingsSubsectionHeader(
-                            title: "Speech-to-Text",
+                            title: "Voice Input",
                             systemImage: "waveform",
                             infoTopic: .speechToText
                         )
@@ -5218,7 +5669,7 @@ struct ProfileView: View {
                             }
                         } label: {
                             Label {
-                                Text("Provider")
+                                Text("Voice Provider")
                             } icon: {
                                 SpeechProviderBrandIcon(provider: selectedSpeechProvider)
                             }
@@ -5236,7 +5687,9 @@ struct ProfileView: View {
                                 selectSpeechFallbackProvider(alternate)
                             }
                         }
+                    }
 
+                    if settingsCategory == .onDeviceModels {
                         WhisperBaseModelSettingsView(selectedProvider: $selectedSpeechProvider) {
                             selectedSpeechProvider = SpeechSettings.selectedProvider
                             selectedSpeechFallbackProvider = SpeechSettings.selectedFallbackProvider
@@ -5245,7 +5698,9 @@ struct ProfileView: View {
                             selectedSpeechFallbackLanguage = SpeechSettings.selectedLanguage(for: selectedSpeechFallbackProvider)
                             localModelAvailabilityRevision += 1
                         }
+                    }
 
+                    if settingsCategory == .aiProviders {
                         Picker(selection: $selectedSpeechLanguage) {
                             ForEach(SpeechLanguage.allCases) { language in
                                 Text(language.displayName).tag(language)
@@ -5297,14 +5752,14 @@ struct ProfileView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                    }
 
-                        speechFallbackSettingsRows
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
                 // Custom AI Instructions (User Context) — prepended to every AI request when non-empty
-                if settingsCategory == .aiProviders {
+                if settingsCategory == .advancedAI {
                 Section {
                     TextField(
                         "I live in Germany, assume European portion sizes. I'm on a bodybuilding cut.",
@@ -5314,38 +5769,40 @@ struct ProfileView: View {
                     .lineLimit(3...6)
                     .autocorrectionDisabled(false)
                     .focused($customInstructionsFocused)
-
-                    Button {
-                        AIProviderSettings.userContext = customAIInstructions
-                        let canonical = AIProviderSettings.userContext
-                        customAIInstructions = canonical
-                        savedAIInstructions = canonical
-                        customInstructionsFocused = false
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Label("Save", systemImage: "checkmark.circle.fill")
-                                .font(.system(.body, design: .rounded, weight: .semibold))
-                                .foregroundStyle(customAIInstructions == savedAIInstructions ? .secondary : AppColors.calorie)
-                            Spacer()
-                        }
+                    .onSubmit { autosaveCustomInstructions() }
+                    .onChange(of: customInstructionsFocused) { _, focused in
+                        if !focused { autosaveCustomInstructions() }
                     }
-                    .disabled(customAIInstructions == savedAIInstructions)
                 } header: {
-                    Text("Custom AI Instructions")
+                    IronSectionTitle(title: "Instructions")
                 } footer: {
                     Text("Optional context sent with every AI request — region, diet, athletic goals, anything you'd otherwise repeat each time. Leave empty to disable.")
                 }
                 .listRowBackground(AppColors.appCard)
+                .onDisappear { autosaveCustomInstructions() }
                 }
 
-                if settingsCategory == .workout {
+                if settingsCategory == .advancedAI,
+                   JevRouterSettings.visualPreview || (TypeSafeSettings.hasCredentials && (JevRouterSettings.enabled || TypeSafeSettings.enabled)) {
+                Section {
+                    JevRouterAdvancedSection()
+                } header: {
+                    IronInfoSectionHeader(title: "Jev Router", infoTopic: .jevRouter)
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .trainingAdvanced, JLFeatureFlags.legacyWorkoutLogger {
                 WorkoutLoggingSettingsSection()
+                Section {
+                    Button("Open Legacy Logger") { showLegacyLogger = true }
+                }
+                .listRowBackground(AppColors.appCard)
                 }
 
                 // Section 5: Health integration. Destructive and transfer actions are kept
                 // in their own card below so they cannot be mistaken for sync preferences.
-                if settingsCategory == .healthData {
+                if settingsCategory == .bodyHealth {
                 Section {
                     // Apple Health
                     HStack {
@@ -5363,13 +5820,37 @@ struct ProfileView: View {
                             }
                     }
 
+                    LabeledContent("Daily Steps Goal", value: StepsGoal.current.formatted())
+                    NavigationLink {
+                        ProgramLibraryView()
+                    } label: {
+                        Text("Edit in Programs")
+                            .font(.footnote)
+                    }
+                } header: {
+                    IronSectionTitle(title: "Apple Health")
                 } footer: {
-                    Text("Reads weight, nutrition, energy, and workouts from Apple Health. Apple Watch and iPhone workouts appear read-only in Workouts and Progress. JL Physical’s calculated diary burns are written separately and excluded from Energy Burn goals.")
+                    Text("Weight and body fat from your scale (e.g. Withings) arrive through Apple Health. Steps feed the steps goal and your bridge.")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .dataManagement {
+                if settingsCategory == .dataSync {
+                Section {
+                    NavigationLink {
+                        BridgeSettingsView()
+                    } label: {
+                        SettingsHubRowLabel(
+                            title: "Neon Bridge",
+                            systemImage: "server.rack",
+                            subtitle: bridgeStatusLabel
+                        )
+                    }
+                } header: {
+                    IronSectionTitle(title: "Neon Bridge")
+                }
+                .listRowBackground(AppColors.appCard)
+
                 CloudBackupSettingsSection()
 
                 Section {
@@ -5397,7 +5878,12 @@ struct ProfileView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                } header: {
+                    IronSectionTitle(title: "Food Diary")
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
                     // Clear Food Log
                     Button(role: .destructive) {
                         showClearFoodLogConfirmation = true
@@ -5423,11 +5909,15 @@ struct ProfileView: View {
                         .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
+                } header: {
+                    IronSectionTitle(title: "Danger Zone")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if let aboutCategory = settingsCategory?.aboutCategory {
+                if let aboutCategory = settingsCategory?.aboutCategory,
+                   (aboutCategory == .appUpdates && JLFeatureFlags.fudUpdateCheck)
+                    || (aboutCategory != .appUpdates && JLFeatureFlags.fudMarketing) {
                     if aboutCategory == .appUpdates {
                         AboutAppHeaderSection()
                     }
@@ -5451,6 +5941,12 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showImportDiary) {
                 ImportDiaryView()
+            }
+            .sheet(isPresented: $showExerciseLibrary) {
+                WorkoutsView(presentedAsSheet: true, libraryOnly: true)
+            }
+            .sheet(isPresented: $showLegacyLogger) {
+                WorkoutsView(presentedAsSheet: true, forcedMode: .log)
             }
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
@@ -5506,7 +6002,8 @@ struct ProfileView: View {
 
                 case .editWeight:
                     WeightPickerSheet(
-                        currentWeightKg: profile.weightKg
+                        currentWeightKg: profile.weightKg,
+                        previous: weightStore.latestEntry
                     ) { newWeight in
                         profile.weightKg = newWeight
                         // Invalidate goal weight if the new current weight makes the direction impossible.
@@ -5598,6 +6095,7 @@ struct ProfileView: View {
 
                 }
             }
+            .settingsFloatingTabClearance()
             .alert("Clear Food Log", isPresented: $showClearFoodLogConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Clear All Logs", role: .destructive) {
@@ -5685,6 +6183,8 @@ struct ProfileView: View {
                         UserDefaults.standard.removePersistentDomain(forName: domain)
                         AIProviderSettings.deleteAllData()
                         SpeechSettings.deleteAllData()
+                        TypeSafeSettings.deleteAllData()
+                        JevRouterSettings.deleteAllData()
                         chatStore.reset()
                         WidgetSnapshot.clear()
                         WidgetCenter.shared.reloadAllTimelines()
@@ -5717,7 +6217,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var textFallbackSettingsRows: some View {
         Toggle(isOn: $textFallbackEnabled) {
-            Label("Enable Text Fallback", systemImage: "arrow.triangle.2.circlepath")
+            Label("Text Fallback", systemImage: "arrow.triangle.2.circlepath")
         }
         .tint(AppColors.calorie)
         .onChange(of: textFallbackEnabled) { _, newValue in
@@ -5771,7 +6271,9 @@ struct ProfileView: View {
                 }
             }
 
-            if selectedTextFallbackProvider.requiresAPIKey {
+            if selectedTextFallbackProvider.requiresAPIKey && selectedTextFallbackProvider == selectedProvider {
+                LabeledContent("API Key", value: "Uses key from AI Providers")
+            } else if selectedTextFallbackProvider.requiresAPIKey {
                 HStack {
                     Label("API Key", systemImage: "key.fill")
                     Spacer()
@@ -5807,7 +6309,7 @@ struct ProfileView: View {
 
             if selectedTextFallbackProvider == .ollama || selectedTextFallbackProvider.requiresCustomEndpoint {
                 HStack {
-                    Label(selectedTextFallbackProvider.requiresCustomEndpoint ? "Base URL" : "Server URL", systemImage: "link")
+                    Label("Server URL", systemImage: "link")
                     Spacer()
                     TextField(
                         selectedTextFallbackProvider.requiresCustomEndpoint
@@ -5837,15 +6339,13 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var speechFallbackSettingsRows: some View {
-        AISettingsSubsectionHeader(
-            title: "STT Fallback",
-            systemImage: "waveform.badge.plus",
-            infoTopic: .speechFallback
-        )
-
-        if selectedSpeechProvider != .nativeIOS {
+        if selectedSpeechProvider == .nativeIOS || speechFallbackProviderOptions.isEmpty {
+            Text("Native iOS speech already recovers on this iPhone, so there is no separate voice fallback.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if selectedSpeechProvider != .nativeIOS {
             Toggle(isOn: $speechFallbackEnabled) {
-                Label("Enable STT Fallback", systemImage: "arrow.triangle.2.circlepath")
+                Label("Voice Fallback", systemImage: "arrow.triangle.2.circlepath")
             }
             .tint(AppColors.calorie)
             .onChange(of: speechFallbackEnabled) { _, newValue in
@@ -5928,6 +6428,17 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+
+    private var appleIntelligenceIsAvailable: Bool {
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            return OnDeviceAIService.isAvailable
+            #else
+            return false
+            #endif
+        }
+        return false
     }
 
     @ViewBuilder
@@ -6118,11 +6629,15 @@ struct ProfileView: View {
                 Image(systemName: icon)
                     .foregroundStyle(AppColors.calorie)
                     .frame(width: 22)
-                Text(LocalizedDisplayText.text(label))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(valueText)
-                    .foregroundStyle(.secondary)
+                AdaptiveLabelValue {
+                    Text(LocalizedDisplayText.text(label))
+                        .foregroundStyle(.primary)
+                        .avoidsMidWordBreak()
+                } value: {
+                    Text(valueText)
+                        .foregroundStyle(.secondary)
+                        .avoidsMidWordBreak()
+                }
                 Image(systemName: locked ? "lock.fill" : "lock.open")
                     .font(.footnote)
                     .foregroundStyle(locked ? AppColors.calorie : .secondary)
