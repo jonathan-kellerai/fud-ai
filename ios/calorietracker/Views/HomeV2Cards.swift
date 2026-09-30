@@ -232,9 +232,6 @@ struct HomeV2Cards: View {
                             Text("Recon")
                                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
                         }
                     }
                     .listRowBackground(IronTheme.surface)
