@@ -340,7 +340,7 @@ struct ProgramV2WorkoutLogView: View {
         Label(text, systemImage: "clock.arrow.circlepath")
             .font(.caption.monospacedDigit())
             .foregroundStyle(IronTheme.textSecondary)
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
@@ -354,7 +354,7 @@ struct ProgramV2WorkoutLogView: View {
         Text(text)
             .font(.caption.monospacedDigit())
             .foregroundStyle(IronTheme.brass)
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(IronTheme.surfaceRaised)
@@ -383,83 +383,39 @@ struct ProgramV2WorkoutLogView: View {
         let currentIndex = (workoutSets[exercise.name] ?? []).firstIndex { $0.reps == 0 }
         let previous = lastPerformance(for: exercise)?.heaviestLoad
         let isPersonalRecord = set.reps > 0 && previous.map { set.weight > $0 && $0 > 0 } == true
-        // Bodyweight exercises (start load 0) show 0; otherwise an unset load is blank.
-        let showsBlankLoad = set.weight == 0 && exercise.startLoadLb != 0
-        return HStack(spacing: 8) {
-            Text("\(setIndex + 1)")
-                .font(.caption.bold().monospacedDigit())
-                .foregroundStyle(IronTheme.textSecondary)
-                .frame(width: 20)
-            if isPersonalRecord {
-                Text("PR")
-                    .font(.system(size: 11, weight: .heavy))
-                    .fontWidth(.condensed)
-                    .tracking(0.6)
-                    .foregroundStyle(IronTheme.brass)
+        // Narrow cards (iPhone SE) can't fit every input on one line; fall
+        // back to load/reps on the first line and effort/actions on the second.
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                setNumber(setIndex, isPersonalRecord: isPersonalRecord)
+                loadField(exercise, setIndex: setIndex, set: set)
+                rowLabel("lb ×")
+                repsField(exercise, setIndex: setIndex, set: set)
+                rowLabel("RIR")
+                rirField(exercise, in: block, setIndex: setIndex, set: set)
+                rpeField(exercise, setIndex: setIndex, set: set)
+                logSetButton(exercise, in: block, setIndex: setIndex, set: set)
+                removeSetButton(exercise, setIndex: setIndex)
             }
 
-            TextField("Load", value: Binding<Double?>(
-                get: { showsBlankLoad ? nil : set.weight },
-                set: { newValue in updateSet(exercise, at: setIndex) { $0.weight = newValue ?? 0 } }
-            ), format: .number)
-            .keyboardType(.decimalPad)
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 60)
-
-            Text("lb ×")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            TextField("Reps", value: Binding(
-                get: { set.reps },
-                set: { newValue in updateSet(exercise, at: setIndex) { $0.reps = newValue } }
-            ), format: .number)
-            .keyboardType(.numberPad)
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 50)
-
-            Text("RIR")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            TextField("", value: Binding(
-                get: { set.rir },
-                set: { newValue in updateSet(exercise, at: setIndex) { $0.rir = newValue } }
-            ), format: .number)
-            .keyboardType(.numberPad)
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 40)
-            .onSubmit {
-                logSet(exercise, in: block, setIndex: setIndex)
-            }
-
-            TextField("RPE", text: Binding(
-                get: { set.rpeText },
-                set: { newValue in updateSet(exercise, at: setIndex) { $0.rpeText = newValue } }
-            ))
-            .keyboardType(.decimalPad)
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 44)
-
-            Button {
-                logSet(exercise, in: block, setIndex: setIndex)
-            } label: {
-                Image(systemName: set.reps > 0 ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(set.reps > 0 ? IronTheme.olive : IronTheme.textTertiary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Log set")
-
-            Button {
-                updateDraft { draft in
-                    guard draft.sets[exercise.name]?.indices.contains(setIndex) == true else { return }
-                    draft.sets[exercise.name]?.remove(at: setIndex)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    setNumber(setIndex, isPersonalRecord: isPersonalRecord)
+                    loadField(exercise, setIndex: setIndex, set: set)
+                    rowLabel("lb ×")
+                    repsField(exercise, setIndex: setIndex, set: set)
+                    rowLabel("reps")
                 }
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(IronTheme.bloodText)
+                HStack(spacing: 8) {
+                    rowLabel("RIR")
+                    rirField(exercise, in: block, setIndex: setIndex, set: set)
+                    rpeField(exercise, setIndex: setIndex, set: set)
+                    logSetButton(exercise, in: block, setIndex: setIndex, set: set)
+                    removeSetButton(exercise, setIndex: setIndex)
+                }
+                // Indent under the fields: set-number width plus spacing.
+                .padding(.leading, 28)
             }
-            .buttonStyle(.plain)
         }
         // Fixed-width numeric inputs: keep labels on one line and stop the
         // row growing past the card at accessibility sizes.
@@ -474,6 +430,100 @@ struct ProgramV2WorkoutLogView: View {
                     .frame(width: IronTheme.ruleWidth)
             }
         }
+    }
+
+    private func setNumber(_ setIndex: Int, isPersonalRecord: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text("\(setIndex + 1)")
+                .font(.caption.bold().monospacedDigit())
+                .foregroundStyle(IronTheme.textSecondary)
+                .frame(width: 20)
+            if isPersonalRecord {
+                Text("PR")
+                    .font(.system(size: 11, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .tracking(0.6)
+                    .foregroundStyle(IronTheme.brass)
+                    .fixedSize()
+            }
+        }
+    }
+
+    private func rowLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
+    private func loadField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
+        // Bodyweight exercises (start load 0) show 0; otherwise an unset load is blank.
+        let showsBlankLoad = set.weight == 0 && exercise.startLoadLb != 0
+        return TextField("Load", value: Binding<Double?>(
+            get: { showsBlankLoad ? nil : set.weight },
+            set: { newValue in updateSet(exercise, at: setIndex) { $0.weight = newValue ?? 0 } }
+        ), format: .number)
+        .keyboardType(.decimalPad)
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 60)
+    }
+
+    private func repsField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
+        // Unlogged sets (0 reps) show the placeholder rather than a 0.
+        TextField("Reps", value: Binding<Int?>(
+            get: { set.reps == 0 ? nil : set.reps },
+            set: { newValue in updateSet(exercise, at: setIndex) { $0.reps = newValue ?? 0 } }
+        ), format: .number)
+        .keyboardType(.numberPad)
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 50)
+    }
+
+    private func rirField(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
+        TextField("", value: Binding(
+            get: { set.rir },
+            set: { newValue in updateSet(exercise, at: setIndex) { $0.rir = newValue } }
+        ), format: .number)
+        .keyboardType(.numberPad)
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 40)
+        .onSubmit {
+            logSet(exercise, in: block, setIndex: setIndex)
+        }
+    }
+
+    private func rpeField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
+        TextField("RPE", text: Binding(
+            get: { set.rpeText },
+            set: { newValue in updateSet(exercise, at: setIndex) { $0.rpeText = newValue } }
+        ))
+        .keyboardType(.decimalPad)
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 44)
+    }
+
+    private func logSetButton(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
+        Button {
+            logSet(exercise, in: block, setIndex: setIndex)
+        } label: {
+            Image(systemName: set.reps > 0 ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(set.reps > 0 ? IronTheme.olive : IronTheme.textTertiary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Log set")
+    }
+
+    private func removeSetButton(_ exercise: ProgramV2Exercise, setIndex: Int) -> some View {
+        Button {
+            updateDraft { draft in
+                guard draft.sets[exercise.name]?.indices.contains(setIndex) == true else { return }
+                draft.sets[exercise.name]?.remove(at: setIndex)
+            }
+        } label: {
+            Image(systemName: "minus.circle.fill")
+                .foregroundStyle(IronTheme.bloodText)
+        }
+        .buttonStyle(.plain)
     }
 
     private func lastPerformance(for exercise: ProgramV2Exercise) -> LastPerformance? {
