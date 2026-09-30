@@ -17,9 +17,17 @@ struct BridgeKeyStorageTests {
         let defaults = UserDefaults.standard
         let savedData = defaults.data(forKey: Self.defaultsKey)
         let savedKey = KeychainHelper.load(key: Self.account)
+        let pendingKey = NeonBridgeSettings.pendingKeychainWriteKey
+        let savedPending = defaults.object(forKey: pendingKey)
+        defaults.removeObject(forKey: pendingKey)
         defaults.removeObject(forKey: Self.defaultsKey)
         KeychainHelper.delete(key: Self.account)
         defer {
+            if let savedPending {
+                defaults.set(savedPending, forKey: pendingKey)
+            } else {
+                defaults.removeObject(forKey: pendingKey)
+            }
             if let savedData {
                 defaults.set(savedData, forKey: Self.defaultsKey)
             } else {
@@ -96,6 +104,35 @@ struct BridgeKeyStorageTests {
 
             // A second load reads the migrated key from the Keychain.
             #expect(NeonBridgeSettings.load().apiKey == Self.testKey)
+        }
+    }
+
+    @Test func plainLegacyCopyNeverOverwritesKeychainKey() throws {
+        try Self.requireKeychain()
+        try withCleanState {
+            let newer = "newer-test-bridge-key-not-real"
+            #expect(KeychainHelper.upsert(key: Self.account, value: newer))
+            let legacy = #"{"baseURL":"https://bridge-key-tests.invalid","apiKey":"test-bridge-key-not-real"}"#
+            UserDefaults.standard.set(Data(legacy.utf8), forKey: Self.defaultsKey)
+
+            #expect(NeonBridgeSettings.load().apiKey == newer)
+            #expect(KeychainHelper.load(key: Self.account) == newer)
+            let json = try storedJSON()
+            #expect(json["apiKey"] == nil)
+        }
+    }
+
+    @Test func pendingLegacyCopyFromFailedSaveWins() throws {
+        try Self.requireKeychain()
+        try withCleanState {
+            #expect(KeychainHelper.upsert(key: Self.account, value: "older-test-bridge-key-not-real"))
+            let legacy = #"{"baseURL":"https://bridge-key-tests.invalid","apiKey":"test-bridge-key-not-real"}"#
+            UserDefaults.standard.set(Data(legacy.utf8), forKey: Self.defaultsKey)
+            UserDefaults.standard.set(true, forKey: NeonBridgeSettings.pendingKeychainWriteKey)
+
+            #expect(NeonBridgeSettings.load().apiKey == Self.testKey)
+            #expect(KeychainHelper.load(key: Self.account) == Self.testKey)
+            #expect(UserDefaults.standard.object(forKey: NeonBridgeSettings.pendingKeychainWriteKey) == nil)
         }
     }
 

@@ -243,6 +243,8 @@ struct NeonBridgeSettings: Codable {
     static let storageKey = "neonBridgeSettings"
     /// The bridge key lives in the Keychain under this account, never in UserDefaults.
     static let apiKeyKeychainAccount = "neonBridgeApiKey"
+    /// Set only when save() could not write the Keychain and kept the key in defaults.
+    static let pendingKeychainWriteKey = "neonBridgeApiKeyPendingKeychainWrite"
 
     /// What goes to UserDefaults: the URL only.
     private struct Persisted: Codable {
@@ -258,9 +260,17 @@ struct NeonBridgeSettings: Codable {
             legacyKey = stored.apiKey
         }
         if let legacyKey, !legacyKey.isEmpty {
-            // A key in UserDefaults comes from an older build or from a save()
-            // whose Keychain write failed, so it is the newest copy. Drop it only
-            // once the Keychain verifiably holds the same value.
+            let pending = UserDefaults.standard.bool(forKey: pendingKeychainWriteKey)
+            let keychainKey = KeychainHelper.load(key: apiKeyKeychainAccount)
+            if !pending, let keychainKey, !keychainKey.isEmpty {
+                // Plain legacy copy (older build or restored defaults): the Keychain value
+                // is authoritative, so never overwrite it with the older copy.
+                writeDefaults(baseURL: baseURL)
+                return NeonBridgeSettings(baseURL: baseURL, apiKey: keychainKey)
+            }
+            // Older build with an empty Keychain, or a save() whose Keychain write failed
+            // (pending flag): the defaults copy is the newest. Drop it only once the
+            // Keychain verifiably holds the same value.
             if storeInKeychain(legacyKey) {
                 writeDefaults(baseURL: baseURL)
             }
@@ -281,7 +291,8 @@ struct NeonBridgeSettings: Codable {
         guard let apiKey, !apiKey.isEmpty else {
             KeychainHelper.delete(key: Self.apiKeyKeychainAccount)
             Self.writeDefaults(baseURL: baseURL)
-            return true
+            // Report failure if the Keychain item survived the delete.
+            return KeychainHelper.load(key: Self.apiKeyKeychainAccount) == nil
         }
         if Self.storeInKeychain(apiKey) {
             Self.writeDefaults(baseURL: baseURL)
@@ -300,11 +311,14 @@ struct NeonBridgeSettings: Codable {
         if let data = try? JSONEncoder().encode(Persisted(baseURL: baseURL)) {
             UserDefaults.standard.set(data, forKey: storageKey)
         }
+        UserDefaults.standard.removeObject(forKey: pendingKeychainWriteKey)
     }
 
     private static func writeLegacyDefaults(baseURL: String, apiKey: String) {
         if let data = try? JSONEncoder().encode(NeonBridgeSettings(baseURL: baseURL, apiKey: apiKey)) {
             UserDefaults.standard.set(data, forKey: storageKey)
+            // Marks this copy as newer than whatever the Keychain holds.
+            UserDefaults.standard.set(true, forKey: pendingKeychainWriteKey)
         }
     }
 }
