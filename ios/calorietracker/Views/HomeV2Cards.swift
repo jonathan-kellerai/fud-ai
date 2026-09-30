@@ -1042,7 +1042,11 @@ struct HomeV2Cards: View {
                 peptideInventory = inventory
             }
         } catch {
-            peptideError = "Peptide schedule couldn’t be loaded."
+            if case NeonBridgeError.httpError(let statusCode, _) = error, statusCode == 401 || statusCode == 503 {
+                peptideError = "Add the bridge key in Train › Bridge to sync peptides."
+            } else {
+                peptideError = "Peptide schedule couldn’t be loaded."
+            }
         }
     }
 }

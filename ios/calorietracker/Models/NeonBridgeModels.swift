@@ -240,17 +240,52 @@ struct NeonBridgeSettings: Codable {
     
     static let defaultBaseURL = "https://jl-workout-ingest.vercel.app"
     
+    static let storageKey = "neonBridgeSettings"
+    /// The bridge key lives in the Keychain under this account, never in UserDefaults.
+    static let apiKeyKeychainAccount = "neonBridgeApiKey"
+
+    /// What goes to UserDefaults: the URL only.
+    private struct Persisted: Codable {
+        var baseURL: String
+    }
+
     static func load() -> NeonBridgeSettings {
-        guard let data = UserDefaults.standard.data(forKey: "neonBridgeSettings"),
-              let settings = try? JSONDecoder().decode(NeonBridgeSettings.self, from: data) else {
-            return NeonBridgeSettings(baseURL: defaultBaseURL, apiKey: nil)
+        var baseURL = defaultBaseURL
+        var legacyKey: String?
+        if let data = UserDefaults.standard.data(forKey: storageKey),
+           let stored = try? JSONDecoder().decode(NeonBridgeSettings.self, from: data) {
+            baseURL = stored.baseURL
+            legacyKey = stored.apiKey
         }
-        return settings
+        var apiKey = KeychainHelper.load(key: apiKeyKeychainAccount)
+        if let legacyKey {
+            // One-time migration of a key saved in UserDefaults by older builds.
+            if apiKey == nil, !legacyKey.isEmpty {
+                KeychainHelper.save(key: apiKeyKeychainAccount, value: legacyKey)
+                apiKey = KeychainHelper.load(key: apiKeyKeychainAccount)
+            }
+            if apiKey != nil || legacyKey.isEmpty {
+                // Only drop the legacy copy once the Keychain holds the key.
+                writeDefaults(baseURL: baseURL)
+            } else {
+                apiKey = legacyKey
+            }
+        }
+        return NeonBridgeSettings(baseURL: baseURL, apiKey: apiKey)
     }
     
     func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: "neonBridgeSettings")
+        Self.writeDefaults(baseURL: baseURL)
+        if let apiKey, !apiKey.isEmpty {
+            KeychainHelper.save(key: Self.apiKeyKeychainAccount, value: apiKey)
+        } else {
+            KeychainHelper.delete(key: Self.apiKeyKeychainAccount)
+        }
+    }
+
+    private static func writeDefaults(baseURL: String) {
+        if let data = try? JSONEncoder().encode(Persisted(baseURL: baseURL)) {
+            UserDefaults.standard.set(data, forKey: storageKey)
         }
     }
 }
