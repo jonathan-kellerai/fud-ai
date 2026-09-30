@@ -73,13 +73,13 @@ final class ProgressV2VisualQATests: XCTestCase {
     }
 
     func testP2Training() async throws {
-        let summary = ProgressV2QAFixtures.trainingSummary()
+        let summary = ProgressV2QAFixtures.trainingSummary(range: .month)
         try await capture("p2-training", heights: (1.2, 2.6)) {
             VisualQATabShell(selected: .progress) {
                 ProgressV2QACardHost {
                     ProgressTrainingCard(
                         state: .loaded(summary),
-                        rangeDescription: TimeRange.threeMonths.rangeDescription,
+                        rangeDescription: TimeRange.month.rangeDescription,
                         useMetric: false,
                         onRetry: {}
                     )
@@ -295,8 +295,9 @@ enum ProgressV2QAFixtures {
 
     /// Eight weeks of Upper/Lower sessions with per-workout sets, in the
     /// /api/workouts and /api/workouts/{id} shapes.
-    static func trainingSummary() -> ProgressTrainingSummary {
-        let todayKey = ProgressTrainingMath.rangeDayKeys(for: .threeMonths, now: now, oldestWorkoutDay: nil).today
+    static func trainingSummary(range: TimeRange = .month) -> ProgressTrainingSummary {
+        let keys = ProgressTrainingMath.rangeDayKeys(for: range, now: now, oldestWorkoutDay: nil)
+        let todayKey = keys.today
         let thisMonday = ProgressTrainingMath.mondayKey(for: todayKey) ?? todayKey
         var workouts: [ProgressBridgeWorkout] = []
         var details: [String: ProgressWorkoutTotals] = [:]
@@ -317,7 +318,9 @@ enum ProgressV2QAFixtures {
                 details[id] = ProgressWorkoutTotals(sets: sets, volumeLb: Double(sets * (640 + week * 12)))
             }
         }
-        let start = shift(thisMonday, days: -7 * 7) ?? thisMonday
+        // Same window the tab uses for the fixture's range, so the full-tab
+        // shots and the Training card agree.
+        let start = keys.start
         return ProgressTrainingMath.summary(
             workouts: workouts,
             details: details,
