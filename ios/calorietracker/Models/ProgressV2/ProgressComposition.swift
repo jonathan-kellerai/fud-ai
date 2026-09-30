@@ -65,6 +65,26 @@ enum ProgressCompositionBuilder {
         }
     }
 
+    /// Hash over every weight and body-fat row (id, date, value, lean-mass
+    /// flag), so an edit anywhere in history changes it. One O(n) pass.
+    static func fingerprint(weightRows: [WeightEntry], bodyFatRows: [BodyFatEntry]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(weightRows.count)
+        for row in weightRows {
+            hasher.combine(row.id)
+            hasher.combine(row.date.timeIntervalSinceReferenceDate)
+            hasher.combine(row.weightKg)
+            hasher.combine(row.isLeanBodyMass)
+        }
+        hasher.combine(bodyFatRows.count)
+        for row in bodyFatRows {
+            hasher.combine(row.id)
+            hasher.combine(row.date.timeIntervalSinceReferenceDate)
+            hasher.combine(row.bodyFatFraction)
+        }
+        return hasher.finalize()
+    }
+
     static func build(
         weightRows: [WeightEntry],
         bodyFatRows: [BodyFatEntry],
@@ -117,6 +137,8 @@ enum ProgressCompositionBuilder {
 }
 
 /// Fixed data for snapshot tests. Nothing here touches HealthKit or the network.
+/// `now`, `calendar` and `locale` pin every window and label the tab computes,
+/// so the fixture builders and the view agree on "today".
 struct ProgressV2Fixture {
     var timeRange: TimeRange = .month
     var metric: ProgressCompositionMetric = .weight
@@ -125,4 +147,7 @@ struct ProgressV2Fixture {
     /// Nil renders the "Health unavailable" state.
     var stepsByDay: [Date: Int]?
     var training: ProgressTrainingLoadState
+    var now: Date = .now
+    var calendar: Calendar = .current
+    var locale: Locale = .current
 }

@@ -23,6 +23,7 @@ struct ProgressTrainingCard: View {
     let onRetry: () -> Void
 
     @State private var chartMetric: ProgressTrainingChartMetric = .sessions
+    @Environment(\.calendar) private var calendar
     @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 180
 
     private var chartHeight: CGFloat { min(max(scaledHeight, 170), 280) }
@@ -112,7 +113,8 @@ struct ProgressTrainingCard: View {
                         x: .value("Week", bar.date, unit: .weekOfYear),
                         y: .value("Value", bar.value)
                     )
-                    .foregroundStyle(IronTheme.blood)
+                    // The cutoff week may be missing older sessions.
+                    .foregroundStyle(bar.isIncomplete ? IronTheme.blood.opacity(0.4) : IronTheme.blood)
                 }
             }
             .chartXAxis {
@@ -156,15 +158,25 @@ struct ProgressTrainingCard: View {
         }
     }
 
+    private func dayText(_ key: String) -> String {
+        Self.localDate(forDayKey: key, calendar: calendar).map { ProgressV2Format.mediumDate($0) } ?? key
+    }
+
     private func noteLines(_ summary: ProgressTrainingSummary) -> [String] {
         var lines: [String] = []
         if summary.isTruncated {
-            lines.append(String(localized: "Showing the most recent \(summary.weeks.count) of \(summary.weeksInRange) weeks in this range."))
+            lines.append(String(localized: "Showing the most recent \(summary.shownWeeks) of \(summary.weeksInRange) weeks in this range."))
+        }
+        if summary.firstWeekIsPartial, let first = summary.weeks.first {
+            lines.append(String(localized: "The first week counts \(dayText(first.firstDay)) – \(dayText(first.lastDay)) only; Per Week is averaged over the days in range."))
         }
         if summary.listTruncated {
             if let cutoff = summary.sessionListCutoff {
-                let date = Self.localDate(forDayKey: cutoff).map { ProgressV2Format.mediumDate($0) } ?? cutoff
-                lines.append(String(localized: "Showing the \(ProgressTrainingMath.workoutListLimit) most recent sessions, back to \(date)."))
+                let date = dayText(cutoff)
+                lines.append(String(localized: "Only the \(ProgressTrainingMath.workoutListLimit) most recent workouts loaded, back to \(date). The week of \(date) may be incomplete (lighter bar) and isn't averaged."))
+                if summary.unloadedWeeks > 0 {
+                    lines.append(String(localized: "\(summary.unloadedWeeks) earlier weeks in this range weren't loaded and aren't shown."))
+                }
             } else {
                 lines.append(String(localized: "Showing the \(ProgressTrainingMath.workoutListLimit) most recent sessions."))
             }
@@ -181,20 +193,23 @@ struct ProgressTrainingCard: View {
     private struct WeekBar: Identifiable {
         let date: Date
         let value: Double
+        let isIncomplete: Bool
         var id: Date { date }
     }
 
     private func chartBars(_ summary: ProgressTrainingSummary) -> [WeekBar] {
         summary.weeks.compactMap { week -> WeekBar? in
-            guard let date = Self.localDate(forDayKey: week.weekStart) else { return nil }
+            guard let date = Self.localDate(forDayKey: week.weekStart, calendar: calendar) else { return nil }
+            let value: Double?
             switch chartMetric {
             case .sessions:
-                return WeekBar(date: date, value: Double(week.sessions))
+                value = Double(week.sessions)
             case .sets:
-                return week.sets.map { WeekBar(date: date, value: Double($0)) }
+                value = week.sets.map { Double($0) }
             case .volume:
-                return week.volumeLb.map { WeekBar(date: date, value: displayVolume($0)) }
+                value = week.volumeLb.map { displayVolume($0) }
             }
+            return value.map { WeekBar(date: date, value: $0, isIncomplete: week.isIncomplete) }
         }
     }
 

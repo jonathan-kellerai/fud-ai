@@ -349,6 +349,27 @@ nonisolated enum ProgressV2Math {
 
     // MARK: - Steps
 
+    /// All reads this many days of Health steps. Health can hold years of
+    /// daily counts and the app has no cheap way to find the first one, so
+    /// All is bounded and labeled "the last 2 years".
+    static let allStepsLookbackDays = 730
+
+    /// Health query window for steps. Body-composition dates never move it:
+    /// bounded ranges count back from today and All is the last two years.
+    static func stepsWindow(for range: TimeRange, now: Date, calendar: Calendar) -> ProgressWindow {
+        guard range == .allTime else {
+            return window(for: range, now: now, calendar: calendar, earliestData: nil)
+        }
+        let startOfToday = calendar.startOfDay(for: now)
+        let start = calendar.date(byAdding: .day, value: -(allStepsLookbackDays - 1), to: startOfToday) ?? startOfToday
+        return window(for: .allTime, now: now, calendar: calendar, earliestData: start)
+    }
+
+    /// Describes the steps window; All says how far back it reaches.
+    static func stepsRangeDescription(_ range: TimeRange) -> String {
+        range == .allTime ? String(localized: "the last 2 years") : range.rangeDescription
+    }
+
     /// Ranges longer than 3M draw weekly averages instead of one bar per day.
     static func usesWeeklyStepBars(_ range: TimeRange) -> Bool {
         switch range {

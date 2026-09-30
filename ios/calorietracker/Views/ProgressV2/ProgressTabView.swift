@@ -25,6 +25,7 @@ struct ProgressTabView: View {
     @State private var training: ProgressTrainingLoadState = .idle
     @State private var trainingRefreshToken = 0
     @State private var stepsRefreshToken = 0
+    @State private var compositionRefreshToken = 0
     @State private var forceTrainingRefresh = false
     @State private var showLogWeight = false
     @State private var showLogBodyFat = false
@@ -62,14 +63,20 @@ struct ProgressTabView: View {
     private var weightRows: [WeightEntry] { fixture?.weightEntries ?? weightStore.entries }
     private var bodyFatRows: [BodyFatEntry] { fixture?.bodyFatEntries ?? bodyFatStore.entries }
 
+    /// "Now" and the calendar for every window on the tab. Snapshot fixtures
+    /// pin both so the view and the fixture data agree on today.
+    private var referenceNow: Date { fixture?.now ?? .now }
+    private var referenceCalendar: Calendar { fixture?.calendar ?? .current }
+
     private var dayStamp: Int {
-        Int(Calendar.current.startOfDay(for: .now).timeIntervalSince1970)
+        Int(referenceCalendar.startOfDay(for: referenceNow).timeIntervalSince1970)
     }
 
+    /// Covers every row, so an edit to an older reading (or a lean-mass flag)
+    /// rebuilds the snapshot, not just an added or removed last row.
     private var compositionTaskKey: String {
-        let latestWeight = weightRows.last?.id.uuidString ?? "none"
-        let latestFat = bodyFatRows.last?.id.uuidString ?? "none"
-        return "\(timeRange.rawValue)|\(weightUnitRaw)|\(weightRows.count)|\(latestWeight)|\(bodyFatRows.count)|\(latestFat)|\(dayStamp)"
+        let rows = ProgressCompositionBuilder.fingerprint(weightRows: weightRows, bodyFatRows: bodyFatRows)
+        return "\(timeRange.rawValue)|\(weightUnitRaw)|\(rows)|\(dayStamp)|\(compositionRefreshToken)"
     }
 
     private var stepsTaskKey: String {
@@ -97,32 +104,27 @@ struct ProgressTabView: View {
 
     /// All reaches back to the earliest workout instead of the body data.
     private var workoutRange: ClosedRange<Date> {
-        let window = ProgressV2Math.window(for: timeRange, now: .now, calendar: .current, earliestData: nil)
+        let window = ProgressV2Math.window(for: timeRange, now: referenceNow, calendar: referenceCalendar, earliestData: nil)
         if timeRange == .allTime {
             return Date.distantPast...window.closedRange.upperBound
         }
         return window.closedRange
     }
 
-    /// Window for Health / bridge queries. All uses the earliest local reading,
-    /// but never less than a year so older Health steps still show.
-    private func queryWindow(now: Date, calendar: Calendar) -> ProgressWindow {
-        guard timeRange == .allTime else {
-            return ProgressV2Math.window(for: timeRange, now: now, calendar: calendar, earliestData: nil)
-        }
-        let yearAgo = calendar.date(byAdding: .day, value: -364, to: calendar.startOfDay(for: now)) ?? now
-        let earliest = ProgressCompositionBuilder.earliestDate(weightRows: weightRows, bodyFatRows: bodyFatRows)
-        return ProgressV2Math.window(
-            for: .allTime,
-            now: now,
-            calendar: calendar,
-            earliestData: min(earliest ?? yearAgo, yearAgo)
-        )
-    }
-
     // MARK: - Body
 
     var body: some View {
+        if let fixture {
+            content
+                .environment(\.locale, fixture.locale)
+                .environment(\.calendar, fixture.calendar)
+                .environment(\.timeZone, fixture.calendar.timeZone)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -155,8 +157,11 @@ struct ProgressTabView: View {
 
                     ProgressStepsCard(
                         state: steps,
-                        rangeDescription: timeRange.rangeDescription,
-                        goal: StepsView.dailyGoal
+                        rangeDescription: ProgressV2Math.stepsRangeDescription(timeRange),
+                        goal: StepsView.dailyGoal,
+                        windowNote: timeRange == .allTime
+                            ? String(localized: "All shows the last 2 years of Apple Health steps.")
+                            : nil
                     )
 
                     ProgressTrainingCard(
@@ -183,7 +188,9 @@ struct ProgressTabView: View {
                     weightRows: weightRows,
                     bodyFatRows: bodyFatRows,
                     range: timeRange,
-                    useMetric: useMetric
+                    useMetric: useMetric,
+                    now: referenceNow,
+                    calendar: referenceCalendar
                 )
                 guard !Task.isCancelled else { return }
                 composition = snapshot
@@ -205,8 +212,8 @@ struct ProgressTabView: View {
                 let dayCount: Int
                 if timeRange == .allTime {
                     let earliest = foodStore.entries.map(\.timestamp).min()
-                    dayCount = ProgressV2Math.window(for: .allTime, now: .now, calendar: .current, earliestData: earliest)
-                        .dayCount(calendar: .current)
+                    dayCount = ProgressV2Math.window(for: .allTime, now: referenceNow, calendar: referenceCalendar, earliestData: earliest)
+                        .dayCount(calendar: referenceCalendar)
                 } else {
                     dayCount = timeRange.days
                 }
@@ -283,7 +290,7 @@ struct ProgressTabView: View {
                 .foregroundStyle(IronTheme.textPrimary)
                 .accessibilityAddTraits(.isHeader)
             if let window = composition?.window, composition?.range == timeRange {
-                Text(Self.rangeSubtitle(window))
+                Text(rangeSubtitle(window))
                     .font(.subheadline)
                     .foregroundStyle(IronTheme.textSecondary)
             }
@@ -382,16 +389,19 @@ struct ProgressTabView: View {
         trainingRefreshToken += 1
     }
 
-    /// Pull to refresh: re-read Health steps and bypass the bridge cache.
+    /// Pull to refresh: rebuild body composition, re-read Health steps and
+    /// bypass the bridge caches (workout list and per-workout sets).
     private func refresh() async {
         retryTraining()
         stepsRefreshToken += 1
+        compositionRefreshToken += 1
     }
 
+    /// Steps never borrow body-composition dates; All is the last two years.
     private func loadSteps() async {
-        let calendar = Calendar.current
-        let now = Date.now
-        let window = queryWindow(now: now, calendar: calendar)
+        let calendar = referenceCalendar
+        let now = referenceNow
+        let window = ProgressV2Math.stepsWindow(for: timeRange, now: now, calendar: calendar)
         let weekly = ProgressV2Math.usesWeeklyStepBars(timeRange)
         if let fixture {
             if let byDay = fixture.stepsByDay {
@@ -431,14 +441,10 @@ struct ProgressTabView: View {
         let force = forceTrainingRefresh
         forceTrainingRefresh = false
         training = .loading
-        let calendar = Calendar.current
-        let now = Date.now
         let result = await ProgressTrainingLoader.load(
             range: timeRange,
-            window: queryWindow(now: now, calendar: calendar),
             forceRefresh: force,
-            now: now,
-            calendar: calendar
+            now: referenceNow
         )
         guard !Task.isCancelled else { return }
         training = result
@@ -457,8 +463,18 @@ struct ProgressTabView: View {
         }
     }
 
-    private static func rangeSubtitle(_ window: ProgressWindow) -> String {
-        let start = ProgressV2Format.mediumDate(window.start)
+    /// Uses the fixture's locale and calendar in snapshots, the user's otherwise.
+    private func rangeSubtitle(_ window: ProgressWindow) -> String {
+        let start: String
+        if let fixture {
+            var style = Date.FormatStyle(date: .abbreviated, time: .omitted)
+            style.locale = fixture.locale
+            style.calendar = fixture.calendar
+            style.timeZone = fixture.calendar.timeZone
+            start = window.start.formatted(style)
+        } else {
+            start = ProgressV2Format.mediumDate(window.start)
+        }
         return String(localized: "\(start) – today")
     }
 }

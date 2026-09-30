@@ -11,24 +11,24 @@ enum ProgressTrainingLoadState: Equatable {
 /// Loads the Training card from the Neon bridge: GET /api/workouts for the
 /// session list, then GET /api/workouts/{id} for the sets of the most recent
 /// completed sessions in range. The list is cached for a few minutes and
-/// cleared by Retry / pull to refresh; per-workout sets are cached for the
-/// app session because saved workouts rarely change.
+/// per-workout sets for the app session; Retry / pull to refresh bypasses
+/// both, because a saved workout can be edited in Workout History.
 enum ProgressTrainingLoader {
     private static let freshness: TimeInterval = 5 * 60
     private static var workoutCache: [String: (fetchedAt: Date, workouts: [ProgressBridgeWorkout])] = [:]
-    private static var detailCache: [String: ProgressWorkoutTotals] = [:]
+    private static var detailCache = ProgressWorkoutDetailCache()
 
     static func currentConfig() -> ProgressBridgeConfig {
         let settings = NeonBridgeService.shared.settings
         return ProgressBridgeConfig(baseURL: settings.baseURL, apiKey: settings.apiKey)
     }
 
+    /// Range start and today are both Eastern day keys from one calendar,
+    /// matching how sessions are bucketed.
     static func load(
         range: TimeRange,
-        window: ProgressWindow,
         forceRefresh: Bool,
-        now: Date = .now,
-        calendar: Calendar = .current
+        now: Date = .now
     ) async -> ProgressTrainingLoadState {
         let config = currentConfig()
         guard config.isConfigured else { return .notConfigured }
@@ -47,29 +47,21 @@ enum ProgressTrainingLoader {
             }
         }
 
-        let todayKey = ProgressTrainingMath.dayKey(for: now, timeZone: ProgressTrainingMath.eastern)
-        let startKey: String
-        if range == .allTime {
-            let localStart = ProgressTrainingMath.dayKey(forLocalDay: window.start, calendar: calendar)
-            let oldestWorkout = workouts
-                .filter(ProgressTrainingMath.isCompleted)
-                .compactMap { ProgressTrainingMath.dayKey(for: $0) }
-                .min()
-            startKey = [localStart, oldestWorkout].compactMap { $0 }.min() ?? todayKey
-        } else {
-            startKey = ProgressTrainingMath.dayKey(forLocalDay: window.start, calendar: calendar)
-        }
+        let oldestWorkout = workouts
+            .filter(ProgressTrainingMath.isCompleted)
+            .compactMap { ProgressTrainingMath.dayKey(for: $0) }
+            .min()
+        let (startKey, todayKey) = ProgressTrainingMath.rangeDayKeys(for: range, now: now, oldestWorkoutDay: oldestWorkout)
 
         let wanted = ProgressTrainingMath.detailWorkoutIDs(workouts: workouts, startDayKey: startKey, todayKey: todayKey)
-        var details: [String: ProgressWorkoutTotals] = [:]
-        var missing: [String] = []
-        for id in wanted {
-            if let cached = detailCache[cacheKey(config: config, id: id)] {
-                details[id] = cached
-            } else {
-                missing.append(id)
-            }
+        if forceRefresh {
+            // Drop every cached set total for this bridge so edited workouts
+            // (in this range or another) are fetched again.
+            detailCache.invalidate(baseURL: config.baseURL)
         }
+        let cached = detailCache.lookup(ids: wanted, baseURL: config.baseURL)
+        var details = cached.found
+        let missing = cached.missing
 
         let fetched = await fetchTotals(ids: missing, config: config)
         guard !Task.isCancelled else { return .loading }
@@ -77,7 +69,7 @@ enum ProgressTrainingLoader {
         for (id, totals) in fetched {
             if let totals {
                 details[id] = totals
-                detailCache[cacheKey(config: config, id: id)] = totals
+                detailCache.store(totals, id: id, baseURL: config.baseURL)
             } else {
                 failed += 1
             }
@@ -116,10 +108,6 @@ enum ProgressTrainingLoader {
             }
             return collected
         }
-    }
-
-    private static func cacheKey(config: ProgressBridgeConfig, id: String) -> String {
-        "\(config.baseURL)|\(id)"
     }
 
     static func message(for error: Error) -> String {

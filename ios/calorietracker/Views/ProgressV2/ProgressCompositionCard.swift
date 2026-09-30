@@ -227,6 +227,7 @@ struct ProgressCompositionChart: View {
     let unit: String
     let goal: Double?
 
+    @Environment(\.calendar) private var calendar
     @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 210
 
     private var chartHeight: CGFloat { min(max(scaledHeight, 200), 320) }
@@ -317,7 +318,6 @@ struct ProgressCompositionChart: View {
     }
 
     private var xLabelFormat: Date.FormatStyle {
-        let calendar = Calendar.current
         let spanDays = window.dayCount(calendar: calendar)
         let lastDay = window.closedRange.upperBound
         if spanDays > 150, !calendar.isDate(window.start, equalTo: lastDay, toGranularity: .year) {

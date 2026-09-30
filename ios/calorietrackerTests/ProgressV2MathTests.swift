@@ -344,6 +344,41 @@ struct ProgressV2MathTests {
         #expect(!snapshot.hasAnyWeight)
     }
 
+    @Test func compositionFingerprintCoversEveryRow() {
+        let firstID = UUID()
+        let fatID = UUID()
+        let base = [
+            WeightEntry(id: firstID, date: date(2026, 6, 1, hour: 7), weightKg: 86.5),
+            WeightEntry(date: date(2026, 9, 29, hour: 7), weightKg: 86.0),
+        ]
+        let fats = [BodyFatEntry(id: fatID, date: date(2026, 6, 1, hour: 7), bodyFatFraction: 0.21)]
+        let reference = ProgressCompositionBuilder.fingerprint(weightRows: base, bodyFatRows: fats)
+        #expect(reference == ProgressCompositionBuilder.fingerprint(weightRows: base, bodyFatRows: fats))
+
+        // Same counts and same last row, but an older value changed.
+        var edited = base
+        edited[0] = WeightEntry(id: firstID, date: base[0].date, weightKg: 85.9)
+        #expect(ProgressCompositionBuilder.fingerprint(weightRows: edited, bodyFatRows: fats) != reference)
+
+        // Lean-mass flag flipped on an older row.
+        var flagged = base
+        flagged[0] = WeightEntry(id: firstID, date: base[0].date, weightKg: 86.5, leanBodyMass: true)
+        #expect(ProgressCompositionBuilder.fingerprint(weightRows: flagged, bodyFatRows: fats) != reference)
+
+        // Older reading moved to another day.
+        var moved = base
+        moved[0] = WeightEntry(id: firstID, date: date(2026, 6, 2, hour: 7), weightKg: 86.5)
+        #expect(ProgressCompositionBuilder.fingerprint(weightRows: moved, bodyFatRows: fats) != reference)
+
+        // Body fat edited in place.
+        let fatEdited = [BodyFatEntry(id: fatID, date: fats[0].date, bodyFatFraction: 0.2)]
+        #expect(ProgressCompositionBuilder.fingerprint(weightRows: base, bodyFatRows: fatEdited) != reference)
+
+        // Scales to a full history in one pass.
+        let many = (0..<700).map { WeightEntry(date: date(2024, 1, 1).addingTimeInterval(Double($0) * 86_400), weightKg: 80 + Double($0 % 9) * 0.1) }
+        #expect(ProgressCompositionBuilder.fingerprint(weightRows: many, bodyFatRows: []) != reference)
+    }
+
     // MARK: - Steps
 
     @Test func stepsSummaryCountsDaysMetFromDailyTotals() {
@@ -393,6 +428,27 @@ struct ProgressV2MathTests {
         let summary = ProgressV2Math.stepsSummary(byDay: [date(2026, 9, 29, hour: 0): 0], window: window, goal: 10_000, weekly: false, calendar: calendar)
         #expect(summary.isEmpty)
         #expect(summary.dailyAverage == nil)
+    }
+
+    @Test func stepsWindowIgnoresBodyDataAndBoundsAll() {
+        let now = date(2026, 9, 30, hour: 18)
+        let startOfToday = calendar.startOfDay(for: now)
+        let all = ProgressV2Math.stepsWindow(for: .allTime, now: now, calendar: calendar)
+        let twoYearsBack = calendar.date(byAdding: .day, value: -(ProgressV2Math.allStepsLookbackDays - 1), to: startOfToday)!
+        #expect(all.start == twoYearsBack)
+        #expect(all.dayCount(calendar: calendar) == 730)
+        #expect(all.contains(now))
+        // Steps from 2 years back count; older ones are outside the labeled window.
+        let byDay = [twoYearsBack: 12_000, calendar.date(byAdding: .day, value: -1, to: twoYearsBack)!: 8_000]
+        let summary = ProgressV2Math.stepsSummary(byDay: byDay, window: all, goal: 10_000, weekly: true, calendar: calendar)
+        #expect(summary.trackedDays == 1)
+        #expect(ProgressV2Math.stepsRangeDescription(.allTime) == "the last 2 years")
+
+        for range in TimeRange.allCases where range != .allTime {
+            let window = ProgressV2Math.stepsWindow(for: range, now: now, calendar: calendar)
+            #expect(window == ProgressV2Math.window(for: range, now: now, calendar: calendar, earliestData: nil), "\(range.rawValue)")
+            #expect(ProgressV2Math.stepsRangeDescription(range) == range.rangeDescription, "\(range.rawValue)")
+        }
     }
 
     @Test func weeklyStepBarsOnlyPastThreeMonths() {
@@ -483,6 +539,14 @@ struct ProgressV2MathTests {
         )
         #expect(summary.weeks.map(\.weekStart) == ["2026-09-14", "2026-09-21", "2026-09-28"])
         #expect(summary.weeks.map(\.sessions) == [0, 4, 1])
+        // Wed Sep 16 – Sun Sep 20, a full week, then Mon Sep 28 – today.
+        #expect(summary.weeks.map(\.days) == [5, 7, 3])
+        #expect(summary.weeks[0].firstDay == "2026-09-16")
+        #expect(summary.weeks[2].lastDay == "2026-09-30")
+        #expect(summary.firstWeekIsPartial)
+        #expect(summary.rangeStartDay == "2026-09-16")
+        // 5 sessions over 15 days in range.
+        #expect(close(summary.averageSessionsPerWeek, 5.0 / (15.0 / 7.0)))
         #expect(summary.weeks[0].sets == 0)
         #expect(summary.weeks[0].volumeLb == 0)
         #expect(summary.weeks[1].sets == 24)
@@ -588,10 +652,15 @@ struct ProgressV2MathTests {
             todayKey: "2026-09-30"
         )
         #expect(summary.isTruncated)
-        #expect(summary.weeks.count == ProgressTrainingMath.maxWeeks)
+        #expect(summary.shownWeeks == ProgressTrainingMath.maxWeeks)
         #expect(summary.weeksInRange > ProgressTrainingMath.maxWeeks)
         #expect(summary.listTruncated)
         #expect(summary.sessionListCutoff == "2026-09-15")
+        // Weeks before the list's oldest row are unknown, not zero.
+        #expect(summary.weeks.map(\.weekStart) == ["2026-09-14", "2026-09-21", "2026-09-28"])
+        #expect(summary.unloadedWeeks == ProgressTrainingMath.maxWeeks - 3)
+        #expect(summary.weeks.map(\.isIncomplete) == [true, false, false])
+        #expect(!summary.firstWeekIsPartial)
         #expect(summary.isDetailLimited)
         #expect(summary.detailSessions == ProgressTrainingMath.maxDetailSessions)
 
@@ -603,6 +672,135 @@ struct ProgressV2MathTests {
         )
         #expect(!short.listTruncated)
         #expect(short.sessionListCutoff == nil)
+        #expect(short.unloadedWeeks == 0)
+        #expect(short.weeks.count == ProgressTrainingMath.maxWeeks)
+    }
+
+    @Test func trainingIgnoresSessionsBeforeRangeStartInFirstWeek() {
+        // 1W on Wed Sep 30 is Thu Sep 24 – Wed Sep 30; Mon Sep 21 and Wed
+        // Sep 23 share the first Monday week but are outside the range.
+        let workouts = [
+            ProgressBridgeWorkout(id: "mon21", sessionDate: "2026-09-21"),
+            ProgressBridgeWorkout(id: "wed23", sessionDate: "2026-09-23"),
+            ProgressBridgeWorkout(id: "thu24", sessionDate: "2026-09-24"),
+            ProgressBridgeWorkout(id: "sun27", sessionDate: "2026-09-27"),
+            ProgressBridgeWorkout(id: "tue29", sessionDate: "2026-09-29"),
+        ]
+        var details: [String: ProgressWorkoutTotals] = [:]
+        for workout in workouts {
+            details[workout.id] = ProgressWorkoutTotals(sets: 10, volumeLb: 1_000)
+        }
+        // Sets are only requested for sessions inside the range.
+        #expect(ProgressTrainingMath.detailWorkoutIDs(workouts: workouts, startDayKey: "2026-09-24", todayKey: "2026-09-30")
+            == ["tue29", "sun27", "thu24"])
+
+        let summary = ProgressTrainingMath.summary(
+            workouts: workouts,
+            details: details,
+            startDayKey: "2026-09-24",
+            todayKey: "2026-09-30"
+        )
+        #expect(summary.weeks.map(\.weekStart) == ["2026-09-21", "2026-09-28"])
+        #expect(summary.weeks.map(\.sessions) == [2, 1])
+        #expect(summary.weeks.map(\.sets) == [20, 10])
+        #expect(summary.weeks.map(\.days) == [4, 3])
+        #expect(summary.weeks[0].firstDay == "2026-09-24")
+        #expect(summary.weeks[0].lastDay == "2026-09-27")
+        #expect(summary.weeks[0].isPartial)
+        #expect(summary.firstWeekIsPartial)
+        #expect(summary.totalSessions == 3)
+        #expect(summary.sessionsInRange == 3)
+        #expect(summary.totalSets == 30)
+        #expect(close(summary.totalVolumeLb, 3_000))
+        // 3 sessions over the 7 days in range.
+        #expect(close(summary.averageSessionsPerWeek, 3))
+    }
+
+    @Test func truncatedListLeavesOlderWeeksUnknown() {
+        // The list limit is hit and its oldest row is Wed Sep 16, inside 1M.
+        let workouts = [
+            ProgressBridgeWorkout(id: "a", sessionDate: "2026-09-29"),
+            ProgressBridgeWorkout(id: "b", sessionDate: "2026-09-24"),
+            ProgressBridgeWorkout(id: "c", sessionDate: "2026-09-22"),
+            ProgressBridgeWorkout(id: "d", sessionDate: "2026-09-17"),
+            ProgressBridgeWorkout(id: "e", kind: "strength", sessionDate: "2026-09-16"),
+        ]
+        let summary = ProgressTrainingMath.summary(
+            workouts: workouts,
+            details: [:],
+            startDayKey: "2026-09-01",
+            todayKey: "2026-09-30",
+            listLimit: 5
+        )
+        #expect(summary.listTruncated)
+        #expect(summary.sessionListCutoff == "2026-09-16")
+        // Aug 31 and Sep 7 weeks predate the list: not drawn as zero weeks.
+        #expect(summary.unloadedWeeks == 2)
+        #expect(summary.weeks.map(\.weekStart) == ["2026-09-14", "2026-09-21", "2026-09-28"])
+        #expect(summary.weeks.map(\.isIncomplete) == [true, false, false])
+        #expect(summary.weeks.map(\.sessions) == [1, 2, 1])
+        #expect(summary.totalSessions == 4)
+        // The cutoff week is left out of the average: 3 sessions over 10 days.
+        #expect(close(summary.averageSessionsPerWeek, 3.0 / (10.0 / 7.0)))
+        #expect(!summary.firstWeekIsPartial)
+        #expect(!summary.isTruncated)
+
+        // The same rows under the limit cover the whole range.
+        let complete = ProgressTrainingMath.summary(
+            workouts: workouts,
+            details: [:],
+            startDayKey: "2026-09-01",
+            todayKey: "2026-09-30"
+        )
+        #expect(complete.unloadedWeeks == 0)
+        #expect(complete.weeks.count == 5)
+        #expect(complete.weeks.allSatisfy { !$0.isIncomplete })
+    }
+
+    @Test func trainingRangeKeysShareOneEasternCalendar() {
+        // 02:30 UTC Oct 1 is 22:30 Sep 30 in New York.
+        let now = ProgressTrainingMath.parseTimestamp("2026-10-01T02:30:00Z")!
+        let week = ProgressTrainingMath.rangeDayKeys(for: .week, now: now, oldestWorkoutDay: "2025-01-01")
+        #expect(week.start == "2026-09-24")
+        #expect(week.today == "2026-09-30")
+        let month = ProgressTrainingMath.rangeDayKeys(for: .month, now: now, oldestWorkoutDay: nil)
+        #expect(month.start == "2026-09-01")
+        // Crosses the Nov 1 DST change: still whole days.
+        let late = ProgressTrainingMath.parseTimestamp("2026-11-05T04:30:00Z")! // Nov 4, 23:30 EST
+        let lateWeek = ProgressTrainingMath.rangeDayKeys(for: .week, now: late, oldestWorkoutDay: nil)
+        #expect(lateWeek.start == "2026-10-29")
+        #expect(lateWeek.today == "2026-11-04")
+
+        let all = ProgressTrainingMath.rangeDayKeys(for: .allTime, now: now, oldestWorkoutDay: "2026-03-02")
+        #expect(all.start == "2026-03-02")
+        #expect(all.today == "2026-09-30")
+        let allEmpty = ProgressTrainingMath.rangeDayKeys(for: .allTime, now: now, oldestWorkoutDay: nil)
+        #expect(allEmpty.start == "2026-09-30")
+    }
+
+    @Test func detailCacheInvalidationForcesRefetch() {
+        var cache = ProgressWorkoutDetailCache()
+        let bridge = "https://bridge.example"
+        let other = "https://other.example"
+        cache.store(ProgressWorkoutTotals(sets: 10, volumeLb: 1_000), id: "w1", baseURL: bridge)
+        cache.store(ProgressWorkoutTotals(sets: 5, volumeLb: 500), id: "w2", baseURL: bridge)
+        cache.store(ProgressWorkoutTotals(sets: 3, volumeLb: 300), id: "w1", baseURL: other)
+
+        let before = cache.lookup(ids: ["w1", "w2", "w3"], baseURL: bridge)
+        #expect(before.found["w1"] == ProgressWorkoutTotals(sets: 10, volumeLb: 1_000))
+        #expect(before.missing == ["w3"])
+
+        // Retry / pull to refresh: every workout from this bridge is refetched.
+        cache.invalidate(baseURL: bridge)
+        let after = cache.lookup(ids: ["w1", "w2"], baseURL: bridge)
+        #expect(after.found.isEmpty)
+        #expect(after.missing == ["w1", "w2"])
+        #expect(cache.lookup(ids: ["w1"], baseURL: other).found["w1"]?.sets == 3)
+
+        // Fetched totals (an edited workout) replace the old ones.
+        cache.store(ProgressWorkoutTotals(sets: 12, volumeLb: 1_400), id: "w1", baseURL: bridge)
+        cache.store(ProgressWorkoutTotals(sets: 14, volumeLb: 1_600), id: "w1", baseURL: bridge)
+        #expect(cache.lookup(ids: ["w1"], baseURL: bridge).found["w1"] == ProgressWorkoutTotals(sets: 14, volumeLb: 1_600))
     }
 
     // MARK: - Bridge JSON

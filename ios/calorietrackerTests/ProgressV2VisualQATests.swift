@@ -67,6 +67,7 @@ final class ProgressV2VisualQATests: XCTestCase {
                         goal: StepsView.dailyGoal
                     )
                 }
+                .progressV2QAPinned()
             }
         }
     }
@@ -83,6 +84,7 @@ final class ProgressV2VisualQATests: XCTestCase {
                         onRetry: {}
                     )
                 }
+                .progressV2QAPinned()
             }
         }
     }
@@ -174,12 +176,35 @@ struct ProgressV2QACardHost<Content: View>: View {
 
 // MARK: - Fixtures
 
-/// Deterministic Progress data relative to today: weight ~190 → 189 lb over
-/// 45 days, body fat on a few of the same days, Withings lean mass, steps and
-/// a Neon bridge training history.
+extension View {
+    /// Pins the locale, calendar and time zone the cards render with.
+    @MainActor
+    func progressV2QAPinned() -> some View {
+        environment(\.locale, ProgressV2QAFixtures.locale)
+            .environment(\.calendar, ProgressV2QAFixtures.calendar)
+            .environment(\.timeZone, ProgressV2QAFixtures.calendar.timeZone)
+    }
+}
+
+/// Deterministic Progress data relative to a fixed "now" (2026-09-30 12:00
+/// New York): weight ~190 → 189 lb over 45 days, body fat on a few of the
+/// same days, Withings lean mass, steps and a Neon bridge training history.
+/// The same `now` and calendar go into `ProgressV2Fixture`, so the tab's
+/// windows match the data no matter when or where the tests run.
 @MainActor
 enum ProgressV2QAFixtures {
     private static let poundsPerKilogram = ProgressV2Math.poundsPerKilogram
+
+    static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .gmt
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar
+    }()
+
+    static let locale = Locale(identifier: "en_US")
+
+    static let now: Date = calendar.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 12)) ?? Date(timeIntervalSince1970: 1_790_784_000)
 
     static func fixture(metric: ProgressCompositionMetric, includeLeanMass: Bool = true) -> ProgressV2Fixture {
         ProgressV2Fixture(
@@ -188,13 +213,15 @@ enum ProgressV2QAFixtures {
             weightEntries: weightEntries(includeLeanMass: includeLeanMass),
             bodyFatEntries: bodyFatEntries(),
             stepsByDay: stepsByDay(),
-            training: .loaded(trainingSummary())
+            training: .loaded(trainingSummary()),
+            now: now,
+            calendar: calendar,
+            locale: locale
         )
     }
 
     private static func day(_ offset: Int, hour: Int, minute: Int = 0) -> Date {
-        let calendar = Calendar.current
-        let base = calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: .now)) ?? .now
+        let base = calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: now)) ?? now
         return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: base) ?? base
     }
 
@@ -242,8 +269,7 @@ enum ProgressV2QAFixtures {
     }
 
     static func stepsByDay() -> [Date: Int] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
+        let today = calendar.startOfDay(for: now)
         var values: [Date: Int] = [:]
         for offset in 0..<120 {
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
@@ -253,8 +279,7 @@ enum ProgressV2QAFixtures {
     }
 
     static func stepsSummary() -> ProgressStepsSummary {
-        let calendar = Calendar.current
-        let window = ProgressV2Math.window(for: .month, now: .now, calendar: calendar, earliestData: nil)
+        let window = ProgressV2Math.stepsWindow(for: .month, now: now, calendar: calendar)
         return ProgressV2Math.stepsSummary(
             byDay: stepsByDay(),
             window: window,
@@ -265,14 +290,13 @@ enum ProgressV2QAFixtures {
     }
 
     private static func shift(_ key: String, days: Int) -> String? {
-        guard let date = ProgressTrainingMath.parseDayKey(key) else { return nil }
-        return ProgressTrainingMath.dayKey(for: date.addingTimeInterval(Double(days) * 86_400), timeZone: .gmt)
+        ProgressTrainingMath.shiftDayKey(key, days: days)
     }
 
     /// Eight weeks of Upper/Lower sessions with per-workout sets, in the
     /// /api/workouts and /api/workouts/{id} shapes.
     static func trainingSummary() -> ProgressTrainingSummary {
-        let todayKey = ProgressTrainingMath.dayKey(for: .now, timeZone: ProgressTrainingMath.eastern)
+        let todayKey = ProgressTrainingMath.rangeDayKeys(for: .threeMonths, now: now, oldestWorkoutDay: nil).today
         let thisMonday = ProgressTrainingMath.mondayKey(for: todayKey) ?? todayKey
         var workouts: [ProgressBridgeWorkout] = []
         var details: [String: ProgressWorkoutTotals] = [:]

@@ -13,6 +13,8 @@ struct ProgressStepsCard: View {
     let state: ProgressStepsLoadState
     let rangeDescription: String
     let goal: Int
+    /// Says how far back the window reaches when it is bounded (All).
+    var windowNote: String? = nil
 
     @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 190
 
@@ -44,6 +46,13 @@ struct ProgressStepsCard: View {
                 } else {
                     loaded(summary)
                 }
+            }
+
+            if let windowNote {
+                Text(windowNote)
+                    .font(.footnote)
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(14)
