@@ -26,6 +26,7 @@ struct calorietrackerApp: App {
     @State private var strengthWorkoutStore = StrengthWorkoutStore()
     @State private var importedHealthWorkoutStore = ImportedHealthWorkoutStore()
     @State private var weeklyChallengeStore = WeeklyChallengeStore()
+    @State private var workoutDraftStore = WorkoutDraftStore()
     @State private var cloudBackupService = CloudBackupService()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appearanceMode") private var appearanceMode = "system"
@@ -77,6 +78,7 @@ struct calorietrackerApp: App {
                         .environment(strengthWorkoutStore)
                         .environment(importedHealthWorkoutStore)
                         .environment(weeklyChallengeStore)
+                        .environment(workoutDraftStore)
                         .environment(cloudBackupService)
                 } else {
                     OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
@@ -90,6 +92,7 @@ struct calorietrackerApp: App {
                         .environment(chatStore)
                         .environment(waterStore)
                         .environment(fastingStore)
+                        .environment(workoutDraftStore)
                 }
             }
             .tint(IronTheme.bloodText)

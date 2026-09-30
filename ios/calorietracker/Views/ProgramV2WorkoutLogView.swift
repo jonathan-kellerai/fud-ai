@@ -17,28 +17,52 @@ struct ProgramV2WorkoutLogView: View {
     }
     
     @Environment(\.dismiss) private var dismiss
-    @State private var workoutSets: [String: [LoggedSet]] = [:]
-    @State private var conditioningCompleted = false
+    @Environment(WorkoutDraftStore.self) private var draftStore
     @State private var showingRestTimer = false
     @State private var restDuration = 90
     @State private var suggestedLoads: [String: Double] = [:]
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false
     @State private var saveError: String?
-    
+    @State private var showingDiscardConfirmation = false
+    @State private var showingReplaceDraftPrompt = false
+
     private var neonBridge = NeonBridgeService.shared
-    
+
+    /// Logged sets live in the app-level draft store so they survive tab
+    /// switches, dismissal and relaunch until the bridge confirms the save.
+    private var workoutSets: [String: [LoggedSet]] {
+        draftStore.existingDraft(for: day)?.sets ?? [:]
+    }
+
+    private var conditioningCompleted: Bool {
+        draftStore.existingDraft(for: day)?.conditioningCompleted ?? false
+    }
+
+    private func updateSet(_ exercise: ProgramV2Exercise, at setIndex: Int, _ change: (inout LoggedSet) -> Void) {
+        draftStore.update(day) { draft in
+            guard let sets = draft.sets[exercise.name], sets.indices.contains(setIndex) else { return }
+            change(&draft.sets[exercise.name]![setIndex])
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     conditioningCard(day.conditioning)
-                    
+                        .disabled(isSaving)
+
                     ForEach(day.exercises) { exercise in
                         exerciseCard(exercise)
+                            .disabled(isSaving)
                     }
                     
                     saveButton
+
+                    if draftStore.existingDraft(for: day) != nil {
+                        discardButton
+                    }
                 }
                 .padding()
             }
@@ -47,7 +71,8 @@ struct ProgramV2WorkoutLogView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    // Logged sets stay in the draft; closing never loses them.
+                    Button("Close") {
                         dismiss()
                     }
                 }
@@ -57,6 +82,29 @@ struct ProgramV2WorkoutLogView: View {
             }
             .task {
                 await loadLastSessionLoads()
+            }
+            .onAppear {
+                if draftStore.hasDraft(otherThan: day) {
+                    showingReplaceDraftPrompt = true
+                }
+            }
+            .alert("Unsaved Workout", isPresented: $showingReplaceDraftPrompt) {
+                Button("Discard and Start", role: .destructive) {
+                    draftStore.discard()
+                }
+                Button("Keep It", role: .cancel) {
+                    dismiss()
+                }
+            } message: {
+                Text("You have an unsaved \(draftStore.draft?.title ?? "workout") session. Starting \(day.title) discards it. Resume it from Today or Train instead.")
+            }
+            .confirmationDialog("Discard this workout?", isPresented: $showingDiscardConfirmation, titleVisibility: .visible) {
+                Button("Discard Workout", role: .destructive) {
+                    draftStore.discard()
+                    dismiss()
+                }
+            } message: {
+                Text("Every set logged in this session will be deleted.")
             }
             .alert("Workout Saved", isPresented: $showingSaveConfirmation) {
                 Button("OK") {
@@ -99,7 +147,10 @@ struct ProgramV2WorkoutLogView: View {
                     .foregroundStyle(.secondary)
             }
             
-            Toggle("Completed", isOn: $conditioningCompleted)
+            Toggle("Completed", isOn: Binding(
+                get: { conditioningCompleted },
+                set: { newValue in draftStore.update(day) { $0.conditioningCompleted = newValue } }
+            ))
                 .toggleStyle(.switch)
         }
         .padding()
@@ -191,7 +242,7 @@ struct ProgramV2WorkoutLogView: View {
             
             TextField("Load", value: Binding(
                 get: { set.weight },
-                set: { workoutSets[exercise.name]?[setIndex].weight = $0 }
+                set: { newValue in updateSet(exercise, at: setIndex) { $0.weight = newValue } }
             ), format: .number)
             .keyboardType(.decimalPad)
             .textFieldStyle(.roundedBorder)
@@ -203,7 +254,7 @@ struct ProgramV2WorkoutLogView: View {
             
             TextField("Reps", value: Binding(
                 get: { set.reps },
-                set: { workoutSets[exercise.name]?[setIndex].reps = $0 }
+                set: { newValue in updateSet(exercise, at: setIndex) { $0.reps = newValue } }
             ), format: .number)
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
@@ -215,7 +266,7 @@ struct ProgramV2WorkoutLogView: View {
             
             TextField("", value: Binding(
                 get: { set.rir },
-                set: { workoutSets[exercise.name]?[setIndex].rir = $0 }
+                set: { newValue in updateSet(exercise, at: setIndex) { $0.rir = newValue } }
             ), format: .number)
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
@@ -226,7 +277,7 @@ struct ProgramV2WorkoutLogView: View {
 
             TextField("RPE", text: Binding(
                 get: { set.rpeText },
-                set: { workoutSets[exercise.name]?[setIndex].rpeText = $0 }
+                set: { newValue in updateSet(exercise, at: setIndex) { $0.rpeText = newValue } }
             ))
             .keyboardType(.decimalPad)
             .textFieldStyle(.roundedBorder)
@@ -242,7 +293,10 @@ struct ProgramV2WorkoutLogView: View {
             .accessibilityLabel("Log set")
             
             Button {
-                workoutSets[exercise.name]?.remove(at: setIndex)
+                draftStore.update(day) { draft in
+                    guard draft.sets[exercise.name]?.indices.contains(setIndex) == true else { return }
+                    draft.sets[exercise.name]?.remove(at: setIndex)
+                }
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(IronTheme.bloodText)
@@ -285,10 +339,12 @@ struct ProgramV2WorkoutLogView: View {
             rpeText: ""
         )
         
-        if workoutSets[exercise.name] == nil {
-            workoutSets[exercise.name] = []
+        draftStore.update(day) { draft in
+            if draft.sets[exercise.name] == nil {
+                draft.sets[exercise.name] = []
+            }
+            draft.sets[exercise.name]?.append(newSet)
         }
-        workoutSets[exercise.name]?.append(newSet)
     }
 
     private func suggestedLoad(for exercise: ProgramV2Exercise) -> Double {
@@ -335,10 +391,26 @@ struct ProgramV2WorkoutLogView: View {
         .disabled(!canSave || isSaving)
     }
     
+    private var discardButton: some View {
+        Button(role: .destructive) {
+            showingDiscardConfirmation = true
+        } label: {
+            Text("Discard Workout")
+                .font(.system(size: 15, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(0.8)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.bloodText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .disabled(isSaving)
+    }
+
     private var canSave: Bool {
         conditioningCompleted || !workoutSets.isEmpty
     }
-    
+
     private func saveWorkout() async {
         isSaving = true
         defer {
@@ -346,54 +418,12 @@ struct ProgramV2WorkoutLogView: View {
                 isSaving = false
             }
         }
-        
-        var allSets: [WorkoutSet] = []
-        var order = 0
-        
-        for exercise in day.exercises {
-            if let sets = workoutSets[exercise.name] {
-                for set in sets {
-                    let rpe = Double(set.rpeText.replacingOccurrences(of: ",", with: "."))
-                    allSets.append(WorkoutSet(
-                        exercise: exercise.name,
-                        load: set.weight,
-                        reps: set.reps,
-                        rir: set.rir,
-                        rpe: rpe,
-                        order: order
-                    ))
-                    order += 1
-                }
-            }
-        }
-        
-        let now = Date()
-        let calendar = Calendar(identifier: .gregorian)
-        let components = calendar.dateComponents([.year, .month, .day], from: now)
-        let sessionDate = String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
-        
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let timestamp = formatter.string(from: now)
-        
-        let workout = WorkoutPayload(
-            kind: "COMPLETED",
-            programVersion: "program-v2",
-            programDay: day.id,
-            title: day.title,
-            units: "lb",
-            sessionDate: sessionDate,
-            conditioning: conditioningCompleted ? day.conditioning : nil,
-            notes: [],
-            recordedAtUtc: timestamp,
-            openedAtUtc: timestamp,
-            source: "jl-fud-native",
-            sets: allSets
-        )
-        
+
+        // The store builds the payload from the draft, posts it, and clears the
+        // draft only after the bridge accepts it. On failure the draft stays.
         do {
-            _ = try await neonBridge.postWorkout(workout)
-            
+            try await draftStore.save()
+
             await MainActor.run {
                 showingSaveConfirmation = true
             }
@@ -405,9 +435,39 @@ struct ProgramV2WorkoutLogView: View {
     }
 }
 
-struct LoggedSet {
+struct LoggedSet: Codable, Equatable {
     var weight: Double
     var reps: Int
     var rir: Int
     var rpeText: String
+}
+
+/// Today/Train entry point for an unsaved logger session.
+struct ResumeWorkoutCard: View {
+    let draft: WorkoutDraft
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Resume workout")
+                .font(.system(size: 15, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.0)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.bloodText)
+            Text(draft.title)
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .foregroundStyle(IronTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(draft.loggedSetCount) sets logged · \(SessionDateFormatting.displayString(from: draft.sessionDate)) · not saved")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onResume) {
+                Label("Resume", systemImage: "play.fill")
+            }
+            .buttonStyle(IronCompactButtonStyle())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }

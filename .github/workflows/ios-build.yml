@@ -86,6 +86,7 @@ jobs:
           -scheme calorietracker \
           -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
           -only-testing:calorietrackerTests/ReconMathTests \
+          -only-testing:calorietrackerTests/WorkoutDraftStoreTests \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \

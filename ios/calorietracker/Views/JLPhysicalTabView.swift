@@ -16,6 +16,7 @@ struct JLPhysicalTabView: View {
     @State private var isLoadingRecent = false
     
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(WorkoutDraftStore.self) private var workoutDraftStore
     private var neonBridge = NeonBridgeService.shared
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
@@ -32,6 +33,13 @@ struct JLPhysicalTabView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    if let draft = workoutDraftStore.draft {
+                        ResumeWorkoutCard(draft: draft) {
+                            loggingDay = draft.programV2Day
+                        }
+                        .padding()
+                        .ironCard(rule: true)
+                    }
                     todaysWorkoutCard
                     quickActionsCard
                     recentWorkoutsSection

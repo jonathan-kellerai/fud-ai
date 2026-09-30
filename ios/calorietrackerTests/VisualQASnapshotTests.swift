@@ -271,6 +271,32 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Workout draft
+
+    func test24TrainResumeWorkout() async throws {
+        let day = VisualQAFixtures.liftingDay()
+        let drafts = WorkoutDraftStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("visual-qa-draft-\(UUID().uuidString)", isDirectory: true)
+        )
+        drafts.update(day) { draft in
+            if let exercise = day.exercises.first {
+                draft.sets[exercise.name] = [
+                    LoggedSet(weight: exercise.startLoadLb ?? 135, reps: 10, rir: 2, rpeText: "8"),
+                    LoggedSet(weight: exercise.startLoadLb ?? 135, reps: 9, rir: 1, rpeText: ""),
+                ]
+            }
+            draft.conditioningCompleted = true
+        }
+        VisualQAGraveyard.keep(drafts)
+        try await eachSize("24-train-resume-workout") { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+            .environment(drafts)
+        }
+    }
+
     // MARK: - Rendering
 
     private func eachSize<Content: View>(
@@ -647,6 +673,7 @@ final class VisualQAStores {
     let strength: StrengthWorkoutStore
     let importedWorkouts: ImportedHealthWorkoutStore
     let weeklyChallenge: WeeklyChallengeStore
+    let workoutDraft: WorkoutDraftStore
     let cloudBackup: CloudBackupService
 
     init() {
@@ -659,6 +686,7 @@ final class VisualQAStores {
         strength = StrengthWorkoutStore(defaults: defaults)
         importedWorkouts = ImportedHealthWorkoutStore(defaults: defaults)
         weeklyChallenge = WeeklyChallengeStore(defaults: defaults)
+        workoutDraft = WorkoutDraftStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true))
         cloudBackup = CloudBackupService(defaults: defaults)
         bodyFat = BodyFatStore(observesExternalChanges: false)
         bodyMeasurement = BodyMeasurementStore()
@@ -693,6 +721,7 @@ final class VisualQAStores {
             .environment(strength)
             .environment(importedWorkouts)
             .environment(weeklyChallenge)
+            .environment(workoutDraft)
             .environment(cloudBackup)
             .environment(\.dynamicTypeSize, dynamicType)
             .tint(IronTheme.bloodText)
