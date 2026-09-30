@@ -107,7 +107,7 @@ struct ProgramV2WorkoutLogView: View {
                 Button("Discard and Start", role: .destructive) {
                     draftStore.discard()
                 }
-                Button("Keep It", role: .cancel) {
+                Button("Keep It (Resume from Train)", role: .cancel) {
                     dismiss()
                 }
             } message: {

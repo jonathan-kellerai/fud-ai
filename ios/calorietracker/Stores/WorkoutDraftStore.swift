@@ -179,6 +179,19 @@ struct WorkoutDraft: Codable, Equatable {
     }
 }
 
+/// What the Coach "log sets" handoff should do with today's program day.
+/// A draft for today just opens the logger, which resumes it; a draft for
+/// another day is offered back rather than pushed toward discard.
+enum WorkoutHandoffDecision {
+    case openToday(ProgramV2Day)
+    case offerResume(draft: WorkoutDraft, today: ProgramV2Day)
+
+    static func decide(draft: WorkoutDraft?, today: ProgramV2Day) -> WorkoutHandoffDecision {
+        guard let draft, draft.programDay != today.id else { return .openToday(today) }
+        return .offerResume(draft: draft, today: today)
+    }
+}
+
 @Observable
 final class WorkoutDraftStore {
     typealias PostWorkout = @MainActor (WorkoutPayload) async throws -> Void

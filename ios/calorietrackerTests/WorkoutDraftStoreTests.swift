@@ -266,7 +266,62 @@ struct WorkoutDraftStoreTests {
         }
     }
 
+    // MARK: - Coach handoff
+
+    @Test func handoffWithoutDraftOpensToday() {
+        let today = sampleDay()
+        guard case .openToday(let day) = WorkoutHandoffDecision.decide(draft: nil, today: today) else {
+            Issue.record("Expected openToday")
+            return
+        }
+        #expect(day.id == today.id)
+    }
+
+    @Test func handoffWithSameDayDraftOpensToday() {
+        let today = sampleDay()
+        let draft = WorkoutDraft(day: today, now: fixedDate)
+        guard case .openToday(let day) = WorkoutHandoffDecision.decide(draft: draft, today: today) else {
+            Issue.record("Expected openToday")
+            return
+        }
+        #expect(day.id == today.id)
+    }
+
+    @Test func handoffWithOtherDayDraftOffersResume() {
+        let today = sampleDay()
+        var draft = WorkoutDraft(day: otherDay(), now: fixedDate)
+        draft.sets["Chest press"] = [LoggedSet(weight: 100, reps: 10, rir: 2, rpeText: "")]
+        guard case .offerResume(let offered, let offeredToday) = WorkoutHandoffDecision.decide(draft: draft, today: today) else {
+            Issue.record("Expected offerResume")
+            return
+        }
+        #expect(offered == draft)
+        #expect(offered.programV2Day.id == "Day2_UpperA")
+        #expect(offeredToday.id == today.id)
+    }
+
     // MARK: - Helpers
+
+    private func otherDay() -> ProgramV2Day {
+        ProgramV2Day(
+            id: "Day2_UpperA",
+            title: "Upper A",
+            conditioning: "",
+            conditioningMinimum: "",
+            exercises: [
+                ProgramV2Exercise(
+                    key: "chest press",
+                    name: "Chest press",
+                    sets: 3,
+                    reps: "8-12",
+                    restSeconds: 90...120,
+                    rirTarget: "2",
+                    startLoadLb: nil,
+                    notes: ""
+                ),
+            ]
+        )
+    }
 
     private var fixedDate: Date { Date(timeIntervalSince1970: 1_790_000_000) }
 

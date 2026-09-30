@@ -14,6 +14,9 @@ struct JLPhysicalTabView: View {
     @State private var loggingDay: ProgramV2Day?
     @State private var recentWorkouts: [RemoteWorkout] = []
     @State private var isLoadingRecent = false
+    /// Set when the Coach handoff finds an unsaved workout for another day.
+    @State private var pendingResume: PendingResume?
+    @State private var showingResumePrompt = false
     
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let routerHandoff = RouterHandoff.shared
@@ -85,6 +88,23 @@ struct JLPhysicalTabView: View {
                     Task { await loadRecentWorkouts() }
                 })
             }
+            .confirmationDialog(
+                "Unsaved Workout",
+                isPresented: $showingResumePrompt,
+                titleVisibility: .visible,
+                presenting: pendingResume
+            ) { pending in
+                Button("Resume \(pending.draft.title)") {
+                    loggingDay = pending.draft.programV2Day
+                }
+                Button("Discard and Start \(pending.today.title)", role: .destructive) {
+                    workoutDraftStore.discard()
+                    loggingDay = pending.today
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text("You have an unsaved \(pending.draft.title) session.")
+            }
             .task {
                 await loadActiveProgram()
                 await loadRecentWorkouts()
@@ -102,6 +122,8 @@ struct JLPhysicalTabView: View {
     private func consumeWorkoutHandoff() {
         guard routerHandoff.pendingOpenTodayWorkout else { return }
         routerHandoff.pendingOpenTodayWorkout = false
+        // The Ladders overlay would otherwise hide the logger or the resume prompt.
+        trainMode = .today
         if let body = ActiveProgramCache.load()?.body {
             programBody = body
         }
@@ -111,7 +133,18 @@ struct JLPhysicalTabView: View {
         let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
             ?? programBody.days.first { $0.dayIndex == dayIndex }
         guard let day else { return }
-        loggingDay = day.asProgramV2Day()
+        switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft, today: day.asProgramV2Day()) {
+        case .openToday(let today):
+            loggingDay = today
+        case .offerResume(let draft, let today):
+            pendingResume = PendingResume(draft: draft, today: today)
+            showingResumePrompt = true
+        }
+    }
+
+    private struct PendingResume {
+        let draft: WorkoutDraft
+        let today: ProgramV2Day
     }
 
     private var todaysWorkoutCard: some View {
