@@ -269,12 +269,7 @@ struct ProgressCompositionChart: View {
             .chartXScale(domain: window.closedRange)
             .chartYScale(domain: yDomain)
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
-                        .foregroundStyle(IronTheme.hairline)
-                    AxisValueLabel(format: xLabelFormat)
-                        .foregroundStyle(IronTheme.textSecondary)
-                }
+                ProgressV2DateAxis.marks(format: xLabelFormat)
             }
             .chartYAxis {
                 AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { _ in

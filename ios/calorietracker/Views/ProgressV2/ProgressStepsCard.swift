@@ -102,12 +102,7 @@ struct ProgressStepsCard: View {
         }
         .chartYScale(domain: 0...yUpper)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
-                    .foregroundStyle(IronTheme.hairline)
-                AxisValueLabel(format: axisFormat)
-                    .foregroundStyle(IronTheme.textSecondary)
-            }
+            ProgressV2DateAxis.marks(format: axisFormat)
         }
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { _ in

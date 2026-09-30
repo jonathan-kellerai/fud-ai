@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 // MARK: - Headers
@@ -241,6 +242,28 @@ struct ProgressV2LegendItem: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(IronTheme.textSecondary)
+        }
+    }
+}
+
+// MARK: - Chart axes
+
+/// Shared date x-axis for the Progress v2 charts. Labels are fixed-size single
+/// lines so they never ellipsize ("Sep…"), and the last label is anchored at
+/// its trailing edge so it grows leftward instead of past the plot's edge.
+enum ProgressV2DateAxis {
+    static func marks(format: Date.FormatStyle) -> some AxisContent {
+        AxisMarks(values: .automatic(desiredCount: 4)) { value in
+            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                .foregroundStyle(IronTheme.hairline)
+            AxisValueLabel(anchor: value.index == value.count - 1 ? UnitPoint.topTrailing : nil) {
+                if let date = value.as(Date.self) {
+                    Text(date, format: format)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+            .foregroundStyle(IronTheme.textSecondary)
         }
     }
 }

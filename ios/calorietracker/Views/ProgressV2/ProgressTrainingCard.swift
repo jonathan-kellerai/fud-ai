@@ -122,12 +122,7 @@ struct ProgressTrainingCard: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
-                        .foregroundStyle(IronTheme.hairline)
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        .foregroundStyle(IronTheme.textSecondary)
-                }
+                ProgressV2DateAxis.marks(format: .dateTime.month(.abbreviated).day())
             }
             .chartYAxis {
                 AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { _ in
