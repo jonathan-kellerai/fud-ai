@@ -11,6 +11,10 @@ struct ProgressCompositionCard: View {
     let onLogWeight: () -> Void
     let onLogBodyFat: () -> Void
 
+    @Environment(\.locale) private var locale
+    @Environment(\.calendar) private var calendar
+    @Environment(\.timeZone) private var timeZone
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ProgressV2SectionTitle(title: String(localized: "Body Composition"))
@@ -117,8 +121,8 @@ struct ProgressCompositionCard: View {
         let rateSpoken: String
         if let rate = stats.weeklyRate {
             let perWeek = metric == .bodyFat ? String(localized: "pts/wk") : "\(unitText)/wk"
-            rateValue = "\(ProgressV2Format.signed(rate)) \(perWeek)"
-            rateSpoken = String(localized: "\(ProgressV2Format.signed(rate)) \(spoken) per week")
+            rateValue = "\(ProgressV2Format.signed(rate, locale: locale)) \(perWeek)"
+            rateSpoken = String(localized: "\(ProgressV2Format.signed(rate, locale: locale)) \(spoken) per week")
         } else {
             rateValue = ProgressV2Format.dash
             rateSpoken = notEnough
@@ -129,13 +133,13 @@ struct ProgressCompositionCard: View {
         let net: String
         switch metric {
         case .weight, .leanMass:
-            current = ProgressV2Format.mass(stats.current, unit: unitText)
-            average = ProgressV2Format.mass(stats.average, unit: unitText)
-            net = ProgressV2Format.signedMass(stats.netChange, unit: unitText)
+            current = ProgressV2Format.mass(stats.current, unit: unitText, locale: locale)
+            average = ProgressV2Format.mass(stats.average, unit: unitText, locale: locale)
+            net = ProgressV2Format.signedMass(stats.netChange, unit: unitText, locale: locale)
         case .bodyFat:
-            current = ProgressV2Format.percent(stats.current)
-            average = ProgressV2Format.percent(stats.average)
-            net = stats.netChange.map { "\(ProgressV2Format.signed($0)) \(String(localized: "pts"))" } ?? ProgressV2Format.dash
+            current = ProgressV2Format.percent(stats.current, locale: locale)
+            average = ProgressV2Format.percent(stats.average, locale: locale)
+            net = stats.netChange.map { "\(ProgressV2Format.signed($0, locale: locale)) \(String(localized: "pts"))" } ?? ProgressV2Format.dash
         }
         return [
             ProgressV2Stat(label: String(localized: "Current"), value: current),
@@ -211,8 +215,8 @@ struct ProgressCompositionCard: View {
         guard let latest = snapshot.latestLeanMass else {
             return String(localized: "Pick a longer range to see older readings.")
         }
-        let value = ProgressV2Format.mass(latest.value, unit: snapshot.useMetric ? "kg" : "lb")
-        let date = ProgressV2Format.mediumDate(latest.date)
+        let value = ProgressV2Format.mass(latest.value, unit: snapshot.useMetric ? "kg" : "lb", locale: locale)
+        let date = ProgressV2Format.mediumDate(latest.date, locale: locale, calendar: calendar, timeZone: timeZone)
         return String(localized: "The latest lean mass reading is \(value) on \(date). Pick a longer range to see it.")
     }
 }
@@ -228,6 +232,8 @@ struct ProgressCompositionChart: View {
     let goal: Double?
 
     @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+    @Environment(\.timeZone) private var timeZone
     @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 210
 
     private var chartHeight: CGFloat { min(max(scaledHeight, 200), 320) }
@@ -334,10 +340,12 @@ struct ProgressCompositionChart: View {
         let low = values.min() ?? last.value
         let high = values.max() ?? last.value
         let format: (Double) -> String = { value in
-            unit == "%" ? ProgressV2Format.percent(value) : ProgressV2Format.mass(value, unit: unit)
+            unit == "%" ? ProgressV2Format.percent(value, locale: locale) : ProgressV2Format.mass(value, unit: unit, locale: locale)
         }
+        let firstDate = ProgressV2Format.mediumDate(first.date, locale: locale, calendar: calendar, timeZone: timeZone)
+        let lastDate = ProgressV2Format.mediumDate(last.date, locale: locale, calendar: calendar, timeZone: timeZone)
         var parts = [
-            String(localized: "\(series.daily.count) days with readings in \(rangeDescription), from \(ProgressV2Format.mediumDate(first.date)) to \(ProgressV2Format.mediumDate(last.date))."),
+            String(localized: "\(series.daily.count) days with readings in \(rangeDescription), from \(firstDate) to \(lastDate)."),
             String(localized: "Lowest \(format(low)), highest \(format(high)).")
         ]
         if let trend = series.trend.last {

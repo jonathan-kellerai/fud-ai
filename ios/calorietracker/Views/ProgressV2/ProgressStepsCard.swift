@@ -16,6 +16,9 @@ struct ProgressStepsCard: View {
     /// Says how far back the window reaches when it is bounded (All).
     var windowNote: String? = nil
 
+    @Environment(\.locale) private var locale
+    @Environment(\.calendar) private var calendar
+    @Environment(\.timeZone) private var timeZone
     @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 190
 
     private var chartHeight: CGFloat { min(max(scaledHeight, 180), 300) }
@@ -24,7 +27,7 @@ struct ProgressStepsCard: View {
         VStack(alignment: .leading, spacing: 14) {
             ProgressV2SectionTitle(
                 title: String(localized: "Steps"),
-                detail: String(localized: "From Apple Health · goal \(ProgressV2Format.integer(goal)) a day")
+                detail: String(localized: "From Apple Health · goal \(ProgressV2Format.integer(goal, locale: locale)) a day")
             )
 
             switch state {
@@ -65,11 +68,11 @@ struct ProgressStepsCard: View {
             ProgressV2Stat(
                 label: String(localized: "Days Met"),
                 value: "\(summary.daysMet) / \(summary.trackedDays)",
-                accessibilityValue: String(localized: "\(summary.daysMet) of \(summary.trackedDays) tracked days at or above \(ProgressV2Format.integer(goal)) steps")
+                accessibilityValue: String(localized: "\(summary.daysMet) of \(summary.trackedDays) tracked days at or above \(ProgressV2Format.integer(goal, locale: locale)) steps")
             ),
             ProgressV2Stat(
                 label: String(localized: "Daily Average"),
-                value: summary.dailyAverage.map { ProgressV2Format.integer($0) } ?? ProgressV2Format.dash
+                value: summary.dailyAverage.map { ProgressV2Format.integer($0, locale: locale) } ?? ProgressV2Format.dash
             ),
         ])
 
@@ -92,7 +95,7 @@ struct ProgressStepsCard: View {
                 .foregroundStyle(IronTheme.brass)
                 .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                 .annotation(position: .top, alignment: .leading) {
-                    Text("\(ProgressV2Format.integer(goal)) goal")
+                    Text("\(ProgressV2Format.integer(goal, locale: locale)) goal")
                         .font(.caption2.weight(.heavy))
                         .foregroundStyle(IronTheme.brass)
                 }
@@ -146,13 +149,14 @@ struct ProgressStepsCard: View {
             String(localized: "\(summary.daysMet) of \(summary.trackedDays) tracked days met the goal in \(rangeDescription).")
         ]
         if let average = summary.dailyAverage {
-            parts.append(String(localized: "Daily average \(ProgressV2Format.integer(average)) steps."))
+            parts.append(String(localized: "Daily average \(ProgressV2Format.integer(average, locale: locale)) steps."))
         }
         if let best = summary.bars.max(by: { $0.steps < $1.steps }) {
-            let when = ProgressV2Format.mediumDate(best.date)
+            let when = ProgressV2Format.mediumDate(best.date, locale: locale, calendar: calendar, timeZone: timeZone)
+            let steps = ProgressV2Format.integer(best.steps, locale: locale)
             parts.append(summary.isWeekly
-                ? String(localized: "Best week, starting \(when): \(ProgressV2Format.integer(best.steps)) a day.")
-                : String(localized: "Best day \(when): \(ProgressV2Format.integer(best.steps)) steps."))
+                ? String(localized: "Best week, starting \(when): \(steps) a day.")
+                : String(localized: "Best day \(when): \(steps) steps."))
         }
         return parts.joined(separator: " ")
     }

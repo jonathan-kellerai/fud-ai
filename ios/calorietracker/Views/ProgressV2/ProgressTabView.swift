@@ -221,7 +221,9 @@ struct ProgressTabView: View {
                     entries: foodStore.entries,
                     dayCount: dayCount,
                     profile: userProfile,
-                    optionalGoals: .current
+                    optionalGoals: .current,
+                    now: referenceNow,
+                    calendar: referenceCalendar
                 )
                 guard !Task.isCancelled else { return }
                 foodRangeStats = stats
@@ -464,14 +466,17 @@ struct ProgressTabView: View {
     }
 
     /// Uses the fixture's locale and calendar in snapshots, the user's otherwise.
+    /// The tab sets the fixture environment on its content, so it reads the
+    /// fixture directly rather than its own @Environment.
     private func rangeSubtitle(_ window: ProgressWindow) -> String {
         let start: String
         if let fixture {
-            var style = Date.FormatStyle(date: .abbreviated, time: .omitted)
-            style.locale = fixture.locale
-            style.calendar = fixture.calendar
-            style.timeZone = fixture.calendar.timeZone
-            start = window.start.formatted(style)
+            start = ProgressV2Format.mediumDate(
+                window.start,
+                locale: fixture.locale,
+                calendar: fixture.calendar,
+                timeZone: fixture.calendar.timeZone
+            )
         } else {
             start = ProgressV2Format.mediumDate(window.start)
         }

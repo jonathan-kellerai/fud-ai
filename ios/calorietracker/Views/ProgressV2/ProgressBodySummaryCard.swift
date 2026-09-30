@@ -6,6 +6,9 @@ struct ProgressBodySummaryCard: View {
     let snapshot: ProgressCompositionSnapshot
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.locale) private var locale
+    @Environment(\.calendar) private var calendar
+    @Environment(\.timeZone) private var timeZone
 
     private var massUnit: String { snapshot.useMetric ? "kg" : "lb" }
 
@@ -19,21 +22,21 @@ struct ProgressBodySummaryCard: View {
             VStack(spacing: 1) {
                 row(
                     label: String(localized: "Weight"),
-                    value: snapshot.latestWeight.map { ProgressV2Format.mass($0.value, unit: massUnit) },
+                    value: snapshot.latestWeight.map { ProgressV2Format.mass($0.value, unit: massUnit, locale: locale) },
                     date: snapshot.latestWeight?.date,
                     caption: nil,
                     isDerived: false
                 )
                 row(
                     label: String(localized: "Body Fat"),
-                    value: snapshot.latestBodyFat.map { ProgressV2Format.percent($0.value) },
+                    value: snapshot.latestBodyFat.map { ProgressV2Format.percent($0.value, locale: locale) },
                     date: snapshot.latestBodyFat?.date,
                     caption: nil,
                     isDerived: false
                 )
                 row(
                     label: String(localized: "Lean Mass"),
-                    value: snapshot.latestLeanMass.map { ProgressV2Format.mass($0.value, unit: massUnit) },
+                    value: snapshot.latestLeanMass.map { ProgressV2Format.mass($0.value, unit: massUnit, locale: locale) },
                     date: snapshot.latestLeanMass?.date,
                     caption: leanCaption,
                     isDerived: false
@@ -43,7 +46,8 @@ struct ProgressBodySummaryCard: View {
                         label: String(localized: "Fat Mass"),
                         value: ProgressV2Format.mass(
                             ProgressV2Math.displayMass(kg: derived.fatMassKg, useMetric: snapshot.useMetric),
-                            unit: massUnit
+                            unit: massUnit,
+                            locale: locale
                         ),
                         date: derived.day,
                         caption: derivedCaption(derived),
@@ -69,16 +73,18 @@ struct ProgressBodySummaryCard: View {
     private func derivedCaption(_ derived: ProgressDerivedFatMass) -> String {
         let weight = ProgressV2Format.mass(
             ProgressV2Math.displayMass(kg: derived.weightKg, useMetric: snapshot.useMetric),
-            unit: massUnit
+            unit: massUnit,
+            locale: locale
         )
-        let fat = ProgressV2Format.percent(derived.bodyFatFraction * 100)
+        let fat = ProgressV2Format.percent(derived.bodyFatFraction * 100, locale: locale)
         return String(localized: "\(weight) × \(fat), both logged that day")
     }
 
     @ViewBuilder
     private func row(label: String, value: String?, date: Date?, caption: String?, isDerived: Bool) -> some View {
         let valueText = value ?? ProgressV2Format.dash
-        let dateText = date.map { ProgressV2Format.mediumDate($0) } ?? String(localized: "No readings")
+        let dateText = date.map { ProgressV2Format.mediumDate($0, locale: locale, calendar: calendar, timeZone: timeZone) }
+            ?? String(localized: "No readings")
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))

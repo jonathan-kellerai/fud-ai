@@ -155,10 +155,11 @@ struct ProgressFoodRangeStats {
         entries: [FoodEntry],
         dayCount: Int,
         profile: UserProfile,
-        optionalGoals: OptionalNutrientGoals
+        optionalGoals: OptionalNutrientGoals,
+        now: Date = .now,
+        calendar: Calendar = .current
     ) -> ProgressFoodRangeStats {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
+        let today = calendar.startOfDay(for: now)
         guard let rangeStart = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today) else {
             return .empty
         }

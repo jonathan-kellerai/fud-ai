@@ -247,44 +247,56 @@ struct ProgressV2LegendItem: View {
 
 // MARK: - Formatting
 
+/// Views pass their environment locale, calendar and time zone so snapshot
+/// fixtures render deterministically and users get their own settings.
 enum ProgressV2Format {
     static let dash = "—"
 
-    static func number(_ value: Double, digits: Int = 1) -> String {
-        value.formatted(.number.precision(.fractionLength(digits)))
+    static func number(_ value: Double, digits: Int = 1, locale: Locale = .autoupdatingCurrent) -> String {
+        value.formatted(.number.precision(.fractionLength(digits)).locale(locale))
     }
 
-    static func signed(_ value: Double, digits: Int = 1) -> String {
-        let magnitude = number(abs(value), digits: digits)
+    static func signed(_ value: Double, digits: Int = 1, locale: Locale = .autoupdatingCurrent) -> String {
+        let magnitude = number(abs(value), digits: digits, locale: locale)
         let rounded = (abs(value) * pow(10, Double(digits))).rounded()
         if rounded == 0 { return magnitude }
         return (value < 0 ? "−" : "+") + magnitude
     }
 
-    static func mass(_ value: Double?, unit: String) -> String {
+    static func mass(_ value: Double?, unit: String, locale: Locale = .autoupdatingCurrent) -> String {
         guard let value else { return dash }
-        return "\(number(value)) \(unit)"
+        return "\(number(value, locale: locale)) \(unit)"
     }
 
-    static func signedMass(_ value: Double?, unit: String) -> String {
+    static func signedMass(_ value: Double?, unit: String, locale: Locale = .autoupdatingCurrent) -> String {
         guard let value else { return dash }
-        return "\(signed(value)) \(unit)"
+        return "\(signed(value, locale: locale)) \(unit)"
     }
 
-    static func percent(_ value: Double?) -> String {
+    static func percent(_ value: Double?, locale: Locale = .autoupdatingCurrent) -> String {
         guard let value else { return dash }
-        return "\(number(value))%"
+        return "\(number(value, locale: locale))%"
     }
 
-    static func shortDate(_ date: Date) -> String {
-        date.formatted(.dateTime.month(.abbreviated).day())
+    static func shortDate(
+        _ date: Date,
+        locale: Locale = .autoupdatingCurrent,
+        calendar: Calendar = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String {
+        date.formatted(Date.FormatStyle(locale: locale, calendar: calendar, timeZone: timeZone).month(.abbreviated).day())
     }
 
-    static func mediumDate(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .omitted)
+    static func mediumDate(
+        _ date: Date,
+        locale: Locale = .autoupdatingCurrent,
+        calendar: Calendar = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String {
+        date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, locale: locale, calendar: calendar, timeZone: timeZone))
     }
 
-    static func integer(_ value: Int) -> String {
-        value.formatted(.number)
+    static func integer(_ value: Int, locale: Locale = .autoupdatingCurrent) -> String {
+        value.formatted(.number.locale(locale))
     }
 }

@@ -24,6 +24,8 @@ struct ProgressTrainingCard: View {
 
     @State private var chartMetric: ProgressTrainingChartMetric = .sessions
     @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+    @Environment(\.timeZone) private var timeZone
     @ScaledMetric(relativeTo: .body) private var scaledHeight: CGFloat = 180
 
     private var chartHeight: CGFloat { min(max(scaledHeight, 170), 280) }
@@ -75,19 +77,21 @@ struct ProgressTrainingCard: View {
     @ViewBuilder
     private func loaded(_ summary: ProgressTrainingSummary) -> some View {
         ProgressV2StatGrid(stats: [
-            ProgressV2Stat(label: String(localized: "Sessions"), value: ProgressV2Format.integer(summary.totalSessions)),
+            ProgressV2Stat(label: String(localized: "Sessions"), value: ProgressV2Format.integer(summary.totalSessions, locale: locale)),
             ProgressV2Stat(
                 label: String(localized: "Per Week"),
-                value: summary.averageSessionsPerWeek.map { ProgressV2Format.number($0) } ?? ProgressV2Format.dash,
-                accessibilityValue: summary.averageSessionsPerWeek.map { String(localized: "\(ProgressV2Format.number($0)) sessions per week") }
+                value: summary.averageSessionsPerWeek.map { ProgressV2Format.number($0, locale: locale) } ?? ProgressV2Format.dash,
+                accessibilityValue: summary.averageSessionsPerWeek.map { String(localized: "\(ProgressV2Format.number($0, locale: locale)) sessions per week") }
             ),
             ProgressV2Stat(
                 label: String(localized: "Sets"),
-                value: summary.totalSets.map { ProgressV2Format.integer($0) } ?? ProgressV2Format.dash
+                value: summary.totalSets.map { ProgressV2Format.integer($0, locale: locale) } ?? ProgressV2Format.dash,
+                accessibilityValue: partialAccessibilityValue(summary.totalSets.map { ProgressV2Format.integer($0, locale: locale) }, summary: summary)
             ),
             ProgressV2Stat(
                 label: String(localized: "Volume"),
-                value: summary.totalVolumeLb.map { volumeText($0) } ?? ProgressV2Format.dash
+                value: summary.totalVolumeLb.map { volumeText($0) } ?? ProgressV2Format.dash,
+                accessibilityValue: partialAccessibilityValue(summary.totalVolumeLb.map { volumeText($0) }, summary: summary)
             ),
         ])
 
@@ -158,8 +162,16 @@ struct ProgressTrainingCard: View {
         }
     }
 
+    /// Totals missing some sessions' sets are spoken as partial; the
+    /// "didn't load" note below says how many.
+    private func partialAccessibilityValue(_ value: String?, summary: ProgressTrainingSummary) -> String? {
+        guard let value, summary.hasPartialDetails else { return nil }
+        return String(localized: "\(value), partial")
+    }
+
     private func dayText(_ key: String) -> String {
-        Self.localDate(forDayKey: key, calendar: calendar).map { ProgressV2Format.mediumDate($0) } ?? key
+        Self.localDate(forDayKey: key, calendar: calendar)
+            .map { ProgressV2Format.mediumDate($0, locale: locale, calendar: calendar, timeZone: timeZone) } ?? key
     }
 
     private func noteLines(_ summary: ProgressTrainingSummary) -> [String] {
@@ -218,20 +230,20 @@ struct ProgressTrainingCard: View {
     }
 
     private func volumeText(_ pounds: Double) -> String {
-        "\(displayVolume(pounds).formatted(.number.precision(.fractionLength(0)))) \(volumeUnit)"
+        "\(ProgressV2Format.number(displayVolume(pounds), digits: 0, locale: locale)) \(volumeUnit)"
     }
 
     private func barText(_ value: Double) -> String {
         switch chartMetric {
-        case .sessions: String(localized: "\(ProgressV2Format.integer(Int(value))) sessions")
-        case .sets: String(localized: "\(ProgressV2Format.integer(Int(value))) sets")
-        case .volume: "\(value.formatted(.number.precision(.fractionLength(0)))) \(volumeUnit)"
+        case .sessions: String(localized: "\(ProgressV2Format.integer(Int(value), locale: locale)) sessions")
+        case .sets: String(localized: "\(ProgressV2Format.integer(Int(value), locale: locale)) sets")
+        case .volume: "\(ProgressV2Format.number(value, digits: 0, locale: locale)) \(volumeUnit)"
         }
     }
 
     private func accessibilitySummary(_ bars: [WeekBar]) -> String {
         bars.suffix(8).map { bar in
-            String(localized: "Week of \(ProgressV2Format.shortDate(bar.date)): \(barText(bar.value))")
+            String(localized: "Week of \(ProgressV2Format.shortDate(bar.date, locale: locale, calendar: calendar, timeZone: timeZone)): \(barText(bar.value))")
         }
         .joined(separator: ". ")
     }

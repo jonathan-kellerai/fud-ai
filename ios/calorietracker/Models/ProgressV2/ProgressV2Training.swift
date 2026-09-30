@@ -257,8 +257,9 @@ nonisolated struct ProgressTrainingSummary: Equatable, Sendable {
     let weekLimit: Int
     /// /api/workouts returned its full limit, so older sessions may be missing.
     let listTruncated: Bool
-    /// Oldest day in a truncated list, when that is after the first counted
-    /// day: sessions before it are unknown, not zero.
+    /// Oldest day in a truncated list, when that is on or after the first
+    /// counted day: sessions before it are unknown, not zero, and its own
+    /// week may be missing sessions.
     let sessionListCutoff: String?
     /// Shown weeks that end before `sessionListCutoff`; not drawn or averaged.
     let unloadedWeeks: Int
@@ -276,13 +277,27 @@ nonisolated struct ProgressTrainingSummary: Equatable, Sendable {
     /// Sets and volume only cover the most recent `detailLimit` sessions.
     var isDetailLimited: Bool { sessionsInRange > detailSessions }
     var totalSessions: Int { weeks.reduce(0) { $0 + $1.sessions } }
+    /// Sum over weeks with sessions whose sets loaded. Zero only when the
+    /// shown weeks have no sessions; nil when sessions exist but no sets
+    /// loaded (empty weeks' zeros don't count as a known total).
     var totalSets: Int? {
-        let loaded = weeks.compactMap(\.sets)
-        return loaded.isEmpty ? nil : loaded.reduce(0, +)
+        Self.total(weeks, \ProgressTrainingWeek.sets)
     }
     var totalVolumeLb: Double? {
-        let loaded = weeks.compactMap(\.volumeLb)
-        return loaded.isEmpty ? nil : loaded.reduce(0, +)
+        Self.total(weeks, \ProgressTrainingWeek.volumeLb)
+    }
+    /// Some requested sets failed to load, so the totals undercount; the card
+    /// shows the "didn't load" note with them.
+    var hasPartialDetails: Bool { failedDetails > 0 && totalSets != nil }
+
+    private static func total<Value: AdditiveArithmetic>(
+        _ weeks: [ProgressTrainingWeek],
+        _ value: KeyPath<ProgressTrainingWeek, Value?>
+    ) -> Value? {
+        let active = weeks.filter { $0.sessions > 0 }
+        guard !active.isEmpty else { return weeks.isEmpty ? nil : Value.zero }
+        let loaded: [Value] = active.compactMap { $0[keyPath: value] }
+        return loaded.isEmpty ? nil : loaded.reduce(Value.zero, +)
     }
     /// Sessions per 7 days over the fully loaded days in range, so a partial
     /// first or current week counts only its days. The cutoff week is left
@@ -535,11 +550,13 @@ nonisolated enum ProgressTrainingMath {
         }
         // A full list may have dropped older sessions: every day before its
         // oldest row is unknown, and the week holding that row may be short.
+        // That includes the oldest day itself, even when it is the first
+        // counted day (the range or All start): more rows may share it.
         let listTruncated = workouts.count >= listLimit
         var cutoff: String?
         if listTruncated,
            let oldest = workouts.compactMap({ dayKey(for: $0, timeZone: timeZone) }).min(),
-           oldest > firstDay {
+           oldest >= firstDay {
             cutoff = oldest
         }
         let cutoffMonday = cutoff.flatMap { mondayKey(for: $0) }

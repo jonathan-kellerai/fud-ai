@@ -66,7 +66,8 @@ enum ProgressCompositionBuilder {
     }
 
     /// Hash over every weight and body-fat row (id, date, value, lean-mass
-    /// flag), so an edit anywhere in history changes it. One O(n) pass.
+    /// flag, Health source), so an edit anywhere in history changes it. The
+    /// source feeds the lean mass caption. One O(n) pass.
     static func fingerprint(weightRows: [WeightEntry], bodyFatRows: [BodyFatEntry]) -> Int {
         var hasher = Hasher()
         hasher.combine(weightRows.count)
@@ -75,6 +76,7 @@ enum ProgressCompositionBuilder {
             hasher.combine(row.date.timeIntervalSinceReferenceDate)
             hasher.combine(row.weightKg)
             hasher.combine(row.isLeanBodyMass)
+            hasher.combine(row.healthSourceName)
         }
         hasher.combine(bodyFatRows.count)
         for row in bodyFatRows {
