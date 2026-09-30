@@ -257,34 +257,53 @@ struct NeonBridgeSettings: Codable {
             baseURL = stored.baseURL
             legacyKey = stored.apiKey
         }
-        var apiKey = KeychainHelper.load(key: apiKeyKeychainAccount)
-        if let legacyKey {
-            // One-time migration of a key saved in UserDefaults by older builds.
-            if apiKey == nil, !legacyKey.isEmpty {
-                KeychainHelper.save(key: apiKeyKeychainAccount, value: legacyKey)
-                apiKey = KeychainHelper.load(key: apiKeyKeychainAccount)
-            }
-            if apiKey != nil || legacyKey.isEmpty {
-                // Only drop the legacy copy once the Keychain holds the key.
+        if let legacyKey, !legacyKey.isEmpty {
+            // A key in UserDefaults comes from an older build or from a save()
+            // whose Keychain write failed, so it is the newest copy. Drop it only
+            // once the Keychain verifiably holds the same value.
+            if storeInKeychain(legacyKey) {
                 writeDefaults(baseURL: baseURL)
-            } else {
-                apiKey = legacyKey
             }
+            return NeonBridgeSettings(baseURL: baseURL, apiKey: legacyKey)
         }
+        if legacyKey != nil {
+            // An empty legacy key carries nothing worth keeping.
+            writeDefaults(baseURL: baseURL)
+        }
+        let apiKey = KeychainHelper.load(key: apiKeyKeychainAccount)
         return NeonBridgeSettings(baseURL: baseURL, apiKey: apiKey)
     }
-    
-    func save() {
-        Self.writeDefaults(baseURL: baseURL)
-        if let apiKey, !apiKey.isEmpty {
-            KeychainHelper.save(key: Self.apiKeyKeychainAccount, value: apiKey)
-        } else {
+
+    /// Returns false if the Keychain write failed; the key is then kept in the
+    /// UserDefaults JSON so it is never lost.
+    @discardableResult
+    func save() -> Bool {
+        guard let apiKey, !apiKey.isEmpty else {
             KeychainHelper.delete(key: Self.apiKeyKeychainAccount)
+            Self.writeDefaults(baseURL: baseURL)
+            return true
         }
+        if Self.storeInKeychain(apiKey) {
+            Self.writeDefaults(baseURL: baseURL)
+            return true
+        }
+        Self.writeLegacyDefaults(baseURL: baseURL, apiKey: apiKey)
+        return false
+    }
+
+    private static func storeInKeychain(_ value: String) -> Bool {
+        guard KeychainHelper.upsert(key: apiKeyKeychainAccount, value: value) else { return false }
+        return KeychainHelper.load(key: apiKeyKeychainAccount) == value
     }
 
     private static func writeDefaults(baseURL: String) {
         if let data = try? JSONEncoder().encode(Persisted(baseURL: baseURL)) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    private static func writeLegacyDefaults(baseURL: String, apiKey: String) {
+        if let data = try? JSONEncoder().encode(NeonBridgeSettings(baseURL: baseURL, apiKey: apiKey)) {
             UserDefaults.standard.set(data, forKey: storageKey)
         }
     }

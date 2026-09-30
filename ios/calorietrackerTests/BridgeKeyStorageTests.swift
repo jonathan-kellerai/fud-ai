@@ -26,7 +26,7 @@ struct BridgeKeyStorageTests {
                 defaults.removeObject(forKey: Self.defaultsKey)
             }
             if let savedKey {
-                KeychainHelper.save(key: Self.account, value: savedKey)
+                KeychainHelper.upsert(key: Self.account, value: savedKey)
             } else {
                 KeychainHelper.delete(key: Self.account)
             }
@@ -34,17 +34,13 @@ struct BridgeKeyStorageTests {
         try body()
     }
 
-    /// CI builds the test host unsigned. If that host cannot use the Keychain,
-    /// say so in the log (the CI grep prints lines with the suite name).
-    private static func keychainAvailable() -> Bool {
+    /// Fails the test (rather than skipping it) if this host cannot use the Keychain.
+    private static func requireKeychain() throws {
         let probe = account + ".probe"
-        KeychainHelper.save(key: probe, value: "probe")
-        let works = KeychainHelper.load(key: probe) == "probe"
+        let wrote = KeychainHelper.upsert(key: probe, value: "probe")
+        let works = wrote && KeychainHelper.load(key: probe) == "probe"
         KeychainHelper.delete(key: probe)
-        if !works {
-            print("BridgeKeyStorageTests: Keychain unavailable in this test host; Keychain assertions skipped.")
-        }
-        return works
+        try #require(works, "Keychain unavailable in this test host")
     }
 
     private func storedJSON() throws -> [String: Any] {
@@ -52,9 +48,21 @@ struct BridgeKeyStorageTests {
         return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    @Test func saveKeepsKeyInKeychainOnly() throws {
+    @Test func saveReturnsTrueAndOmitsKeyFromJSON() throws {
+        try Self.requireKeychain()
         try withCleanState {
-            NeonBridgeSettings(baseURL: Self.testURL, apiKey: Self.testKey).save()
+            let saved = NeonBridgeSettings(baseURL: Self.testURL, apiKey: Self.testKey).save()
+            #expect(saved)
+            let json = try storedJSON()
+            #expect(json.keys.contains("apiKey") == false)
+            #expect(json["baseURL"] as? String == Self.testURL)
+        }
+    }
+
+    @Test func saveKeepsKeyInKeychainOnly() throws {
+        try Self.requireKeychain()
+        try withCleanState {
+            #expect(NeonBridgeSettings(baseURL: Self.testURL, apiKey: Self.testKey).save())
 
             let json = try storedJSON()
             #expect(json["baseURL"] as? String == Self.testURL)
@@ -62,7 +70,6 @@ struct BridgeKeyStorageTests {
             let raw = try #require(UserDefaults.standard.data(forKey: Self.defaultsKey))
             #expect(String(decoding: raw, as: UTF8.self).contains(Self.testKey) == false)
 
-            guard Self.keychainAvailable() else { return }
             #expect(KeychainHelper.load(key: Self.account) == Self.testKey)
 
             let loaded = NeonBridgeSettings.load()
@@ -72,7 +79,7 @@ struct BridgeKeyStorageTests {
     }
 
     @Test func legacyJSONKeyMigratesToKeychain() throws {
-        guard Self.keychainAvailable() else { return }
+        try Self.requireKeychain()
         try withCleanState {
             let legacy = #"{"baseURL":"https://bridge-key-tests.invalid","apiKey":"test-bridge-key-not-real"}"#
             UserDefaults.standard.set(Data(legacy.utf8), forKey: Self.defaultsKey)
@@ -93,17 +100,17 @@ struct BridgeKeyStorageTests {
     }
 
     @Test func nilOrEmptyKeyDeletesKeychainItem() throws {
-        guard Self.keychainAvailable() else { return }
+        try Self.requireKeychain()
         try withCleanState {
             NeonBridgeSettings(baseURL: Self.testURL, apiKey: Self.testKey).save()
             #expect(KeychainHelper.load(key: Self.account) == Self.testKey)
 
-            NeonBridgeSettings(baseURL: Self.testURL, apiKey: nil).save()
+            #expect(NeonBridgeSettings(baseURL: Self.testURL, apiKey: nil).save())
             #expect(KeychainHelper.load(key: Self.account) == nil)
             #expect(NeonBridgeSettings.load().apiKey == nil)
 
             NeonBridgeSettings(baseURL: Self.testURL, apiKey: Self.testKey).save()
-            NeonBridgeSettings(baseURL: Self.testURL, apiKey: "").save()
+            #expect(NeonBridgeSettings(baseURL: Self.testURL, apiKey: "").save())
             #expect(KeychainHelper.load(key: Self.account) == nil)
             #expect(NeonBridgeSettings.load().apiKey == nil)
         }

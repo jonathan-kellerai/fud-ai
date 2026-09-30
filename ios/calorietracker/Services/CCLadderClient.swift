@@ -10,7 +10,7 @@
 import Foundation
 
 enum CCLadderClient {
-    static func fetchLadders(settings: NeonBridgeSettings = NeonBridgeService.shared.settings) async throws -> CCLaddersResponse {
+    static func fetchLadders(settings: NeonBridgeSettings) async throws -> CCLaddersResponse {
         let request = try makeRequest(path: "/api/cc/ladders", method: "GET", settings: settings)
         let data = try await send(request)
         do {
@@ -22,7 +22,7 @@ enum CCLadderClient {
 
     static func postEvent(
         _ event: CCLadderEventRequest,
-        settings: NeonBridgeSettings = NeonBridgeService.shared.settings
+        settings: NeonBridgeSettings
     ) async throws {
         var request = try makeRequest(path: "/api/cc/events", method: "POST", settings: settings)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

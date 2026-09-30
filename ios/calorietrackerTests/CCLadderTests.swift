@@ -103,12 +103,39 @@ struct CCLadderTests {
         #expect(CCLadderLogic.isMaster(brg))
         #expect(CCLadderLogic.showsAdvance(brg) == false)
         #expect(CCLadderLogic.showsGoBack(brg))
+        #expect(CCLadderLogic.changeRequest(for: brg, direction: .advance) == nil)
+    }
 
+    /// The bridge's master flag does not hide Advance below step 10.
+    @Test func masterFlagBelowStepTenStillShowsAdvance() throws {
         var flagged = try series("BRG", in: try decodeLive())
         flagged.master = true
+        flagged.currentStep = 1
         flagged.ready = true
-        #expect(CCLadderLogic.isMaster(flagged))
-        #expect(CCLadderLogic.showsAdvance(flagged) == false)
+        #expect(CCLadderLogic.isMaster(flagged) == false)
+        #expect(CCLadderLogic.showsAdvance(flagged))
+        let request = try #require(CCLadderLogic.changeRequest(for: flagged, direction: .advance))
+        #expect(request.fromStep == 1)
+        #expect(request.toStep == 2)
+    }
+
+    /// Step 10 is the master step even if the bridge rule says otherwise.
+    @Test func ruleMasterStepDoesNotMoveTheBoundary() throws {
+        let json = Self.liveJSON.replacingOccurrences(of: "\"master_step\":10", with: "\"master_step\":12")
+        #expect(json != Self.liveJSON)
+        let response = try JSONDecoder().decode(CCLaddersResponse.self, from: Data(json.utf8))
+        #expect(response.rule?.masterStep == 12)
+
+        var brg = try series("BRG", in: response)
+        brg.ready = true
+        brg.currentStep = 10
+        #expect(CCLadderLogic.isMaster(brg))
+        #expect(CCLadderLogic.showsAdvance(brg) == false)
+        #expect(CCLadderLogic.changeRequest(for: brg, direction: .advance) == nil)
+
+        brg.currentStep = 9
+        #expect(CCLadderLogic.isMaster(brg) == false)
+        #expect(CCLadderLogic.showsAdvance(brg))
     }
 
     @Test func advanceHiddenWithoutACurrentStep() throws {

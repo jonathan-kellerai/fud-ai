@@ -415,23 +415,22 @@ enum CCStepChangeDirection: String, Equatable {
 /// Pure display rules for the Ladders screen. Readiness itself is computed by
 /// the bridge; the app only decides which controls to show.
 enum CCLadderLogic {
-    /// The spec's final step. Used only when the bridge rule omits master_step.
-    static let defaultMasterStep = 10
+    /// The spec's final step. Fixed: the bridge's series.master and
+    /// rule.master_step are decoded but never change which controls show.
+    static let masterStep = 10
 
     static func isSetUp(_ series: CCSeriesState) -> Bool {
         !series.steps.isEmpty
     }
 
-    static func isMaster(_ series: CCSeriesState, masterStep: Int = defaultMasterStep) -> Bool {
+    static func isMaster(_ series: CCSeriesState) -> Bool {
         guard isSetUp(series) else { return false }
-        if series.master { return true }
-        guard let current = series.currentStep else { return false }
-        return current >= masterStep
+        return series.currentStep == masterStep
     }
 
-    static func showsAdvance(_ series: CCSeriesState, masterStep: Int = defaultMasterStep) -> Bool {
-        guard isSetUp(series), series.ready, series.currentStep != nil else { return false }
-        return !isMaster(series, masterStep: masterStep)
+    static func showsAdvance(_ series: CCSeriesState) -> Bool {
+        guard isSetUp(series), series.ready, let current = series.currentStep else { return false }
+        return current < masterStep
     }
 
     static func showsGoBack(_ series: CCSeriesState) -> Bool {

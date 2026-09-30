@@ -66,24 +66,34 @@ enum CCLadderMemoryCache {
     static var last: CCLaddersResponse?
 }
 
+// MARK: - Save error
+
+/// The last failed step change. Shared so it survives switching Today | Ladders;
+/// cleared only by the Dismiss button.
+@Observable
+final class CCLadderSaveErrorStore {
+    static let shared = CCLadderSaveErrorStore()
+    var message: String?
+}
+
 // MARK: - Ladders screen
 
 struct CCLaddersView: View {
     @State private var response: CCLaddersResponse? = CCLadderMemoryCache.last
     @State private var loadError: String?
-    @State private var saveError: String?
+    private let saveErrors = CCLadderSaveErrorStore.shared
     @State private var isSaving = false
     @State private var pendingChange: CCPendingStepChange?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let saveError {
+                if let saveError = saveErrors.message {
                     CCLadderErrorBanner(
                         title: "Step change not saved",
                         message: saveError,
                         actionTitle: "Dismiss",
-                        action: { self.saveError = nil }
+                        action: { saveErrors.message = nil }
                     )
                 }
 
@@ -100,7 +110,6 @@ struct CCLaddersView: View {
                     ForEach(response.series) { series in
                         CCSeriesCard(
                             series: series,
-                            masterStep: response.rule?.masterStep ?? CCLadderLogic.defaultMasterStep,
                             isSaving: isSaving,
                             onChange: { direction in requestChange(series, direction: direction) }
                         )
@@ -155,7 +164,7 @@ struct CCLaddersView: View {
 
     private func load() async {
         do {
-            let fresh = try await CCLadderClient.fetchLadders()
+            let fresh = try await CCLadderClient.fetchLadders(settings: NeonBridgeService.shared.settings)
             response = fresh
             CCLadderMemoryCache.last = fresh
             loadError = nil
@@ -171,12 +180,11 @@ struct CCLaddersView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            try await CCLadderClient.postEvent(change.request)
-            saveError = nil
+            try await CCLadderClient.postEvent(change.request, settings: NeonBridgeService.shared.settings)
             await load()
         } catch {
             // Stays on screen until the user dismisses it.
-            saveError = CCLadderClient.userMessage(for: error)
+            saveErrors.message = CCLadderClient.userMessage(for: error)
         }
     }
 }
@@ -276,7 +284,6 @@ private struct CCLadderErrorBanner: View {
 
 private struct CCSeriesCard: View {
     let series: CCSeriesState
-    let masterStep: Int
     let isSaving: Bool
     let onChange: (CCStepChangeDirection) -> Void
 
@@ -286,7 +293,7 @@ private struct CCSeriesCard: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if CCLadderLogic.isSetUp(series) {
-                if CCLadderLogic.isMaster(series, masterStep: masterStep) {
+                if CCLadderLogic.isMaster(series) {
                     masterBanner
                 }
                 if series.currentStep == nil {
@@ -299,7 +306,6 @@ private struct CCSeriesCard: View {
                     CCStepStatsPanel(
                         series: series,
                         step: step,
-                        masterStep: masterStep,
                         isSaving: isSaving,
                         onChange: onChange
                     )
@@ -460,7 +466,6 @@ private struct CCStepRow: View {
 private struct CCStepStatsPanel: View {
     let series: CCSeriesState
     let step: CCLadderStep
-    let masterStep: Int
     let isSaving: Bool
     let onChange: (CCStepChangeDirection) -> Void
 
@@ -486,7 +491,7 @@ private struct CCStepStatsPanel: View {
 
             recentSessions
 
-            if CCLadderLogic.showsAdvance(series, masterStep: masterStep) {
+            if CCLadderLogic.showsAdvance(series) {
                 Button {
                     onChange(.advance)
                 } label: {
