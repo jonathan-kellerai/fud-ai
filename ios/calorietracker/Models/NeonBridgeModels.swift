@@ -234,6 +234,22 @@ struct StepsListResponse: Codable {
 
 // MARK: - Bridge Settings
 
+/// Storage for the bridge bearer key.
+protocol BridgeKeySecretStore {
+    /// True only when the value was written.
+    func upsert(_ value: String) -> Bool
+    func load() -> String?
+    func delete()
+}
+
+struct KeychainBridgeKeyStore: BridgeKeySecretStore {
+    let account: String
+
+    func upsert(_ value: String) -> Bool { KeychainHelper.upsert(key: account, value: value) }
+    func load() -> String? { KeychainHelper.load(key: account) }
+    func delete() { KeychainHelper.delete(key: account) }
+}
+
 struct NeonBridgeSettings: Codable {
     var baseURL: String
     var apiKey: String?
@@ -245,6 +261,9 @@ struct NeonBridgeSettings: Codable {
     static let apiKeyKeychainAccount = "neonBridgeApiKey"
     /// Set only when save() could not write the Keychain and kept the key in defaults.
     static let pendingKeychainWriteKey = "neonBridgeApiKeyPendingKeychainWrite"
+    /// Where the key is kept. The Keychain in the app; tests swap in a memory store
+    /// because unsigned CI simulator hosts have no Keychain access.
+    static var secretStore: any BridgeKeySecretStore = KeychainBridgeKeyStore(account: apiKeyKeychainAccount)
 
     /// What goes to UserDefaults: the URL only.
     private struct Persisted: Codable {
@@ -261,7 +280,7 @@ struct NeonBridgeSettings: Codable {
         }
         if let legacyKey, !legacyKey.isEmpty {
             let pending = UserDefaults.standard.bool(forKey: pendingKeychainWriteKey)
-            let keychainKey = KeychainHelper.load(key: apiKeyKeychainAccount)
+            let keychainKey = secretStore.load()
             if !pending, let keychainKey, !keychainKey.isEmpty {
                 // Plain legacy copy (older build or restored defaults): the Keychain value
                 // is authoritative, so never overwrite it with the older copy.
@@ -280,7 +299,7 @@ struct NeonBridgeSettings: Codable {
             // An empty legacy key carries nothing worth keeping.
             writeDefaults(baseURL: baseURL)
         }
-        let apiKey = KeychainHelper.load(key: apiKeyKeychainAccount)
+        let apiKey = secretStore.load()
         return NeonBridgeSettings(baseURL: baseURL, apiKey: apiKey)
     }
 
@@ -289,10 +308,10 @@ struct NeonBridgeSettings: Codable {
     @discardableResult
     func save() -> Bool {
         guard let apiKey, !apiKey.isEmpty else {
-            KeychainHelper.delete(key: Self.apiKeyKeychainAccount)
+            Self.secretStore.delete()
             Self.writeDefaults(baseURL: baseURL)
             // Report failure if the Keychain item survived the delete.
-            return KeychainHelper.load(key: Self.apiKeyKeychainAccount) == nil
+            return Self.secretStore.load() == nil
         }
         if Self.storeInKeychain(apiKey) {
             Self.writeDefaults(baseURL: baseURL)
@@ -303,8 +322,8 @@ struct NeonBridgeSettings: Codable {
     }
 
     private static func storeInKeychain(_ value: String) -> Bool {
-        guard KeychainHelper.upsert(key: apiKeyKeychainAccount, value: value) else { return false }
-        return KeychainHelper.load(key: apiKeyKeychainAccount) == value
+        guard secretStore.upsert(value) else { return false }
+        return secretStore.load() == value
     }
 
     private static func writeDefaults(baseURL: String) {
