@@ -128,8 +128,8 @@ enum HomeV2Logic {
         return StepsPace(remaining: remaining, perHour: perHour, met: false, windowClosed: false)
     }
 
-    static func stepsRingTone(steps: Int, pace: StepsPace, hour: Int, lateHour: Int = 18) -> StepsRingTone {
-        if pace.met || steps >= 10_000 {
+    static func stepsRingTone(steps: Int, pace: StepsPace, hour: Int, lateHour: Int = 18, goal: Int = StepsGoal.fallback) -> StepsRingTone {
+        if pace.met || steps >= goal {
             return .olive
         }
         if pace.windowClosed || hour >= lateHour {
@@ -334,10 +334,10 @@ enum HomeV2Logic {
         )
         guard let todayParts, let startYMD, let endYMD else { return nil }
         if compare(todayParts, startYMD) == .orderedAscending {
-            return "Reduction week \(monthDay(weekStart, calendar: calendar))"
+            return "Deload Week \(monthDay(weekStart, calendar: calendar))"
         }
         if compare(todayParts, endYMD) != .orderedDescending {
-            return "Reduction week this week (\(monthDay(weekStart, calendar: calendar))–\(monthDay(weekEnd, calendar: calendar)))"
+            return "Deload Week this week (\(monthDay(weekStart, calendar: calendar))–\(monthDay(weekEnd, calendar: calendar)))"
         }
         return nil
     }

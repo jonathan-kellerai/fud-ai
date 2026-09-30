@@ -110,9 +110,8 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test10More() async throws {
-        // ProfileView's init is file-private to ContentView, so render the real ContentView
-        // and switch its tab bar to More the way a tap would.
         PostUpdatePrompts.markAllSeenForFreshInstall()
+        seedSettingsSubtitles()
         try await eachSize("10-more-settings", afterAppear: { window in
             VisualQAUIKit.selectTab(4, in: window)
         }) { _ in
@@ -261,15 +260,304 @@ final class VisualQASnapshotTests: XCTestCase {
     // MARK: - AI providers
 
     func test23AIProvidersOnDeviceModel() async throws {
-        // ProfileView (which hosts the full AI Providers & Fallbacks list) has a
-        // file-private init in ContentView, so render its On-Device Model section
-        // with the real Gemma4ModelSettingsView in the download-in-progress state.
+        // ProfileView's update-state initializer is fileprivate. This harness draws
+        // the Gemma card in downloading, not-downloaded, and ready states.
         try await eachSize("23-ai-providers-on-device-download") { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "More") { VisualQAOnDeviceModelSection() }
             }
         }
     }
+
+    // MARK: - Settings
+
+    func test24SettingsTraining() async throws {
+        try await settingsScreen("24-settings-training") { ProfileView(settingsCategory: .training) }
+    }
+
+    func test25SettingsFoodAI() async throws {
+        try await settingsScreen("25-settings-food-ai") { ProfileView(settingsCategory: .foodAI) }
+    }
+
+    func test26SettingsDailyTargets() async throws {
+        try await settingsScreen("26-settings-daily-targets") { ProfileView(settingsCategory: .dailyTargets) }
+    }
+
+    func test27SettingsWaterFasting() async throws {
+        try await settingsScreen("27-settings-water-fasting") { ProfileView(settingsCategory: .waterFasting) }
+    }
+
+    func test28SettingsShortcutsSiri() async throws {
+        try await settingsScreen("28-settings-shortcuts-siri") { ShortcutsAndSiriSettingsView() }
+    }
+
+    func test29SettingsHomeMenu() async throws {
+        try await settingsScreen("29-settings-home-menu") { AddMenuSettingsView() }
+    }
+
+    func test30SettingsAIProviders() async throws {
+        try await settingsScreen("30-settings-ai-providers") { ProfileView(settingsCategory: .aiProviders) }
+    }
+
+    func test31SettingsOnDeviceModels() async throws {
+        try await settingsScreen("31-settings-on-device-models") { ProfileView(settingsCategory: .onDeviceModels) }
+    }
+
+    func test32SettingsAdvancedAI() async throws {
+        try await settingsScreen("32-settings-advanced-ai", heightMultiplier: 3) {
+            ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    func test33SettingsBodyHealth() async throws {
+        try await settingsScreen("33-settings-body-health", heightMultiplier: 1.8) {
+            ProfileView(settingsCategory: .bodyHealth)
+        }
+    }
+
+    func test34SettingsProfile() async throws {
+        try await settingsScreen("34-settings-profile") { ProfileView(settingsCategory: .profile) }
+    }
+
+    func test35SettingsDataSync() async throws {
+        try await settingsScreen("35-settings-data-sync") { ProfileView(settingsCategory: .dataSync) }
+    }
+
+    func test36SettingsNeonBridge() async throws {
+        try await settingsScreen("36-settings-neon-bridge") { BridgeSettingsView() }
+    }
+
+    func test37SettingsNotifications() async throws {
+        try await settingsScreen("37-settings-notifications", heightMultiplier: 3) { NotificationSettingsView() }
+    }
+
+    func test38SettingsAbout() async throws {
+        try await settingsScreen("38-settings-about") { AboutView() }
+    }
+
+    func test39SettingsAcknowledgements() async throws {
+        try await settingsScreen("39-settings-acknowledgements") { AcknowledgementsView() }
+    }
+
+    func test40RestTimerMuted() async throws {
+        let day = VisualQAFixtures.liftingDay()
+        try await eachSize("40-rest-timer-muted", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+        }, secondSheet: {
+            RestTimerSheet(defaultSeconds: 90, initiallyMuted: true)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    func test41ReconCalendarSyncStatus() async throws {
+        VisualQAFixtures.seedReconCalendar()
+        try await settingsScreen("41-recon-calendar-sync-status", heightMultiplier: 3) {
+            ReconView(initialSection: .calendar)
+        }
+    }
+
+    func test42FoodReviewEstimateLooksOff() async throws {
+        try await eachSize("42-food-review-estimate-looks-off", sheet: {
+            FoodResultView(
+                emoji: "🥗",
+                source: .snapFood,
+                name: "Chicken rice bowl",
+                calories: 640,
+                protein: 48,
+                carbs: 72,
+                fat: 16,
+                servingSizeGrams: 420,
+                fiber: 6,
+                profile: .default,
+                entriesForDate: { _ in [] },
+                weightMetric: false,
+                onLog: { _ in },
+                estimateCheck: .preview(.looksOff(
+                    direction: .tooLow,
+                    expectedBandLabel: "1,000–1,500 kcal (a very large or restaurant-size meal)",
+                    model: "jev-1.13.0"
+                )),
+                onReestimate: { _ in }
+            )
+        }) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
+    func test43SettingsAIProvidersEstimateCheck() async throws {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: TypeSafeSettings.enabledKey)
+        defaults.set(TypeSafeEndpoint.direct.rawValue, forKey: TypeSafeSettings.endpointKey)
+        defaults.set("jev-latest", forKey: TypeSafeSettings.modelKey)
+        defer {
+            defaults.removeObject(forKey: TypeSafeSettings.enabledKey)
+            defaults.removeObject(forKey: TypeSafeSettings.endpointKey)
+            defaults.removeObject(forKey: TypeSafeSettings.modelKey)
+        }
+        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 4) {
+            ProfileView(settingsCategory: .aiProviders)
+        }
+    }
+
+    func test44SettingsAdvancedAIJevRouter() async throws {
+        JevRouterSettings.visualPreview = true
+        defer { JevRouterSettings.visualPreview = false }
+        try await settingsScreen("44-settings-advanced-ai-jev-router", heightMultiplier: 3) {
+            ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    /// The Jev Router section alone, so the largest text size shows every wrapped toggle.
+    func test44bJevRouterSection() async throws {
+        JevRouterSettings.visualPreview = true
+        defer { JevRouterSettings.visualPreview = false }
+        try await settingsScreen("44b-jev-router-section", heightMultiplier: 3) {
+            List {
+                Section {
+                    JevRouterAdvancedSection()
+                } header: {
+                    IronInfoSectionHeader(title: "Jev Router", infoTopic: .jevRouter)
+                }
+                .listRowBackground(AppColors.appCard)
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppColors.appBackground)
+            .navigationTitle(Text("Advanced AI"))
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    func test45JevRouterStats() async throws {
+        let defaults = UserDefaults(suiteName: "jev.router.visual")!
+        defaults.removePersistentDomain(forName: "jev.router.visual")
+        let telemetry = JevRouterTelemetry(defaults: defaults)
+        for latency in [180, 180, 180, 320, 320, 360] {
+            telemetry.recordNetwork(use: .mealMatch, latencyMs: latency, inputTokens: 500)
+        }
+        telemetry.recordCacheHit(use: .mealMatch)
+        telemetry.recordCacheHit(use: .mealMatch)
+        telemetry.recordShown(use: .mealMatch, preview: "rice", result: "accepted", latencyMs: 0, source: .cache)
+        for _ in 0..<4 {
+            telemetry.record(
+                .mealMatch,
+                .accepted(label: "chili", confidence: 0.88, llmCallsAvoided: 1),
+                preview: "chili",
+                latencyMs: 180,
+                model: "jev-1.13.0"
+            )
+        }
+        telemetry.record(
+            .mealMatch,
+            .accepted(label: "oatmeal", confidence: 0.91, llmCallsAvoided: 1),
+            preview: "oatmeal",
+            latencyMs: 180,
+            model: "jev-1.13.0"
+        )
+        telemetry.record(.mealMatch, .userOverride, preview: "oatmeal", latencyMs: nil, model: nil)
+        telemetry.record(
+            .mealMatch,
+            .fellBack(.lowConfidence),
+            preview: "chili",
+            latencyMs: 420,
+            model: "jev-1.13.0"
+        )
+        defer { defaults.removePersistentDomain(forName: "jev.router.visual") }
+        try await settingsScreen("45-jev-router-stats", heightMultiplier: 3) {
+            JevRouterStatsView(telemetry: telemetry)
+        }
+    }
+
+    func test46FoodReviewSavedMatch() async throws {
+        try await eachSize("46-food-review-saved-match", sheet: {
+            FoodResultView(
+                emoji: "🌯",
+                source: .textInput,
+                name: "Chicken burrito bowl",
+                calories: 640,
+                protein: 42,
+                carbs: 58,
+                fat: 22,
+                servingSizeGrams: 450,
+                profile: .default,
+                entriesForDate: { _ in [] },
+                weightMetric: false,
+                onLog: { _ in },
+                savedMatch: SavedMatchBanner(entryName: "Chicken burrito bowl"),
+                onEstimateInstead: {}
+            )
+        }) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
+    func test47CoachLocalAnswer() async throws {
+        VisualQAFixtures.seedCoachLocalAnswer()
+        try await eachSize("47-coach-local-answer") { _ in
+            VisualQATabShell(selected: .coach) { ChatView() }
+        }
+    }
+
+    func test48PlausibilityAlert() async throws {
+        // The shared modifier every save point uses, active over a real screen.
+        // The loggers keep their flag message in private @State, so the host passes it directly.
+        try await eachSize("48-plausibility-alert") { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+            .plausibilityConfirmation(
+                title: "Double-check before saving",
+                message: "Bench press set 2: 800 lb. Did you mean 80?",
+                onSave: {},
+                onEdit: {}
+            )
+        }
+        // Body-metric copy: "Save <value> <unit>?" with a plain Save button.
+        try await eachSize("48b-plausibility-weight") { _ in
+            VisualQATabShell(selected: .progress) { ProgressTabView() }
+                .plausibilityConfirmation(
+                    title: "Save 95.0 kg?",
+                    message: "This weight looks like a kg/lb unit mix-up.",
+                    saveTitle: "Save",
+                    onSave: {},
+                    onEdit: {}
+                )
+        }
+    }
+
+    private func settingsScreen<Content: View>(
+        _ name: String,
+        heightMultiplier: CGFloat = 1,
+        @ViewBuilder content: @escaping () -> Content
+    ) async throws {
+        seedSettingsSubtitles()
+        try await eachSize(name, heightMultiplier: heightMultiplier) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { content() }
+            }
+        }
+    }
+
+    private func seedSettingsSubtitles() {
+        AIProviderSettings.selectedProvider = .gemini
+        AIProviderSettings.selectedModel = AIProvider.gemini.defaultModel
+        AIProviderSettings.setAPIKey("visual-qa-key", for: .gemini)
+        VisualQAFixtures.icloudLastBackupISO = ISO8601DateFormatter().string(
+            from: Date().addingTimeInterval(-2 * 60 * 60)
+        )
+        UserDefaults.standard.set(true, forKey: "healthKitEnabled")
+        UserDefaults.standard.set("lbs", forKey: "weightUnit")
+        UserDefaults.standard.set(true, forKey: "notificationsEnabled")
+        let bridge = NeonBridgeSettings(baseURL: NeonBridgeSettings.defaultBaseURL, apiKey: nil)
+        bridge.save()
+    }
+
 
     // MARK: - Workout draft
 
@@ -294,6 +582,74 @@ final class VisualQASnapshotTests: XCTestCase {
                 JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
             }
             .environment(drafts)
+        }
+    }
+
+    // MARK: - Logger supersets and history
+
+    func test49SupersetPair() async throws {
+        let full = TrainingProgramBody.bundledV2().days[3].asProgramV2Day()
+        let day = ProgramV2Day(
+            id: full.id,
+            title: full.title,
+            conditioning: full.conditioning,
+            conditioningMinimum: full.conditioningMinimum,
+            exercises: full.exercises.filter { $0.supersetGroup != nil }
+        )
+        let drafts = WorkoutDraftStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("visual-qa-superset-\(UUID().uuidString)", isDirectory: true)
+        )
+        drafts.update(day) { draft in
+            for (index, exercise) in day.exercises.enumerated() {
+                let load: Double = exercise.startLoadLb ?? 25
+                draft.sets[exercise.name] = [
+                    LoggedSet(weight: load, reps: 14 - index, rir: 2, rpeText: ""),
+                    LoggedSet(weight: load, reps: 0, rir: 2, rpeText: ""),
+                ]
+            }
+        }
+        VisualQAGraveyard.keep(drafts)
+        // The draft store goes on the logger itself so it wins over the one stores.inject adds outside it.
+        try await eachSize("49-superset-pair", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+                .environment(drafts)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    func test50LastTimeLine() async throws {
+        let day = VisualQAFixtures.liftingDay()
+        try await eachSize("50-last-time-line", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    // MARK: - Ladders, peptides
+
+    func test51TrainLadders() async throws {
+        try await eachSize("51-train-ladders", heightMultiplier: 2) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false), initialMode: .ladders)
+            }
+        }
+    }
+
+    func test52HomePeptideCard() async throws {
+        let savedLayout = HomeCardLayout.load()
+        defer { HomeCardLayout.save(order: savedLayout.order, hidden: savedLayout.hidden) }
+        HomeCardLayout.save(order: [.peptides] + HomeCardID.allCases.filter { $0 != .peptides }, hidden: [])
+        try await eachSize("52-home-peptide-card") { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
         }
     }
 
@@ -384,6 +740,9 @@ final class VisualQASnapshotTests: XCTestCase {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let fileName = "\(VisualQAOutput.deviceLabel)_\(sizeLabel)_\(name).png"
+        if name == "10-more-settings", sizeLabel == "default", window.bounds.height <= 700 {
+            VisualQADiagnostics.assertHubRowsAboveTabBar(in: window)
+        }
         VisualQADiagnostics.recordNavigationBars(in: window, for: fileName)
         if let data = image.pngData() {
             VisualQAOutput.write(data, named: fileName)
@@ -448,6 +807,170 @@ enum VisualQADiagnostics {
         let text = lines.joined(separator: "\n") + "\n"
         VisualQAOutput.write(Data(text.utf8), named: "navbar-\(VisualQAOutput.deviceLabel).txt")
     }
+
+    static func assertHubRowsAboveTabBar(in window: UIWindow) {
+        let rows = [
+            ("settings.category.reconBench", "Recon Bench"),
+            ("settings.category.training", "Training"),
+            ("settings.category.foodAI", "Food & AI"),
+            ("settings.category.bodyHealth", "Body & Health"),
+            ("settings.category.dataSync", "Data & Sync"),
+            ("settings.category.notifications", "Notifications"),
+            ("settings.category.about", "About"),
+        ]
+        let identifiers = Set(rows.map(\.0))
+        scrollHubToTop(window)
+        window.layoutIfNeeded()
+        guard let tabBar = findTabBar(in: window) else {
+            XCTFail("Missing tab bar")
+            return
+        }
+        if let items = tabBar.items, items.count > 4 {
+            XCTAssertNil(items[4].badgeValue, "More tab shows an update badge")
+        }
+        let tabTop = tabBar.convert(tabBar.bounds, to: window).minY
+        if let scroll = tallestScrollView(in: window) {
+            let coveredByTab = window.bounds.maxY - tabTop
+            XCTAssertGreaterThanOrEqual(
+                scroll.adjustedContentInset.bottom,
+                coveredByTab,
+                "More list clearance is shorter than the tab bar"
+            )
+        } else {
+            XCTFail("Missing More hub scroll view")
+        }
+        let frames = hubRowFrames(in: window, identifiers: identifiers)
+        for (identifier, title) in rows {
+            guard let rest = frames[identifier] else {
+                XCTFail("Missing More hub row \(title). \(hubLookupDebug)")
+                continue
+            }
+            XCTAssertLessThan(rest.maxY, tabTop + 1, "\(title) sits under the tab bar at rest on iPhone SE")
+        }
+        scrollHubToBottom(window)
+        window.layoutIfNeeded()
+        writeHubScreenshot(of: window, named: "10b-more-settings-scrolled")
+        let scrolled = hubRowFrames(in: window, identifiers: identifiers)
+        for (identifier, title) in rows {
+            guard let frame = scrolled[identifier] else {
+                XCTFail("\(title) disappeared after scrolling the More hub")
+                continue
+            }
+            XCTAssertLessThanOrEqual(frame.maxY, tabTop + 1, "\(title) can't be scrolled above the tab bar on iPhone SE")
+        }
+        scrollHubToTop(window)
+        window.layoutIfNeeded()
+    }
+
+    private static func tallestScrollView(in view: UIView) -> UIScrollView? {
+        var best: UIScrollView?
+        func walk(_ candidate: UIView) {
+            if let scroll = candidate as? UIScrollView,
+               scroll.contentSize.height > (best?.contentSize.height ?? 0) {
+                best = scroll
+            }
+            for subview in candidate.subviews { walk(subview) }
+        }
+        walk(view)
+        return best
+    }
+
+    private static func writeHubScreenshot(of window: UIWindow, named name: String) {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.windowScene?.screen.scale ?? 2
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        if let data = image.pngData() {
+            VisualQAOutput.write(data, named: "\(VisualQAOutput.deviceLabel)_default_\(name).png")
+        }
+    }
+
+    private static var hubLookupDebug = ""
+
+    private static func scrollHubToTop(_ view: UIView) {
+        if let scroll = view as? UIScrollView {
+            scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        }
+        for subview in view.subviews { scrollHubToTop(subview) }
+    }
+
+    private static func scrollHubToBottom(_ view: UIView) {
+        if let scroll = view as? UIScrollView {
+            let bottom = max(-scroll.adjustedContentInset.top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+            scroll.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        }
+        for subview in view.subviews { scrollHubToBottom(subview) }
+    }
+
+    private static func hubRowFrames(in window: UIWindow, identifiers: Set<String>) -> [String: CGRect] {
+        var frames: [String: CGRect] = [:]
+        var seen = Set<ObjectIdentifier>()
+        var notes: [String] = []
+        func keep(_ identifier: String, _ frame: CGRect) {
+            guard identifiers.contains(identifier), frame.width > 40, frame.height > 20, frame.height < 220 else { return }
+            if let existing = frames[identifier], existing.height >= frame.height { return }
+            frames[identifier] = frame
+        }
+        func rowFrame(for view: UIView) -> CGRect {
+            var current: UIView? = view
+            while let candidate = current, candidate !== window {
+                let rect = candidate.convert(candidate.bounds, to: window)
+                if rect.width > 40, rect.height > 20, rect.height < 220 {
+                    return rect
+                }
+                current = candidate.superview
+            }
+            return view.convert(view.bounds, to: window)
+        }
+        func consider(_ object: NSObject) {
+            let token = ObjectIdentifier(object)
+            guard seen.insert(token).inserted else { return }
+            let accessibilityIdentifier = (object as? UIAccessibilityIdentification)?.accessibilityIdentifier
+            let layerName = (object as? UIView)?.layer.name
+            let identifier = [accessibilityIdentifier, layerName].compactMap { $0 }.first { !$0.isEmpty }
+            if let identifier {
+                let frame: CGRect
+                if let view = object as? UIView {
+                    frame = rowFrame(for: view)
+                } else if let space = window.windowScene?.screen.coordinateSpace {
+                    frame = window.convert(object.accessibilityFrame, from: space)
+                } else {
+                    frame = window.convert(object.accessibilityFrame, from: nil)
+                }
+                if notes.count < 12, identifier.contains("settings") {
+                    notes.append("\(identifier) \(Int(frame.width))x\(Int(frame.height))")
+                }
+                keep(identifier, frame)
+            }
+            guard let view = object as? UIView else { return }
+            if let elements = view.accessibilityElements {
+                for case let element as NSObject in elements {
+                    consider(element)
+                }
+            }
+            let count = view.accessibilityElementCount()
+            if count > 0, count < 10_000 {
+                for index in 0..<count {
+                    if let element = view.accessibilityElement(at: index) as? NSObject {
+                        consider(element)
+                    }
+                }
+            }
+            for subview in view.subviews { consider(subview) }
+        }
+        consider(window)
+        hubLookupDebug = notes.isEmpty ? "no settings identifiers in the window" : notes.joined(separator: "; ")
+        return frames
+    }
+
+    private static func findTabBar(in view: UIView) -> UITabBar? {
+        if let bar = view as? UITabBar { return bar }
+        for subview in view.subviews {
+            if let bar = findTabBar(in: subview) { return bar }
+        }
+        return nil
+    }
 }
 
 // MARK: - Output
@@ -468,7 +991,9 @@ enum VisualQAOutput {
         if let name = env["SIMULATOR_DEVICE_NAME"], !name.isEmpty {
             return name.filter { $0.isLetter || $0.isNumber }
         }
-        let bounds = UIScreen.main.bounds
+        let bounds = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.bounds ?? .zero
         return "\(Int(bounds.width))x\(Int(bounds.height))"
     }
 
@@ -622,36 +1147,35 @@ struct VisualQAStepsEdgeCases: View {
     }
 }
 
-/// Mirrors the "On-Device Model" block of Settings > AI Providers & Fallbacks.
+/// Gemma card states for visual QA. ProfileView hosts the live On-Device Models screen.
 struct VisualQAOnDeviceModelSection: View {
     var body: some View {
         List {
             Section {
-                onDeviceHeader
                 Gemma4ModelSettingsView(previewState: .downloading(0.42)) {}
+            } header: {
+                IronSectionTitle(title: "Downloading")
             }
             .listRowBackground(AppColors.appCard)
 
             Section {
-                onDeviceHeader
                 Gemma4ModelSettingsView(previewState: .notDownloaded) {}
+            } header: {
+                IronSectionTitle(title: "Not Downloaded")
+            }
+            .listRowBackground(AppColors.appCard)
+
+            Section {
+                Gemma4ModelSettingsView(previewState: .ready) {}
+            } header: {
+                IronSectionTitle(title: "Ready")
             }
             .listRowBackground(AppColors.appCard)
         }
         .scrollContentBackground(.hidden)
         .background(IronTheme.canvas)
-        .navigationTitle("AI Providers & Fallbacks")
+        .navigationTitle("On-Device Models")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var onDeviceHeader: some View {
-        Label(
-            LocalModelStrings.text("settings.onDeviceModel", defaultValue: "On-Device Model"),
-            systemImage: "iphone.gen3.radiowaves.left.and.right"
-        )
-        .font(.system(.subheadline, design: .rounded, weight: .bold))
-        .foregroundStyle(AppColors.calorie)
-        .textCase(.uppercase)
     }
 }
 
@@ -686,6 +1210,10 @@ final class VisualQAStores {
         strength = StrengthWorkoutStore(defaults: defaults)
         importedWorkouts = ImportedHealthWorkoutStore(defaults: defaults)
         weeklyChallenge = WeeklyChallengeStore(defaults: defaults)
+        if let iso = VisualQAFixtures.icloudLastBackupISO {
+            defaults.set(iso, forKey: CloudBackupService.lastAtKey)
+            defaults.set(true, forKey: CloudBackupService.enabledKey)
+        }
         workoutDraft = WorkoutDraftStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true))
         cloudBackup = CloudBackupService(defaults: defaults)
         bodyFat = BodyFatStore(observesExternalChanges: false)
@@ -736,6 +1264,7 @@ final class VisualQAStores {
 enum VisualQAFixtures {
     nonisolated static let host = VisualQAStubStorage.host
     static let workoutID = "qa-workout-1"
+    static var icloudLastBackupISO: String?
     private static var savedSettings: NeonBridgeSettings?
 
     static func install() {
@@ -744,7 +1273,8 @@ enum VisualQAFixtures {
         if savedSettings == nil {
             savedSettings = NeonBridgeService.shared.settings
         }
-        NeonBridgeService.shared.settings = NeonBridgeSettings(baseURL: "https://\(host)", apiKey: nil)
+        // Fake key, never persisted: the stub rejects peptide calls without it.
+        NeonBridgeService.shared.settings = NeonBridgeSettings(baseURL: "https://\(host)", apiKey: VisualQAStubStorage.bridgeKey)
     }
 
     static func uninstall() {
@@ -802,6 +1332,18 @@ enum VisualQAFixtures {
         }
         service.lastSyncDate = Date().addingTimeInterval(-600)
         service.lastSyncError = nil
+    }
+
+    static func seedCoachLocalAnswer() {
+        let chat = ChatStore()
+        VisualQAGraveyard.keep(chat)
+        chat.reset()
+        chat.append(ChatMessage(role: .user, content: "how many steps have I done today?"))
+        chat.append(ChatMessage(
+            role: .assistant,
+            content: "You're at 6,420 steps today, 64% of your 10,000 goal.",
+            routerAction: .localAnswer
+        ))
     }
 
     static func seedChat() {
@@ -889,6 +1431,32 @@ enum VisualQAFixtures {
         return WorkoutDetailResponse(workout: workout, sets: sets)
     }
 
+    static let upperPhysiqueWorkoutID = "qa-workout-4"
+
+    /// Day 4 session with the curl + pressdown superset, for the logger's Last line.
+    static func upperPhysiqueWorkoutDetail() -> WorkoutDetailResponse {
+        let workout = sampleWorkouts()[3]
+        let rows: [(String, Double, Int, Int?)] = [
+            ("Cable or DB curl", 25, 15, 4),
+            ("Triceps pressdown", 125, 14, 2),
+            ("Cable or DB curl", 25, 14, 3),
+            ("Triceps pressdown", 125, 12, 1),
+        ]
+        let sets = rows.enumerated().map { index, row in
+            RemoteWorkoutSet(
+                id: "qa-set-4-\(index + 1)",
+                workoutId: workout.id,
+                setOrder: index + 1,
+                exercise: row.0,
+                loadLb: row.1,
+                reps: row.2,
+                rir: row.3,
+                rpe: nil
+            )
+        }
+        return WorkoutDetailResponse(workout: workout, sets: sets)
+    }
+
     static func peptideTodayJSON() -> String {
         let today = isoDay(offset: 0)
         return """
@@ -910,6 +1478,62 @@ enum VisualQAFixtures {
     {"schedules":[{"id":"qa-schedule-1","active":true}]}
     """
 
+    /// Modeled on a live /api/cc/ladders response. Step names, ranges and
+    /// targets are copied from the bridge payload, not invented.
+    static let ccLaddersJSON = #"""
+    {"generated_at":"2026-09-30T12:29:09.967Z",
+     "rule":{"target_reps_by_step":{"1":15,"2":15,"3":15,"4":15,"5":15,"6":12,"7":12,"8":12,"9":8,"10":8},"max_rir":2,"working_sets":2,"required_streak":2,"master_step":10},
+     "active_program":{"id":"qa-program","name":"Program V2","version":3},
+     "series":[
+      {"series":"PSH","label":"Push-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]},
+      {"series":"SQT","label":"Squat","current_step":2,"step_name":"Jackknife squat","since":"2026-09-26T14:35:00.000Z","target_reps":15,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,
+       "program_exercises":[{"day":"Lower B + Cond","exercise":"CC squat ladder - step 2 Jackknife squat","step":2,"sets":2,"reps":"8-15"}],"last_event":null,
+       "sessions":[{"workout_id":"qa-sqt-1","session_date":"2026-09-24","program_day":"Day5_LowerB_Cond","title":"Lower B","exercise":"Shoulderstand squat","step":1,"sets":[{"set_order":6,"reps":15,"rir":5,"load_lb":0},{"set_order":7,"reps":15,"rir":5,"load_lb":0}],"counts_toward_current_step":false,"qualifying":false,"flags":["different_step","before_step_start","rir_above_max"]}],
+       "steps":[
+        {"step":1,"name":"Shoulderstand squat","working_reps":"8–15","target_reps":15},
+        {"step":2,"name":"Jackknife squat","working_reps":"8–15","target_reps":15},
+        {"step":3,"name":"Supported squat","working_reps":"8–15","target_reps":15},
+        {"step":4,"name":"Half squat","working_reps":"8–15","target_reps":15},
+        {"step":5,"name":"Full squat","working_reps":"8–15","target_reps":15},
+        {"step":6,"name":"Close squat","working_reps":"6–12","target_reps":12},
+        {"step":7,"name":"Uneven squat","working_reps":"6–12","target_reps":12},
+        {"step":8,"name":"Half one-leg squat","working_reps":"6–12","target_reps":12},
+        {"step":9,"name":"Assisted one-leg squat","working_reps":"3–8","target_reps":8},
+        {"step":10,"name":"One-leg squat (pistol)","working_reps":"3–8","target_reps":8}]},
+      {"series":"PLL","label":"Pull-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]},
+      {"series":"LGR","label":"Leg raise","current_step":1,"step_name":"Knee tuck","since":"2026-09-15T04:00:00.000Z","target_reps":15,"master":false,"ready":true,"streak":2,"required_streak":2,"flags":[],"in_program":true,
+       "program_exercises":[{"day":"Upper Push","exercise":"CC leg raise ladder - step 1 Knee tuck","step":1,"sets":2,"reps":"8-15"}],"last_event":null,
+       "sessions":[{"workout_id":"qa-lgr-2","session_date":"2026-09-29","program_day":"Day2_UpperPush","title":"Upper Push","exercise":"Knee tuck","step":1,"sets":[{"set_order":3,"reps":15,"rir":2,"load_lb":0},{"set_order":4,"reps":15,"rir":1,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[]},
+                   {"workout_id":"qa-lgr-1","session_date":"2026-09-22","program_day":"Day2_UpperPush","title":"Upper Push","exercise":"Knee tuck","step":1,"sets":[{"set_order":8,"reps":15,"rir":2,"load_lb":0},{"set_order":9,"reps":15,"rir":2,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[]}],
+       "steps":[
+        {"step":1,"name":"Knee tuck","working_reps":"8–15","target_reps":15},
+        {"step":2,"name":"Flat knee raise","working_reps":"8–15","target_reps":15},
+        {"step":3,"name":"Flat bent-leg raise","working_reps":"8–15","target_reps":15},
+        {"step":4,"name":"Flat frog raise","working_reps":"8–15","target_reps":15},
+        {"step":5,"name":"Flat straight-leg raise","working_reps":"8–15","target_reps":15},
+        {"step":6,"name":"Hanging knee raise","working_reps":"6–12","target_reps":12},
+        {"step":7,"name":"Hanging bent-leg raise","working_reps":"6–12","target_reps":12},
+        {"step":8,"name":"Hanging frog raise","working_reps":"6–12","target_reps":12},
+        {"step":9,"name":"Partial hanging straight-leg raise","working_reps":"3–8","target_reps":8},
+        {"step":10,"name":"Hanging straight-leg raise","working_reps":"3–8","target_reps":8}]},
+      {"series":"BRG","label":"Bridge","current_step":1,"step_name":"Short bridge","since":"2026-09-21T04:00:00.000Z","target_reps":15,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,
+       "program_exercises":[{"day":"Upper Physique","exercise":"CC bridge ladder - step 1 Short bridge","step":1,"sets":2,"reps":"8-15"}],"last_event":null,
+       "sessions":[{"workout_id":"qa-brg-1","session_date":"2026-09-21","program_day":"Day4_UpperPhysique","title":"Upper Physique","exercise":"Short bridge","step":1,"sets":[{"set_order":9,"reps":8,"rir":2,"load_lb":0},{"set_order":10,"reps":8,"rir":2,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"]}],
+       "steps":[
+        {"step":1,"name":"Short bridge","working_reps":"8–15","target_reps":15},
+        {"step":2,"name":"Straight bridge","working_reps":"8–15","target_reps":15},
+        {"step":3,"name":"Angled bridge","working_reps":"8–15","target_reps":15},
+        {"step":4,"name":"Head bridge","working_reps":"8–15","target_reps":15},
+        {"step":5,"name":"Half bridge","working_reps":"8–15","target_reps":15},
+        {"step":6,"name":"Full bridge","working_reps":"6–12","target_reps":12},
+        {"step":7,"name":"Wall-walk bridge (down)","working_reps":"6–12","target_reps":12},
+        {"step":8,"name":"Wall-walk bridge (up)","working_reps":"6–12","target_reps":12},
+        {"step":9,"name":"Closing bridge","working_reps":"3–8","target_reps":8},
+        {"step":10,"name":"Stand-to-stand bridge","working_reps":"3–8","target_reps":8}]},
+      {"series":"HSP","label":"Handstand push-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]}
+     ]}
+    """#
+
     /// Path -> (status, body). Built on the main actor before any request is made.
     static func buildResponses() -> [String: (Int, Data)] {
         let encoder = JSONEncoder()
@@ -920,12 +1544,14 @@ enum VisualQAFixtures {
         return [
             "/api/workouts": json(ListWorkoutsResponse(workouts: sampleWorkouts())),
             "/api/workouts/\(workoutID)": json(sampleWorkoutDetail()),
+            "/api/workouts/\(upperPhysiqueWorkoutID)": json(upperPhysiqueWorkoutDetail()),
             "/api/programs": json(TrainingProgramListResponse(programs: [program])),
             "/api/programs/active": json(program),
             "/api/programs/\(program.id)": json(program),
             "/api/peptides/today": (200, Data(peptideTodayJSON().utf8)),
             "/api/peptides/inventory": (200, Data(peptideInventoryJSON.utf8)),
             "/api/peptides/schedules": (200, Data(peptideSchedulesJSON.utf8)),
+            "/api/cc/ladders": (200, Data(ccLaddersJSON.utf8)),
         ]
     }
 }
@@ -933,6 +1559,8 @@ enum VisualQAFixtures {
 /// Thread-safe holder the URLProtocol reads from URLSession's queue.
 nonisolated final class VisualQAStubStorage: @unchecked Sendable {
     static let host = "visual-qa.invalid"
+    /// Fake bridge key for Visual QA only. Peptide routes answer 401 without it.
+    static let bridgeKey = "visual-qa-bridge-key"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var responses: [String: (Int, Data)] = [:]
 
@@ -946,6 +1574,10 @@ nonisolated final class VisualQAStubStorage: @unchecked Sendable {
             return (405, Data(#"{"error":"visual_qa_read_only"}"#.utf8))
         }
         let path = request.url?.path ?? ""
+        if path.hasPrefix("/api/peptides/"),
+           request.value(forHTTPHeaderField: "Authorization") != "Bearer \(bridgeKey)" {
+            return (401, Data(#"{"error":"unauthorized"}"#.utf8))
+        }
         lock.lock(); defer { lock.unlock() }
         return responses[path] ?? (404, Data(#"{"error":"not_found"}"#.utf8))
     }

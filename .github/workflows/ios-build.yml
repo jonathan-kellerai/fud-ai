@@ -2,7 +2,7 @@ name: iOS Build CI
 
 on:
   push:
-    branches: [ main, 'cursor/**' ]
+    branches: [ main, 'cursor/**', 'feat/**', 'integ/**' ]
   pull_request:
     branches: [ main ]
 
@@ -86,14 +86,32 @@ jobs:
           -scheme calorietracker \
           -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
           -only-testing:calorietrackerTests/ReconMathTests \
+          -only-testing:calorietrackerTests/SettingsKeyPreservationTests \
+          -only-testing:calorietrackerTests/TypeSafeEstimateCheckTests \
+          -only-testing:calorietrackerTests/JevRouterCoreTests \
+          -only-testing:calorietrackerTests/JevMealMatchTests \
+          -only-testing:calorietrackerTests/JevCoachIntentTests \
+          -only-testing:calorietrackerTests/JevExerciseMatchTests \
+          -only-testing:calorietrackerTests/JevTierRoutingTests \
+          -only-testing:calorietrackerTests/PlausibilityRulesTests \
+          -only-testing:calorietrackerTests/JevPlausibilityTests \
           -only-testing:calorietrackerTests/WorkoutDraftStoreTests \
+          -only-testing:calorietrackerTests/WorkoutLoggerLogicTests \
+          -only-testing:calorietrackerTests/CCLadderTests \
+          -only-testing:calorietrackerTests/BridgeKeyStorageTests \
+          -only-testing:calorietrackerTests/ProgressV2MathTests \
+          -parallel-testing-enabled NO \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        if [ "$STATUS" -ne 0 ]; then
+          echo "---- raw compiler errors ----"
+          grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
+        fi
         # runSelfTest asserts all 42 recon-bench self-test rows pass.
         if ! grep -qE "runSelfTest\(\).*passed" "$RUNNER_TEMP/recon-tests.log"; then
           echo "runSelfTest() did not report a pass; treating as failure."
@@ -185,6 +203,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/dd" \
             -resultBundlePath "$result" \
             -only-testing:calorietrackerTests/VisualQASnapshotTests \
+            -only-testing:calorietrackerTests/ProgressV2VisualQATests \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 120 \

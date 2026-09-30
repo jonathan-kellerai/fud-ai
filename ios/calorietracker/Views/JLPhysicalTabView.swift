@@ -14,15 +14,21 @@ struct JLPhysicalTabView: View {
     @State private var loggingDay: ProgramV2Day?
     @State private var recentWorkouts: [RemoteWorkout] = []
     @State private var isLoadingRecent = false
+    /// Set when the Coach handoff finds an unsaved workout for another day.
+    @State private var pendingResume: PendingResume?
+    @State private var showingResumePrompt = false
     
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let routerHandoff = RouterHandoff.shared
     @Environment(WorkoutDraftStore.self) private var workoutDraftStore
     private var neonBridge = NeonBridgeService.shared
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
+    @State private var trainMode: TrainMode
 
-    init(referenceDate: Date? = nil) {
+    init(referenceDate: Date? = nil, initialMode: TrainMode = .today) {
         self.referenceDate = referenceDate
+        _trainMode = State(initialValue: initialMode)
     }
 
     private var todayPlan: ResolvedTrainingDay {
@@ -45,6 +51,19 @@ struct JLPhysicalTabView: View {
                     recentWorkoutsSection
                 }
                 .padding()
+            }
+            // Overlay sits under the inset so the Today | Ladders switch stays on top.
+            .overlay {
+                if trainMode == .ladders {
+                    CCLaddersView()
+                        .background(IronTheme.canvas)
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                TrainModeSwitch(mode: $trainMode)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(IronTheme.canvas)
             }
             .navigationTitle("Train")
             .toolbar {
@@ -69,11 +88,63 @@ struct JLPhysicalTabView: View {
                     Task { await loadRecentWorkouts() }
                 })
             }
+            .confirmationDialog(
+                "Unsaved Workout",
+                isPresented: $showingResumePrompt,
+                titleVisibility: .visible,
+                presenting: pendingResume
+            ) { pending in
+                Button("Resume \(pending.draft.title)") {
+                    loggingDay = pending.draft.programV2Day
+                }
+                Button("Discard and Start \(pending.today.title)", role: .destructive) {
+                    workoutDraftStore.discard()
+                    loggingDay = pending.today
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text("You have an unsaved \(pending.draft.title) session.")
+            }
             .task {
                 await loadActiveProgram()
                 await loadRecentWorkouts()
+                consumeWorkoutHandoff()
+            }
+            .onAppear {
+                consumeWorkoutHandoff()
+            }
+            .onChange(of: routerHandoff.pendingOpenTodayWorkout) { _, _ in
+                consumeWorkoutHandoff()
             }
         }
+    }
+
+    private func consumeWorkoutHandoff() {
+        guard routerHandoff.pendingOpenTodayWorkout else { return }
+        routerHandoff.pendingOpenTodayWorkout = false
+        // The Ladders overlay would otherwise hide the logger or the resume prompt.
+        trainMode = .today
+        if let body = ActiveProgramCache.load()?.body {
+            programBody = body
+        }
+        guard case .session(let dayIndex, let name, _) = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date()) else {
+            return
+        }
+        let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
+            ?? programBody.days.first { $0.dayIndex == dayIndex }
+        guard let day else { return }
+        switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft, today: day.asProgramV2Day()) {
+        case .openToday(let today):
+            loggingDay = today
+        case .offerResume(let draft, let today):
+            pendingResume = PendingResume(draft: draft, today: today)
+            showingResumePrompt = true
+        }
+    }
+
+    private struct PendingResume {
+        let draft: WorkoutDraft
+        let today: ProgramV2Day
     }
 
     private var todaysWorkoutCard: some View {
@@ -203,10 +274,8 @@ struct JLPhysicalTabView: View {
                     QuickActionButton(icon: "server.rack", title: "Bridge", color: IronTheme.textSecondary)
                 }
                 
-                Button {
-                    showingPrograms = true
-                } label: {
-                    QuickActionButton(icon: "list.bullet", title: "Program", color: IronTheme.bloodText)
+                NavigationLink(destination: WorkoutHistoryListView()) {
+                    QuickActionButton(icon: "clock.arrow.circlepath", title: "History", color: IronTheme.bloodText)
                 }
             }
         }

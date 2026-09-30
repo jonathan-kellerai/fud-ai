@@ -22,6 +22,8 @@ struct WorkoutDraft: Codable, Equatable {
         var startLoadLb: Double?
         var notes: String
         var loadNote: String
+        /// Optional so drafts written before supersets still decode.
+        var supersetGroup: String?
     }
 
     var programDay: String
@@ -34,6 +36,8 @@ struct WorkoutDraft: Codable, Equatable {
     var conditioningCompleted: Bool
     /// yyyy-MM-dd of the day the session was started.
     var sessionDate: String
+    /// When the session was started. Optional so older drafts on disk still decode.
+    var startedAt: Date?
     var updatedAt: Date
 
     init(day: ProgramV2Day, now: Date = Date()) {
@@ -45,6 +49,7 @@ struct WorkoutDraft: Codable, Equatable {
         sets = [:]
         conditioningCompleted = false
         sessionDate = Self.sessionDateString(from: now)
+        startedAt = now
         updatedAt = now
     }
 
@@ -69,7 +74,8 @@ struct WorkoutDraft: Codable, Equatable {
                 rirTarget: exercise.rirTarget,
                 startLoadLb: exercise.startLoadLb,
                 notes: exercise.notes,
-                loadNote: exercise.loadNote
+                loadNote: exercise.loadNote,
+                supersetGroup: exercise.supersetGroup
             )
         }
     }
@@ -97,13 +103,15 @@ struct WorkoutDraft: Codable, Equatable {
                     rirTarget: exercise.rirTarget,
                     startLoadLb: exercise.startLoadLb,
                     notes: exercise.notes,
-                    loadNote: exercise.loadNote
+                    loadNote: exercise.loadNote,
+                    supersetGroup: exercise.supersetGroup
                 )
             }
         )
     }
 
     /// The bridge payload, built exactly as the logger built it before drafts existed.
+    /// The session date is the day the workout started, not the day it is saved.
     func payload(now: Date = Date()) -> WorkoutPayload {
         var allSets: [WorkoutSet] = []
         var order = 0
@@ -145,7 +153,8 @@ struct WorkoutDraft: Codable, Equatable {
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let timestamp = formatter.string(from: now)
+        let recordedAt = formatter.string(from: now)
+        let openedAt = formatter.string(from: startedAt ?? now)
 
         return WorkoutPayload(
             kind: "COMPLETED",
@@ -153,11 +162,11 @@ struct WorkoutDraft: Codable, Equatable {
             programDay: programDay,
             title: title,
             units: "lb",
-            sessionDate: Self.sessionDateString(from: now),
+            sessionDate: sessionDate,
             conditioning: conditioningCompleted ? conditioning : nil,
             notes: [],
-            recordedAtUtc: timestamp,
-            openedAtUtc: timestamp,
+            recordedAtUtc: recordedAt,
+            openedAtUtc: openedAt,
             source: "jl-fud-native",
             sets: allSets
         )
@@ -170,6 +179,19 @@ struct WorkoutDraft: Codable, Equatable {
     }
 }
 
+/// What the Coach "log sets" handoff should do with today's program day.
+/// A draft for today just opens the logger, which resumes it; a draft for
+/// another day is offered back rather than pushed toward discard.
+enum WorkoutHandoffDecision {
+    case openToday(ProgramV2Day)
+    case offerResume(draft: WorkoutDraft, today: ProgramV2Day)
+
+    static func decide(draft: WorkoutDraft?, today: ProgramV2Day) -> WorkoutHandoffDecision {
+        guard let draft, draft.programDay != today.id else { return .openToday(today) }
+        return .offerResume(draft: draft, today: today)
+    }
+}
+
 @Observable
 final class WorkoutDraftStore {
     typealias PostWorkout = @MainActor (WorkoutPayload) async throws -> Void
@@ -177,6 +199,8 @@ final class WorkoutDraftStore {
     static let fileName = "jl-workout-draft.json"
 
     private(set) var draft: WorkoutDraft?
+    /// Set when the draft could not be written to disk; the in-memory draft is kept.
+    private(set) var persistError: String?
 
     private let directory: URL
     private var fileURL: URL { directory.appendingPathComponent(Self.fileName) }
@@ -200,8 +224,9 @@ final class WorkoutDraftStore {
     }
 
     /// Applies an edit to the draft for `day` (starting one if needed) and writes it to disk.
-    func update(_ day: ProgramV2Day, _ change: (inout WorkoutDraft) -> Void) {
-        var next = existingDraft(for: day) ?? WorkoutDraft(day: day)
+    /// `startedAt` is only used when a new draft is started.
+    func update(_ day: ProgramV2Day, startedAt: Date = Date(), _ change: (inout WorkoutDraft) -> Void) {
+        var next = existingDraft(for: day) ?? WorkoutDraft(day: day, now: startedAt)
         next.adopt(day)
         change(&next)
         next.updatedAt = Date()
@@ -229,8 +254,13 @@ final class WorkoutDraftStore {
         clear()
     }
 
+    func dismissPersistError() {
+        persistError = nil
+    }
+
     private func clear() {
         draft = nil
+        persistError = nil
         do {
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 try FileManager.default.removeItem(at: fileURL)
@@ -246,8 +276,10 @@ final class WorkoutDraftStore {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(draft)
             try data.write(to: fileURL, options: .atomic)
+            persistError = nil
         } catch {
             print("Failed to save workout draft: \(error)")
+            persistError = error.localizedDescription
         }
     }
 

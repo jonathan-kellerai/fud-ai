@@ -3,13 +3,23 @@ import UIKit
 
 struct WorkoutsView: View {
     var presentedAsSheet = false
+    /// Training → Exercise Library opens the browser only and does not write the stored tab mode.
+    var libraryOnly = false
+    /// Training → Advanced opens the legacy logger without changing the stored tab mode.
+    var forcedMode: WorkoutTabMode? = nil
     @Environment(\.dismiss) private var dismiss
     @AppStorage(WorkoutTabMode.storageKey) private var selectedModeRaw = WorkoutTabMode.defaultMode.rawValue
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
     @State private var workoutLogSession = WorkoutLogSessionState()
 
     private var selectedMode: WorkoutTabMode {
-        WorkoutTabMode.mode(for: selectedModeRaw)
+        if let forcedMode { return forcedMode }
+        if libraryOnly || !JLFeatureFlags.legacyWorkoutLogger { return .library }
+        return WorkoutTabMode.mode(for: selectedModeRaw)
+    }
+
+    private var allowsWorkoutLog: Bool {
+        JLFeatureFlags.legacyWorkoutLogger && !libraryOnly && forcedMode == nil
     }
 
     var body: some View {
@@ -24,7 +34,7 @@ struct WorkoutsView: View {
                     .transition(.opacity)
                 } else {
                     ExerciseLibraryBrowserView(
-                        onShowWorkoutLog: { showMode(.log) }
+                        onShowWorkoutLog: allowsWorkoutLog ? { showMode(.log) } : nil
                     )
                     .background(WorkoutsScreenBackground())
                     .navigationTitle("Workouts")

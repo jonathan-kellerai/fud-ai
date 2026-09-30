@@ -34,7 +34,7 @@ enum HomeCardID: String, CaseIterable, Identifiable, Codable {
 }
 
 enum HomeCardLayout {
-    private static let storageKey = "jl.physical.homeCards.v1"
+    static let storageKey = "jl.physical.homeCards.v1"
 
     static func load() -> (order: [HomeCardID], hidden: Set<HomeCardID>) {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
@@ -119,8 +119,7 @@ struct HomeV2Cards: View {
     }
 
     private var stepsTarget: Int {
-        let target = programBody?.dailyStepsTarget ?? 10_000
-        return target > 0 ? target : 10_000
+        StepsGoal.resolved(programBody?.dailyStepsTarget)
     }
 
     var body: some View {
@@ -200,7 +199,16 @@ struct HomeV2Cards: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             } header: {
-                IronSectionTitle(title: "Daily targets")
+                NavigationLink {
+                    ProfileView(settingsCategory: .dailyTargets)
+                } label: {
+                    HStack(spacing: 6) {
+                        IronSectionTitle(title: "Daily targets")
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(IronTheme.textSecondary)
+                    }
+                }
             }
         case .bodyTrend:
             Section {
@@ -224,9 +232,6 @@ struct HomeV2Cards: View {
                             Text("Recon")
                                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
                         }
                     }
                     .listRowBackground(IronTheme.surface)
@@ -567,7 +572,8 @@ struct HomeV2Cards: View {
         switch HomeV2Logic.stepsRingTone(
             steps: steps,
             pace: pace,
-            hour: calendar.component(.hour, from: paceNow)
+            hour: calendar.component(.hour, from: paceNow),
+            goal: stepsTarget
         ) {
         case .olive: IronTheme.olive
         case .rust: IronTheme.rust
@@ -1042,7 +1048,11 @@ struct HomeV2Cards: View {
                 peptideInventory = inventory
             }
         } catch {
-            peptideError = "Peptide schedule couldn’t be loaded."
+            if case NeonBridgeError.httpError(let statusCode, _) = error, statusCode == 401 || statusCode == 503 {
+                peptideError = "Add the bridge key in Train › Bridge to sync peptides."
+            } else {
+                peptideError = "Peptide schedule couldn’t be loaded."
+            }
         }
     }
 }

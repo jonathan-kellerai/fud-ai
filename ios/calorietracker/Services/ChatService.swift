@@ -96,7 +96,11 @@ struct ChatService {
             workoutAccessEnabled: workoutAccessEnabled
         )
 
-        let config = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
+        let baseConfig = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
+        let tierPlan = JevTierRouter.routes(hasImage: imageData != nil, hosted: false)
+            ? await JevTierRouter.plan(.coachChat(newUserMessage), base: baseConfig)
+            : JevTierPlan(primary: baseConfig, strong: baseConfig, tier: .strong)
+        let config = tierPlan.primary
         func request(
             provider: AIProvider,
             model: String,
@@ -156,6 +160,20 @@ struct ChatService {
             )
         } catch {
             if error is CancellationError { throw error }
+            if tierPlan.tier != .strong {
+                do {
+                    return try await request(
+                        provider: tierPlan.strong.provider,
+                        model: tierPlan.strong.model,
+                        baseURL: tierPlan.strong.baseURL,
+                        apiKey: tierPlan.strong.apiKey
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Cheaper tier failed once. The existing fallback chain still runs from the original error.
+                }
+            }
             let fallback = imageData == nil
                 ? AIProviderSettings.currentTextFallbackConfig(
                     excludingPrimary: config.provider,

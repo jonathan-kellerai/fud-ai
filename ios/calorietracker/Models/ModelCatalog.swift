@@ -166,6 +166,28 @@ enum ModelCatalogParser {
         return CatalogPage(models: models, nextCursor: nonEmptyString(json["nextPageToken"]))
     }
 
+    /// TypeSafe `{"models":[{"name","release_date"}]}` and the gateway's possible `{"data":[{"id"}]}`.
+    static func parseTypeSafe(_ data: Data) throws -> CatalogPage {
+        let json = try jsonObject(data)
+        if let rows = json["models"] as? [[String: Any]], !rows.isEmpty || json["data"] == nil {
+            let models = rows.compactMap { row -> CatalogModel? in
+                guard let name = nonEmptyString(row["name"]) else { return nil }
+                return CatalogModel(
+                    id: name,
+                    createdAt: dayDate(nonEmptyString(row["release_date"])),
+                    vision: .textOnly
+                )
+            }
+            return CatalogPage(models: models, nextCursor: nil)
+        }
+        let rows = json["data"] as? [[String: Any]] ?? []
+        let models = rows.compactMap { row -> CatalogModel? in
+            guard let id = nonEmptyString(row["id"]) else { return nil }
+            return CatalogModel(id: id, createdAt: nil, vision: .textOnly)
+        }
+        return CatalogPage(models: models, nextCursor: nil)
+    }
+
     /// Pages are applied in order. A later page does not replace an id already seen.
     static func combining(_ pages: [CatalogPage]) -> [CatalogModel] {
         var combined: [CatalogModel] = []
@@ -212,6 +234,15 @@ enum ModelCatalogParser {
             return Date(timeIntervalSince1970: seconds.doubleValue)
         }
         return nil
+    }
+
+    private static func dayDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
     }
 
     private static func iso8601Date(_ value: String?) -> Date? {

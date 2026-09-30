@@ -15,8 +15,8 @@ struct StepsView: View {
     @State private var error: String?
     @State private var showingPermission = false
 
-    /// Daily step goal. The bar is full at this value and the ring closes here.
-    static let dailyGoal = 10_000
+    /// Daily step goal from the active program. The bar is full at this value.
+    static var dailyGoal: Int { StepsGoal.current }
 
     /// When false the view shows whatever `StepsTrackingService.shared` already holds
     /// and never asks HealthKit. Only the visual QA snapshot tests pass false.

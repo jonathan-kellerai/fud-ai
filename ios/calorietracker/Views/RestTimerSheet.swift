@@ -12,11 +12,13 @@ struct RestTimerSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var timer: RestTimerService
     @State private var zeroFlash = false
+    @State private var cuesMuted: Bool
     let defaultSeconds: Int
     
-    init(defaultSeconds: Int = 90) {
+    init(defaultSeconds: Int = 90, initiallyMuted: Bool = false) {
         self.defaultSeconds = defaultSeconds
         _timer = State(initialValue: RestTimerService())
+        _cuesMuted = State(initialValue: initiallyMuted)
     }
 
     private var inFinalSeconds: Bool {
@@ -79,6 +81,16 @@ struct RestTimerSheet: View {
                         .font(.system(size: 60))
                         .foregroundStyle(IronTheme.textTertiary)
                 }
+
+                Button {
+                    cuesMuted.toggle()
+                    timer.cuesMuted = cuesMuted
+                } label: {
+                    Image(systemName: cuesMuted ? "speaker.slash.circle.fill" : "speaker.wave.2.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundStyle(cuesMuted ? IronTheme.textTertiary : IronTheme.brass)
+                }
+                .accessibilityLabel(cuesMuted ? "Unmute rest cues" : "Mute rest cues")
             }
             
             VStack(spacing: 12) {
@@ -131,6 +143,7 @@ struct RestTimerSheet: View {
         .background(zeroFlash ? IronTheme.blood : IronTheme.canvas)
         .foregroundStyle(IronTheme.textPrimary)
         .onAppear {
+            timer.cuesMuted = cuesMuted
             timer.start(seconds: defaultSeconds)
         }
         .onDisappear {

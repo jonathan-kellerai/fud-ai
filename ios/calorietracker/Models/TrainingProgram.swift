@@ -76,7 +76,7 @@ struct TrainingProgramConditioning: Codable, Equatable, Hashable {
 }
 
 enum ExerciseRest {
-    static let fallbackSeconds = 90
+    static var fallbackSeconds: Int { RestTimerSettings.defaultSeconds }
 
     static func resolvedSeconds(restSec: Int?, notes: String?, exerciseName: String) -> Int {
         if let restSec { return restSec }
@@ -139,6 +139,8 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
     var loadNote: String?
     var substitutions: [String]
     var notes: String?
+    /// Consecutive exercises sharing a group are done as a superset.
+    var supersetGroup: String?
 
     init(
         id: UUID = UUID(),
@@ -151,7 +153,8 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         restSec: Int? = nil,
         loadNote: String? = nil,
         substitutions: [String] = [],
-        notes: String? = nil
+        notes: String? = nil,
+        supersetGroup: String? = nil
     ) {
         self.id = id
         self.order = order
@@ -164,6 +167,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         self.loadNote = loadNote
         self.substitutions = substitutions
         self.notes = notes
+        self.supersetGroup = supersetGroup
     }
 
     enum CodingKeys: String, CodingKey {
@@ -171,6 +175,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         case restSec = "rest_sec"
         case loadNote = "load_note"
         case substitutions, notes
+        case supersetGroup = "superset_group"
     }
 
     init(from decoder: Decoder) throws {
@@ -186,6 +191,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         loadNote = try container.decodeIfPresent(String.self, forKey: .loadNote)
         substitutions = try container.decodeIfPresent([String].self, forKey: .substitutions) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        supersetGroup = try container.decodeIfPresent(String.self, forKey: .supersetGroup)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -208,6 +214,7 @@ struct TrainingProgramExercise: Codable, Equatable, Hashable, Identifiable {
         try container.encodeIfPresent(loadNote, forKey: .loadNote)
         try container.encode(substitutions, forKey: .substitutions)
         try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encodeIfPresent(supersetGroup, forKey: .supersetGroup)
     }
 
     private static func stringOrNumber(
@@ -300,7 +307,8 @@ struct TrainingProgramDay: Codable, Equatable, Hashable, Identifiable {
                     rirTarget: exercise.rir,
                     startLoadLb: exercise.parsedStartLoadLb,
                     notes: exercise.notes ?? "",
-                    loadNote: exercise.loadNote ?? ""
+                    loadNote: exercise.loadNote ?? "",
+                    supersetGroup: exercise.supersetGroup
                 )
             }
         )
@@ -435,7 +443,8 @@ struct TrainingProgramBody: Codable, Equatable, Hashable {
                         rir: exercise.rirTarget,
                         restSec: exercise.restSeconds.lowerBound,
                         loadNote: exercise.startLoadLb.map { "Start \(Int($0)) lb" },
-                        notes: exercise.notes.isEmpty ? nil : exercise.notes
+                        notes: exercise.notes.isEmpty ? nil : exercise.notes,
+                        supersetGroup: exercise.supersetGroup
                     )
                 }
             )
@@ -578,7 +587,7 @@ struct ProgramReviseRequest: Encodable {
 }
 
 enum ActiveProgramCache {
-    private static let storageKey = "jl.physical.activeProgram.v1"
+    static let storageKey = "jl.physical.activeProgram.v1"
 
     static func load() -> TrainingProgramRecord? {
         guard let data = UserDefaults.standard.data(forKey: storageKey) else { return nil }

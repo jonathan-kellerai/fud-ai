@@ -364,13 +364,11 @@ struct ProgramEditorView: View {
         List {
             Section {
                 TextField("Name", text: $draftName)
-                DatePicker(
-                    "Start date",
-                    selection: startDateBinding,
-                    displayedComponents: .date
-                )
+                DatePicker(selection: startDateBinding, displayedComponents: .date) {
+                    UnbrokenText("Start date")
+                }
                 Stepper(value: $draft.dailyStepsTarget, in: 0...50_000, step: 500) {
-                    Text("Steps target: \(draft.dailyStepsTarget.formatted())")
+                    Text("Daily Steps Goal: \(draft.dailyStepsTarget.formatted())")
                 }
                 Stepper(value: weeksBinding, in: 0...52) {
                     Text(draft.weeks.map { "Weeks: \($0)" } ?? "Weeks: not set")
@@ -470,9 +468,9 @@ struct ProgramEditorView: View {
 
     private var reductionLabel: String {
         if let week = draft.reductionWeek, week > 0 {
-            return "Reduction week: \(week)"
+            return "Deload Week: \(week)"
         }
-        return "Reduction week: none"
+        return "Deload Week: none"
     }
 
     private func restBinding(_ weekday: ProgramWeekday) -> Binding<Bool> {
@@ -793,9 +791,8 @@ private struct ProgramExerciseEditor: View {
                         exercise.restSec = nil
                     }
                 }
-                TextField("RPE", text: rpeBinding)
             } footer: {
-                Text("Leave RIR empty when the notes already give a range. Rest stays on the notes value until you set a number.")
+                Text("Leave RIR empty when the notes already give a range. Empty rest uses Training → Default Rest (\(RestTimerSettings.defaultRestLabel)).")
             }
             Section("Substitutions") {
                 ForEach(exercise.substitutions.indices, id: \.self) { index in
@@ -809,6 +806,9 @@ private struct ProgramExerciseEditor: View {
                         exercise.substitutions.append("")
                     }
                 }
+            }
+            Section {
+                TextField("RPE (optional)", text: rpeBinding)
             }
         }
         .scrollContentBackground(.hidden)

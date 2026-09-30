@@ -26,6 +26,7 @@ enum CloudBackupPolicy {
         if key.hasPrefix("healthKit") { return false }
         if key.hasPrefix("Apple") || key.hasPrefix("NS") || key.hasPrefix("com.apple") { return false }
         if key.hasPrefix("AK") { return false }
+        if key.hasPrefix("jevRouter.stats") || key.hasPrefix("jevRouter.exerciseAliases") { return false }
         return true
     }
 

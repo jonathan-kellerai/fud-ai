@@ -128,12 +128,30 @@ final class RestTimerService: NSObject {
     
     // MARK: - Audio Playback
     
+    /// Session-only. The rest sheet's speaker button sets this; it is not stored.
+    var cuesMuted = false
+
+    func testSounds() {
+        guard !cuesMuted else { return }
+        playBundledCue(named: "clack", systemFallback: 1104)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            self?.playBundledCue(named: "bell", systemFallback: 1005)
+        }
+    }
+
     private func playWarningSound() {
+        guard !cuesMuted, RestTimerSettings.clackEnabled else { return }
         playBundledCue(named: "clack", systemFallback: 1104)
     }
     
     private func playCompletionSound() {
-        playBundledCue(named: "bell", systemFallback: 1005)
+        guard !cuesMuted else { return }
+        if RestTimerSettings.bellEnabled {
+            playBundledCue(named: "bell", systemFallback: 1005)
+        }
+        if RestTimerSettings.hapticEnabled {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
     
     private func playBundledCue(named name: String, systemFallback: SystemSoundID) {

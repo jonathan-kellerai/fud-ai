@@ -18,6 +18,8 @@ struct ProgramV2Exercise: Identifiable {
     let startLoadLb: Double?
     let notes: String
     var loadNote: String = ""
+    /// Consecutive exercises sharing a group are done as a superset.
+    var supersetGroup: String? = nil
 }
 
 struct ProgramV2Day: Identifiable {
@@ -176,6 +178,16 @@ enum ProgramV2Templates {
                 rirTarget: "2 RIR",
                 startLoadLb: 80,
                 notes: "Full stretch."
+            ),
+            ProgramV2Exercise(
+                key: "cable or db curl",
+                name: "Cable or DB curl",
+                sets: 2,
+                reps: "12-15",
+                restSeconds: 60...60,
+                rirTarget: "2-3 RIR",
+                startLoadLb: nil,
+                notes: "SELECT ON FIRST SESSION. Direct biceps work."
             )
         ]
     )
@@ -215,6 +227,28 @@ enum ProgramV2Templates {
                 rirTarget: "2-3 RIR",
                 startLoadLb: 15,
                 notes: "Strict."
+            ),
+            ProgramV2Exercise(
+                key: "cable or db curl",
+                name: "Cable or DB curl",
+                sets: 2,
+                reps: "12-15",
+                restSeconds: 0...0,
+                rirTarget: "2-3 RIR",
+                startLoadLb: nil,
+                notes: "SELECT ON FIRST SESSION. Superset A: go straight to the pressdown.",
+                supersetGroup: "curl-pressdown"
+            ),
+            ProgramV2Exercise(
+                key: "triceps pressdown",
+                name: "Triceps pressdown",
+                sets: 2,
+                reps: "12-15",
+                restSeconds: 60...60,
+                rirTarget: "2-3 RIR",
+                startLoadLb: 125,
+                notes: "Superset B: rest 60 s after each pair.",
+                supersetGroup: "curl-pressdown"
             ),
             ProgramV2Exercise(
                 key: "Short bridge",
