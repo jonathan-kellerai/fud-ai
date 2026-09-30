@@ -136,7 +136,8 @@ struct BridgeKeyStorageTests {
             #expect(NeonBridgeSettings.load().apiKey == Self.testKey)
             #expect(store.value == Self.testKey)
             #expect(UserDefaults.standard.object(forKey: Self.pendingKey) == nil)
-            #expect(try storedJSON().keys.contains("apiKey") == false)
+            let finalJSON = try storedJSON()
+            #expect(finalJSON.keys.contains("apiKey") == false)
         }
     }
 
@@ -147,7 +148,8 @@ struct BridgeKeyStorageTests {
             setLegacyJSON()
             #expect(NeonBridgeSettings.load().apiKey == newer)
             #expect(store.value == newer)
-            #expect(try storedJSON().keys.contains("apiKey") == false)
+            let finalJSON = try storedJSON()
+            #expect(finalJSON.keys.contains("apiKey") == false)
         }
     }
 
