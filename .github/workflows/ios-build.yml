@@ -90,13 +90,14 @@ jobs:
           -only-testing:calorietrackerTests/WorkoutLoggerLogicTests \
           -only-testing:calorietrackerTests/CCLadderTests \
           -only-testing:calorietrackerTests/BridgeKeyStorageTests \
+          -only-testing:calorietrackerTests/ProgressV2MathTests \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         # runSelfTest asserts all 42 recon-bench self-test rows pass.
         if ! grep -qE "runSelfTest\(\).*passed" "$RUNNER_TEMP/recon-tests.log"; then
           echo "runSelfTest() did not report a pass; treating as failure."
@@ -188,6 +189,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/dd" \
             -resultBundlePath "$result" \
             -only-testing:calorietrackerTests/VisualQASnapshotTests \
+            -only-testing:calorietrackerTests/ProgressV2VisualQATests \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 120 \
