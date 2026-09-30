@@ -132,6 +132,7 @@ struct JevRouterAdvancedSection: View {
     @State private var tieBreak = JevRouterSettings.plausibilityTieBreak
 
     private var gemmaSelectable: Bool { Gemma4LocalModelManager.isCurrentDeviceSelectable }
+    private var appleIntelligenceAvailable: Bool { JevTierRouter.appleIntelligenceDeviceAvailable }
     private var textModels: [String] {
         let provider = AIProviderSettings.selectedTextProvider
         return provider.textModels
@@ -176,27 +177,24 @@ struct JevRouterAdvancedSection: View {
         routerToggle("Allow on-device Gemma", isOn: $allowOnDevice)
             .disabled(!tiersOn || !gemmaSelectable)
             .padding(.leading, 16)
+            .accessibilityIdentifier("settings.jevRouter.allowOnDevice")
             .onChange(of: allowOnDevice) { _, isOn in
                 JevRouterSettings.allowOnDevice = isOn
             }
+        if !gemmaSelectable {
+            tierFootnote("Gemma needs an 8 GB iPhone with the model downloaded.")
+        }
         routerToggle("Allow Apple Intelligence", isOn: $allowAppleIntelligence)
-            .disabled(!tiersOn || !JevTierRouter.appleIntelligenceDeviceAvailable)
+            .disabled(!tiersOn || !appleIntelligenceAvailable)
             .padding(.leading, 16)
             .accessibilityIdentifier("settings.jevRouter.allowAppleIntelligence")
             .onChange(of: allowAppleIntelligence) { _, isOn in
                 JevRouterSettings.allowAppleIntelligence = isOn
             }
-        if !JevTierRouter.appleIntelligenceDeviceAvailable {
-            Text("Apple Intelligence needs iOS 26 and the on-device model.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 16)
-        }
-        if !gemmaSelectable {
-            Text("Gemma needs an 8 GB iPhone with the model downloaded.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 16)
+        if !appleIntelligenceAvailable {
+            tierFootnote("Apple Intelligence needs iOS 26 and the on-device model.")
+        } else if !tiersOn {
+            tierFootnote("Turn on Model tiers to use Apple Intelligence.")
         }
         Picker("Cheaper text model", selection: $cheapModel) {
             Text("None").tag("")
@@ -223,6 +221,14 @@ struct JevRouterAdvancedSection: View {
         Text("The tie-break sends relative facts as text, never photos or absolute body weight. It stays off until you turn it on.")
             .font(.footnote)
             .foregroundStyle(.secondary)
+            .padding(.leading, 16)
+    }
+
+    private func tierFootnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.leading, 16)
     }
 

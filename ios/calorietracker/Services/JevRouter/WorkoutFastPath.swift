@@ -176,7 +176,15 @@ enum WorkoutFastPath {
             if let id = resolveLocally(line.name, library: library, aliases: aliases) {
                 resolved[index] = id
             } else {
-                let options = Array(WorkoutTextDraft.candidates(description: line.name, library: library).prefix(12))
+                let options = Array(
+                    WorkoutTextDraft.candidates(description: line.name, library: library)
+                        .filter { sharesNameWord(line.name, $0) }
+                        .prefix(12)
+                )
+                guard !options.isEmpty else {
+                    await router.report(.exerciseMatch, .fellBack(.noCandidates), preview: trimmed)
+                    return nil
+                }
                 pending.append((index, line, options))
             }
         }
@@ -228,6 +236,15 @@ enum WorkoutFastPath {
             return exact.id
         }
         return nil
+    }
+
+    /// `candidates` also ranks every cardio item and common lift, even with no word in common.
+    /// Jev only chooses among exercises whose name shares a word with the entry.
+    private static func sharesNameWord(_ fragment: String, _ item: ExerciseLibraryItem) -> Bool {
+        let words = JevText.tokens(fragment).filter { $0.count >= 3 }
+        guard !words.isEmpty else { return false }
+        let name = JevText.normalize("\(item.name) \(item.id.replacingOccurrences(of: "_", with: " "))")
+        return words.contains { name.contains($0) }
     }
 
     private static func ask(

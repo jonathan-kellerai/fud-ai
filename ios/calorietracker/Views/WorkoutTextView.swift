@@ -211,17 +211,22 @@ struct WorkoutTextView: View {
 
     private func save() {
         guard let draft else { return }
-        let flags = draft.exercises.flatMap { exercise in
+        let flags: [PlausibilityFlag] = draft.exercises.flatMap { exercise -> [PlausibilityFlag] in
             let history = workoutStore.exerciseLiftHistory(
                 itemID: exercise.exerciseID ?? "",
                 name: exercise.name,
                 before: selectedDate,
                 limit: 20
             )
-            let reference = history.flatMap(\.sets)
-            let referenceLoads = reference.compactMap { Self.kilograms(weight: $0.weight, unit: $0.weightUnit) }
-            let referenceReps = reference.compactMap { Int($0.reps) }
-            return exercise.sets.enumerated().flatMap { index, set in
+            // Loads and reps stay paired so the Epley reference uses each set's own reps.
+            let reference: [(kg: Double, reps: Int)] = history.flatMap(\.sets).compactMap { lift in
+                guard let kg = Self.kilograms(weight: lift.weight, unit: lift.weightUnit), kg > 0,
+                      let reps = Int(lift.reps) else { return nil }
+                return (kg: kg, reps: reps)
+            }
+            let referenceLoads = reference.map { $0.kg }
+            let referenceReps = reference.map { $0.reps }
+            return exercise.sets.enumerated().flatMap { (index, set) -> [PlausibilityFlag] in
                 let load = Double(set.weight.replacingOccurrences(of: ",", with: ".")) ?? 0
                 let kg = exercise.unit == "lbs" ? load / 2.2046226218 : load
                 let others = exercise.sets.enumerated().filter { $0.offset != index }.compactMap {

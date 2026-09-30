@@ -1801,10 +1801,7 @@ struct BodyMeasurementsDetailView: View {
     }
 }
 
-/// Editor for one measurement site. The cm|in switcher persists the shared
-/// length standard (same pref as the Height editor), and — matching the
-/// height/weight editors — flipping it converts the value currently on the
-/// wheel (clamped into the destination wheel's rows) instead of re-seeding.
+/// Latest value for a site before today, for the plausibility check.
 private func previousMeasurement(_ site: BodyMeasurement.Site, in store: BodyMeasurementStore) -> (cm: Double, date: Date)? {
     for entry in store.sortedEntries {
         guard let value = entry.value(for: site), !Calendar.current.isDateInToday(entry.date) else { continue }
@@ -1813,6 +1810,10 @@ private func previousMeasurement(_ site: BodyMeasurement.Site, in store: BodyMea
     return nil
 }
 
+/// Editor for one measurement site. The cm|in switcher persists the shared
+/// length standard (same pref as the Height editor), and — matching the
+/// height/weight editors — flipping it converts the value currently on the
+/// wheel (clamped into the destination wheel's rows) instead of re-seeding.
 private struct MeasurementEditSheet: View {
     let site: BodyMeasurement.Site
     let hasCurrent: Bool

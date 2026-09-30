@@ -332,7 +332,7 @@ struct WeightPickerSheet: View {
         }
         .presentationDetents([.medium])
         .plausibilityConfirmation(
-            title: "Save \(String(format: "%.1f %@", Double(wholeNumber) + Double(decimal) / 10.0, useMetric ? "kg" : "lb"))?",
+            title: "Save \(weightPrompt)?",
             message: plausibilityMessage,
             saveTitle: "Save",
             onSave: {
@@ -345,6 +345,11 @@ struct WeightPickerSheet: View {
             },
             onEdit: { plausibilityMessage = nil }
         )
+    }
+
+    private var weightPrompt: String {
+        let value = Double(wholeNumber) + Double(decimal) / 10.0
+        return String(format: "%.1f %@", value, useMetric ? "kg" : "lb")
     }
 }
 

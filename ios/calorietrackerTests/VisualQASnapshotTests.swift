@@ -485,19 +485,29 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test48PlausibilityAlert() async throws {
+        // The shared modifier every save point uses, active over a real screen.
+        // The loggers keep their flag message in private @State, so the host passes it directly.
         try await eachSize("48-plausibility-alert") { _ in
-            ZStack {
-                Color.black.opacity(0.45).ignoresSafeArea()
-                PlausibilityAlertCard(
-                    title: "Double-check before saving",
-                    message: "Bench press set 2: 800 lb. Did you mean 80?",
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+            .plausibilityConfirmation(
+                title: "Double-check before saving",
+                message: "Bench press set 2: 800 lb. Did you mean 80?",
+                onSave: {},
+                onEdit: {}
+            )
+        }
+        // Body-metric copy: "Save <value> <unit>?" with a plain Save button.
+        try await eachSize("48b-plausibility-weight") { _ in
+            VisualQATabShell(selected: .progress) { ProgressTabView() }
+                .plausibilityConfirmation(
+                    title: "Save 95.0 kg?",
+                    message: "This weight looks like a kg/lb unit mix-up.",
+                    saveTitle: "Save",
                     onSave: {},
                     onEdit: {}
                 )
-                .padding(24)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(AppColors.appBackground)
         }
     }
 

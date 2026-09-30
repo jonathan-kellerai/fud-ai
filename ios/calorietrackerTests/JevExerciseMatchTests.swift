@@ -52,8 +52,10 @@ struct JevExerciseMatchTests {
 
     @Test func oneRequestForAllUnresolvedLines() async throws {
         TypeSafeStub.handler = { _, body in (200, [:], Self.confidentBody(body)) }
+        // "pullups" equals the library name "Pullups", which is an exact local shortcut (spec §5.3).
+        // "pull ups" is not, so both lines go to Jev.
         _ = await WorkoutFastPath.draft(
-            description: "bench 3x8 80kg, pullups 3x10",
+            description: "bench 3x8 80kg, pull ups 3x10",
             date: .now,
             unit: .kg,
             library: library,
@@ -70,6 +72,10 @@ struct JevExerciseMatchTests {
         let criteria = try #require(first["criteria"] as? [String: Any])
         #expect(criteria.keys.contains("none"))
         #expect(criteria.keys.contains("Barbell_Bench_Press"))
+        #expect(!criteria.keys.contains("Running"))
+        let second = try #require(questions["ex_2"] as? [String: Any])
+        let secondCriteria = try #require(second["criteria"] as? [String: Any])
+        #expect(Set(secondCriteria.keys) == ["Pullups", "none"])
     }
 
     @Test func allConfidentBuildsValidDraft() async throws {

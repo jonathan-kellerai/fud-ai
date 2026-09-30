@@ -30,7 +30,7 @@ enum PlausibilityRules {
         if let reference = referenceLoadsKg.max(), reference > 0 {
             let ratio = loadKg / reference
             if near(ratio, lbPerKg) || near(ratio, kgPerLb) {
-                flags.append(flag(name, .strong, "Check the unit", "\(name) looks like a kg/lb mix-up.", "\(name), the load is about \(percent(ratio)) of a recent set, close to a kg/lb conversion."))
+                flags.append(flag(name, .strong, "Check the unit", "\(name) looks like a kg/lb unit mix-up.", "\(name), the load is about \(percent(ratio)) of a recent set, close to a kg/lb conversion."))
             }
             let repsClose = referenceReps.isEmpty || referenceReps.contains { abs($0 - reps) <= 3 }
             if repsClose, (ratio >= 8 && ratio <= 12) || (ratio >= 0.08 && ratio <= 0.125) {
@@ -67,7 +67,7 @@ enum PlausibilityRules {
         let perDay = delta / Double(span)
         var flags: [PlausibilityFlag] = []
         if near(ratio, lbPerKg, tolerance: 0.05) || near(ratio, kgPerLb, tolerance: 0.05) {
-            flags.append(flag("weight", .strong, "Check the unit", "This weight looks like a kg/lb mix-up.", "Body weight changed by about a kg/lb conversion versus the last entry."))
+            flags.append(flag("weight", .strong, "Check the unit", "This weight looks like a kg/lb unit mix-up.", "Body weight changed by about a kg/lb conversion versus the last entry."))
         }
         if delta >= 2, perDay > 1.5 {
             flags.append(flag("weight", .strong, "Check this weight", "This weight jumped quickly.", "Body weight moved about \(percent(delta / previousKg)) over \(span) day\(span == 1 ? "" : "s")."))
@@ -95,7 +95,7 @@ enum PlausibilityRules {
         let ratio = newCm / previousCm
         var flags: [PlausibilityFlag] = []
         if near(ratio, 2.54, tolerance: 0.05) || near(ratio, 1 / 2.54, tolerance: 0.05) {
-            flags.append(flag("measure", .strong, "Check the unit", "This measurement looks like a cm/inch mix-up.", "The measurement changed by about a cm/inch conversion versus the last entry."))
+            flags.append(flag("measure", .strong, "Check the unit", "This measurement looks like a cm/inch unit mix-up.", "The measurement changed by about a cm/inch conversion versus the last entry."))
         }
         let change = abs(ratio - 1)
         if days <= 30, change >= 0.20 {
