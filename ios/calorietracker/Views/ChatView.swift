@@ -966,6 +966,7 @@ private struct CoachLocalCaption: View {
     private var askButton: some View {
         Button("Ask Coach instead", action: onAskCoach)
             .font(.caption.weight(.semibold))
+            .multilineTextAlignment(.leading)
             .foregroundStyle(AppColors.calorie)
             .accessibilityIdentifier("coach.router.askCoach")
     }

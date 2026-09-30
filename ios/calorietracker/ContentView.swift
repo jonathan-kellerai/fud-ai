@@ -4190,7 +4190,7 @@ struct AISettingsSubsectionHeader: View {
                 ForEach(words, id: \.self) { word in
                     Text(word)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.5)
                 }
             }
         } else {
@@ -5250,7 +5250,7 @@ struct ProfileView: View {
                     .tint(.secondary)
                     }
 
-                    AdaptiveLabelValue {
+                    AdaptiveLabelValue(alignment: .center) {
                         Label {
                             HStack(spacing: 6) {
                                 Text("Default to Grams")

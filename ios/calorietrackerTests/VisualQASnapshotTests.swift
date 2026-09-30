@@ -399,7 +399,7 @@ final class VisualQASnapshotTests: XCTestCase {
             defaults.removeObject(forKey: TypeSafeSettings.endpointKey)
             defaults.removeObject(forKey: TypeSafeSettings.modelKey)
         }
-        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 3) {
+        try await settingsScreen("43-settings-ai-providers-estimate-check", heightMultiplier: 4) {
             ProfileView(settingsCategory: .aiProviders)
         }
     }
@@ -409,6 +409,26 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { JevRouterSettings.visualPreview = false }
         try await settingsScreen("44-settings-advanced-ai-jev-router", heightMultiplier: 3) {
             ProfileView(settingsCategory: .advancedAI)
+        }
+    }
+
+    /// The Jev Router section alone, so the largest text size shows every wrapped toggle.
+    func test44bJevRouterSection() async throws {
+        JevRouterSettings.visualPreview = true
+        defer { JevRouterSettings.visualPreview = false }
+        try await settingsScreen("44b-jev-router-section", heightMultiplier: 3) {
+            List {
+                Section {
+                    JevRouterAdvancedSection()
+                } header: {
+                    IronInfoSectionHeader(title: "Jev Router", infoTopic: .jevRouter)
+                }
+                .listRowBackground(AppColors.appCard)
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppColors.appBackground)
+            .navigationTitle(Text("Advanced AI"))
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 

@@ -228,6 +228,8 @@ struct UnbrokenText: View {
 
 struct AdaptiveLabelValue<Label: View, Value: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Rows whose value is a control (a Toggle) use `.center`, so the switch stays level with the label.
+    var alignment: VerticalAlignment = .firstTextBaseline
     @ViewBuilder var label: () -> Label
     @ViewBuilder var value: () -> Value
 
@@ -239,7 +241,7 @@ struct AdaptiveLabelValue<Label: View, Value: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(alignment: alignment, spacing: 12) {
                 label()
                 Spacer(minLength: 8)
                 value()
