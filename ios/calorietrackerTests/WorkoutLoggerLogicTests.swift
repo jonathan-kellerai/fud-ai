@@ -156,14 +156,24 @@ struct WorkoutLoggerLogicTests {
         #expect(SupersetGrouping.restSeconds(afterLogging: "Pressdown", setIndex: 0, in: block, sets: sets) == nil)
     }
 
-    @Test func timerAfterFirstMemberWhenSecondAlreadyLogged() {
+    @Test func noTimerAfterFirstMemberEvenWhenSecondAlreadyLogged() {
         let block = curlPressdown()
         let sets: [String: [LoggedSet]] = [
             "Curl": [logged(12), logged(12)],
             "Pressdown": [logged(14), logged(13)],
         ]
 
-        #expect(SupersetGrouping.restSeconds(afterLogging: "Curl", setIndex: 1, in: block, sets: sets) == 60)
+        #expect(SupersetGrouping.restSeconds(afterLogging: "Curl", setIndex: 1, in: block, sets: sets) == nil)
+    }
+
+    @Test func timerAfterSecondMemberWhenFirstAlreadyLoggedInLaterRound() {
+        let block = curlPressdown()
+        let sets: [String: [LoggedSet]] = [
+            "Curl": [logged(12), logged(12)],
+            "Pressdown": [logged(14), logged(13)],
+        ]
+
+        #expect(SupersetGrouping.restSeconds(afterLogging: "Pressdown", setIndex: 1, in: block, sets: sets) == 60)
     }
 
     @Test func supersetRestFallsBackToLargestThenSixty() {
@@ -268,6 +278,53 @@ struct WorkoutLoggerLogicTests {
         #expect(ProgressionRule.suggestedLoad(last: nil, reps: curl.reps, startLoadLb: curl.startLoadLb) == nil)
     }
 
+    // MARK: - Prefill refresh
+
+    @Test func refreshRewritesUntouchedStartLoadSets() {
+        let press = exercise("Press", rest: 90, start: 100)
+        let sets: [String: [LoggedSet]] = [
+            "Press": [
+                LoggedSet(weight: 100, reps: 0, rir: 2, rpeText: ""),
+                LoggedSet(weight: 100, reps: 10, rir: 2, rpeText: ""),
+                LoggedSet(weight: 95, reps: 0, rir: 2, rpeText: ""),
+                LoggedSet(weight: 100, reps: 0, rir: 2, rpeText: ""),
+            ],
+        ]
+
+        let refreshed = PrefillRefresh.refreshedSets(exercises: [press], sets: sets, suggestions: ["Press": 110])
+
+        #expect(refreshed["Press"]?.map(\.weight) == [110, 100, 95, 110])
+        #expect(refreshed["Press"]?.map(\.reps) == [0, 10, 0, 0])
+    }
+
+    @Test func refreshRewritesBlankSetsWhenNoStartLoad() {
+        let curl = exercise("Curl", rest: 0)
+        let sets: [String: [LoggedSet]] = ["Curl": [empty(), LoggedSet(weight: 0, reps: 0, rir: 2, rpeText: "")]]
+
+        let refreshed = PrefillRefresh.refreshedSets(exercises: [curl], sets: sets, suggestions: ["Curl": 25])
+
+        #expect(refreshed["Curl"]?.map(\.weight) == [30, 25])
+    }
+
+    @Test func refreshIsEmptyWhenNothingChanges() {
+        let press = exercise("Press", rest: 90, start: 100)
+        let curl = exercise("Curl", rest: 0)
+        let sets: [String: [LoggedSet]] = [
+            "Press": [LoggedSet(weight: 100, reps: 0, rir: 2, rpeText: "")],
+            "Curl": [LoggedSet(weight: 0, reps: 0, rir: 2, rpeText: "")],
+        ]
+
+        // Suggestion equals the start load, no suggestion at all, and no sets for an exercise.
+        let squat = exercise("Squat", rest: 120, start: 185)
+        let refreshed = PrefillRefresh.refreshedSets(
+            exercises: [press, curl, squat],
+            sets: sets,
+            suggestions: ["Press": 100, "Squat": 190]
+        )
+
+        #expect(refreshed.isEmpty)
+    }
+
     @Test func parsesRepRanges() {
         #expect(ProgressionRule.repRange("10-15") == RepRange(low: 10, high: 15))
         #expect(ProgressionRule.repRange("10–15") == RepRange(low: 10, high: 15))
@@ -368,7 +425,13 @@ struct WorkoutLoggerLogicTests {
 
     // MARK: - Helpers
 
-    private func exercise(_ name: String, rest: Int, upper: Int? = nil, group: String? = nil) -> ProgramV2Exercise {
+    private func exercise(
+        _ name: String,
+        rest: Int,
+        upper: Int? = nil,
+        group: String? = nil,
+        start: Double? = nil
+    ) -> ProgramV2Exercise {
         ProgramV2Exercise(
             key: name.lowercased(),
             name: name,
@@ -376,7 +439,7 @@ struct WorkoutLoggerLogicTests {
             reps: "12-15",
             restSeconds: rest...(upper ?? rest),
             rirTarget: "2-3 RIR",
-            startLoadLb: nil,
+            startLoadLb: start,
             notes: "",
             supersetGroup: group
         )

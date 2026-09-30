@@ -81,7 +81,8 @@ enum SupersetGrouping {
     }
 
     /// Seconds to rest after logging `setIndex` of `exerciseName`, or nil for no timer.
-    /// A superset rests once per round, after every member has that set logged.
+    /// A superset rests once per round, only after logging its last member with
+    /// every member's set `setIndex` logged. Logging an earlier member never rests.
     static func restSeconds(
         afterLogging exerciseName: String,
         setIndex: Int,
@@ -93,6 +94,7 @@ enum SupersetGrouping {
             let rest = block.exercises.first?.restSeconds.lowerBound ?? 0
             return rest > 0 ? rest : nil
         }
+        guard block.exercises.last?.name == exerciseName else { return nil }
         let roundComplete = block.exercises.allSatisfy { exercise in
             isLogged(sets[exercise.name], at: setIndex)
         }
@@ -215,6 +217,38 @@ enum ProgressionRule {
             return max(0, first.load - incrementLb)
         }
         return first.load
+    }
+}
+
+// MARK: - Prefill refresh
+
+enum PrefillRefresh {
+    /// Once history arrives, sets added before it keep the no-history prefill
+    /// (start load, else 0). Untouched ones (0 reps, still that load) take the
+    /// suggestion. `suggestions` is keyed by exercise name. Returns the new set
+    /// list for each exercise that changes; empty when nothing does.
+    static func refreshedSets(
+        exercises: [ProgramV2Exercise],
+        sets: [String: [LoggedSet]],
+        suggestions: [String: Double]
+    ) -> [String: [LoggedSet]] {
+        var result: [String: [LoggedSet]] = [:]
+        for exercise in exercises where result[exercise.name] == nil {
+            guard let suggestion = suggestions[exercise.name],
+                  var exerciseSets = sets[exercise.name] else { continue }
+            let noHistoryPrefill = exercise.startLoadLb ?? 0
+            guard suggestion != noHistoryPrefill else { continue }
+            var changed = false
+            for index in exerciseSets.indices
+            where exerciseSets[index].reps == 0 && exerciseSets[index].weight == noHistoryPrefill {
+                exerciseSets[index].weight = suggestion
+                changed = true
+            }
+            if changed {
+                result[exercise.name] = exerciseSets
+            }
+        }
+        return result
     }
 }
 

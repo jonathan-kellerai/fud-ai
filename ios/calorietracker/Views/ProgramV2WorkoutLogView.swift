@@ -94,6 +94,7 @@ struct ProgramV2WorkoutLogView: View {
             }
             .task {
                 lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name))
+                refreshPrefilledLoads()
             }
             .onAppear {
                 if draftStore.hasDraft(otherThan: day) {
@@ -485,6 +486,29 @@ struct ProgramV2WorkoutLogView: View {
             reps: exercise.reps,
             startLoadLb: exercise.startLoadLb
         )
+    }
+
+    /// Sets added before history loaded were prefilled without it; move the
+    /// untouched ones to the suggestion. Never creates a draft.
+    private func refreshPrefilledLoads() {
+        guard !Task.isCancelled, draftStore.existingDraft(for: day) != nil else { return }
+        var suggestions: [String: Double] = [:]
+        for exercise in day.exercises where suggestions[exercise.name] == nil {
+            if let suggestion = suggestedLoad(for: exercise) {
+                suggestions[exercise.name] = suggestion
+            }
+        }
+        let refreshed = PrefillRefresh.refreshedSets(
+            exercises: day.exercises,
+            sets: workoutSets,
+            suggestions: suggestions
+        )
+        guard !refreshed.isEmpty else { return }
+        updateDraft { draft in
+            for (name, sets) in refreshed {
+                draft.sets[name] = sets
+            }
+        }
     }
 
     /// Starts the rest timer when the rest policy asks for one. In a superset
