@@ -4155,6 +4155,7 @@ struct AISettingsSubsectionHeader: View {
                 Image(systemName: systemImage)
             }
             .accessibilityAddTraits(.isHeader)
+            .layoutPriority(1)
 
             Spacer(minLength: 8)
 
@@ -4186,6 +4187,7 @@ struct AISettingsSubsectionHeader: View {
     private func subsectionTitle(_ title: String) -> some View {
         let words = title.split(separator: " ").map { String($0).uppercased() }
         if dynamicTypeSize.isAccessibilitySize {
+            // Capped so a long single word ("TYPESAFE") fits beside the icon and info button.
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(words, id: \.self) { word in
                     Text(word)
@@ -4193,6 +4195,7 @@ struct AISettingsSubsectionHeader: View {
                         .minimumScaleFactor(0.5)
                 }
             }
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         } else {
             Text(words.joined(separator: " "))
                 .lineLimit(1)
