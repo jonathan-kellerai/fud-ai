@@ -70,6 +70,7 @@ struct HomeV2Cards: View {
     @Environment(WaterStore.self) private var waterStore
     @Environment(HealthKitManager.self) private var healthKitManager
     @Environment(ProfileStore.self) private var profileStore
+    @Environment(WorkoutDraftStore.self) private var workoutDraftStore
     @AppStorage("healthKitEnabled") private var healthKitEnabled = false
     @AppStorage("weekStartsOnMonday") private var weekStartsOnMonday = true
     @AppStorage(WaterSettings.enabledKey) private var waterTrackingEnabled = false
@@ -170,6 +171,12 @@ struct HomeV2Cards: View {
             }
         case .today:
             Section {
+                if let draft = workoutDraftStore.draft {
+                    ResumeWorkoutCard(draft: draft) {
+                        loggingDay = draft.programV2Day
+                    }
+                    .listRowBackground(IronTheme.surface)
+                }
                 todayCard.listRowBackground(todaySurface)
             } header: {
                 IronSectionTitle(title: "Today")
