@@ -155,10 +155,22 @@ enum LastPerformanceBuilder {
     }
 
     /// `details` newest first. The first session containing an exercise wins,
-    /// whichever program day it was logged under.
-    static func build(from details: [WorkoutDetailResponse]) -> [String: LastPerformance] {
+    /// whichever program day it was logged under. With `preferredProgramDay`,
+    /// sessions logged under that day win over other days; an exercise with
+    /// no same-day session falls back to the newest other-day one.
+    static func build(
+        from details: [WorkoutDetailResponse],
+        preferredProgramDay: String? = nil
+    ) -> [String: LastPerformance] {
+        var ordered = details
+        if let preferredProgramDay {
+            let preferred = key(for: preferredProgramDay)
+            let sameDay = details.filter { key(for: $0.workout.programDay) == preferred }
+            let otherDays = details.filter { key(for: $0.workout.programDay) != preferred }
+            ordered = sameDay + otherDays
+        }
         var result: [String: LastPerformance] = [:]
-        for detail in details {
+        for detail in ordered {
             var byExercise: [String: [RemoteWorkoutSet]] = [:]
             for set in detail.sets where set.reps > 0 {
                 byExercise[key(for: set.exercise), default: []].append(set)

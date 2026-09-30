@@ -2,8 +2,9 @@
 //  ExerciseHistoryLoader.swift
 //  calorietracker
 //
-//  Finds the most recent logged session for each exercise in a program day,
-//  across every program day, from the Neon bridge workout history.
+//  Finds the most recent logged session for each exercise in a program day
+//  from the Neon bridge workout history, preferring sessions logged under the
+//  same program day and falling back to the newest session from any day.
 //
 
 import Foundation
@@ -16,13 +17,16 @@ enum ExerciseHistoryLoader {
     /// Last performance keyed by `LastPerformanceBuilder.key(for:)`. Bridge failures
     /// give an empty map; a detail request that fails is skipped. Details are fetched
     /// in concurrent batches, newest first, until every wanted exercise is found.
+    /// With `programDay`, sessions from that day are fetched first so the early
+    /// exit only stops once a same-day answer is final.
     static func load(
         exerciseNames: [String],
+        programDay: String? = nil,
         bridge: NeonBridgeService = .shared
     ) async -> [String: LastPerformance] {
         guard let workouts = try? await bridge.listWorkouts(limit: listLimit) else { return [:] }
         let wanted = Set(exerciseNames.map { LastPerformanceBuilder.key(for: $0) })
-        let ids = orderedCandidates(workouts).prefix(maxDetailRequests).map(\.id)
+        let ids = orderedCandidates(workouts, preferring: programDay).prefix(maxDetailRequests).map(\.id)
         var found = Set<String>()
         var details: [WorkoutDetailResponse] = []
 
@@ -38,7 +42,7 @@ enum ExerciseHistoryLoader {
                 }
             }
         }
-        return LastPerformanceBuilder.build(from: details)
+        return LastPerformanceBuilder.build(from: details, preferredProgramDay: programDay)
     }
 
     /// Fetches `ids` concurrently and returns the successes in `ids` order.
@@ -72,5 +76,16 @@ enum ExerciseHistoryLoader {
                 return lhs.offset < rhs.offset
             }
             .map(\.element)
+    }
+
+    /// `orderedCandidates(_:)` with sessions logged under `programDay` moved
+    /// ahead of the rest, each group still newest first. Nil keeps the plain order.
+    static func orderedCandidates(_ workouts: [RemoteWorkout], preferring programDay: String?) -> [RemoteWorkout] {
+        let ordered = orderedCandidates(workouts)
+        guard let programDay else { return ordered }
+        let preferred = LastPerformanceBuilder.key(for: programDay)
+        let sameDay = ordered.filter { LastPerformanceBuilder.key(for: $0.programDay) == preferred }
+        let otherDays = ordered.filter { LastPerformanceBuilder.key(for: $0.programDay) != preferred }
+        return sameDay + otherDays
     }
 }

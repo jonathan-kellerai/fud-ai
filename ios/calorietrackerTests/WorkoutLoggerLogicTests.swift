@@ -379,6 +379,53 @@ struct WorkoutLoggerLogicTests {
         #expect(ExerciseHistoryLoader.orderedCandidates(workouts).map(\.id) == ["c", "d", "a"])
     }
 
+    @Test func lastPerformancePrefersSameProgramDay() {
+        let newer = detail(id: "w3", day: "3-wed", date: "2026-09-30", sets: [
+            remoteSet("Triceps pressdown", order: 1, load: 140, reps: 12, rir: 2),
+        ])
+        let older = detail(id: "w4", day: "4-thu", date: "2026-09-25", sets: [
+            remoteSet("triceps pressdown ", order: 1, load: 125, reps: 14, rir: 1),
+        ])
+
+        let map = LastPerformanceBuilder.build(from: [newer, older], preferredProgramDay: " 4-THU")
+
+        #expect(map["triceps pressdown"]?.sessionDate == "2026-09-25")
+        #expect(map["triceps pressdown"]?.firstSet == WorkingSetSummary(load: 125, reps: 14, rir: 1))
+    }
+
+    @Test func lastPerformanceFallsBackToOtherDayWhenSameDayHasNone() {
+        let newest = detail(id: "w3b", day: "3-wed", date: "2026-09-30", sets: [
+            remoteSet("Cable or DB curl", order: 1, load: 30, reps: 12, rir: 2),
+        ])
+        let otherDay = detail(id: "w3a", day: "3-wed", date: "2026-09-23", sets: [
+            remoteSet("Cable or DB curl", order: 1, load: 25, reps: 12, rir: 2),
+        ])
+        let sameDay = detail(id: "w4", day: "4-thu", date: "2026-09-25", sets: [
+            remoteSet("Triceps pressdown", order: 1, load: 125, reps: 14, rir: 1),
+            // 0-rep sets still do not count, even on the preferred day.
+            remoteSet("Cable or DB curl", order: 2, load: 20, reps: 0, rir: nil),
+        ])
+
+        let map = LastPerformanceBuilder.build(from: [newest, sameDay, otherDay], preferredProgramDay: "4-thu")
+
+        #expect(map["cable or db curl"]?.sessionDate == "2026-09-30")
+        #expect(map["cable or db curl"]?.firstSet == WorkingSetSummary(load: 30, reps: 12, rir: 2))
+        #expect(map["triceps pressdown"]?.sessionDate == "2026-09-25")
+    }
+
+    @Test func historyCandidatesPreferringDayPutSameDayFirst() {
+        let workouts = [
+            remoteWorkout("a", day: "4-thu", date: "2026-09-18"),
+            remoteWorkout("b", day: "4-thu", date: "2026-09-30T00:00:00.000Z", synthetic: true),
+            remoteWorkout("c", day: "3-wed", date: "2026-09-29"),
+            remoteWorkout("d", day: "4-thu", date: "2026-09-25"),
+            remoteWorkout("e", day: "1-mon", date: "2026-09-28"),
+        ]
+
+        #expect(ExerciseHistoryLoader.orderedCandidates(workouts, preferring: "4-thu").map(\.id) == ["d", "a", "c", "e"])
+        #expect(ExerciseHistoryLoader.orderedCandidates(workouts, preferring: nil).map(\.id) == ["c", "e", "d", "a"])
+    }
+
     @Test func formatsLastLine() {
         let performance = LastPerformance(sessionDate: "2026-09-29", sets: [WorkingSetSummary(load: 110, reps: 12, rir: 2)])
         #expect(LoggerFormatting.lastLine(performance) == "Last: 110 × 12 @ RIR 2")

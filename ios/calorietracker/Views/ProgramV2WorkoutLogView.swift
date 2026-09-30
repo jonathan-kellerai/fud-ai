@@ -95,7 +95,7 @@ struct ProgramV2WorkoutLogView: View {
                 RestTimerSheet(defaultSeconds: restDuration)
             }
             .task {
-                lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name))
+                lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
                 refreshPrefilledLoads()
             }
             .onAppear {
