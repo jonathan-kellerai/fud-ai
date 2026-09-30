@@ -20,9 +20,11 @@ struct JLPhysicalTabView: View {
     private var neonBridge = NeonBridgeService.shared
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
+    @State private var trainMode: TrainMode
 
-    init(referenceDate: Date? = nil) {
+    init(referenceDate: Date? = nil, initialMode: TrainMode = .today) {
         self.referenceDate = referenceDate
+        _trainMode = State(initialValue: initialMode)
     }
 
     private var todayPlan: ResolvedTrainingDay {
@@ -45,6 +47,19 @@ struct JLPhysicalTabView: View {
                     recentWorkoutsSection
                 }
                 .padding()
+            }
+            // Overlay sits under the inset so the Today | Ladders switch stays on top.
+            .overlay {
+                if trainMode == .ladders {
+                    CCLaddersView()
+                        .background(IronTheme.canvas)
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                TrainModeSwitch(mode: $trainMode)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(IronTheme.canvas)
             }
             .navigationTitle("Train")
             .toolbar {

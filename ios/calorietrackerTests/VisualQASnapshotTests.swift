@@ -299,7 +299,7 @@ final class VisualQASnapshotTests: XCTestCase {
 
     // MARK: - Logger supersets and history
 
-    func test25SupersetPair() async throws {
+    func test49SupersetPair() async throws {
         let full = TrainingProgramBody.bundledV2().days[3].asProgramV2Day()
         let day = ProgramV2Day(
             id: full.id,
@@ -323,7 +323,7 @@ final class VisualQASnapshotTests: XCTestCase {
         }
         VisualQAGraveyard.keep(drafts)
         // The draft store goes on the logger itself so it wins over the one stores.inject adds outside it.
-        try await eachSize("25-superset-pair", sheet: {
+        try await eachSize("49-superset-pair", sheet: {
             ProgramV2WorkoutLogView(day: day)
                 .environment(drafts)
         }) { _ in
@@ -333,13 +333,34 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
-    func test26LastTimeLine() async throws {
+    func test50LastTimeLine() async throws {
         let day = VisualQAFixtures.liftingDay()
-        try await eachSize("26-last-time-line", sheet: {
+        try await eachSize("50-last-time-line", sheet: {
             ProgramV2WorkoutLogView(day: day)
         }) { _ in
             VisualQATabShell(selected: .train) {
                 JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
+    // MARK: - Ladders, peptides
+
+    func test51TrainLadders() async throws {
+        try await eachSize("51-train-ladders", heightMultiplier: 2) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false), initialMode: .ladders)
+            }
+        }
+    }
+
+    func test52HomePeptideCard() async throws {
+        let savedLayout = HomeCardLayout.load()
+        defer { HomeCardLayout.save(order: savedLayout.order, hidden: savedLayout.hidden) }
+        HomeCardLayout.save(order: [.peptides] + HomeCardID.allCases.filter { $0 != .peptides }, hidden: [])
+        try await eachSize("52-home-peptide-card") { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
             }
         }
     }
@@ -791,7 +812,8 @@ enum VisualQAFixtures {
         if savedSettings == nil {
             savedSettings = NeonBridgeService.shared.settings
         }
-        NeonBridgeService.shared.settings = NeonBridgeSettings(baseURL: "https://\(host)", apiKey: nil)
+        // Fake key, never persisted: the stub rejects peptide calls without it.
+        NeonBridgeService.shared.settings = NeonBridgeSettings(baseURL: "https://\(host)", apiKey: VisualQAStubStorage.bridgeKey)
     }
 
     static func uninstall() {
@@ -983,6 +1005,62 @@ enum VisualQAFixtures {
     {"schedules":[{"id":"qa-schedule-1","active":true}]}
     """
 
+    /// Modeled on a live /api/cc/ladders response. Step names, ranges and
+    /// targets are copied from the bridge payload, not invented.
+    static let ccLaddersJSON = #"""
+    {"generated_at":"2026-09-30T12:29:09.967Z",
+     "rule":{"target_reps_by_step":{"1":15,"2":15,"3":15,"4":15,"5":15,"6":12,"7":12,"8":12,"9":8,"10":8},"max_rir":2,"working_sets":2,"required_streak":2,"master_step":10},
+     "active_program":{"id":"qa-program","name":"Program V2","version":3},
+     "series":[
+      {"series":"PSH","label":"Push-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]},
+      {"series":"SQT","label":"Squat","current_step":2,"step_name":"Jackknife squat","since":"2026-09-26T14:35:00.000Z","target_reps":15,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,
+       "program_exercises":[{"day":"Lower B + Cond","exercise":"CC squat ladder - step 2 Jackknife squat","step":2,"sets":2,"reps":"8-15"}],"last_event":null,
+       "sessions":[{"workout_id":"qa-sqt-1","session_date":"2026-09-24","program_day":"Day5_LowerB_Cond","title":"Lower B","exercise":"Shoulderstand squat","step":1,"sets":[{"set_order":6,"reps":15,"rir":5,"load_lb":0},{"set_order":7,"reps":15,"rir":5,"load_lb":0}],"counts_toward_current_step":false,"qualifying":false,"flags":["different_step","before_step_start","rir_above_max"]}],
+       "steps":[
+        {"step":1,"name":"Shoulderstand squat","working_reps":"8–15","target_reps":15},
+        {"step":2,"name":"Jackknife squat","working_reps":"8–15","target_reps":15},
+        {"step":3,"name":"Supported squat","working_reps":"8–15","target_reps":15},
+        {"step":4,"name":"Half squat","working_reps":"8–15","target_reps":15},
+        {"step":5,"name":"Full squat","working_reps":"8–15","target_reps":15},
+        {"step":6,"name":"Close squat","working_reps":"6–12","target_reps":12},
+        {"step":7,"name":"Uneven squat","working_reps":"6–12","target_reps":12},
+        {"step":8,"name":"Half one-leg squat","working_reps":"6–12","target_reps":12},
+        {"step":9,"name":"Assisted one-leg squat","working_reps":"3–8","target_reps":8},
+        {"step":10,"name":"One-leg squat (pistol)","working_reps":"3–8","target_reps":8}]},
+      {"series":"PLL","label":"Pull-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]},
+      {"series":"LGR","label":"Leg raise","current_step":1,"step_name":"Knee tuck","since":"2026-09-15T04:00:00.000Z","target_reps":15,"master":false,"ready":true,"streak":2,"required_streak":2,"flags":[],"in_program":true,
+       "program_exercises":[{"day":"Upper Push","exercise":"CC leg raise ladder - step 1 Knee tuck","step":1,"sets":2,"reps":"8-15"}],"last_event":null,
+       "sessions":[{"workout_id":"qa-lgr-2","session_date":"2026-09-29","program_day":"Day2_UpperPush","title":"Upper Push","exercise":"Knee tuck","step":1,"sets":[{"set_order":3,"reps":15,"rir":2,"load_lb":0},{"set_order":4,"reps":15,"rir":1,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[]},
+                   {"workout_id":"qa-lgr-1","session_date":"2026-09-22","program_day":"Day2_UpperPush","title":"Upper Push","exercise":"Knee tuck","step":1,"sets":[{"set_order":8,"reps":15,"rir":2,"load_lb":0},{"set_order":9,"reps":15,"rir":2,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[]}],
+       "steps":[
+        {"step":1,"name":"Knee tuck","working_reps":"8–15","target_reps":15},
+        {"step":2,"name":"Flat knee raise","working_reps":"8–15","target_reps":15},
+        {"step":3,"name":"Flat bent-leg raise","working_reps":"8–15","target_reps":15},
+        {"step":4,"name":"Flat frog raise","working_reps":"8–15","target_reps":15},
+        {"step":5,"name":"Flat straight-leg raise","working_reps":"8–15","target_reps":15},
+        {"step":6,"name":"Hanging knee raise","working_reps":"6–12","target_reps":12},
+        {"step":7,"name":"Hanging bent-leg raise","working_reps":"6–12","target_reps":12},
+        {"step":8,"name":"Hanging frog raise","working_reps":"6–12","target_reps":12},
+        {"step":9,"name":"Partial hanging straight-leg raise","working_reps":"3–8","target_reps":8},
+        {"step":10,"name":"Hanging straight-leg raise","working_reps":"3–8","target_reps":8}]},
+      {"series":"BRG","label":"Bridge","current_step":1,"step_name":"Short bridge","since":"2026-09-21T04:00:00.000Z","target_reps":15,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,
+       "program_exercises":[{"day":"Upper Physique","exercise":"CC bridge ladder - step 1 Short bridge","step":1,"sets":2,"reps":"8-15"}],"last_event":null,
+       "sessions":[{"workout_id":"qa-brg-1","session_date":"2026-09-21","program_day":"Day4_UpperPhysique","title":"Upper Physique","exercise":"Short bridge","step":1,"sets":[{"set_order":9,"reps":8,"rir":2,"load_lb":0},{"set_order":10,"reps":8,"rir":2,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"]}],
+       "steps":[
+        {"step":1,"name":"Short bridge","working_reps":"8–15","target_reps":15},
+        {"step":2,"name":"Straight bridge","working_reps":"8–15","target_reps":15},
+        {"step":3,"name":"Angled bridge","working_reps":"8–15","target_reps":15},
+        {"step":4,"name":"Head bridge","working_reps":"8–15","target_reps":15},
+        {"step":5,"name":"Half bridge","working_reps":"8–15","target_reps":15},
+        {"step":6,"name":"Full bridge","working_reps":"6–12","target_reps":12},
+        {"step":7,"name":"Wall-walk bridge (down)","working_reps":"6–12","target_reps":12},
+        {"step":8,"name":"Wall-walk bridge (up)","working_reps":"6–12","target_reps":12},
+        {"step":9,"name":"Closing bridge","working_reps":"3–8","target_reps":8},
+        {"step":10,"name":"Stand-to-stand bridge","working_reps":"3–8","target_reps":8}]},
+      {"series":"HSP","label":"Handstand push-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]}
+     ]}
+    """#
+
     /// Path -> (status, body). Built on the main actor before any request is made.
     static func buildResponses() -> [String: (Int, Data)] {
         let encoder = JSONEncoder()
@@ -1000,6 +1078,7 @@ enum VisualQAFixtures {
             "/api/peptides/today": (200, Data(peptideTodayJSON().utf8)),
             "/api/peptides/inventory": (200, Data(peptideInventoryJSON.utf8)),
             "/api/peptides/schedules": (200, Data(peptideSchedulesJSON.utf8)),
+            "/api/cc/ladders": (200, Data(ccLaddersJSON.utf8)),
         ]
     }
 }
@@ -1007,6 +1086,8 @@ enum VisualQAFixtures {
 /// Thread-safe holder the URLProtocol reads from URLSession's queue.
 nonisolated final class VisualQAStubStorage: @unchecked Sendable {
     static let host = "visual-qa.invalid"
+    /// Fake bridge key for Visual QA only. Peptide routes answer 401 without it.
+    static let bridgeKey = "visual-qa-bridge-key"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var responses: [String: (Int, Data)] = [:]
 
@@ -1020,6 +1101,10 @@ nonisolated final class VisualQAStubStorage: @unchecked Sendable {
             return (405, Data(#"{"error":"visual_qa_read_only"}"#.utf8))
         }
         let path = request.url?.path ?? ""
+        if path.hasPrefix("/api/peptides/"),
+           request.value(forHTTPHeaderField: "Authorization") != "Bearer \(bridgeKey)" {
+            return (401, Data(#"{"error":"unauthorized"}"#.utf8))
+        }
         lock.lock(); defer { lock.unlock() }
         return responses[path] ?? (404, Data(#"{"error":"not_found"}"#.utf8))
     }

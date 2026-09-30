@@ -31,6 +31,29 @@ struct KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Updates the existing item in place (or adds it if missing), so a failed
+    /// write never leaves the old value deleted. True only on errSecSuccess.
+    @discardableResult
+    static func upsert(key: String, value: String) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+    }
+
     static func delete(key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
