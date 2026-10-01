@@ -5619,11 +5619,11 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
 
                 Section {
-                    // One line when the label fits, stacked otherwise, so the
-                    // label never truncates at large type on iPhone SE.
-                    FittingLabelValue {
+                    AdaptiveLabelValue(alignment: .center) {
                         Label {
-                            UnbrokenText("Request Timeout")
+                            Text("Request Timeout")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
                         } icon: {
                             Image(systemName: "timer")
                                 .foregroundStyle(AppColors.calorie)
@@ -5636,9 +5636,11 @@ struct ProfileView: View {
                                 .fixedSize()
                         }
                     }
-                    FittingLabelValue {
+                    AdaptiveLabelValue(alignment: .center) {
                         Label {
-                            UnbrokenText("Max Response Tokens")
+                            Text("Max Response Tokens")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
                         } icon: {
                             Image(systemName: "text.append")
                                 .foregroundStyle(AppColors.calorie)

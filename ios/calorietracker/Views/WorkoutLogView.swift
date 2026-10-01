@@ -1296,7 +1296,7 @@ private struct WorkoutLogSetRow: View {
                 focus: WorkoutLogSetFocus(exerciseID: exerciseID, setID: set.id, field: .rpe),
                 focusedField: focusedField
             )
-            .frame(maxWidth: .infinity)
+            .frame(minWidth: 60, maxWidth: .infinity)
         }
         .padding(.vertical, 7)
         .overlay(alignment: .leading) {

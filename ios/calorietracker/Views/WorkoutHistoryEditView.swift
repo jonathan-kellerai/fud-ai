@@ -69,7 +69,7 @@ struct WorkoutHistoryEditView: View {
                                     TextField("RPE", text: $set.rpeText)
                                         .keyboardType(.decimalPad)
                                         .textFieldStyle(.roundedBorder)
-                                        .frame(width: (52 * min(max(inputScale, 1), 1.4)).rounded())
+                                        .frame(width: (60 * min(max(inputScale, 1), 1.4)).rounded())
                                         .accessibilityLabel("RPE, rate of perceived exertion")
                                 }
                                 // Five inputs share one row; at accessibility

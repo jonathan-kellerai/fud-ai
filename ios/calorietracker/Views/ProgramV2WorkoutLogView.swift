@@ -506,7 +506,7 @@ struct ProgramV2WorkoutLogView: View {
         ), format: .number)
         .keyboardType(.numberPad)
         .textFieldStyle(.roundedBorder)
-        .frame(width: scaledInputWidth(50))
+        .frame(width: scaledInputWidth(64))
         .accessibilityLabel(isHold ? "Hold seconds" : "Reps")
     }
 
@@ -530,7 +530,7 @@ struct ProgramV2WorkoutLogView: View {
         ))
         .keyboardType(.decimalPad)
         .textFieldStyle(.roundedBorder)
-        .frame(width: scaledInputWidth(44))
+        .frame(width: scaledInputWidth(60))
         .accessibilityLabel("RPE, rate of perceived exertion")
     }
 

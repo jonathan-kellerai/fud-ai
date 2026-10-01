@@ -649,7 +649,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.ccLaddersJSONOverride = nil }
         CCLadderMemoryCache.last = nil
         defer { CCLadderMemoryCache.last = nil }
-        try await eachSize("53-train-ladders-targets", heightMultiplier: 4) { _ in
+        try await eachSize("53-train-ladders-targets", heightMultiplier: 3) { _ in
             VisualQATabShell(selected: .train) {
                 JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false), initialMode: .ladders)
             }

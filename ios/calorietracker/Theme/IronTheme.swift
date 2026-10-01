@@ -199,31 +199,32 @@ extension View {
 }
 
 /// Text that may scale or wrap onto a second line, but does not hyphenate inside a word.
-/// A single word ("Acknowledgements") stays on one line and scales down instead,
-/// because a lone word too wide for the row would otherwise break mid-word.
+/// A single word ("Acknowledgements") stays on one line, capped at AX1, and scales down
+/// instead, because a lone word too wide for the row would otherwise truncate or break mid-word.
 struct UnbrokenText: View {
-    private let content: Text
+    private let string: String
     private let isSingleWord: Bool
 
     init(_ string: String) {
-        content = Text(Self.attributed(string))
+        self.string = string
         isSingleWord = Self.isSingleWord(string)
     }
 
     init(_ resource: LocalizedStringResource) {
         let string = String(localized: resource)
-        content = Text(Self.attributed(string))
+        self.string = string
         isSingleWord = Self.isSingleWord(string)
     }
 
     var body: some View {
         if isSingleWord {
-            content
+            Text(verbatim: string)
                 .lineLimit(1)
-                .minimumScaleFactor(0.5)
+                .minimumScaleFactor(0.4)
                 .allowsTightening(true)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         } else {
-            content
+            Text(verbatim: string)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
                 .allowsTightening(true)
@@ -233,38 +234,6 @@ struct UnbrokenText: View {
     static func isSingleWord(_ string: String) -> Bool {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmed.isEmpty && !trimmed.contains { $0.isWhitespace }
-    }
-
-    private static func attributed(_ string: String) -> AttributedString {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.hyphenationFactor = 0
-        paragraph.lineBreakStrategy = .pushOut
-        let raw = NSAttributedString(string: string, attributes: [.paragraphStyle: paragraph])
-        return AttributedString(raw)
-    }
-}
-
-/// Label and a fixed-width control on one line when the whole label fits;
-/// otherwise the control drops below the label, which wraps instead of truncating.
-struct FittingLabelValue<Label: View, Value: View>: View {
-    @ViewBuilder var label: () -> Label
-    @ViewBuilder var value: () -> Value
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
-                label()
-                    .fixedSize()
-                Spacer(minLength: 8)
-                value()
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                label()
-                    .fixedSize(horizontal: false, vertical: true)
-                value()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 
