@@ -147,6 +147,12 @@ struct PeptideMathTests {
         draft.units = "mcg"
         draft.drawnText = "abc"
         #expect(PeptideMath.validate(draft)[.drawn] != nil)
+        // A typed draw needs its unit picked; none is preselected.
+        draft.drawnText = "0.1"
+        #expect(draft.drawnUnit == nil)
+        #expect(PeptideMath.validate(draft)[.drawn] != nil)
+        draft.drawnUnit = "mL"
+        #expect(PeptideMath.validate(draft).isEmpty)
     }
 
     // MARK: Concentration
@@ -235,6 +241,15 @@ struct PeptideMathTests {
         #expect(!PeptideMath.remaining(vial: vial(threshold: 0.25), entries: lighter).isLow)
     }
 
+    @Test func incompleteHistoryMakesRemainingUncalculable() {
+        let drawn = [entry("d", dose: 0.5, units: "mL", vialID: "v1")]
+        #expect(PeptideMath.remaining(vial: vial(), entries: drawn).calculable)
+        let blocked = PeptideMath.remaining(vial: vial(), entries: drawn, incompleteHistory: true)
+        #expect(!blocked.calculable)
+        #expect(blocked.remainingML == nil)
+        #expect(blocked.reason == PeptideMath.incompleteHistoryReason)
+    }
+
     // MARK: Adherence
 
     @Test func dailyAdherenceCountsMissedAndToday() {
@@ -290,6 +305,118 @@ struct PeptideMathTests {
         #expect(PeptideMath.occurrences(ended, from: "2026-09-01", to: "2026-09-30") == ["2026-09-20", "2026-09-21"])
         ended.active = false
         #expect(PeptideMath.occurrences(ended, from: "2026-09-01", to: "2026-09-30").isEmpty)
+    }
+
+    @Test func perWeekCountsEveryAdministrationCappedPerWeek() {
+        // 3× per week from Monday 2026-09-07. Today is Wednesday 2026-09-30.
+        let threeAWeek = schedule(frequency: ReconMath.Frequency(type: "perWeek", n: 3), start: "2026-09-07")
+        let entries = [
+            entry("a", civil: "2026-09-15", hour: 7),
+            entry("b", civil: "2026-09-15", hour: 20),
+            entry("c", civil: "2026-09-17"),
+            entry("d", civil: "2026-09-17", hour: 21),
+            entry("e", civil: "2026-09-22"),
+            entry("f", civil: "2026-09-28", hour: 7),
+            entry("g", civil: "2026-09-28", hour: 20),
+            entry("x", civil: "2026-09-29", voided: true),
+        ]
+        // Two on one day count as two; four in a week are capped at three.
+        #expect(PeptideMath.perWeekCount(threeAWeek, entries: entries, weekStart: "2026-09-14", from: "2026-09-07", to: "2026-09-30") == 3)
+        let result = PeptideMath.adherence(threeAWeek, entries: entries, from: "2026-09-14", to: "2026-09-30", today: "2026-09-30")
+        // Week of 14th: 3 of 3. Week of 21st: 1 of 3. This week: only what's logged (2).
+        #expect(result.due == 8)
+        #expect(result.taken == 6)
+        #expect(result.missedDates == ["2026-09-21"])
+        #expect(result.todayDue)
+        #expect(!result.todayTaken)
+        // The due list uses the same counter.
+        let due = PeptideMath.dueItems(date: "2026-09-30", person: "jonathan", schedules: [threeAWeek], entries: entries)
+        #expect(due.first?.weekCount == 2)
+        #expect(due.first?.taken == false)
+    }
+
+    @Test func perWeekPartialBoundaryWeeks() {
+        let threeAWeek = schedule(frequency: ReconMath.Frequency(type: "perWeek", n: 3), start: "2026-09-07")
+        let entries = [
+            entry("a", civil: "2026-09-15"),
+            entry("b", civil: "2026-09-17"),
+            entry("c", civil: "2026-09-20"),
+            entry("d", civil: "2026-09-22"),
+        ]
+        // Window starts Saturday 19th: only Sat + Sun of that week are in it,
+        // so it is due 2 and only the Sunday dose counts.
+        #expect(PeptideMath.perWeekDue(threeAWeek, weekStart: "2026-09-14", from: "2026-09-19", to: "2026-09-30") == 2)
+        let result = PeptideMath.adherence(threeAWeek, entries: entries, from: "2026-09-19", to: "2026-09-27", today: "2026-09-30")
+        #expect(result.due == 5)
+        #expect(result.taken == 2)
+        #expect(result.missedDates == ["2026-09-14", "2026-09-21"])
+
+        // A schedule starting Thursday 24th: doses before the start don't count.
+        let lateStart = schedule(frequency: ReconMath.Frequency(type: "perWeek", n: 3), start: "2026-09-24")
+        #expect(PeptideMath.perWeekCount(lateStart, entries: entries, weekStart: "2026-09-21", from: "2026-09-01", to: "2026-09-30") == 0)
+        #expect(PeptideMath.perWeekDue(lateStart, weekStart: "2026-09-21", from: "2026-09-01", to: "2026-09-30") == 3)
+        // Ends Tuesday 15th: only Mon + Tue of that week.
+        let ended = schedule(frequency: ReconMath.Frequency(type: "perWeek", n: 3), start: "2026-09-07", end: "2026-09-15")
+        #expect(PeptideMath.perWeekDue(ended, weekStart: "2026-09-14", from: "2026-09-01", to: "2026-09-30") == 2)
+        #expect(PeptideMath.perWeekCount(ended, entries: entries, weekStart: "2026-09-14", from: "2026-09-01", to: "2026-09-30") == 1)
+    }
+
+    @Test func streakIsIndependentOfTheReportWindow() {
+        let daily = schedule(frequency: ReconMath.Frequency(type: "daily"), start: "2026-01-01")
+        var entries: [PeptideLogEntry] = []
+        var day = "2026-08-01"
+        while day <= "2026-09-29" {
+            entries.append(entry("d-" + day, civil: day))
+            day = ReconMath.addDays(day, 1)
+        }
+        // 60 days logged in a row; today (30th) not yet logged doesn't break it.
+        let week = PeptideMath.adherence(daily, entries: entries, from: "2026-09-24", to: "2026-09-30", today: "2026-09-30")
+        #expect(week.streak == 60)
+        #expect(PeptideMath.currentStreak(daily, entries: entries, today: "2026-09-30") == 60)
+
+        let twiceAWeek = schedule(frequency: ReconMath.Frequency(type: "perWeek", n: 2), start: "2026-08-31")
+        let weekly = ["2026-08-31", "2026-09-02", "2026-09-07", "2026-09-07", "2026-09-15", "2026-09-18", "2026-09-21", "2026-09-26", "2026-09-29"]
+            .enumerated().map { entry("w\($0.offset)", civil: $0.element, hour: 7 + $0.offset) }
+        // Four full weeks; the current week (1 of 2 so far) neither adds nor breaks.
+        let recent = PeptideMath.adherence(twiceAWeek, entries: weekly, from: "2026-09-24", to: "2026-09-30", today: "2026-09-30")
+        #expect(recent.streak == 4)
+    }
+
+    @Test func bridgeRowsDecodeFieldByField() throws {
+        let json = """
+        {"from":"2026-09-01","to":"2026-09-30","timezone":"America/New_York","administrations":[
+          {"id":42,"datetime":"2026-09-20T13:00:00Z","compound":"BPC-157","dose":"500","units":5,
+           "voided":"1","recorded_via":"app","badges":["LABEL",3],"person":null,
+           "correction_history":"oops","planned_id":7,"dose_deviates_from_planned":0},
+          {"datetime":"2026-09-21T13:00:00Z","compound":"MT2"},
+          "not a row",
+          {"id":"ok-1","datetime":"2026-09-22T13:00:00Z","compound":"MT2","dose":250,"units":"mcg","status":"COMPLETED"}
+        ]}
+        """
+        let list = try JSONDecoder().decode(PeptideAdministrationList.self, from: Data(json.utf8))
+        #expect(list.administrations.map(\.id) == ["42", "ok-1"])
+        #expect(list.skippedRows == 2)
+        let odd = try #require(list.administrations.first)
+        #expect(odd.dose == 500)
+        #expect(odd.units == "5")
+        #expect(odd.voided)
+        #expect(odd.recordedVia == "app")
+        #expect(odd.badges == ["LABEL", "3"])
+        #expect(odd.plannedId == "7")
+        #expect(odd.correctionHistory.isEmpty)
+
+        let today = """
+        {"date":"2026-09-22","timezone":"America/New_York","has_active_schedules":true,
+         "planned":[{"id":"p1","datetime":"2026-09-22T13:00:00Z","compound":"MT2","status":"PLANNED","dose":{"x":1}}],
+         "completed":[{"compound":"MT2"},{"id":"c1","datetime":"2026-09-22T14:00:00Z","compound":"MT2","voided":"false"}]}
+        """
+        let response = try JSONDecoder().decode(PeptideTodayResponse.self, from: Data(today.utf8))
+        #expect(response.planned.map(\.id) == ["p1"])
+        #expect(response.planned.first?.dose == nil)
+        #expect(response.completed.map(\.id) == ["c1"])
+        #expect(response.completed.first?.voided == false)
+        #expect(response.skippedRows == 1)
+        #expect(response.hasActiveSchedules)
     }
 
     @Test func plannedAdherenceUsesCompletedID() {

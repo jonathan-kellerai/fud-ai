@@ -26,12 +26,19 @@ struct PeptideLogSheet: View {
 
     /// `reviewDraft` is for Visual QA only: it opens on the confirm step with
     /// values the test typed. App call sites never pass it.
-    init(person: String, compound: String? = nil, reviewDraft: PeptideLogDraft? = nil, onSaved: (() -> Void)? = nil) {
+    /// `now` is the default time only (Visual QA passes a fixed instant).
+    init(
+        person: String,
+        compound: String? = nil,
+        reviewDraft: PeptideLogDraft? = nil,
+        now: Date = Date(),
+        onSaved: (() -> Void)? = nil
+    ) {
         if let reviewDraft {
             _draft = State(initialValue: reviewDraft)
             _step = State(initialValue: .confirm)
         } else {
-            _draft = State(initialValue: PeptideLogDraft.new(person: PeptidePerson.normalized(person), compound: compound ?? ""))
+            _draft = State(initialValue: PeptideLogDraft.new(person: PeptidePerson.normalized(person), compound: compound ?? "", now: now))
             _step = State(initialValue: .entry)
         }
         self.onSaved = onSaved
@@ -174,7 +181,7 @@ struct PeptideLogSheet: View {
     private var timeSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             PeptideFieldLabel("Time")
-            DatePicker("Time", selection: $draft.takenAt, in: ...Date().addingTimeInterval(60 * 60))
+            DatePicker("Time", selection: $draft.takenAt, in: ...max(Date(), draft.takenAt).addingTimeInterval(60 * 60))
                 .labelsHidden()
                 .tint(IronTheme.bloodText)
             Text("Saved as " + PeptideMath.shortDateTime(draft.takenAt) + " ET")
@@ -360,7 +367,7 @@ struct PeptideLogReviewCard: View {
 
     private var drawnLine: String {
         guard let drawn = draft.drawnVolume else { return "—" }
-        return PeptideMath.number(drawn) + " " + draft.drawnUnit
+        return PeptideMath.number(drawn) + " " + (draft.drawnUnit ?? "")
     }
 
     private var vial: PeptideVial? { store.vial(id: draft.vialID) }
@@ -368,7 +375,7 @@ struct PeptideLogReviewCard: View {
     @ViewBuilder
     private var remainingBlock: some View {
         if let vial {
-            let remaining = PeptideMath.remaining(vial: vial, entries: store.entries + [hypotheticalEntry])
+            let remaining = store.remaining(for: vial, including: hypotheticalEntry)
             VStack(alignment: .leading, spacing: 6) {
                 PeptideFieldLabel("Remaining in vial after this dose")
                 if remaining.calculable, let left = remaining.remainingML, let total = remaining.totalML {

@@ -14,11 +14,41 @@ struct PeptideTodayResponse: Decodable, Equatable {
     var hasActiveSchedules: Bool
     var planned: [PeptideAdministration]
     var completed: [PeptideAdministration]
+    /// Rows that couldn't be read (no id). Not shown; counted for a warning.
+    var skippedRows: Int = 0
 
     enum CodingKeys: String, CodingKey {
         case date, timezone
         case hasActiveSchedules = "has_active_schedules"
         case planned, completed
+    }
+
+    init(
+        date: String,
+        timezone: String = "America/New_York",
+        hasActiveSchedules: Bool = false,
+        planned: [PeptideAdministration] = [],
+        completed: [PeptideAdministration] = [],
+        skippedRows: Int = 0
+    ) {
+        self.date = date
+        self.timezone = timezone
+        self.hasActiveSchedules = hasActiveSchedules
+        self.planned = planned
+        self.completed = completed
+        self.skippedRows = skippedRows
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = (try? container.decode(String.self, forKey: .date)) ?? ""
+        timezone = (try? container.decode(String.self, forKey: .timezone)) ?? "America/New_York"
+        hasActiveSchedules = PeptideDecode.bool(container, .hasActiveSchedules) ?? false
+        let plannedRows = (try? container.decode([PeptideLossy<PeptideAdministration>].self, forKey: .planned)) ?? []
+        let completedRows = (try? container.decode([PeptideLossy<PeptideAdministration>].self, forKey: .completed)) ?? []
+        planned = plannedRows.compactMap(\.value).filter { !$0.id.isEmpty }
+        completed = completedRows.compactMap(\.value).filter { !$0.id.isEmpty }
+        skippedRows = (plannedRows.count - planned.count) + (completedRows.count - completed.count)
     }
 }
 
@@ -141,49 +171,83 @@ struct PeptideAdministration: Decodable, Equatable, Identifiable {
         case concentrationBasis = "concentration_basis"
     }
 
+    /// Every field is read on its own: one odd field never drops the row.
+    /// Only a row without an id is skipped (by the list that holds it).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = (try? container.decode(String.self, forKey: .id)) ?? ""
-        datetime = (try? container.decode(String.self, forKey: .datetime)) ?? ""
-        compound = (try? container.decode(String.self, forKey: .compound)) ?? ""
-        dose = Self.double(container, .dose)
-        units = try container.decodeIfPresent(String.self, forKey: .units)
-        volume = Self.double(container, .volume)
-        volumeUnits = try container.decodeIfPresent(String.self, forKey: .volumeUnits)
-        route = try container.decodeIfPresent(String.self, forKey: .route)
-        notes = try container.decodeIfPresent(String.self, forKey: .notes)
-        status = (try? container.decode(String.self, forKey: .status)) ?? ""
-        plannedId = try container.decodeIfPresent(String.self, forKey: .plannedId)
-        scheduleId = try container.decodeIfPresent(String.self, forKey: .scheduleId)
-        completedId = try container.decodeIfPresent(String.self, forKey: .completedId)
-        sourceVial = try container.decodeIfPresent(String.self, forKey: .sourceVial)
-        voided = (try? container.decode(Bool.self, forKey: .voided)) ?? false
-        doseDeviatesFromPlanned = (try? container.decode(Bool.self, forKey: .doseDeviatesFromPlanned)) ?? false
-        volumeBasis = try container.decodeIfPresent(String.self, forKey: .volumeBasis)
-        calcGate = try container.decodeIfPresent(String.self, forKey: .calcGate)
-        concentrationBasis = try container.decodeIfPresent(String.self, forKey: .concentrationBasis)
-        badges = (try? container.decode([String].self, forKey: .badges)) ?? []
-        person = try? container.decodeIfPresent(String.self, forKey: .person)
-        recordedVia = try? container.decodeIfPresent(String.self, forKey: .recordedVia)
-        voidReason = try? container.decodeIfPresent(String.self, forKey: .voidReason)
+        id = PeptideDecode.string(container, .id) ?? ""
+        datetime = PeptideDecode.string(container, .datetime) ?? ""
+        compound = PeptideDecode.string(container, .compound) ?? ""
+        dose = PeptideDecode.double(container, .dose)
+        units = PeptideDecode.string(container, .units)
+        volume = PeptideDecode.double(container, .volume)
+        volumeUnits = PeptideDecode.string(container, .volumeUnits)
+        route = PeptideDecode.string(container, .route)
+        notes = PeptideDecode.string(container, .notes)
+        status = PeptideDecode.string(container, .status) ?? ""
+        plannedId = PeptideDecode.string(container, .plannedId)
+        scheduleId = PeptideDecode.string(container, .scheduleId)
+        completedId = PeptideDecode.string(container, .completedId)
+        sourceVial = PeptideDecode.string(container, .sourceVial)
+        voided = PeptideDecode.bool(container, .voided) ?? false
+        doseDeviatesFromPlanned = PeptideDecode.bool(container, .doseDeviatesFromPlanned) ?? false
+        volumeBasis = PeptideDecode.string(container, .volumeBasis)
+        calcGate = PeptideDecode.string(container, .calcGate)
+        concentrationBasis = PeptideDecode.string(container, .concentrationBasis)
+        badges = PeptideDecode.strings(container, .badges)
+        person = PeptideDecode.string(container, .person)
+        recordedVia = PeptideDecode.string(container, .recordedVia)
+        voidReason = PeptideDecode.string(container, .voidReason)
         let lossyHistory = (try? container.decode([PeptideLossy<PeptideCorrection>].self, forKey: .correctionHistory)) ?? []
         correctionHistory = lossyHistory.compactMap(\.value)
-        createdAt = try? container.decodeIfPresent(String.self, forKey: .createdAt)
-        updatedAt = try? container.decodeIfPresent(String.self, forKey: .updatedAt)
-        clientRequestID = try? container.decodeIfPresent(String.self, forKey: .clientRequestID)
+        createdAt = PeptideDecode.string(container, .createdAt)
+        updatedAt = PeptideDecode.string(container, .updatedAt)
+        clientRequestID = PeptideDecode.string(container, .clientRequestID)
+    }
+}
+
+/// Field-by-field tolerant reads for bridge JSON. Numbers may arrive as
+/// strings and strings as numbers; anything else reads as nil.
+nonisolated enum PeptideDecode {
+    static func string<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, _ key: Key) -> String? {
+        if (try? container.decodeNil(forKey: key)) == true { return nil }
+        if let value = try? container.decode(String.self, forKey: key) { return value }
+        if let value = try? container.decode(Int.self, forKey: key) { return String(value) }
+        if let value = try? container.decode(Double.self, forKey: key), value.isFinite { return PeptideMath.number(value) }
+        if let value = try? container.decode(Bool.self, forKey: key) { return value ? "true" : "false" }
+        return nil
     }
 
-    private static func double(
-        _ container: KeyedDecodingContainer<CodingKeys>,
-        _ key: CodingKeys
-    ) -> Double? {
+    static func double<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, _ key: Key) -> Double? {
         if (try? container.decodeNil(forKey: key)) == true { return nil }
-        if let value = try? container.decode(Double.self, forKey: key) { return value }
+        if let value = try? container.decode(Double.self, forKey: key) { return value.isFinite ? value : nil }
         if let value = try? container.decode(Int.self, forKey: key) { return Double(value) }
-        if let text = try? container.decode(String.self, forKey: key) {
-            return Double(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        if let text = try? container.decode(String.self, forKey: key),
+           let value = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)), value.isFinite {
+            return value
         }
         return nil
+    }
+
+    static func bool<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, _ key: Key) -> Bool? {
+        if (try? container.decodeNil(forKey: key)) == true { return nil }
+        if let value = try? container.decode(Bool.self, forKey: key) { return value }
+        if let value = try? container.decode(Int.self, forKey: key) { return value != 0 }
+        if let text = try? container.decode(String.self, forKey: key) {
+            switch text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "1", "yes": return true
+            case "false", "0", "no", "": return false
+            default: return nil
+            }
+        }
+        return nil
+    }
+
+    /// A list of strings; non-string items are skipped, numbers become text.
+    static func strings<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, _ key: Key) -> [String] {
+        if let values = try? container.decode([String].self, forKey: key) { return values }
+        guard let items = try? container.decode([PeptideJSONDisplay].self, forKey: key) else { return [] }
+        return items.map(\.text).filter { !$0.isEmpty && $0 != "—" }
     }
 }
 
@@ -304,9 +368,26 @@ struct PeptideAdministrationList: Decodable {
     var to: String
     var timezone: String
     var administrations: [PeptideAdministration]
+    /// Rows the bridge sent that couldn't be read (no id). Not shown; counted
+    /// so the app can say the history is incomplete.
+    var skippedRows: Int
 
     enum CodingKeys: String, CodingKey {
         case from, to, timezone, administrations
+    }
+
+    init(
+        from: String,
+        to: String,
+        timezone: String = "America/New_York",
+        administrations: [PeptideAdministration],
+        skippedRows: Int = 0
+    ) {
+        self.from = from
+        self.to = to
+        self.timezone = timezone
+        self.administrations = administrations
+        self.skippedRows = skippedRows
     }
 
     init(from decoder: Decoder) throws {
@@ -316,5 +397,6 @@ struct PeptideAdministrationList: Decodable {
         timezone = (try? container.decode(String.self, forKey: .timezone)) ?? "America/New_York"
         let rows = try container.decode([PeptideLossy<PeptideAdministration>].self, forKey: .administrations)
         administrations = rows.compactMap(\.value).filter { !$0.id.isEmpty }
+        skippedRows = rows.count - administrations.count
     }
 }

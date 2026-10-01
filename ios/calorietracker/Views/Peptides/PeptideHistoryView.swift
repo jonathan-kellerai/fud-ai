@@ -17,14 +17,18 @@ struct PeptideHistoryView: View {
     @State private var selectedDay: String?
     @State private var showVoided = false
 
-    init(person: String = PeptidePerson.jonathan, initialDay: String? = nil) {
+    /// "Now" for the calendar and windows. Visual QA passes a fixed instant.
+    private let referenceDate: Date
+
+    init(person: String = PeptidePerson.jonathan, initialDay: String? = nil, referenceDate: Date = Date()) {
         _person = State(initialValue: PeptidePerson.normalized(person))
-        let today = PeptideMath.civilDate(Date())
+        let today = PeptideMath.civilDate(referenceDate)
         _anchor = State(initialValue: initialDay ?? today)
         _selectedDay = State(initialValue: initialDay)
+        self.referenceDate = referenceDate
     }
 
-    private var today: String { PeptideMath.civilDate(Date()) }
+    private var today: String { PeptideMath.civilDate(referenceDate) }
 
     private var personEntries: [PeptideLogEntry] {
         let owner = PeptidePerson.normalized(person)

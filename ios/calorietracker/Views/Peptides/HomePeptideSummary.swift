@@ -2,9 +2,9 @@
 //  HomePeptideSummary.swift
 //  calorietracker
 //
-//  Extra lines for the Home peptide card from the Peptides log: today's
-//  unsynced app logs, what the user's own schedules list as due, and low stock.
-//  Synced rows already show in the card from /api/peptides/today.
+//  Extra lines for the Home peptide card from the Peptides log: today's app
+//  logs (pending and synced) that /api/peptides/today hasn't returned yet,
+//  what the user's own schedules list as due, and low stock.
 //
 
 import SwiftUI
@@ -12,16 +12,34 @@ import SwiftUI
 struct HomePeptideSummary: View {
     @Environment(PeptideLogStore.self) private var store
     let day: String
+    /// Ids and client_request_ids the card already shows from /today.
+    var shownKeys: Set<String> = []
 
-    static func hasContent(store: PeptideLogStore, day: String) -> Bool {
-        !unsynced(store: store, day: day).isEmpty
+    static func shownKeys(_ today: PeptideTodayResponse?) -> Set<String> {
+        guard let today else { return [] }
+        var keys = Set<String>()
+        for row in today.completed {
+            if !row.id.isEmpty { keys.insert(row.id) }
+            if let crid = row.clientRequestID, !crid.isEmpty { keys.insert(crid.lowercased()) }
+        }
+        return keys
+    }
+
+    static func hasContent(store: PeptideLogStore, day: String, shownKeys: Set<String>) -> Bool {
+        !appLogs(store: store, day: day, shownKeys: shownKeys).isEmpty
             || !dueItems(store: store, day: day).isEmpty
             || !store.lowStockVials(person: nil).isEmpty
     }
 
-    private static func unsynced(store: PeptideLogStore, day: String) -> [PeptideLogEntry] {
-        store.entries.filter {
-            $0.isCompleted && $0.civilDate == day && ($0.syncState.isPending || $0.syncState.failureMessage != nil)
+    /// App-logged doses for `day` from the merged log (pending + synced),
+    /// minus the ones the card already shows from /today.
+    static func appLogs(store: PeptideLogStore, day: String, shownKeys: Set<String>) -> [PeptideLogEntry] {
+        store.entries.filter { entry in
+            guard entry.isCompleted, !entry.voided, entry.civilDate == day else { return false }
+            guard entry.isPendingCreate || entry.recordedVia == "app" else { return false }
+            if let rowID = entry.rowID, shownKeys.contains(rowID) { return false }
+            if let crid = entry.clientRequestID, shownKeys.contains(crid.lowercased()) { return false }
+            return true
         }
     }
 
@@ -37,12 +55,12 @@ struct HomePeptideSummary: View {
     }
 
     var body: some View {
-        let unsynced = Self.unsynced(store: store, day: day)
+        let logs = Self.appLogs(store: store, day: day, shownKeys: shownKeys)
         let due = Self.dueItems(store: store, day: day)
         let low = store.lowStockVials(person: nil)
         return VStack(alignment: .leading, spacing: 8) {
             ForEach(PeptidePerson.order, id: \.self) { person in
-                let rows = unsynced.filter { PeptidePerson.normalized($0.person) == person }
+                let rows = logs.filter { PeptidePerson.normalized($0.person) == person }
                 if !rows.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         PeptideFieldLabel(PeptidePerson.name(person) + " · logged in the app")

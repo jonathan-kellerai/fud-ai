@@ -290,6 +290,20 @@ nonisolated struct PeptidePendingOp: Codable, Equatable, Identifiable {
     /// The bridge refused it (4xx). It waits for Retry or Discard.
     var failed: Bool
     var createdAt: Date
+    /// Creates only: a send started whose outcome isn't known (in flight,
+    /// timed out, offline, app killed). The bridge may already have the row,
+    /// so the op can't simply be deleted. Optional so older saves still decode.
+    var outcomeUncertain: Bool? = nil
+    /// Creates only: the user voided it while its outcome was uncertain. When
+    /// the bridge returns the row, a void with this reason is queued for it.
+    var cancelReason: String? = nil
+    /// Creates only: the bridge answered idempotency_key_conflict. Kept (not
+    /// sent) until the matching server row is found and the user's edits are
+    /// queued as a correction.
+    var reconciling: Bool? = nil
+
+    var isUncertain: Bool { outcomeUncertain == true }
+    var isReconciling: Bool { reconciling == true }
 
     static func makeCreate(_ payload: PeptideCreatePayload, now: Date = Date()) -> PeptidePendingOp {
         PeptidePendingOp(
@@ -343,6 +357,8 @@ nonisolated enum PeptideSyncState: Equatable {
     case failed(String)
     /// Recorded by the peptide assistant. Read-only in the app.
     case readOnlyAgent
+    /// recorded_via is missing or unknown. Read-only in the app.
+    case readOnly
 
     var isPending: Bool {
         if case .pending = self { return true }
@@ -452,6 +468,12 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable {
     /// Counts toward logs, totals and adherence.
     var countsAsTaken: Bool { isCompleted && !voided }
     var isAgentRow: Bool { syncState == .readOnlyAgent }
+    /// Only rows this app recorded (recorded_via == "app") and unsynced local
+    /// creates can be corrected or voided. Missing/unknown origin is read-only.
+    var isEditableInApp: Bool {
+        if isPendingCreate { return true }
+        return isCompleted && recordedVia == "app"
+    }
     /// Unscheduled rows can have compound/units corrected.
     var isScheduled: Bool { plannedID != nil || scheduleID != nil }
     var isPendingCreate: Bool { rowID == nil }
@@ -471,7 +493,8 @@ nonisolated struct PeptideLogDraft: Equatable {
     var site: String
     var vialID: String?
     var drawnText: String
-    var drawnUnit: String
+    /// "mL" or "units". Nil until the user picks one.
+    var drawnUnit: String?
     var notes: String
 
     static func new(person: String, compound: String = "", now: Date = Date()) -> PeptideLogDraft {
@@ -484,7 +507,7 @@ nonisolated struct PeptideLogDraft: Equatable {
             site: "",
             vialID: nil,
             drawnText: "",
-            drawnUnit: "mL",
+            drawnUnit: nil,
             notes: ""
         )
     }

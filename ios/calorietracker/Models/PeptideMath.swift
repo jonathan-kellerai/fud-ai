@@ -120,7 +120,11 @@ nonisolated enum PeptideMath {
         }
         if !draft.drawnText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if let drawn = draft.drawnVolume {
-                if !(drawn > 0) { issues[.drawn] = "Drawn volume must be more than 0." }
+                if !(drawn > 0) {
+                    issues[.drawn] = "Drawn volume must be more than 0."
+                } else if draft.drawnUnit != "mL" && draft.drawnUnit != "units" {
+                    issues[.drawn] = "Pick mL or units for the drawn volume."
+                }
             } else {
                 issues[.drawn] = "Drawn volume must be a number."
             }
@@ -235,10 +239,17 @@ nonisolated enum PeptideMath {
 
     /// Diluent minus every drawn volume logged from this vial. Never estimated:
     /// one unknown draw makes the whole figure uncalculable.
-    static func remaining(vial: PeptideVial, entries: [PeptideLogEntry]) -> Remaining {
+    /// `incompleteHistory`: some bridge rows couldn't be read, so a dose from
+    /// this vial may be missing and the figure would look larger than it is.
+    static let incompleteHistoryReason = "Some bridge rows couldn't be read, so a dose from this vial may be missing."
+
+    static func remaining(vial: PeptideVial, entries: [PeptideLogEntry], incompleteHistory: Bool = false) -> Remaining {
         let linked = entries.filter { $0.vialID == vial.id && $0.countsAsTaken }
         if case .uncalculable(let reason) = concentration(vial) {
             return .uncalculable(reason, linkedCount: linked.count)
+        }
+        if incompleteHistory {
+            return .uncalculable(incompleteHistoryReason, linkedCount: linked.count)
         }
         guard let diluent = vial.diluentML, diluent > 0 else {
             return .uncalculable("Diluent volume is missing.", linkedCount: linked.count)
@@ -480,7 +491,9 @@ nonisolated enum PeptideMath {
     ) -> Adherence {
         let taken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries)
         if schedule.frequency.type == "perWeek" {
-            return perWeekAdherence(schedule, taken: entries, from: from, to: min(to, today), today: today)
+            var weekly = perWeekAdherence(schedule, entries: entries, from: from, to: min(to, today), today: today)
+            weekly.streak = currentStreak(schedule, entries: entries, today: today)
+            return weekly
         }
         let dates = occurrences(schedule, from: from, to: min(to, today))
         var result = Adherence(due: 0, taken: 0, missedDates: [], todayDue: false, todayTaken: false, streak: 0)
@@ -501,8 +514,47 @@ nonisolated enum PeptideMath {
                 result.missedDates.append(date)
             }
         }
+        result.streak = currentStreak(schedule, entries: entries, today: today)
+        return result
+    }
+
+    /// How far back the current streak looks, independent of report windows.
+    static let streakLookbackDays = 400
+
+    /// Consecutive scheduled occurrences (or full weeks for "perWeek") logged,
+    /// walking backward from today. Today (or this week) never breaks it.
+    static func currentStreak(_ schedule: PeptideUserSchedule, entries: [PeptideLogEntry], today: String) -> Int {
+        guard schedule.active, ReconMath.parseISO(schedule.startDate) != nil, ReconMath.parseISO(today) != nil else { return 0 }
+        let floor = max(schedule.startDate, ReconMath.addDays(today, -streakLookbackDays))
+        guard floor <= today else { return 0 }
+        if schedule.frequency.type == "perWeek" {
+            let perWeek = Int(schedule.frequency.n ?? 0)
+            guard perWeek > 0 else { return 0 }
+            let currentWeek = ReconMath.mondayOf(today)
+            let firstWeek = ReconMath.mondayOf(floor)
+            var week = currentWeek
+            var streak = 0
+            var guardCount = 0
+            while week >= firstWeek && guardCount < 60 {
+                let count = perWeekCount(schedule, entries: entries, weekStart: week, from: floor, to: today)
+                if week == currentWeek {
+                    if count >= perWeek { streak += 1 }
+                } else {
+                    let due = perWeekDue(schedule, weekStart: week, from: floor, to: today)
+                    if due > 0 && count >= due {
+                        streak += 1
+                    } else {
+                        break
+                    }
+                }
+                week = ReconMath.addDays(week, -7)
+                guardCount += 1
+            }
+            return streak
+        }
+        let taken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries)
         var streak = 0
-        for date in dates.reversed() {
+        for date in occurrences(schedule, from: floor, to: today).reversed() {
             if taken.contains(date) {
                 streak += 1
             } else if date == today {
@@ -511,15 +563,64 @@ nonisolated enum PeptideMath {
                 break
             }
         }
-        result.streak = streak
-        return result
+        return streak
     }
 
-    /// "n times per week": each Monday-start week is due n doses; the current
-    /// week only counts what is already logged.
+    /// Civil dates of the Monday-start week of `weekStart` that fall inside
+    /// both [from, to] and the schedule's start/end. Nil when none do.
+    private static func perWeekSpan(
+        _ schedule: PeptideUserSchedule,
+        weekStart: String,
+        from lower: String,
+        to upper: String
+    ) -> (first: String, last: String)? {
+        let first = max(weekStart, schedule.startDate, lower)
+        var last = min(ReconMath.addDays(weekStart, 6), upper)
+        if let end = schedule.endDate, ReconMath.parseISO(end) != nil, end < last { last = end }
+        guard first <= last else { return nil }
+        return (first, last)
+    }
+
+    /// "n times per week" occurrence counter, shared by adherence, streak and
+    /// the due list: distinct logged administrations (two on one day count as
+    /// two) on dates inside the week, the schedule's start/end and [from, to],
+    /// capped at n.
+    static func perWeekCount(
+        _ schedule: PeptideUserSchedule,
+        entries: [PeptideLogEntry],
+        weekStart: String,
+        from lower: String,
+        to upper: String
+    ) -> Int {
+        let perWeek = Int(schedule.frequency.n ?? 0)
+        guard perWeek > 0, let span = perWeekSpan(schedule, weekStart: weekStart, from: lower, to: upper) else { return 0 }
+        let key = compoundKey(schedule.compound)
+        let owner = PeptidePerson.normalized(schedule.person)
+        var count = 0
+        for entry in entries where entry.countsAsTaken
+            && PeptidePerson.normalized(entry.person) == owner
+            && compoundKey(entry.compound) == key {
+            guard let civil = entry.civilDate, civil >= span.first, civil <= span.last else { continue }
+            count += 1
+        }
+        return min(count, perWeek)
+    }
+
+    /// Doses due in one past week: n, or fewer when only part of the week is
+    /// inside the schedule and the reporting window (never more than the days
+    /// available).
+    static func perWeekDue(_ schedule: PeptideUserSchedule, weekStart: String, from lower: String, to upper: String) -> Int {
+        let perWeek = Int(schedule.frequency.n ?? 0)
+        guard perWeek > 0, let span = perWeekSpan(schedule, weekStart: weekStart, from: lower, to: upper),
+              let days = daysBetween(span.first, span.last) else { return 0 }
+        return min(perWeek, days + 1)
+    }
+
+    /// "n times per week": each past Monday-start week is due n (fewer for a
+    /// partial boundary week); the current week only counts what is logged.
     private static func perWeekAdherence(
         _ schedule: PeptideUserSchedule,
-        taken entries: [PeptideLogEntry],
+        entries: [PeptideLogEntry],
         from: String,
         to: String,
         today: String
@@ -527,40 +628,32 @@ nonisolated enum PeptideMath {
         var result = Adherence(due: 0, taken: 0, missedDates: [], todayDue: false, todayTaken: false, streak: 0)
         let perWeek = Int(schedule.frequency.n ?? 0)
         guard schedule.active, perWeek > 0, ReconMath.parseISO(schedule.startDate) != nil else { return result }
-        let key = compoundKey(schedule.compound)
-        let owner = PeptidePerson.normalized(schedule.person)
-        var countByWeek: [String: Int] = [:]
-        for entry in entries where entry.countsAsTaken
-            && PeptidePerson.normalized(entry.person) == owner
-            && compoundKey(entry.compound) == key {
-            guard let civil = entry.civilDate else { continue }
-            countByWeek[ReconMath.mondayOf(civil), default: 0] += 1
-        }
-        let start = max(from, schedule.startDate)
-        var last = to
-        if let end = schedule.endDate, ReconMath.parseISO(end) != nil, end < last { last = end }
-        guard start <= last else { return result }
-        var week = ReconMath.mondayOf(start)
+        let lower = max(from, schedule.startDate)
+        var upper = to
+        if let end = schedule.endDate, ReconMath.parseISO(end) != nil, end < upper { upper = end }
+        guard lower <= upper else { return result }
+        var week = ReconMath.mondayOf(lower)
         let currentWeek = ReconMath.mondayOf(today)
         var guardCount = 0
-        var weekResults: [Bool] = []
-        while week <= last && guardCount < 120 {
-            let count = min(countByWeek[week] ?? 0, perWeek)
-            if week == currentWeek {
+        while week <= upper && guardCount < 120 {
+            let count = perWeekCount(schedule, entries: entries, weekStart: week, from: lower, to: upper)
+            if week >= currentWeek {
                 result.due += count
                 result.taken += count
-                result.todayDue = count < perWeek
-                result.todayTaken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries).contains(today)
-            } else if week < currentWeek {
-                result.due += perWeek
-                result.taken += count
-                weekResults.append(count >= perWeek)
-                if count < perWeek { result.missedDates.append(week) }
+                if today >= lower && today <= upper {
+                    let soFar = perWeekCount(schedule, entries: entries, weekStart: week, from: schedule.startDate, to: today)
+                    result.todayDue = soFar < perWeek
+                    result.todayTaken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries).contains(today)
+                }
+            } else {
+                let due = perWeekDue(schedule, weekStart: week, from: lower, to: upper)
+                result.due += due
+                result.taken += min(count, due)
+                if count < due { result.missedDates.append(week) }
             }
             week = ReconMath.addDays(week, 7)
             guardCount += 1
         }
-        result.streak = weekResults.reversed().prefix(while: { $0 }).count
         return result
     }
 
@@ -581,7 +674,13 @@ nonisolated enum PeptideMath {
             if schedule.frequency.type == "perWeek" {
                 guard date >= schedule.startDate, schedule.endDate.map({ date <= $0 }) ?? true else { continue }
                 let monday = ReconMath.mondayOf(date)
-                let weekCount = (0..<7).filter { taken.contains(ReconMath.addDays(monday, $0)) }.count
+                let weekCount = perWeekCount(
+                    schedule,
+                    entries: entries,
+                    weekStart: monday,
+                    from: schedule.startDate,
+                    to: ReconMath.addDays(monday, 6)
+                )
                 let perWeek = Int(schedule.frequency.n ?? 0)
                 if weekCount < perWeek || taken.contains(date) {
                     items.append(DueItem(schedule: schedule, taken: taken.contains(date), weekCount: weekCount))
@@ -634,14 +733,18 @@ nonisolated enum PeptideMath {
         for entry in entries where entry.countsAsTaken {
             let units = (entry.units ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let key = compoundKey(entry.compound) + "|" + units
-            if totals[key] == nil {
+            var item: CompoundTotal
+            if let existing = totals[key] {
+                item = existing
+            } else {
                 order.append(key)
-                totals[key] = CompoundTotal(compound: entry.compound, units: units, total: 0, count: 0)
+                item = CompoundTotal(compound: entry.compound, units: units, total: 0, count: 0)
             }
-            totals[key]?.count += 1
+            item.count += 1
             if let dose = entry.dose, !units.isEmpty {
-                totals[key]?.total = ReconMath.clean((totals[key]?.total ?? 0) + dose)
+                item.total = ReconMath.clean(item.total + dose)
             }
+            totals[key] = item
         }
         return order.compactMap { totals[$0] }
     }

@@ -156,7 +156,11 @@ struct HomeV2Cards: View {
         }
         .sheet(isPresented: $showingPeptideLog) {
             PeptideLogSheet(person: PeptidePersonMemory.load()) {
-                Task { await reloadPeptides() }
+                // Re-read /today only once the queued write has gone out.
+                Task {
+                    await peptideStore.flush()
+                    await reloadPeptides()
+                }
             }
         }
     }
@@ -243,8 +247,8 @@ struct HomeV2Cards: View {
                     }
                     .listRowBackground(IronTheme.surface)
                     peptideCard.listRowBackground(IronTheme.surface)
-                    if HomePeptideSummary.hasContent(store: peptideStore, day: peptideDay) {
-                        HomePeptideSummary(day: peptideDay).listRowBackground(IronTheme.surface)
+                    if HomePeptideSummary.hasContent(store: peptideStore, day: peptideDay, shownKeys: peptideShownKeys) {
+                        HomePeptideSummary(day: peptideDay, shownKeys: peptideShownKeys).listRowBackground(IronTheme.surface)
                     }
                     NavigationLink {
                         PeptidesView()
@@ -268,6 +272,11 @@ struct HomeV2Cards: View {
 
     private var peptideDay: String {
         HomeV2Logic.newYorkDateString(from: selectedDate)
+    }
+
+    /// Row ids and client_request_ids the card already shows from /today.
+    private var peptideShownKeys: Set<String> {
+        HomePeptideSummary.shownKeys(peptideToday)
     }
 
     private var peptideSectionVisible: Bool {
@@ -862,8 +871,11 @@ struct HomeV2Cards: View {
             if let match {
                 Text("Taken \(HomeV2Logic.displayNewYork(iso8601: match.datetime) ?? match.datetime)")
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                Button("Correct or void") { peptideAction = .edit(match) }
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                // Only rows this app recorded can be corrected or voided.
+                if match.recordedVia == "app" {
+                    Button("Correct or void") { peptideAction = .edit(match) }
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                }
             } else if row.completedId == nil {
                 Button("Mark taken") { peptideAction = .mark(row) }
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
@@ -886,8 +898,10 @@ struct HomeV2Cards: View {
             }
             volumeText(row, inventory: inventoryItem(for: row))
             badgeList(row.badges)
-            Button("Correct or void") { peptideAction = .edit(row) }
-                .font(.system(.caption, design: .rounded, weight: .semibold))
+            if row.recordedVia == "app" {
+                Button("Correct or void") { peptideAction = .edit(row) }
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+            }
         }
     }
 

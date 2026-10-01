@@ -108,6 +108,12 @@ struct PeptideEntryDetailView: View {
                 message: "This entry is read-only in the app. Ask the peptide assistant to change it.",
                 tone: IronTheme.textSecondary
             )
+        } else if !entry.isEditableInApp {
+            PeptideBanner(
+                title: "Read-only",
+                message: "This entry wasn't recorded by this app, so it can't be changed here.",
+                tone: IronTheme.textSecondary
+            )
         } else if entry.voided {
             EmptyView()
         } else {
@@ -246,8 +252,8 @@ struct PeptideEditEntrySheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if entry.isAgentRow {
-                        PeptideBanner(title: PeptideLogStore.readOnlyMessage, tone: IronTheme.rust)
+                    if !entry.isEditableInApp {
+                        PeptideBanner(title: PeptideLogStore.message(readOnly: entry), tone: IronTheme.rust)
                     } else {
                         editFields
                         localFields
@@ -433,8 +439,16 @@ struct PeptideVoidSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     PeptideEntryHeaderCard(entry: entry)
-                    if entry.isAgentRow {
-                        PeptideBanner(title: PeptideLogStore.readOnlyMessage, tone: IronTheme.rust)
+                    if !entry.isEditableInApp {
+                        PeptideBanner(title: PeptideLogStore.message(readOnly: entry), tone: IronTheme.rust)
+                    } else if entry.isPendingCreate && store.isCreateUncertain(entry) {
+                        Text("This dose may already have reached the bridge. It will be voided there with your reason as soon as the bridge answers.")
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(IronTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        PeptideInputField(title: "Reason (optional)", text: $reason, prompt: "Why remove this dose?")
+                        Button("Remove") { confirming = true }
+                            .buttonStyle(IronPrimaryButtonStyle())
                     } else if entry.isPendingCreate {
                         Text("This dose hasn't reached the bridge yet. Removing it deletes it from this phone.")
                             .font(.system(.subheadline, design: .rounded))

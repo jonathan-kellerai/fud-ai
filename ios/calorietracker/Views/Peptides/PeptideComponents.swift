@@ -223,6 +223,8 @@ struct PeptideSyncChip: View {
             PeptideTag(text: "Failed", tone: IronTheme.rust)
         case .readOnlyAgent:
             PeptideTag(text: "Peptide assistant", tone: IronTheme.concrete, filled: true)
+        case .readOnly:
+            PeptideTag(text: "Read-only", tone: IronTheme.concrete, filled: true)
         }
     }
 }

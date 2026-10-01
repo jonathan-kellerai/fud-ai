@@ -18,11 +18,19 @@ extension VisualQAFixtures {
     private static let mt2Offsets = [0, 2, 4, 7, 9, 11, 14, 16]
     private static let glowOffsets = [1, 3, 5, 8]
 
-    static var peptideToday: String { PeptideMath.civilDate(Date()) }
+    /// The one fixed instant every Peptides fixture and screen uses as "now":
+    /// 9:00 AM New York time on the day the run starts, captured once (same
+    /// convention as `trainingDate`: today's date, a fixed time of day).
+    static let peptideReferenceDate: Date = {
+        let civil = PeptideMath.civilDate(.now)
+        return PeptideMath.date(civil: civil, minutes: 9 * 60) ?? .now
+    }()
+
+    static var peptideToday: String { PeptideMath.civilDate(peptideReferenceDate) }
 
     static func peptideISO(offset: Int, minutes: Int) -> String {
         let civil = ReconMath.addDays(peptideToday, -offset)
-        let date = PeptideMath.date(civil: civil, minutes: minutes) ?? Date()
+        let date = PeptideMath.date(civil: civil, minutes: minutes) ?? peptideReferenceDate
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.formatOptions = [.withInternetDateTime]
@@ -80,7 +88,7 @@ extension VisualQAFixtures {
         var draft = PeptideLogDraft.new(
             person: "jonathan",
             compound: "BPC-157",
-            now: PeptideMath.date(civil: peptideToday, minutes: 7 * 60 + 30) ?? Date()
+            now: PeptideMath.date(civil: peptideToday, minutes: 7 * 60 + 30) ?? peptideReferenceDate
         )
         draft.amountText = "500"
         draft.units = "mcg"
@@ -117,7 +125,7 @@ extension VisualQAFixtures {
         var pending = PeptideLogDraft.new(
             person: "jonathan",
             compound: "Tesamorelin",
-            now: PeptideMath.date(civil: peptideToday, minutes: 6 * 60 + 45) ?? Date()
+            now: PeptideMath.date(civil: peptideToday, minutes: 6 * 60 + 45) ?? peptideReferenceDate
         )
         pending.amountText = "1.4"
         pending.units = "mg"
@@ -261,8 +269,8 @@ final class VisualQAPeptideClient: PeptideBridgeClient {
 
     nonisolated deinit {}
 
-    func fetchAdministrations(from: String, to: String) async throws -> [PeptideAdministration] {
-        try await reads.fetchAdministrations(from: from, to: to)
+    func fetchAdministrations(from: String, to: String, limit: Int) async throws -> PeptideAdministrationList {
+        try await reads.fetchAdministrations(from: from, to: to, limit: limit)
     }
 
     func fetchToday(date: String) async throws -> PeptideTodayResponse {

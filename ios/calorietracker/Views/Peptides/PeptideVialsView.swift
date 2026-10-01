@@ -352,7 +352,8 @@ struct PeptideVialEditor: View {
         var id: String
         var name: String
         var amountText: String
-        var unit: String
+        /// Nil until the user picks mg, mcg or IU.
+        var unit: String?
     }
 
     init(vial: PeptideVial?, person: String) {
@@ -361,9 +362,14 @@ struct PeptideVialEditor: View {
         _compound = State(initialValue: vial?.compound ?? "")
         _isBlend = State(initialValue: vial?.isBlend ?? false)
         let drafts = (vial?.components ?? []).map {
-            ComponentDraft(id: $0.id, name: $0.name, amountText: $0.amount.map(PeptideMath.number) ?? "", unit: $0.unit)
+            ComponentDraft(
+                id: $0.id,
+                name: $0.name,
+                amountText: $0.amount.map(PeptideMath.number) ?? "",
+                unit: $0.unit.isEmpty ? nil : $0.unit
+            )
         }
-        _components = State(initialValue: drafts.isEmpty ? [ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: "mg")] : drafts)
+        _components = State(initialValue: drafts.isEmpty ? [ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: nil)] : drafts)
         _diluentText = State(initialValue: vial?.diluentML.map(PeptideMath.number) ?? "")
         _mixedKnown = State(initialValue: vial?.mixedOn != nil)
         _mixedOn = State(initialValue: vial?.mixedOn.map(PeptideViewDates.localDate(fromCivil:)) ?? Date())
@@ -461,11 +467,11 @@ struct PeptideVialEditor: View {
         if PeptideMath.sameCompound(option, PeptideMath.glowName) {
             isBlend = true
             components = PeptideMath.glowComponentNames.map {
-                ComponentDraft(id: UUID().uuidString, name: $0, amountText: "", unit: "mg")
+                ComponentDraft(id: UUID().uuidString, name: $0, amountText: "", unit: nil)
             }
         } else if isBlend || components.count != 1 {
             isBlend = false
-            components = [ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: components.first?.unit ?? "mg")]
+            components = [ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: components.first?.unit)]
         }
     }
 
@@ -480,7 +486,7 @@ struct PeptideVialEditor: View {
             }
             if isBlend {
                 Button {
-                    components.append(ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: "mg"))
+                    components.append(ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: nil))
                 } label: {
                     Label("Add component", systemImage: "plus")
                 }
@@ -612,8 +618,12 @@ struct PeptideVialEditor: View {
                 errorText = error
                 return
             }
+            if parsed.value != nil && draft.unit == nil {
+                errorText = "Pick mg, mcg or IU for each amount."
+                return
+            }
             let componentName = isBlend ? draft.name.trimmingCharacters(in: .whitespacesAndNewlines) : name
-            built.append(PeptideVialComponent(id: draft.id, name: componentName, amount: parsed.value, unit: draft.unit))
+            built.append(PeptideVialComponent(id: draft.id, name: componentName, amount: parsed.value, unit: draft.unit ?? ""))
         }
         if !isBlend { built = Array(built.prefix(1)) }
         let diluent = optionalNumber(diluentText, field: "Diluent")

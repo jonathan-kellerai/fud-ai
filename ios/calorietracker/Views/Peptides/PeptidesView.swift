@@ -28,12 +28,16 @@ struct PeptidesView: View {
     @State private var showVoided = false
     @State private var actionMessage: String?
 
-    init(initialPerson: String? = nil, initialDay: String? = nil) {
+    /// "Now" for the date strip and due list. Visual QA passes a fixed instant.
+    private let referenceDate: Date
+
+    init(initialPerson: String? = nil, initialDay: String? = nil, referenceDate: Date = Date()) {
         _person = State(initialValue: initialPerson.map(PeptidePerson.normalized) ?? PeptidePersonMemory.load())
-        _day = State(initialValue: initialDay ?? PeptideMath.civilDate(Date()))
+        _day = State(initialValue: initialDay ?? PeptideMath.civilDate(referenceDate))
+        self.referenceDate = referenceDate
     }
 
-    private var today: String { PeptideMath.civilDate(Date()) }
+    private var today: String { PeptideMath.civilDate(referenceDate) }
 
     var body: some View {
         List {
@@ -158,9 +162,13 @@ struct PeptidesView: View {
     private var bannerSection: some View {
         let pending = store.pendingCount
         let failed = store.failedCount
-        if pending > 0 || failed > 0 || store.lastSyncError != nil || store.historyUnavailable || actionMessage != nil {
+        if pending > 0 || failed > 0 || store.lastSyncError != nil || store.historyUnavailable || actionMessage != nil
+            || store.syncWarning != nil {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let warning = store.syncWarning {
+                        PeptideBanner(title: "Some bridge rows couldn’t be read", message: warning, tone: IronTheme.rust)
+                    }
                     if let actionMessage {
                         PeptideBanner(title: actionMessage, tone: IronTheme.bloodText, actionTitle: "Dismiss") {
                             self.actionMessage = nil
@@ -328,7 +336,7 @@ struct PeptidesView: View {
         .listRowBackground(IronTheme.surface)
         .listRowSeparatorTint(IronTheme.hairline)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !entry.isAgentRow && !entry.voided {
+            if entry.isEditableInApp && !entry.voided {
                 Button {
                     voidTarget = entry
                 } label: {
@@ -362,7 +370,7 @@ struct PeptidesView: View {
             }
             .listRowBackground(IronTheme.surface)
             NavigationLink {
-                PeptideScheduleView(person: person)
+                PeptideScheduleView(person: person, referenceDate: referenceDate)
             } label: {
                 linkLabel(
                     "Schedule & adherence",
@@ -373,7 +381,7 @@ struct PeptidesView: View {
             }
             .listRowBackground(IronTheme.surface)
             NavigationLink {
-                PeptideHistoryView(person: person)
+                PeptideHistoryView(person: person, referenceDate: referenceDate)
             } label: {
                 linkLabel("History", systemImage: "chart.bar.xaxis", detail: "Calendar, totals, chart", warning: nil)
             }

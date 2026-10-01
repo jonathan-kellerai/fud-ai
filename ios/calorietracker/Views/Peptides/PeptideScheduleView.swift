@@ -19,11 +19,15 @@ struct PeptideScheduleView: View {
     @State private var person: String
     @State private var editorTarget: PeptideScheduleEditorTarget?
 
-    init(person: String = PeptidePerson.jonathan) {
+    /// "Now" for adherence. Visual QA passes a fixed instant.
+    private let referenceDate: Date
+
+    init(person: String = PeptidePerson.jonathan, referenceDate: Date = Date()) {
         _person = State(initialValue: PeptidePerson.normalized(person))
+        self.referenceDate = referenceDate
     }
 
-    private var today: String { PeptideMath.civilDate(Date()) }
+    private var today: String { PeptideMath.civilDate(referenceDate) }
 
     var body: some View {
         ScrollView {
@@ -37,7 +41,7 @@ struct PeptideScheduleView: View {
                 }
                 .buttonStyle(IronPrimaryButtonStyle())
                 schedulesSection
-                PeptidePlannedAdherenceCard(person: person)
+                PeptidePlannedAdherenceCard(person: person, today: today)
                 PeptideFooter()
             }
             .padding(16)
@@ -179,9 +183,9 @@ struct PeptideScheduleCard: View {
 struct PeptidePlannedAdherenceCard: View {
     @Environment(PeptideLogStore.self) private var store
     let person: String
+    let today: String
 
     var body: some View {
-        let today = PeptideMath.civilDate(Date())
         let from = ReconMath.addDays(today, -29)
         let recent = store.entries.filter {
             $0.isPlanned && !$0.voided && PeptidePerson.normalized($0.person) == PeptidePerson.normalized(person)
@@ -231,7 +235,8 @@ struct PeptideScheduleEditor: View {
     @State private var compound: String
     @State private var amountText: String
     @State private var units: String?
-    @State private var frequencyType: String
+    /// Nil until the user picks one. A new schedule never preselects a frequency.
+    @State private var frequencyType: String?
     @State private var weekdays: Set<Int>
     @State private var nText: String
     @State private var startDate: Date
@@ -258,7 +263,7 @@ struct PeptideScheduleEditor: View {
         _compound = State(initialValue: schedule?.compound ?? "")
         _amountText = State(initialValue: schedule?.amount.map(PeptideMath.number) ?? "")
         _units = State(initialValue: schedule?.units)
-        _frequencyType = State(initialValue: schedule?.frequency.type ?? "daily")
+        _frequencyType = State(initialValue: schedule?.frequency.type)
         _weekdays = State(initialValue: Set(schedule?.frequency.days ?? []))
         _nText = State(initialValue: schedule?.frequency.n.map(PeptideMath.number) ?? "")
         _startDate = State(initialValue: schedule.map { PeptideViewDates.localDate(fromCivil: $0.startDate) } ?? Date())
@@ -298,8 +303,15 @@ struct PeptideScheduleEditor: View {
                     if let errorText {
                         PeptideIssueText(text: errorText)
                     }
+                    if frequencyType == nil {
+                        Text("Pick how often before saving.")
+                            .font(.system(.footnote, design: .rounded))
+                            .foregroundStyle(IronTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Button("Save schedule") { save() }
                         .buttonStyle(IronPrimaryButtonStyle())
+                        .disabled(frequencyType == nil)
                     if existing != nil {
                         Button("Delete schedule", role: .destructive) { confirmDelete = true }
                             .font(.system(size: 15, weight: .heavy))
@@ -407,6 +419,10 @@ struct PeptideScheduleEditor: View {
                 PeptideFieldLabel("Start")
                 DatePicker("Start", selection: $startDate, displayedComponents: .date)
                     .labelsHidden()
+                Text("Starts " + ReconMath.formatDate(PeptideViewDates.civil(fromLocal: startDate)))
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Toggle("Has an end date", isOn: $hasEnd)
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
@@ -442,6 +458,10 @@ struct PeptideScheduleEditor: View {
                 return
             }
             amount = value
+        }
+        guard let frequencyType else {
+            errorText = "Pick how often."
+            return
         }
         var frequency = ReconMath.Frequency(type: frequencyType)
         switch frequencyType {
