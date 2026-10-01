@@ -491,23 +491,58 @@ def summarize_certificates(token, show_distribution=False):
     return distribution
 
 
-def create_distribution_certificate(token, csr_pem, show_distribution=False):
-    """POST exactly one DISTRIBUTION certificate. Never deletes certificates."""
-    distribution = summarize_certificates(token, show_distribution)
-    status, payload = api(
-        token,
-        "POST",
-        f"{API_ROOT}/v1/certificates",
-        {
-            "data": {
-                "type": "certificates",
-                "attributes": {
-                    "certificateType": "DISTRIBUTION",
-                    "csrContent": csr_pem,
-                },
-            }
-        },
+def delete_certificate(token, certificate):
+    certificate_id = certificate["id"]
+    attributes = certificate.get("attributes") or {}
+    print(
+        "Deleting the oldest Apple Distribution certificate "
+        f"id={certificate_id} type={attributes.get('certificateType')} "
+        f"expires={attributes.get('expirationDate')} because Apple's DISTRIBUTION limit "
+        "was reached. Set DIST_CERT_P12_BASE64 / DIST_CERT_P12_PASSWORD to stop this."
     )
+    status, payload = api(token, "DELETE", f"{API_ROOT}/v1/certificates/{certificate_id}")
+    require_ok(status, payload, (204, 200), f"DELETE certificate {certificate_id}")
+
+
+def create_distribution_certificate(
+    token, csr_pem, show_distribution=False, delete_oldest_on_limit=False
+):
+    """POST one DISTRIBUTION certificate.
+
+    Only main()'s no-secrets path passes delete_oldest_on_limit=True: at Apple's
+    limit it deletes the single oldest DISTRIBUTION certificate (by
+    expirationDate) once and retries. Every other caller fails at the limit.
+    """
+    distribution = summarize_certificates(token, show_distribution)
+    request_body = {
+        "data": {
+            "type": "certificates",
+            "attributes": {
+                "certificateType": "DISTRIBUTION",
+                "csrContent": csr_pem,
+            },
+        }
+    }
+    status, payload = api(token, "POST", f"{API_ROOT}/v1/certificates", request_body)
+    if delete_oldest_on_limit and is_certificate_limit(status, payload):
+        current = [
+            certificate
+            for certificate in list_certificates(token)
+            if (certificate.get("attributes") or {}).get("certificateType") == "DISTRIBUTION"
+        ]
+        if not current:
+            fail(
+                "Apple refused another distribution certificate and none of type "
+                f"DISTRIBUTION can be removed. Apple said: {error_text(payload)}"
+            )
+        oldest = sorted(
+            current,
+            key=lambda certificate: (certificate.get("attributes") or {}).get("expirationDate")
+            or "",
+        )[0]
+        delete_certificate(token, oldest)
+        distribution = [item for item in current if item is not oldest]
+        status, payload = api(token, "POST", f"{API_ROOT}/v1/certificates", request_body)
     if status in (200, 201):
         attributes = (payload.get("data") or {}).get("attributes") or {}
         print(
@@ -529,7 +564,7 @@ def create_distribution_certificate(token, csr_pem, show_distribution=False):
         listed = "; ".join(describe_certificate(item) for item in distribution) or "none listed"
         fail(
             "Apple refused another DISTRIBUTION certificate because the account is at its "
-            "limit. This script does not delete certificates. Set the "
+            "limit. Set the "
             "DIST_CERT_P12_BASE64 / DIST_CERT_P12_PASSWORD secrets (see docs/TESTFLIGHT.md "
             "\"Distribution certificate\") so every run reuses one stored certificate. "
             f"Existing DISTRIBUTION certificates: {listed}. Apple said: {error_text(payload)}"
@@ -1055,7 +1090,10 @@ def obtain_distribution_certificate(token, work_dir, environ=None):
     if stored is not None:
         return use_stored_certificate(token, work_dir, stored[0], stored[1], environ)
     key_path, csr_pem = generate_key_and_csr(work_dir)
-    certificate, signing_certificate = create_distribution_certificate(token, csr_pem)
+    certificate, signing_certificate = create_distribution_certificate(
+        token, csr_pem, delete_oldest_on_limit=True
+    )
+    # Writes the encrypted export when DIST_CERT_EXPORT_PUBLIC_KEY is set.
     import_certificate(work_dir, certificate, key_path, environ)
     return certificate, signing_certificate
 
@@ -1963,8 +2001,6 @@ def self_check_distribution_certificate():
         fail("serial normalisation is wrong")
     if normalize_serial("ab") == normalize_serial("abc"):
         fail("different serials matched")
-    if "delete_certificate" in globals():
-        fail("delete_certificate must not exist; certificates are never deleted")
 
     original = {
         name: globals()[name]
@@ -1978,8 +2014,11 @@ def self_check_distribution_certificate():
     future = (
         datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=200)
     ).strftime("%Y-%m-%dT%H:%M:%S.000+00:00")
+    original_sign_token = sign_token
     past = "2020-01-01T00:00:00.000+00:00"
     calls = []
+    # Every non-GET the stored path issues, including inside expected failures.
+    stored_writes = []
 
     def certificate_record(certificate_id, serial, expires=future, certificate_type="DISTRIBUTION"):
         return {
@@ -1996,6 +2035,8 @@ def self_check_distribution_certificate():
     def stored_api(listed, by_id):
         def fake(token, method, url, body=None):
             calls.append((method, url))
+            if method != "GET":
+                stored_writes.append((method, url))
             if method != "GET" and "/v1/certificates" in url:
                 fail(f"stored-certificate path must not {method} {url}")
             if url.startswith(f"{API_ROOT}/v1/certificates?"):
@@ -2129,43 +2170,11 @@ def self_check_distribution_certificate():
             )
             if calls:
                 fail(f"a half-configured secret still called the API: {calls}")
+            if stored_writes:
+                fail(f"stored path issued POST/DELETE: {stored_writes}")
         finally:
             for name, value in original.items():
                 globals()[name] = value
-
-        absent_calls = []
-
-        def limit_api(token, method, url, body=None):
-            absent_calls.append((method, url))
-            if method == "GET" and url == f"{API_ROOT}/v1/certificates?limit=200":
-                return 200, {"data": [certificate_record("OLD", "01")]}
-            if method == "POST" and url == f"{API_ROOT}/v1/certificates":
-                return 409, {
-                    "errors": [
-                        {
-                            "status": "409",
-                            "detail": "You already have a current Distribution certificate "
-                            "or a pending certificate request.",
-                        }
-                    ]
-                }
-            if method == "DELETE":
-                return 204, None
-            fail(f"self-check saw unexpected {method} {url}")
-
-        absent_work = root / "absent"
-        absent_work.mkdir()
-        globals()["api"] = limit_api
-        try:
-            expect_failure(
-                "certificate limit without stored secrets",
-                lambda: obtain_distribution_certificate("token", absent_work, {}),
-            )
-        finally:
-            globals()["api"] = original["api"]
-        methods = [method for method, _url in absent_calls]
-        if "DELETE" in methods or methods.count("POST") != 1:
-            fail(f"absent path at the limit issued {absent_calls}")
 
         private_pem = root / "export-private.pem"
         run(["openssl", "genrsa", "-out", str(private_pem), "2048"])
@@ -2225,6 +2234,117 @@ def self_check_distribution_certificate():
         )
         if ok or list((root / "bad-export").iterdir()):
             fail("an unreadable export public key still wrote files")
+
+        limit_error = {
+            "errors": [
+                {
+                    "status": "409",
+                    "detail": "You already have a current Distribution certificate "
+                    "or a pending certificate request.",
+                }
+            ]
+        }
+        existing_certs = [
+            certificate_record("NEWER", "02", expires="2027-06-01T00:00:00.000+00:00"),
+            certificate_record("OLDEST", "01", expires="2027-01-01T00:00:00.000+00:00"),
+        ]
+        absent_calls = []
+        signed = root / "signed"
+        signed.mkdir()
+
+        def limit_api(token, method, url, body=None):
+            absent_calls.append((method, url))
+            if method == "GET" and url == f"{API_ROOT}/v1/certificates?limit=200":
+                return 200, {"data": existing_certs}
+            if method == "DELETE" and url.startswith(f"{API_ROOT}/v1/certificates/"):
+                return 204, None
+            if method == "POST" and url == f"{API_ROOT}/v1/certificates":
+                if not any(item[0] == "DELETE" for item in absent_calls):
+                    return 409, limit_error
+                # Sign the CSR with the throwaway CA so the p12 export can run.
+                csr_file = signed / "request.csr"
+                csr_file.write_text(body["data"]["attributes"]["csrContent"])
+                der = signed / "issued.cer"
+                run(
+                    [
+                        "openssl", "x509", "-req", "-in", str(csr_file),
+                        "-CA", str(cert_pem), "-CAkey", str(key_pem),
+                        "-set_serial", "0x0123", "-days", "30",
+                        "-outform", "DER", "-out", str(der),
+                    ]
+                )
+                content = base64.b64encode(der.read_bytes()).decode("ascii")
+                return 201, {
+                    "data": {
+                        "type": "certificates",
+                        "id": "CREATED",
+                        "attributes": {
+                            "certificateType": "DISTRIBUTION",
+                            "certificateContent": content,
+                            "expirationDate": future,
+                        },
+                    }
+                }
+            fail(f"self-check saw unexpected {method} {url}")
+
+        absent_work = root / "absent"
+        absent_work.mkdir()
+        runner_temp = root / "runner-temp"
+        absent_env = {
+            "DIST_CERT_EXPORT_PUBLIC_KEY": public_text,
+            "RUNNER_TEMP": str(runner_temp),
+        }
+        installed.clear()
+        globals()["api"] = limit_api
+        globals()["install_p12_in_keychain"] = fake_install
+        try:
+            certificate, _ = obtain_distribution_certificate("token", absent_work, absent_env)
+        finally:
+            globals()["api"] = original["api"]
+            globals()["install_p12_in_keychain"] = original["install_p12_in_keychain"]
+        writes = [(method, url) for method, url in absent_calls if method != "GET"]
+        if writes != [
+            ("POST", f"{API_ROOT}/v1/certificates"),
+            ("DELETE", f"{API_ROOT}/v1/certificates/OLDEST"),
+            ("POST", f"{API_ROOT}/v1/certificates"),
+        ]:
+            fail(f"absent path at the limit issued {writes}")
+        if certificate.get("id") != "CREATED" or len(installed) != 1:
+            fail("absent path did not install the created certificate")
+        export_names = sorted(item.name for item in (runner_temp / "dist-cert-export").iterdir())
+        if export_names != ["dist-cert-export.enc", "dist-cert-export.key.enc"]:
+            fail(f"absent path did not write the encrypted export: {export_names}")
+
+        csr_calls = []
+
+        def csr_limit_api(token, method, url, body=None):
+            csr_calls.append((method, url))
+            if method == "GET" and url == f"{API_ROOT}/v1/certificates?limit=200":
+                return 200, {"data": existing_certs}
+            if method == "POST" and url == f"{API_ROOT}/v1/certificates":
+                return 409, limit_error
+            if method == "DELETE":
+                return 204, None
+            fail(f"self-check saw unexpected {method} {url}")
+
+        csr_work = root / "csr"
+        csr_work.mkdir()
+        _csr_key, csr_text = generate_key_and_csr(csr_work)
+        globals()["api"] = csr_limit_api
+        globals()["sign_token"] = lambda: "token"
+        try:
+            expect_failure(
+                "CSR mode at the certificate limit",
+                lambda: create_certificate_from_csr(
+                    csr_work / "distribution.csr", root / "csr-out.json"
+                ),
+            )
+        finally:
+            globals()["api"] = original["api"]
+            globals()["sign_token"] = original_sign_token
+        csr_methods = [method for method, _url in csr_calls]
+        if "DELETE" in csr_methods or csr_methods.count("POST") != 1:
+            fail(f"CSR mode at the limit issued {csr_calls}")
     print("distribution certificate self-check ok")
 
 

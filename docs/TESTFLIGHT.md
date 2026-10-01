@@ -62,7 +62,7 @@ The TestFlight workflow uses App Store Connect API authentication with these sec
 
 ## Distribution certificate
 
-TestFlight signs with one stored Apple Distribution certificate. Without it, every run creates a new `DISTRIBUTION` certificate whose private key dies with the runner, and Apple's per-account limit is reached after a few runs. The script never deletes certificates.
+TestFlight signs with one stored Apple Distribution certificate. Without it, every run creates a new `DISTRIBUTION` certificate whose private key dies with the runner, and Apple's per-account limit is reached after a few runs. Only the no-secrets TestFlight path ever deletes a certificate (see below); the stored-secrets path and the bootstrap workflow never do.
 
 ### Secrets
 
@@ -72,7 +72,7 @@ TestFlight signs with one stored Apple Distribution certificate. Without it, eve
 
 When both p12 secrets are set, `prepare_appstore_signing.py` imports that p12 into the runner keychain and uses its certificate id for the App Store profiles. It does not create or delete any certificate, and logs only `Using stored distribution certificate id=<id> expires=<date>`. If only one of the two is set, the export step fails rather than creating a certificate. If no certificate in App Store Connect matches, the step fails and asks you to bootstrap again.
 
-When neither is set, the export step creates exactly one certificate. If Apple refuses because the account is at its limit, the step fails and lists the existing `DISTRIBUTION` certificates. Revoke unused ones in the developer portal, or set the secrets.
+When neither is set, the export step creates one certificate. If Apple refuses because the account is at its limit, the step deletes the single oldest `DISTRIBUTION` certificate (by expiration date), logs its id and expiry, and retries once; if that retry is also refused, the step fails and lists the remaining `DISTRIBUTION` certificates. The new certificate's key is lost with the runner unless `DIST_CERT_EXPORT_PUBLIC_KEY` is set (see "Encrypted-export fallback"), so save the secrets once to end the churn.
 
 ### One-time bootstrap
 
@@ -195,7 +195,7 @@ Both builds must succeed before triggering the TestFlight workflow.
 ### "Cloud signing permission error" / "No signing certificate iOS Distribution" / "No profiles"
 - That is the export failure from run 39. Listing `/v1/certificates` and `/v1/profiles` can return HTTP 200 while Xcode cloud signing is still denied. Cloud-managed distribution certificates require a separate "Access to Cloud Managed Distribution Certificate" grant
 - Export does not use cloud signing. `.github/scripts/prepare_appstore_signing.py` installs the stored `DISTRIBUTION` certificate (or creates one when the stored secrets are unset), enables App Groups (and, for the app, HealthKit, iCloud, and Associated Domains), creates an App Store profile for each shipping bundle ID, and writes a manual `ExportOptions.plist`
-- No certificate is ever deleted. With `DIST_CERT_P12_BASE64` / `DIST_CERT_P12_PASSWORD` set, the stored certificate is imported and none is created. Without them, one `DISTRIBUTION` certificate is created per run; if Apple refuses another, the run fails and lists the existing ones. See "Distribution certificate"
+- With `DIST_CERT_P12_BASE64` / `DIST_CERT_P12_PASSWORD` set, the stored certificate is imported and no certificate is created or deleted. Without them, one `DISTRIBUTION` certificate is created per run; if Apple refuses another, the oldest `DISTRIBUTION` certificate is deleted and creation is retried once. The existing `IOS_DISTRIBUTION` certificate is never deleted. See "Distribution certificate"
 - Profiles are checked for `group.com.jonathanbowe.jlphysical`. The app profile is also checked for HealthKit, HealthKit access (an array, including an empty one), HealthKit background delivery, the container ids in `calorietracker.entitlements` (`iCloud.$(PRODUCT_BUNDLE_IDENTIFIER)`), and associated domains. App Store profiles list `com.apple.developer.icloud-services` as `*`, which covers CloudKit and CloudDocuments. That wildcard is a match, so the script does not delete and recreate the profile for it. The app entitlements file keeps `icloud-services` as `["CloudKit"]`. `icloud-container-environment` is not set in that file. The App Store re-sign sets it to the string `Production` on the app signature. A profile that lists both Production and Development is still valid
 - Capability updates use only the setting keys Apple accepts (`ICLOUD_VERSION`, `DATA_PROTECTION_PERMISSION_LEVEL`, `APPLE_ID_AUTH_APP_CONSENT`). iCloud is set to `ICLOUD_VERSION` / `XCODE_6`, which is CloudKit. App Groups, Associated Domains, and HealthKit are enabled with no settings. Group ids and domain strings are not valid setting keys. A 409 whose detail says the attribute type is wrong is a rejected payload, not an existing capability. HealthKit background delivery is already produced by the HealthKit capability; the script does not call `/v1/capabilities`
 

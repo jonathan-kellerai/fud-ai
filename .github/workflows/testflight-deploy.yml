@@ -449,7 +449,8 @@ jobs:
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
         # Stored-certificate path: when both DIST_CERT_P12_* secrets are set, the
         # script imports that p12 and never creates or deletes a certificate.
-        # Without them it creates exactly one (no deletes) and, if the
+        # Without them it creates one (deleting the oldest DISTRIBUTION
+        # certificate once if Apple's limit is hit) and, if the
         # DIST_CERT_EXPORT_PUBLIC_KEY variable is set, writes an encrypted copy
         # for the operator. See docs/TESTFLIGHT.md "Distribution certificate".
         DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
