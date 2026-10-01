@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-"""Create an Apple Distribution certificate and App Store profiles, then write ExportOptions.
+"""Install an Apple Distribution certificate and App Store profiles, then write ExportOptions.
 
 Xcode cloud signing is a separate permission from reading /v1/certificates. Run 39
 listed certificates and profiles (HTTP 200) and still failed export with
 "Cloud signing permission error" and "No signing certificate iOS Distribution".
-This script creates a normal distribution certificate (the private key stays on
-the runner), installs App Store profiles for the app, widget, and share
-extension, and writes a manual ExportOptions.plist. Export must not pass
--allowProvisioningUpdates.
+This script installs a normal distribution certificate, installs App Store
+profiles for the app, widget, and share extension, and writes a manual
+ExportOptions.plist. Export must not pass -allowProvisioningUpdates.
+
+When DIST_CERT_P12_BASE64 and DIST_CERT_P12_PASSWORD are set, the stored p12 is
+imported and no certificate is created or deleted. Without them, exactly one
+certificate is created per run and nothing is ever deleted; at Apple's limit
+the run fails and asks for the stored secrets.
+
+Other modes: --self-check, --write-archive-entitlements, --resign-ipa,
+--create-certificate-from-csr <csr> --out <json>, --verify-stored-certificate.
 """
 
 import base64
+import binascii
+import datetime
 import json
 import os
 import plistlib
@@ -455,83 +464,77 @@ def is_certificate_limit(status, payload):
     )
 
 
-def delete_certificate(token, certificate):
-    certificate_id = certificate["id"]
+def describe_certificate(certificate):
     attributes = certificate.get("attributes") or {}
-    print(
-        "Deleting Apple Distribution certificate "
-        f"{certificate_id} type={attributes.get('certificateType')} "
-        f"expires={attributes.get('expirationDate')} so a new one can be created. "
-        "IOS_DISTRIBUTION and DEVELOPMENT certificates are left in place."
+    return (
+        f"id={certificate.get('id')} name={attributes.get('name')} "
+        f"expires={attributes.get('expirationDate')}"
     )
-    status, payload = api(token, "DELETE", f"{API_ROOT}/v1/certificates/{certificate_id}")
-    require_ok(status, payload, (204, 200), f"DELETE certificate {certificate_id}")
 
 
-def create_distribution_certificate(token, csr_pem):
+def summarize_certificates(token, show_distribution=False):
+    """Print certificate counts by type. Returns the DISTRIBUTION certificates."""
     certificates = list_certificates(token)
     counts = {}
     for certificate in certificates:
         certificate_type = (certificate.get("attributes") or {}).get("certificateType") or "unknown"
         counts[certificate_type] = counts.get(certificate_type, 0) + 1
     print(f"existing certificates: {counts}")
+    distribution = [
+        certificate
+        for certificate in certificates
+        if (certificate.get("attributes") or {}).get("certificateType") == "DISTRIBUTION"
+    ]
+    if show_distribution:
+        for certificate in distribution:
+            print(f"DISTRIBUTION certificate {describe_certificate(certificate)}")
+    return distribution
 
-    def distribution_certs():
-        current = list_certificates(token)
-        return [
-            certificate
-            for certificate in current
-            if (certificate.get("attributes") or {}).get("certificateType") == "DISTRIBUTION"
-        ]
 
-    for attempt in range(2):
-        status, payload = api(
-            token,
-            "POST",
-            f"{API_ROOT}/v1/certificates",
-            {
-                "data": {
-                    "type": "certificates",
-                    "attributes": {
-                        "certificateType": "DISTRIBUTION",
-                        "csrContent": csr_pem,
-                    },
-                }
-            },
+def create_distribution_certificate(token, csr_pem, show_distribution=False):
+    """POST exactly one DISTRIBUTION certificate. Never deletes certificates."""
+    distribution = summarize_certificates(token, show_distribution)
+    status, payload = api(
+        token,
+        "POST",
+        f"{API_ROOT}/v1/certificates",
+        {
+            "data": {
+                "type": "certificates",
+                "attributes": {
+                    "certificateType": "DISTRIBUTION",
+                    "csrContent": csr_pem,
+                },
+            }
+        },
+    )
+    if status in (200, 201):
+        attributes = (payload.get("data") or {}).get("attributes") or {}
+        print(
+            "created DISTRIBUTION certificate "
+            f"id={(payload.get('data') or {}).get('id')} "
+            f"name={attributes.get('name')} expires={attributes.get('expirationDate')}"
         )
-        if status in (200, 201):
-            attributes = (payload.get("data") or {}).get("attributes") or {}
-            print(
-                "created DISTRIBUTION certificate "
-                f"id={(payload.get('data') or {}).get('id')} "
-                f"name={attributes.get('name')} expires={attributes.get('expirationDate')}"
-            )
-            return payload["data"], "Apple Distribution"
-        if status == 403:
-            fail(
-                "Apple refused to create a distribution certificate (403). "
-                "Run 39 could read certificates, and Xcode cloud signing was also denied "
-                "('You haven't been given access to cloud-managed distribution certificates'). "
-                "The key needs Admin or Account Holder, Access to Certificates, Identifiers & Profiles, "
-                "and permission to create certificates. "
-                f"Apple said: {error_text(payload)}"
-            )
-        if is_certificate_limit(status, payload) and attempt == 0:
-            existing = distribution_certs()
-            if not existing:
-                fail(
-                    "Apple refused another distribution certificate and none of type "
-                    f"DISTRIBUTION can be removed. Apple said: {error_text(payload)}"
-                )
-            oldest = sorted(
-                existing,
-                key=lambda certificate: (certificate.get("attributes") or {}).get("expirationDate")
-                or "",
-            )[0]
-            delete_certificate(token, oldest)
-            continue
-        fail(f"POST certificate failed HTTP {status}: {error_text(payload)}")
-    fail("Could not create a distribution certificate.")
+        return payload["data"], "Apple Distribution"
+    if status == 403:
+        fail(
+            "Apple refused to create a distribution certificate (403). "
+            "Run 39 could read certificates, and Xcode cloud signing was also denied "
+            "('You haven't been given access to cloud-managed distribution certificates'). "
+            "The key needs Admin or Account Holder, Access to Certificates, Identifiers & Profiles, "
+            "and permission to create certificates. "
+            f"Apple said: {error_text(payload)}"
+        )
+    if is_certificate_limit(status, payload):
+        listed = "; ".join(describe_certificate(item) for item in distribution) or "none listed"
+        fail(
+            "Apple refused another DISTRIBUTION certificate because the account is at its "
+            "limit. This script does not delete certificates. Set the "
+            "DIST_CERT_P12_BASE64 / DIST_CERT_P12_PASSWORD secrets (see docs/TESTFLIGHT.md "
+            "\"Distribution certificate\") so every run reuses one stored certificate. "
+            f"Existing DISTRIBUTION certificates: {listed}. Apple said: {error_text(payload)}"
+        )
+    fail(f"POST certificate failed HTTP {status}: {error_text(payload)}")
 
 
 def generate_key_and_csr(work_dir):
@@ -555,74 +558,248 @@ def generate_key_and_csr(work_dir):
     return key_path, csr_path.read_text()
 
 
-def import_certificate(work_dir, certificate, key_path):
-    attributes = certificate.get("attributes") or {}
-    encoded = attributes.get("certificateContent")
-    if not encoded:
-        fail("Certificate response did not include certificateContent.")
-    cert_der = work_dir / "distribution.cer"
-    cert_pem = work_dir / "distribution.pem"
-    p12_path = work_dir / "distribution.p12"
-    cert_der.write_bytes(base64.b64decode(encoded))
-    run(
-        ["openssl", "x509", "-inform", "DER", "-in", str(cert_der), "-out", str(cert_pem)]
+# The p12 password reaches openssl through this environment variable, never argv.
+P12_PASS_ENV = "DIST_P12_PASS"
+STORED_CERT_HELP = (
+    "Run the dist-cert-bootstrap workflow and re-save the DIST_CERT_P12_BASE64 / "
+    "DIST_CERT_P12_PASSWORD (and DIST_CERT_ID) secrets. See docs/TESTFLIGHT.md "
+    "\"Distribution certificate\"."
+)
+
+
+def redact(text, secret_values):
+    for secret in secret_values:
+        if secret:
+            text = text.replace(secret, "[redacted]")
+    return text
+
+
+def write_private_file(path, data):
+    path.unlink(missing_ok=True)
+    descriptor = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(data)
+    return path
+
+
+def openssl_pkcs12(args, password, passin=True):
+    """Run openssl pkcs12 with the password in DIST_P12_PASS. Retries with -legacy."""
+    env = dict(os.environ)
+    env[P12_PASS_ENV] = password
+    password_args = (
+        ["-passin", f"env:{P12_PASS_ENV}"] if passin else ["-passout", f"env:{P12_PASS_ENV}"]
     )
-    password = secrets.token_urlsafe(24)
-    export = subprocess.run(
-        [
-            "openssl",
-            "pkcs12",
-            "-export",
-            "-inkey",
-            str(key_path),
-            "-in",
-            str(cert_pem),
-            "-out",
-            str(p12_path),
-            "-passout",
-            f"pass:{password}",
-            "-name",
-            "Apple Distribution",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if export.returncode != 0:
-        export = subprocess.run(
-            [
-                "openssl",
-                "pkcs12",
-                "-legacy",
-                "-export",
-                "-inkey",
-                str(key_path),
-                "-in",
-                str(cert_pem),
-                "-out",
-                str(p12_path),
-                "-passout",
-                f"pass:{password}",
-                "-name",
-                "Apple Distribution",
-            ],
+    result = None
+    for legacy in ([], ["-legacy"]):
+        result = subprocess.run(
+            ["openssl", "pkcs12", *legacy, *args, *password_args],
             capture_output=True,
             text=True,
+            env=env,
         )
-    if export.returncode != 0:
-        fail(f"Could not export the distribution certificate to a p12. {export.stderr.strip()}")
+        if result.returncode == 0:
+            return result
+    detail = redact((result.stderr or "").strip(), (password,))
+    fail(f"openssl pkcs12 failed (with and without -legacy): {detail}")
 
-    keychain = work_dir / "jl-appstore.keychain-db"
+
+def stored_certificate_secrets(environ=None):
+    """(p12 base64, p12 password) when both secrets are set, else None.
+
+    Exactly one of the two set is an operator mistake. Failing is safer than
+    falling back to creating another certificate.
+    """
+    env = os.environ if environ is None else environ
+    encoded = (env.get("DIST_CERT_P12_BASE64") or "").strip()
+    # The password is used verbatim; only the presence check ignores whitespace.
+    password = env.get("DIST_CERT_P12_PASSWORD") or ""
+    password_present = bool(password.strip())
+    if encoded and password_present:
+        return encoded, password
+    if encoded or password_present:
+        missing = "DIST_CERT_P12_PASSWORD" if encoded else "DIST_CERT_P12_BASE64"
+        fail(
+            f"Only one stored distribution certificate secret is set; {missing} is empty. "
+            "Refusing to create another certificate. " + STORED_CERT_HELP
+        )
+    return None
+
+
+def write_stored_p12(work_dir, encoded):
+    try:
+        raw = base64.b64decode("".join(encoded.split()), validate=True)
+    except (ValueError, binascii.Error):
+        fail("DIST_CERT_P12_BASE64 is not valid base64. " + STORED_CERT_HELP)
+    if not raw:
+        fail("DIST_CERT_P12_BASE64 decoded to nothing. " + STORED_CERT_HELP)
+    return write_private_file(work_dir / "stored-distribution.p12", raw)
+
+
+def extract_leaf_certificate(work_dir, p12_path, password):
+    cert_pem = work_dir / "stored-distribution.pem"
+    openssl_pkcs12(
+        ["-in", str(p12_path), "-nokeys", "-clcerts", "-out", str(cert_pem)],
+        password,
+    )
+    if "BEGIN CERTIFICATE" not in cert_pem.read_text():
+        fail("The stored p12 has no certificate. " + STORED_CERT_HELP)
+    return cert_pem
+
+
+def normalize_serial(value):
+    cleaned = "".join(str(value or "").split()).replace(":", "").lower()
+    if cleaned.startswith("0x"):
+        cleaned = cleaned[2:]
+    return cleaned.lstrip("0") or "0"
+
+
+def certificate_serial(cert_pem):
+    output = run(["openssl", "x509", "-in", str(cert_pem), "-noout", "-serial"]).stdout
+    return normalize_serial(output.strip().split("=", 1)[-1])
+
+
+def certificate_not_after(cert_pem):
+    output = run(["openssl", "x509", "-in", str(cert_pem), "-noout", "-enddate"]).stdout
+    text = " ".join(output.strip().split("=", 1)[-1].split())
+    try:
+        parsed = datetime.datetime.strptime(text, "%b %d %H:%M:%S %Y %Z")
+    except ValueError:
+        fail(f"Could not read the certificate expiry {text!r}")
+    return parsed.replace(tzinfo=datetime.timezone.utc)
+
+
+def parse_asc_date(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S")
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed
+
+
+def certificate_expiry(certificate, not_after):
+    """Earlier of App Store Connect's expirationDate and the certificate's notAfter."""
+    asc_date = parse_asc_date((certificate.get("attributes") or {}).get("expirationDate"))
+    if asc_date is None:
+        return not_after
+    return min(asc_date, not_after)
+
+
+def check_stored_certificate(certificate, serial, not_after, now=None):
+    """Problems with an App Store Connect certificate for the stored p12."""
+    attributes = certificate.get("attributes") or {}
+    problems = []
+    if attributes.get("certificateType") != "DISTRIBUTION":
+        problems.append(f"certificateType is {attributes.get('certificateType')}, not DISTRIBUTION")
+    if normalize_serial(attributes.get("serialNumber")) != normalize_serial(serial):
+        problems.append("serialNumber does not match the stored p12 certificate")
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    if certificate_expiry(certificate, not_after) <= now:
+        problems.append(f"certificate expired {attributes.get('expirationDate') or not_after}")
+    return problems
+
+
+def resolve_stored_certificate(token, serial, not_after, environ=None):
+    """Find the App Store Connect certificate for the stored p12. GET requests only."""
+    env = os.environ if environ is None else environ
+    certificate_id = (env.get("DIST_CERT_ID") or "").strip()
+    if certificate_id:
+        status, payload = api(
+            token,
+            "GET",
+            f"{API_ROOT}/v1/certificates/{urllib.parse.quote(certificate_id, safe='')}",
+        )
+        if status == 404:
+            fail(f"DIST_CERT_ID {certificate_id} is not in App Store Connect. " + STORED_CERT_HELP)
+        require_ok(status, payload, (200,), f"GET certificate {certificate_id}")
+        certificate = payload.get("data") or {}
+        problems = check_stored_certificate(certificate, serial, not_after)
+        if problems:
+            fail(
+                f"DIST_CERT_ID {certificate_id} does not fit the stored p12: "
+                + "; ".join(problems)
+                + ". "
+                + STORED_CERT_HELP
+            )
+        return certificate
+    status, payload = api(
+        token,
+        "GET",
+        f"{API_ROOT}/v1/certificates?filter[certificateType]=DISTRIBUTION&limit=200",
+    )
+    require_ok(status, payload, (200,), "GET DISTRIBUTION certificates")
+    matches = [
+        certificate
+        for certificate in payload.get("data") or []
+        if normalize_serial((certificate.get("attributes") or {}).get("serialNumber"))
+        == normalize_serial(serial)
+    ]
+    if not matches:
+        fail(
+            "No DISTRIBUTION certificate in App Store Connect matches the stored p12 "
+            "(it was revoked or belongs to another team). " + STORED_CERT_HELP
+        )
+    certificate = matches[0]
+    problems = check_stored_certificate(certificate, serial, not_after)
+    if problems:
+        fail(
+            "The stored distribution certificate is not usable: "
+            + "; ".join(problems)
+            + ". "
+            + STORED_CERT_HELP
+        )
+    return certificate
+
+
+def certificate_public_key(cert_pem):
+    return run(["openssl", "x509", "-in", str(cert_pem), "-noout", "-pubkey"]).stdout.strip()
+
+
+def p12_private_key_public_key(p12_path, password):
+    """Public half of the p12's private key. The private key stays in memory only."""
+    keys = openssl_pkcs12(["-in", str(p12_path), "-nocerts", "-nodes"], password).stdout
+    result = subprocess.run(
+        ["openssl", "pkey", "-pubout"], input=keys, capture_output=True, text=True
+    )
+    del keys
+    if result.returncode != 0:
+        fail("The stored p12 has no readable private key. " + STORED_CERT_HELP)
+    return result.stdout.strip()
+
+
+def public_keys_match(certificate_key, private_key_public):
+    return bool(certificate_key) and certificate_key == private_key_public
+
+
+def install_p12_in_keychain(
+    work_dir, p12_path, p12_password, keychain_name="jl-appstore.keychain-db"
+):
+    """Import a p12 into a fresh runner keychain. Returns the jl-keychain-path file.
+
+    The keychain password is a fresh random token. run() redacts both it and
+    the p12 password from any error output.
+    """
+    keychain_password = secrets.token_urlsafe(24)
+    hidden = (keychain_password, p12_password)
+    keychain = work_dir / keychain_name
     run(
-        ["security", "create-keychain", "-p", password, str(keychain)],
-        secret_values=(password,),
+        ["security", "create-keychain", "-p", keychain_password, str(keychain)],
+        secret_values=hidden,
     )
     run(
         ["security", "set-keychain-settings", "-lut", "21600", str(keychain)],
-        secret_values=(password,),
+        secret_values=hidden,
     )
     run(
-        ["security", "unlock-keychain", "-p", password, str(keychain)],
-        secret_values=(password,),
+        ["security", "unlock-keychain", "-p", keychain_password, str(keychain)],
+        secret_values=hidden,
     )
     existing = subprocess.check_output(["security", "list-keychains", "-d", "user"], text=True)
     search_list = [str(keychain)]
@@ -640,13 +817,13 @@ def import_certificate(work_dir, certificate, key_path):
             "-k",
             str(keychain),
             "-P",
-            password,
+            p12_password,
             "-T",
             "/usr/bin/codesign",
             "-T",
             "/usr/bin/security",
         ],
-        secret_values=(password,),
+        secret_values=hidden,
     )
     run(
         [
@@ -656,10 +833,10 @@ def import_certificate(work_dir, certificate, key_path):
             "apple-tool:,apple:,codesign:",
             "-s",
             "-k",
-            password,
+            keychain_password,
             str(keychain),
         ],
-        secret_values=(password,),
+        secret_values=hidden,
     )
     identities = subprocess.check_output(
         ["security", "find-identity", "-v", "-p", "codesigning", str(keychain)],
@@ -667,12 +844,328 @@ def import_certificate(work_dir, certificate, key_path):
     )
     print(identities.strip())
     if "Distribution" not in identities:
-        fail("The new certificate is not a valid code signing identity in the keychain.")
+        fail("The distribution certificate is not a valid code signing identity in the keychain.")
     path_file = work_dir / "jl-keychain-path"
     path_file.write_text(str(keychain))
-    key_path.unlink(missing_ok=True)
-    p12_path.unlink(missing_ok=True)
     return path_file
+
+
+def load_stored_certificate(token, work_dir, encoded, password, environ=None):
+    """Decode the stored p12 and resolve its App Store Connect certificate.
+
+    Returns (certificate, p12 path, leaf certificate pem path).
+    """
+    p12_path = write_stored_p12(work_dir, encoded)
+    cert_pem = extract_leaf_certificate(work_dir, p12_path, password)
+    serial = certificate_serial(cert_pem)
+    not_after = certificate_not_after(cert_pem)
+    certificate = resolve_stored_certificate(token, serial, not_after, environ)
+    return certificate, p12_path, cert_pem
+
+
+def use_stored_certificate(token, work_dir, encoded, password, environ=None):
+    """Import path: install the stored p12. Never creates or deletes certificates."""
+    p12_path = work_dir / "stored-distribution.p12"
+    cert_pem = work_dir / "stored-distribution.pem"
+    try:
+        certificate, p12_path, cert_pem = load_stored_certificate(
+            token, work_dir, encoded, password, environ
+        )
+        install_p12_in_keychain(work_dir, p12_path, password)
+    finally:
+        p12_path.unlink(missing_ok=True)
+        cert_pem.unlink(missing_ok=True)
+    print(
+        f"Using stored distribution certificate id={certificate.get('id')} "
+        f"expires={(certificate.get('attributes') or {}).get('expirationDate')}"
+    )
+    return certificate, "Apple Distribution"
+
+
+def normalize_public_key_pem(text):
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if "-----BEGIN" in text and "\n" not in text and "\\n" in text:
+        text = text.replace("\\n", "\n").strip()
+    return text + "\n"
+
+
+def export_encrypted_certificate(p12_path, password, certificate_id, public_key_pem, out_dir):
+    """Write dist-cert-export.enc and dist-cert-export.key.enc. No plaintext persists.
+
+    The JSON {p12_base64, password, certificate_id} goes to openssl enc on stdin
+    (AES-256-CBC + PBKDF2) with a random 32-byte key. That key is written as 64
+    hex characters because -pass file: reads one line, and the key file is
+    RSA-OAEP-SHA256 encrypted with the operator's public key.
+    Returns (ok, message). On failure no half-written export is left behind.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in out_dir.glob("*.enc"):
+        stale.unlink()
+    ok, message = write_encrypted_export(
+        p12_path, password, certificate_id, public_key_pem, out_dir
+    )
+    if not ok:
+        for partial in out_dir.glob("*.enc"):
+            partial.unlink()
+    return ok, message
+
+
+def write_encrypted_export(p12_path, password, certificate_id, public_key_pem, out_dir):
+    payload = json.dumps(
+        {
+            "p12_base64": base64.b64encode(Path(p12_path).read_bytes()).decode("ascii"),
+            "password": password,
+            "certificate_id": certificate_id,
+        }
+    ).encode("utf-8")
+    with tempfile.TemporaryDirectory(prefix="jl-dist-export-") as tmp:
+        scratch = Path(tmp)
+        public_key_path = scratch / "export-public.pem"
+        key_file = write_private_file(
+            scratch / "export.key", (secrets.token_bytes(32).hex() + "\n").encode("ascii")
+        )
+        try:
+            public_key_path.write_text(normalize_public_key_pem(public_key_pem))
+            check = subprocess.run(
+                ["openssl", "pkey", "-pubin", "-in", str(public_key_path), "-noout"],
+                capture_output=True,
+                text=True,
+            )
+            if check.returncode != 0:
+                return False, "DIST_CERT_EXPORT_PUBLIC_KEY is not a readable public key PEM"
+            encrypted = subprocess.run(
+                [
+                    "openssl",
+                    "enc",
+                    "-aes-256-cbc",
+                    "-pbkdf2",
+                    "-salt",
+                    "-pass",
+                    f"file:{key_file}",
+                    "-out",
+                    str(out_dir / "dist-cert-export.enc"),
+                ],
+                input=payload,
+                capture_output=True,
+            )
+            if encrypted.returncode != 0:
+                detail = encrypted.stderr.decode("utf-8", "replace").strip()
+                return False, f"openssl enc failed: {detail}"
+            wrapped = subprocess.run(
+                [
+                    "openssl",
+                    "pkeyutl",
+                    "-encrypt",
+                    "-pubin",
+                    "-inkey",
+                    str(public_key_path),
+                    "-pkeyopt",
+                    "rsa_padding_mode:oaep",
+                    "-pkeyopt",
+                    "rsa_oaep_md:sha256",
+                    "-in",
+                    str(key_file),
+                    "-out",
+                    str(out_dir / "dist-cert-export.key.enc"),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if wrapped.returncode != 0:
+                return False, f"openssl pkeyutl failed: {wrapped.stderr.strip()}"
+        finally:
+            key_file.unlink(missing_ok=True)
+            for item in out_dir.iterdir():
+                if item.suffix != ".enc":
+                    item.unlink(missing_ok=True)
+    if not all(
+        (out_dir / name).is_file()
+        for name in ("dist-cert-export.enc", "dist-cert-export.key.enc")
+    ):
+        return False, "openssl did not write both export files"
+    return True, f"wrote encrypted certificate export to {out_dir}"
+
+
+def import_certificate(work_dir, certificate, key_path, environ=None):
+    """Absent path: build a p12 for the new certificate and install it."""
+    env = os.environ if environ is None else environ
+    attributes = certificate.get("attributes") or {}
+    encoded = attributes.get("certificateContent")
+    if not encoded:
+        fail("Certificate response did not include certificateContent.")
+    cert_der = work_dir / "distribution.cer"
+    cert_pem = work_dir / "distribution.pem"
+    p12_path = work_dir / "distribution.p12"
+    cert_der.write_bytes(base64.b64decode(encoded))
+    run(
+        ["openssl", "x509", "-inform", "DER", "-in", str(cert_der), "-out", str(cert_pem)]
+    )
+    password = secrets.token_urlsafe(24)
+    try:
+        openssl_pkcs12(
+            [
+                "-export",
+                "-inkey",
+                str(key_path),
+                "-in",
+                str(cert_pem),
+                "-out",
+                str(p12_path),
+                "-name",
+                "Apple Distribution",
+            ],
+            password,
+            passin=False,
+        )
+        p12_path.chmod(0o600)
+        public_key_pem = (env.get("DIST_CERT_EXPORT_PUBLIC_KEY") or "").strip()
+        if public_key_pem:
+            out_dir = Path(env.get("RUNNER_TEMP") or work_dir) / "dist-cert-export"
+            ok, message = export_encrypted_certificate(
+                p12_path, password, certificate.get("id"), public_key_pem, out_dir
+            )
+            if ok:
+                print(
+                    f"{message}. Download artifact dist-cert-export-encrypted and save the "
+                    "secrets (docs/TESTFLIGHT.md \"Distribution certificate\")."
+                )
+            else:
+                print(
+                    f"WARNING: could not write the encrypted certificate export ({message}). "
+                    "The new certificate's private key will be lost when the runner ends "
+                    "and the next run will create another one."
+                )
+        else:
+            print(
+                "WARNING: DIST_CERT_P12_BASE64 / DIST_CERT_P12_PASSWORD are not set and "
+                "DIST_CERT_EXPORT_PUBLIC_KEY is not configured. The new certificate's private "
+                "key will be lost when the runner ends and the next run will create another "
+                "one. See docs/TESTFLIGHT.md \"Distribution certificate\"."
+            )
+        return install_p12_in_keychain(work_dir, p12_path, password)
+    finally:
+        key_path.unlink(missing_ok=True)
+        p12_path.unlink(missing_ok=True)
+
+
+def obtain_distribution_certificate(token, work_dir, environ=None):
+    """Stored p12 when both secrets are set; otherwise create exactly one certificate."""
+    stored = stored_certificate_secrets(environ)
+    if stored is not None:
+        return use_stored_certificate(token, work_dir, stored[0], stored[1], environ)
+    key_path, csr_pem = generate_key_and_csr(work_dir)
+    certificate, signing_certificate = create_distribution_certificate(token, csr_pem)
+    import_certificate(work_dir, certificate, key_path, environ)
+    return certificate, signing_certificate
+
+
+def der_certificate_field(encoded, flag):
+    result = subprocess.run(
+        ["openssl", "x509", "-inform", "DER", "-noout", flag],
+        input=base64.b64decode(encoded),
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.decode("ascii", "replace").strip()
+
+
+def create_certificate_from_csr(csr_path, out_path):
+    """Bootstrap: POST one DISTRIBUTION certificate for a CSR made off-CI.
+
+    If a listed DISTRIBUTION certificate already carries this CSR's public key,
+    that certificate is written instead, so a re-run does not create another.
+    """
+    csr_file = Path(csr_path)
+    if not csr_file.is_file():
+        fail(f"CSR file is missing at {csr_file}")
+    csr_pem = csr_file.read_text()
+    if "CERTIFICATE REQUEST-----" not in csr_pem:
+        fail(f"{csr_file} is not a PEM certificate signing request")
+    csr_public_key = run(
+        ["openssl", "req", "-in", str(csr_file), "-noout", "-pubkey"]
+    ).stdout.strip()
+    token = sign_token()
+    certificate = None
+    for existing in summarize_certificates(token, show_distribution=True):
+        content = (existing.get("attributes") or {}).get("certificateContent")
+        if content and public_keys_match(der_certificate_field(content, "-pubkey"), csr_public_key):
+            print(
+                "A DISTRIBUTION certificate for this CSR already exists; reusing "
+                f"{describe_certificate(existing)} instead of creating another."
+            )
+            certificate = existing
+            break
+    if certificate is None:
+        certificate, _ = create_distribution_certificate(token, csr_pem)
+    attributes = certificate.get("attributes") or {}
+    content = attributes.get("certificateContent")
+    if not content:
+        fail("Certificate response did not include certificateContent.")
+    serial = attributes.get("serialNumber") or der_certificate_field(content, "-serial").split(
+        "=", 1
+    )[-1]
+    record = {
+        "id": certificate.get("id"),
+        "name": attributes.get("name"),
+        "expirationDate": attributes.get("expirationDate"),
+        "serialNumber": serial,
+        "certificateContent": content,
+    }
+    out_file = Path(out_path)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(json.dumps(record, indent=2) + "\n")
+    print(
+        f"certificate id={record['id']} name={record['name']} "
+        f"expires={record['expirationDate']} serial={serial}"
+    )
+    print(f"wrote {out_file} (public certificate only)")
+
+
+def verify_stored_certificate(environ=None):
+    """Check the stored p12 against App Store Connect. Creates and deletes nothing there."""
+    stored = stored_certificate_secrets(environ)
+    if stored is None:
+        fail(
+            "--verify-stored-certificate requires DIST_CERT_P12_BASE64 and "
+            "DIST_CERT_P12_PASSWORD."
+        )
+    encoded, password = stored
+    token = sign_token()
+    with tempfile.TemporaryDirectory(prefix="jl-dist-verify-") as tmp:
+        work_dir = Path(tmp)
+        certificate, p12_path, cert_pem = load_stored_certificate(
+            token, work_dir, encoded, password, environ
+        )
+        if not public_keys_match(
+            certificate_public_key(cert_pem), p12_private_key_public_key(p12_path, password)
+        ):
+            fail("The stored p12's private key does not match its certificate. " + STORED_CERT_HELP)
+        expires = certificate_expiry(certificate, certificate_not_after(cert_pem))
+        days_left = (expires - datetime.datetime.now(datetime.timezone.utc)).days
+        if days_left < 30:
+            print(
+                f"WARNING: the stored distribution certificate expires in {days_left} days. "
+                "Bootstrap a replacement soon."
+            )
+        if sys.platform == "darwin":
+            keychain = work_dir / "jl-dist-verify.keychain-db"
+            try:
+                install_p12_in_keychain(
+                    work_dir, p12_path, password, keychain_name=keychain.name
+                )
+            finally:
+                if keychain.exists():
+                    subprocess.run(
+                        ["security", "delete-keychain", str(keychain)], capture_output=True
+                    )
+            print("keychain import shows a Distribution code signing identity")
+        p12_path.unlink(missing_ok=True)
+    print(
+        f"stored distribution certificate OK id={certificate.get('id')} "
+        f"expires={(certificate.get('attributes') or {}).get('expirationDate')}"
+    )
 
 
 def list_profiles(token):
@@ -1446,7 +1939,293 @@ def self_check():
             fail("widget resign entitlements dropped application-identifier")
         if ICLOUD_ENVIRONMENT_KEY in widget_entitlements or ICLOUD_ENVIRONMENT_KEY in share_entitlements:
             fail("extension resign entitlements set an iCloud environment")
+    self_check_distribution_certificate()
     print("self-check ok")
+
+
+def expect_failure(label, action):
+    print(f"self-check expects the next step to fail: {label}")
+    try:
+        action()
+    except SystemExit:
+        return
+    fail(f"{label} did not fail")
+
+
+def self_check_distribution_certificate():
+    """Offline checks for the stored-certificate and create-one paths.
+
+    Uses a throwaway self-signed certificate. No network and no real secrets.
+    """
+    if normalize_serial("00AB") != normalize_serial("ab"):
+        fail("serial 00AB did not match ab")
+    if normalize_serial("00:ab:12") != "ab12" or normalize_serial("000") != "0":
+        fail("serial normalisation is wrong")
+    if normalize_serial("ab") == normalize_serial("abc"):
+        fail("different serials matched")
+    if "delete_certificate" in globals():
+        fail("delete_certificate must not exist; certificates are never deleted")
+
+    original = {
+        name: globals()[name]
+        for name in (
+            "api",
+            "install_p12_in_keychain",
+            "generate_key_and_csr",
+            "create_distribution_certificate",
+        )
+    }
+    future = (
+        datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=200)
+    ).strftime("%Y-%m-%dT%H:%M:%S.000+00:00")
+    past = "2020-01-01T00:00:00.000+00:00"
+    calls = []
+
+    def certificate_record(certificate_id, serial, expires=future, certificate_type="DISTRIBUTION"):
+        return {
+            "type": "certificates",
+            "id": certificate_id,
+            "attributes": {
+                "certificateType": certificate_type,
+                "serialNumber": serial,
+                "expirationDate": expires,
+                "name": "Apple Distribution: self-check",
+            },
+        }
+
+    def stored_api(listed, by_id):
+        def fake(token, method, url, body=None):
+            calls.append((method, url))
+            if method != "GET" and "/v1/certificates" in url:
+                fail(f"stored-certificate path must not {method} {url}")
+            if url.startswith(f"{API_ROOT}/v1/certificates?"):
+                if "filter[certificateType]=DISTRIBUTION" not in url:
+                    fail(f"certificate list was not filtered: {url}")
+                return 200, {"data": listed}
+            for certificate in by_id:
+                if url == f"{API_ROOT}/v1/certificates/{certificate['id']}":
+                    return 200, {"data": certificate}
+            if url.startswith(f"{API_ROOT}/v1/certificates/"):
+                return 404, {"errors": [{"status": "404", "detail": "not found"}]}
+            fail(f"self-check saw unexpected {method} {url}")
+
+        return fake
+
+    def refuse(*_args, **_kwargs):
+        fail("stored-certificate path tried to create a certificate")
+
+    installed = []
+
+    def fake_install(work_dir, p12_path, p12_password, keychain_name="jl-appstore.keychain-db"):
+        mode = p12_path.stat().st_mode & 0o777
+        installed.append((p12_path, mode))
+        return work_dir / "jl-keychain-path"
+
+    with tempfile.TemporaryDirectory(prefix="jl-dist-self-check-") as tmp:
+        root = Path(tmp)
+        key_pem = root / "selfcheck.key"
+        cert_pem = root / "selfcheck.pem"
+        p12_path = root / "selfcheck.p12"
+        run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-keyout",
+                str(key_pem),
+                "-out",
+                str(cert_pem),
+                "-days",
+                "60",
+                "-subj",
+                "/CN=JL Physical self-check",
+                "-set_serial",
+                "0x00AB12CD",
+            ]
+        )
+        p12_password = secrets.token_urlsafe(18)
+        openssl_pkcs12(
+            ["-export", "-inkey", str(key_pem), "-in", str(cert_pem), "-out", str(p12_path)],
+            p12_password,
+            passin=False,
+        )
+        encoded = base64.b64encode(p12_path.read_bytes()).decode("ascii")
+        environ = {"DIST_CERT_P12_BASE64": encoded, "DIST_CERT_P12_PASSWORD": p12_password}
+
+        extracted = extract_leaf_certificate(root, p12_path, p12_password)
+        if certificate_serial(extracted) != "ab12cd":
+            fail(f"throwaway serial read as {certificate_serial(extracted)}")
+        if not public_keys_match(
+            certificate_public_key(extracted), p12_private_key_public_key(p12_path, p12_password)
+        ):
+            fail("p12 private key did not match its own certificate")
+        other_key = root / "other.key"
+        run(["openssl", "genrsa", "-out", str(other_key), "2048"])
+        other_public = run(["openssl", "pkey", "-in", str(other_key), "-pubout"]).stdout.strip()
+        if public_keys_match(certificate_public_key(extracted), other_public):
+            fail("a different private key matched the certificate")
+        expect_failure(
+            "wrong p12 password",
+            lambda: extract_leaf_certificate(root, p12_path, p12_password + "x"),
+        )
+
+        matching = certificate_record("CERT1", "00ab12cd")
+        other = certificate_record("OTHER", "FFFF")
+        globals()["install_p12_in_keychain"] = fake_install
+        globals()["generate_key_and_csr"] = refuse
+        globals()["create_distribution_certificate"] = refuse
+        try:
+            work_dir = root / "work"
+            work_dir.mkdir()
+            globals()["api"] = stored_api([other, matching], [other, matching])
+            certificate, identity = obtain_distribution_certificate("token", work_dir, environ)
+            if certificate.get("id") != "CERT1" or identity != "Apple Distribution":
+                fail(f"stored path resolved {certificate.get('id')}")
+            if len(installed) != 1 or installed[0][1] != 0o600:
+                fail(f"stored p12 install was {installed}")
+            if installed[0][0].exists():
+                fail("stored p12 was left on disk after install")
+
+            calls.clear()
+            with_id = dict(environ, DIST_CERT_ID="CERT1")
+            certificate, _ = obtain_distribution_certificate("token", work_dir, with_id)
+            if certificate.get("id") != "CERT1" or calls != [
+                ("GET", f"{API_ROOT}/v1/certificates/CERT1")
+            ]:
+                fail(f"DIST_CERT_ID lookup made {calls}")
+
+            expect_failure(
+                "DIST_CERT_ID with another serial",
+                lambda: obtain_distribution_certificate(
+                    "token", work_dir, dict(environ, DIST_CERT_ID="OTHER")
+                ),
+            )
+            globals()["api"] = stored_api(
+                [], [certificate_record("CERT1", "ab12cd", certificate_type="DEVELOPMENT")]
+            )
+            expect_failure(
+                "DIST_CERT_ID that is not DISTRIBUTION",
+                lambda: obtain_distribution_certificate("token", work_dir, with_id),
+            )
+            globals()["api"] = stored_api([certificate_record("CERT1", "ab12cd", past)], [])
+            expect_failure(
+                "expired stored certificate",
+                lambda: obtain_distribution_certificate("token", work_dir, environ),
+            )
+            globals()["api"] = stored_api([other], [])
+            expect_failure(
+                "no certificate matches the stored p12",
+                lambda: obtain_distribution_certificate("token", work_dir, environ),
+            )
+            calls.clear()
+            expect_failure(
+                "only one stored secret",
+                lambda: obtain_distribution_certificate(
+                    "token", work_dir, {"DIST_CERT_P12_BASE64": encoded}
+                ),
+            )
+            if calls:
+                fail(f"a half-configured secret still called the API: {calls}")
+        finally:
+            for name, value in original.items():
+                globals()[name] = value
+
+        absent_calls = []
+
+        def limit_api(token, method, url, body=None):
+            absent_calls.append((method, url))
+            if method == "GET" and url == f"{API_ROOT}/v1/certificates?limit=200":
+                return 200, {"data": [certificate_record("OLD", "01")]}
+            if method == "POST" and url == f"{API_ROOT}/v1/certificates":
+                return 409, {
+                    "errors": [
+                        {
+                            "status": "409",
+                            "detail": "You already have a current Distribution certificate "
+                            "or a pending certificate request.",
+                        }
+                    ]
+                }
+            if method == "DELETE":
+                return 204, None
+            fail(f"self-check saw unexpected {method} {url}")
+
+        absent_work = root / "absent"
+        absent_work.mkdir()
+        globals()["api"] = limit_api
+        try:
+            expect_failure(
+                "certificate limit without stored secrets",
+                lambda: obtain_distribution_certificate("token", absent_work, {}),
+            )
+        finally:
+            globals()["api"] = original["api"]
+        methods = [method for method, _url in absent_calls]
+        if "DELETE" in methods or methods.count("POST") != 1:
+            fail(f"absent path at the limit issued {absent_calls}")
+
+        private_pem = root / "export-private.pem"
+        run(["openssl", "genrsa", "-out", str(private_pem), "2048"])
+        public_text = run(["openssl", "pkey", "-in", str(private_pem), "-pubout"]).stdout
+        out_dir = root / "dist-cert-export"
+        ok, message = export_encrypted_certificate(
+            p12_path, p12_password, "CERT1", public_text.strip().replace("\n", "\\n"), out_dir
+        )
+        if not ok:
+            fail(f"encrypted export failed: {message}")
+        names = sorted(item.name for item in out_dir.iterdir())
+        if names != ["dist-cert-export.enc", "dist-cert-export.key.enc"]:
+            fail(f"export directory held {names}")
+        recovered_key = root / "recovered.key"
+        run(
+            [
+                "openssl",
+                "pkeyutl",
+                "-decrypt",
+                "-inkey",
+                str(private_pem),
+                "-pkeyopt",
+                "rsa_padding_mode:oaep",
+                "-pkeyopt",
+                "rsa_oaep_md:sha256",
+                "-in",
+                str(out_dir / "dist-cert-export.key.enc"),
+                "-out",
+                str(recovered_key),
+            ]
+        )
+        decrypted = subprocess.run(
+            [
+                "openssl",
+                "enc",
+                "-d",
+                "-aes-256-cbc",
+                "-pbkdf2",
+                "-pass",
+                f"file:{recovered_key}",
+                "-in",
+                str(out_dir / "dist-cert-export.enc"),
+            ],
+            capture_output=True,
+        )
+        if decrypted.returncode != 0:
+            fail("encrypted export did not decrypt with the matching private key")
+        recovered = json.loads(decrypted.stdout)
+        if (
+            recovered.get("certificate_id") != "CERT1"
+            or recovered.get("password") != p12_password
+            or recovered.get("p12_base64") != encoded
+        ):
+            fail("encrypted export did not round-trip")
+        ok, _message = export_encrypted_certificate(
+            p12_path, p12_password, "CERT1", "not a key", root / "bad-export"
+        )
+        if ok or list((root / "bad-export").iterdir()):
+            fail("an unreadable export public key still wrote files")
+    print("distribution certificate self-check ok")
 
 
 def main():
@@ -1461,9 +2240,7 @@ def main():
         enable_target_capabilities(token, bundle_resource_id, target["kind"])
         resolved.append((target, bundle_resource_id))
 
-    key_path, csr_pem = generate_key_and_csr(work_dir)
-    certificate, signing_certificate = create_distribution_certificate(token, csr_pem)
-    import_certificate(work_dir, certificate, key_path)
+    certificate, signing_certificate = obtain_distribution_certificate(token, work_dir)
 
     for profile in list_profiles(token):
         name = (profile.get("attributes") or {}).get("name") or ""
@@ -1533,5 +2310,15 @@ if __name__ == "__main__":
         if index + 1 >= len(sys.argv):
             fail("--resign-ipa requires an ipa path")
         resign_ipa(sys.argv[index + 1])
+    elif "--create-certificate-from-csr" in sys.argv:
+        index = sys.argv.index("--create-certificate-from-csr")
+        if index + 1 >= len(sys.argv) or "--out" not in sys.argv:
+            fail("--create-certificate-from-csr requires <csr.pem path> --out <json path>")
+        out_index = sys.argv.index("--out")
+        if out_index + 1 >= len(sys.argv):
+            fail("--out requires a json path")
+        create_certificate_from_csr(sys.argv[index + 1], sys.argv[out_index + 1])
+    elif "--verify-stored-certificate" in sys.argv:
+        verify_stored_certificate()
     else:
         main()

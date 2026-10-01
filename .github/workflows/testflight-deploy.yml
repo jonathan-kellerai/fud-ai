@@ -447,6 +447,15 @@ jobs:
         ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
         ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
         ISSUER_ID: ${{ secrets.ISSUER_ID }}
+        # Stored-certificate path: when both DIST_CERT_P12_* secrets are set, the
+        # script imports that p12 and never creates or deletes a certificate.
+        # Without them it creates exactly one (no deletes) and, if the
+        # DIST_CERT_EXPORT_PUBLIC_KEY variable is set, writes an encrypted copy
+        # for the operator. See docs/TESTFLIGHT.md "Distribution certificate".
+        DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+        DIST_CERT_P12_PASSWORD: ${{ secrets.DIST_CERT_P12_PASSWORD }}
+        DIST_CERT_ID: ${{ secrets.DIST_CERT_ID }}
+        DIST_CERT_EXPORT_PUBLIC_KEY: ${{ vars.DIST_CERT_EXPORT_PUBLIC_KEY }}
       run: |
         set -o pipefail
         cd ios
@@ -550,6 +559,19 @@ jobs:
           --signed-entitlements "${entitlement_dir}/signed-entitlements.plist" \
           --provisioning-profile "${entitlement_dir}/embedded.plist" \
           "${appex_args[@]}"
+
+    # Only the encrypted export (*.enc) is uploaded; it exists only when this run
+    # created a certificate and DIST_CERT_EXPORT_PUBLIC_KEY is set. hashFiles()
+    # cannot see runner.temp (it only reads the workspace), so the step runs
+    # always() and if-no-files-found: ignore makes it a no-op otherwise.
+    - name: Upload encrypted distribution certificate export
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-cert-export-encrypted
+        path: ${{ runner.temp }}/dist-cert-export/*.enc
+        retention-days: 3
+        if-no-files-found: ignore
 
     - name: Upload to TestFlight
       env:
