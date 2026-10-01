@@ -123,8 +123,8 @@ struct HomeV2Cards: View {
     }
 
     var body: some View {
-        ForEach(Array(visibleCards.enumerated()), id: \.element) { index, card in
-            cardSection(card, number: index + 1)
+        ForEach(order.filter { !hidden.contains($0) }) { card in
+            cardSection(card, number: sectionNumber(for: card))
         }
         .task(id: loadKey) {
             await reload()
@@ -158,9 +158,10 @@ struct HomeV2Cards: View {
         "\(selectedDate.timeIntervalSince1970)-\(refreshToken)-\(healthKitEnabled)"
     }
 
-    /// Peptides drops out before numbering so the section numbers never skip.
-    private var visibleCards: [HomeCardID] {
-        order.filter { !hidden.contains($0) && ($0 != .peptides || peptideSectionVisible) }
+    /// Counts only the sections that render, so an empty Peptides section never leaves a gap in the numbers.
+    private func sectionNumber(for card: HomeCardID) -> Int {
+        let numbered = order.filter { !hidden.contains($0) && ($0 != .peptides || peptideSectionVisible) }
+        return (numbered.firstIndex(of: card) ?? 0) + 1
     }
 
     @ViewBuilder
@@ -184,7 +185,7 @@ struct HomeV2Cards: View {
                 }
                 todayCard.listRowBackground(todaySurface)
             } header: {
-                IronSectionTitle(title: "Today", number: number, stat: todayLiftsStat)
+                IronSectionTitle(title: "Today", number: number)
             }
         case .dailyTargets:
             Section {
@@ -208,7 +209,7 @@ struct HomeV2Cards: View {
                     ProfileView(settingsCategory: .dailyTargets)
                 } label: {
                     HStack(spacing: 6) {
-                        IronSectionTitle(title: "Daily targets", number: number, stat: calorieStat)
+                        IronSectionTitle(title: "Daily targets", number: number)
                         Image(systemName: "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(IronTheme.textSecondary)
@@ -228,20 +229,22 @@ struct HomeV2Cards: View {
                 IronSectionTitle(title: "Recovery", number: number)
             }
         case .peptides:
-            Section {
-                NavigationLink {
-                    ReconView()
-                } label: {
-                    HStack {
-                        Text("Recon")
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        Spacer()
+            if peptideSectionVisible {
+                Section {
+                    NavigationLink {
+                        ReconView()
+                    } label: {
+                        HStack {
+                            Text("Recon")
+                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                            Spacer()
+                        }
                     }
+                    .listRowBackground(IronTheme.surface)
+                    peptideCard.listRowBackground(IronTheme.surface)
+                } header: {
+                    IronSectionTitle(title: "Peptides", number: number)
                 }
-                .listRowBackground(IronTheme.surface)
-                peptideCard.listRowBackground(IronTheme.surface)
-            } header: {
-                IronSectionTitle(title: "Peptides", number: number)
             }
         case .weekSoFar:
             Section {
@@ -484,46 +487,12 @@ struct HomeV2Cards: View {
         }
     }
 
-    /// Lift count for the Today header: the logged session once its detail loads, else the planned session.
-    private var todayLiftsStat: String? {
-        let key = SessionDateFormatting.calendarDateString(from: selectedDate, calendar: calendar)
-        let count: Int?
-        if let logged = workouts.first(where: { String($0.sessionDate.prefix(10)) == key }) {
-            if let sessionDetail, sessionDetail.workout.id == logged.id {
-                count = HomeV2Logic.sessionSummary(
-                    sets: sessionDetail.sets.map { ($0.exercise, $0.loadLb, $0.reps) }
-                ).exercises.count
-            } else {
-                count = nil
-            }
-        } else if let programBody, let resolved = selectedResolution, case .session = resolved {
-            count = TrainingProgramSchedule.programDay(in: programBody, matching: resolved)?.exercises.count
-        } else {
-            count = nil
-        }
-        guard let count, count > 0 else { return nil }
-        return count == 1 ? "1 lift" : "\(count) lifts"
-    }
-
-    private var calorieRemainder: HomeV2Logic.CalorieRemainder {
-        HomeV2Logic.CalorieRemainder.resolve(
-            eaten: foodStore.calories(for: selectedDate),
-            target: profileStore.profile.effectiveCalories
-        )
-    }
-
-    private var calorieStat: String {
-        let remainder = calorieRemainder
-        switch remainder.kind {
-        case .remaining: return "\(remainder.amount.formatted()) kcal left"
-        case .over: return "\(remainder.amount.formatted()) kcal over"
-        case .met: return "Target hit"
-        }
-    }
-
     private var dailyTargets: some View {
         let profile = profileStore.profile
-        let remainder = calorieRemainder
+        let remainder = HomeV2Logic.CalorieRemainder.resolve(
+            eaten: foodStore.calories(for: selectedDate),
+            target: profile.effectiveCalories
+        )
         let protein = foodStore.protein(for: selectedDate)
         let steps = stepsByDay?[calendar.startOfDay(for: selectedDate)]
         let pace = steps.map {
