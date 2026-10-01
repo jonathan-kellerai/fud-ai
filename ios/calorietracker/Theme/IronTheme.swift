@@ -250,17 +250,57 @@ struct AdaptiveLabelValue<Label: View, Value: View>: View {
     }
 }
 
+/// Condensed uppercase section label. Home numbers its sections (`01 · WEEK`) and can
+/// carry one stat; the stat drops under the title when the row runs out of width.
 struct IronSectionTitle: View {
     let title: String
+    var number: Int?
+    var stat: String?
+
+    @ScaledMetric(relativeTo: .footnote) private var size: CGFloat = 13
 
     var body: some View {
-        Text(title)
-            .font(.system(size: 13, weight: .heavy))
-            .fontWidth(.condensed)
-            .tracking(1.2)
-            .textCase(.uppercase)
-            .foregroundStyle(IronTheme.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if let stat {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        heading
+                        Spacer(minLength: 8)
+                        statText(stat)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        heading
+                        statText(stat)
+                    }
+                }
+            } else {
+                heading
+            }
+        }
+        .font(.system(size: size, weight: .heavy).monospacedDigit())
+        .fontWidth(.condensed)
+        .tracking(1.2)
+        .textCase(.uppercase)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var heading: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if let number {
+                Text(verbatim: String(format: "%02d ·", number))
+                    .foregroundStyle(IronTheme.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            Text(title)
+                .foregroundStyle(IronTheme.textSecondary)
+        }
+    }
+
+    private func statText(_ stat: String) -> some View {
+        Text(stat)
+            .foregroundStyle(IronTheme.textPrimary)
     }
 }
 

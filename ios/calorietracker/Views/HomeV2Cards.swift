@@ -123,8 +123,8 @@ struct HomeV2Cards: View {
     }
 
     var body: some View {
-        ForEach(order.filter { !hidden.contains($0) }) { card in
-            cardSection(card)
+        ForEach(Array(visibleCards.enumerated()), id: \.element) { index, card in
+            cardSection(card, number: index + 1)
         }
         .task(id: loadKey) {
             await reload()
@@ -158,8 +158,13 @@ struct HomeV2Cards: View {
         "\(selectedDate.timeIntervalSince1970)-\(refreshToken)-\(healthKitEnabled)"
     }
 
+    /// Peptides drops out before numbering so the section numbers never skip.
+    private var visibleCards: [HomeCardID] {
+        order.filter { !hidden.contains($0) && ($0 != .peptides || peptideSectionVisible) }
+    }
+
     @ViewBuilder
-    private func cardSection(_ card: HomeCardID) -> some View {
+    private func cardSection(_ card: HomeCardID, number: Int) -> some View {
         switch card {
         case .weekStrip:
             Section {
@@ -167,7 +172,7 @@ struct HomeV2Cards: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             } header: {
-                IronSectionTitle(title: "Week")
+                IronSectionTitle(title: "Week", number: number)
             }
         case .today:
             Section {
@@ -179,7 +184,7 @@ struct HomeV2Cards: View {
                 }
                 todayCard.listRowBackground(todaySurface)
             } header: {
-                IronSectionTitle(title: "Today")
+                IronSectionTitle(title: "Today", number: number, stat: todayLiftsStat)
             }
         case .dailyTargets:
             Section {
@@ -203,7 +208,7 @@ struct HomeV2Cards: View {
                     ProfileView(settingsCategory: .dailyTargets)
                 } label: {
                     HStack(spacing: 6) {
-                        IronSectionTitle(title: "Daily targets")
+                        IronSectionTitle(title: "Daily targets", number: number, stat: calorieStat)
                         Image(systemName: "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(IronTheme.textSecondary)
@@ -214,37 +219,35 @@ struct HomeV2Cards: View {
             Section {
                 bodyTrend.listRowBackground(IronTheme.surface)
             } header: {
-                IronSectionTitle(title: "Body trend")
+                IronSectionTitle(title: "Body trend", number: number)
             }
         case .recovery:
             Section {
                 recovery.listRowBackground(IronTheme.surface)
             } header: {
-                IronSectionTitle(title: "Recovery")
+                IronSectionTitle(title: "Recovery", number: number)
             }
         case .peptides:
-            if peptideSectionVisible {
-                Section {
-                    NavigationLink {
-                        ReconView()
-                    } label: {
-                        HStack {
-                            Text("Recon")
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            Spacer()
-                        }
+            Section {
+                NavigationLink {
+                    ReconView()
+                } label: {
+                    HStack {
+                        Text("Recon")
+                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        Spacer()
                     }
-                    .listRowBackground(IronTheme.surface)
-                    peptideCard.listRowBackground(IronTheme.surface)
-                } header: {
-                    IronSectionTitle(title: "Peptides")
                 }
+                .listRowBackground(IronTheme.surface)
+                peptideCard.listRowBackground(IronTheme.surface)
+            } header: {
+                IronSectionTitle(title: "Peptides", number: number)
             }
         case .weekSoFar:
             Section {
                 weekSoFarCard.listRowBackground(IronTheme.surface)
             } header: {
-                IronSectionTitle(title: "Week so far")
+                IronSectionTitle(title: "Week so far", number: number)
             }
         }
     }
@@ -481,10 +484,46 @@ struct HomeV2Cards: View {
         }
     }
 
+    /// Lift count for the Today header: the logged session once its detail loads, else the planned session.
+    private var todayLiftsStat: String? {
+        let key = SessionDateFormatting.calendarDateString(from: selectedDate, calendar: calendar)
+        let count: Int?
+        if let logged = workouts.first(where: { String($0.sessionDate.prefix(10)) == key }) {
+            if let sessionDetail, sessionDetail.workout.id == logged.id {
+                count = HomeV2Logic.sessionSummary(
+                    sets: sessionDetail.sets.map { ($0.exercise, $0.loadLb, $0.reps) }
+                ).exercises.count
+            } else {
+                count = nil
+            }
+        } else if let programBody, let resolved = selectedResolution, case .session = resolved {
+            count = TrainingProgramSchedule.programDay(in: programBody, matching: resolved)?.exercises.count
+        } else {
+            count = nil
+        }
+        guard let count, count > 0 else { return nil }
+        return count == 1 ? "1 lift" : "\(count) lifts"
+    }
+
+    private var calorieRemainder: HomeV2Logic.CalorieRemainder {
+        HomeV2Logic.CalorieRemainder.resolve(
+            eaten: foodStore.calories(for: selectedDate),
+            target: profileStore.profile.effectiveCalories
+        )
+    }
+
+    private var calorieStat: String {
+        let remainder = calorieRemainder
+        switch remainder.kind {
+        case .remaining: return "\(remainder.amount.formatted()) kcal left"
+        case .over: return "\(remainder.amount.formatted()) kcal over"
+        case .met: return "Target hit"
+        }
+    }
+
     private var dailyTargets: some View {
         let profile = profileStore.profile
-        let eaten = foodStore.calories(for: selectedDate)
-        let remainder = HomeV2Logic.CalorieRemainder.resolve(eaten: eaten, target: profile.effectiveCalories)
+        let remainder = calorieRemainder
         let protein = foodStore.protein(for: selectedDate)
         let steps = stepsByDay?[calendar.startOfDay(for: selectedDate)]
         let pace = steps.map {
