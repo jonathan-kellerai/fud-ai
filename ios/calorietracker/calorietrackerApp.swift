@@ -28,6 +28,7 @@ struct calorietrackerApp: App {
     @State private var weeklyChallengeStore = WeeklyChallengeStore()
     @State private var workoutDraftStore = WorkoutDraftStore()
     @State private var cloudBackupService = CloudBackupService()
+    @State private var peptideLogStore = PeptideLogStore()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
@@ -80,6 +81,7 @@ struct calorietrackerApp: App {
                         .environment(weeklyChallengeStore)
                         .environment(workoutDraftStore)
                         .environment(cloudBackupService)
+                        .environment(peptideLogStore)
                 } else {
                     OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
                         .environment(notificationManager)

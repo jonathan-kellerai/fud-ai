@@ -242,10 +242,16 @@ final class NeonBridgeService {
         try validateResponse(response, data: data)
     }
 
-    func peptidesToday(date: String? = nil) async throws -> PeptideTodayResponse {
+    func peptidesToday(date: String? = nil, includeVoided: Bool = false, person: String? = nil) async throws -> PeptideTodayResponse {
         var items: [URLQueryItem] = []
         if let date, !date.isEmpty {
             items.append(URLQueryItem(name: "date", value: date))
+        }
+        if includeVoided {
+            items.append(URLQueryItem(name: "include_voided", value: "1"))
+        }
+        if let person, !person.isEmpty {
+            items.append(URLQueryItem(name: "person", value: person))
         }
         let url = try makeURL(path: "/api/peptides/today", queryItems: items.isEmpty ? nil : items)
         let request = makeRequest(url: url, method: "GET")
@@ -304,7 +310,8 @@ final class NeonBridgeService {
         compound: String?,
         route: String?,
         notes: String?,
-        sourceVial: String?
+        sourceVial: String?,
+        person: String? = nil
     ) async throws -> PeptideAdministration {
         let url = try makeURL(path: "/api/peptides/administrations")
         var request = makeRequest(url: url, method: "POST")
@@ -320,6 +327,7 @@ final class NeonBridgeService {
         if let route, !route.isEmpty { body["route"] = route }
         if let notes, !notes.isEmpty { body["notes"] = notes }
         if let sourceVial, !sourceVial.isEmpty { body["source_vial"] = sourceVial }
+        if let person, !person.isEmpty { body["person"] = person }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse,
@@ -358,6 +366,64 @@ final class NeonBridgeService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
         return try decodePeptideAdministration(data)
+    }
+
+    /// Bridge v1.1 history. Dates are America/New_York civil dates, inclusive.
+    func peptideAdministrations(
+        from: String,
+        to: String,
+        person: String? = nil,
+        compound: String? = nil,
+        status: String? = nil,
+        includeVoided: Bool = false,
+        limit: Int? = nil
+    ) async throws -> PeptideAdministrationList {
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "from", value: from),
+            URLQueryItem(name: "to", value: to),
+        ]
+        if let person, !person.isEmpty { items.append(URLQueryItem(name: "person", value: person)) }
+        if let compound, !compound.isEmpty { items.append(URLQueryItem(name: "compound", value: compound)) }
+        if let status, !status.isEmpty { items.append(URLQueryItem(name: "status", value: status)) }
+        if includeVoided { items.append(URLQueryItem(name: "include_voided", value: "1")) }
+        if let limit, limit > 0 { items.append(URLQueryItem(name: "limit", value: String(limit))) }
+        let url = try makeURL(path: "/api/peptides/administrations", queryItems: items)
+        let request = makeRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        return try JSONDecoder().decode(PeptideAdministrationList.self, from: data)
+    }
+
+    /// POST for the Peptides log queue. Errors carry the bridge's error code.
+    func postPeptideAdministration(body: [String: Any]) async throws -> PeptideAdministration {
+        let url = try makeURL(path: "/api/peptides/administrations")
+        var request = makeRequest(url: url, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validatePeptideWrite(response, data: data)
+        return try decodePeptideAdministration(data)
+    }
+
+    /// PATCH (correct or void) for the Peptides log queue. Errors carry the bridge's error code.
+    func patchPeptideAdministration(id: String, body: [String: Any]) async throws -> PeptideAdministration {
+        let url = try makeURL(path: "/api/peptides/administrations/" + pathComponent(id))
+        var request = makeRequest(url: url, method: "PATCH")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validatePeptideWrite(response, data: data)
+        return try decodePeptideAdministration(data)
+    }
+
+    private func validatePeptideWrite(_ response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) else { return }
+        throw PeptideBridgeWriteError(
+            status: http.statusCode,
+            code: BridgeErrorFormatting.errorCode(from: data),
+            message: BridgeErrorFormatting.userMessage(from: data)
+                ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+        )
     }
 
     private func decodePeptideAdministration(_ data: Data) throws -> PeptideAdministration {
@@ -462,6 +528,15 @@ final class NeonBridgeService {
             )
         }
     }
+}
+
+/// A non-2xx answer to a peptide write. `code` is the bridge's `error` field.
+nonisolated struct PeptideBridgeWriteError: LocalizedError, Equatable {
+    var status: Int
+    var code: String?
+    var message: String
+
+    var errorDescription: String? { message }
 }
 
 enum BridgeErrorFormatting {

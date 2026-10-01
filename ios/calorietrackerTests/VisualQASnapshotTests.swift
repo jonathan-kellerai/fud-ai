@@ -653,6 +653,121 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Peptides log
+
+    func test60PeptidesToday() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("60-peptides-today", heightMultiplier: 2.4) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "jonathan") }
+            }
+        }
+    }
+
+    func test61PeptideLogSheet() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("61-peptide-log-sheet", heightMultiplier: 2, sheet: {
+            PeptideLogSheet(person: "jonathan", compound: "BPC-157")
+        }) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "jonathan") }
+            }
+        }
+    }
+
+    func test62PeptideLogConfirm() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let draft = VisualQAFixtures.peptideReviewDraft()
+        try await eachSize("62-peptide-log-confirm", heightMultiplier: 1.6, sheet: {
+            PeptideLogSheet(person: "jonathan", reviewDraft: draft)
+        }) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "jonathan") }
+            }
+        }
+    }
+
+    func test63PeptideEntryDetail() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("63-peptide-entry-detail", heightMultiplier: 1.8) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") {
+                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideVoidedRowID, clientRequestID: nil)
+                }
+            }
+        }
+    }
+
+    func test64PeptideVials() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("64-peptide-vials", heightMultiplier: 3) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView(person: "jonathan") }
+            }
+        }
+    }
+
+    func test65PeptideVialEditor() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let glow = VisualQAFixtures.peptideGlowVial()
+        try await eachSize("65-peptide-vial-editor", heightMultiplier: 2.4, sheet: {
+            PeptideVialEditor(vial: glow, person: "victoria")
+        }) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView(person: "victoria") }
+            }
+        }
+    }
+
+    func test66PeptideSchedule() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("66-peptide-schedule", heightMultiplier: 2.4) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") { PeptideScheduleView(person: "jonathan") }
+            }
+        }
+    }
+
+    func test67PeptideHistory() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("67-peptide-history", heightMultiplier: 3.5) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") { PeptideHistoryView(person: "jonathan") }
+            }
+        }
+    }
+
+    func test68PeptidesVictoria() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("68-peptides-victoria", heightMultiplier: 2.4) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "victoria") }
+            }
+        }
+    }
+
+    func test69HomePeptideCardWithLogs() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let savedLayout = HomeCardLayout.load()
+        defer { HomeCardLayout.save(order: savedLayout.order, hidden: savedLayout.hidden) }
+        HomeCardLayout.save(order: [.peptides] + HomeCardID.allCases.filter { $0 != .peptides }, hidden: [])
+        try await eachSize("69-home-peptide-card-with-logs", heightMultiplier: 1.6) { _ in
+            VisualQATabShell(selected: .home) {
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+            }
+        }
+    }
+
     // MARK: - Rendering
 
     private func eachSize<Content: View>(
@@ -1199,6 +1314,7 @@ final class VisualQAStores {
     let weeklyChallenge: WeeklyChallengeStore
     let workoutDraft: WorkoutDraftStore
     let cloudBackup: CloudBackupService
+    let peptides: PeptideLogStore
 
     init() {
         let suite = "visual-qa-\(UUID().uuidString)"
@@ -1222,6 +1338,10 @@ final class VisualQAStores {
         healthKit = HealthKitManager()
         profile = ProfileStore()
         chat = ChatStore()
+        peptides = PeptideLogStore(persistence: .inMemory, client: VisualQAPeptideClient(), autoFlush: false)
+        if VisualQAFixtures.seedsPeptides {
+            VisualQAFixtures.seedPeptides(peptides)
+        }
 
         for entry in VisualQAFixtures.sampleFoodEntries() {
             _ = food.addEntry(entry)
@@ -1251,6 +1371,7 @@ final class VisualQAStores {
             .environment(weeklyChallenge)
             .environment(workoutDraft)
             .environment(cloudBackup)
+            .environment(peptides)
             .environment(\.dynamicTypeSize, dynamicType)
             .tint(IronTheme.bloodText)
             .preferredColorScheme(.dark)
@@ -1551,6 +1672,7 @@ enum VisualQAFixtures {
             "/api/peptides/today": (200, Data(peptideTodayJSON().utf8)),
             "/api/peptides/inventory": (200, Data(peptideInventoryJSON.utf8)),
             "/api/peptides/schedules": (200, Data(peptideSchedulesJSON.utf8)),
+            "/api/peptides/administrations": (200, peptideAdministrationsJSON()),
             "/api/cc/ladders": (200, Data(ccLaddersJSON.utf8)),
         ]
     }

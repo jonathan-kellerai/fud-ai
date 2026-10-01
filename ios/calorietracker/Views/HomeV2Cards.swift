@@ -71,6 +71,7 @@ struct HomeV2Cards: View {
     @Environment(HealthKitManager.self) private var healthKitManager
     @Environment(ProfileStore.self) private var profileStore
     @Environment(WorkoutDraftStore.self) private var workoutDraftStore
+    @Environment(PeptideLogStore.self) private var peptideStore
     @AppStorage("healthKitEnabled") private var healthKitEnabled = false
     @AppStorage("weekStartsOnMonday") private var weekStartsOnMonday = true
     @AppStorage(WaterSettings.enabledKey) private var waterTrackingEnabled = false
@@ -103,6 +104,7 @@ struct HomeV2Cards: View {
     @State private var peptideError: String?
     @State private var loggingDay: ProgramV2Day?
     @State private var peptideAction: PeptideAction?
+    @State private var showingPeptideLog = false
 
     private let bridge = NeonBridgeService.shared
 
@@ -149,6 +151,11 @@ struct HomeV2Cards: View {
         }
         .sheet(item: $peptideAction) { action in
             PeptideActionSheet(action: action) {
+                Task { await reloadPeptides() }
+            }
+        }
+        .sheet(isPresented: $showingPeptideLog) {
+            PeptideLogSheet(person: PeptidePersonMemory.load()) {
                 Task { await reloadPeptides() }
             }
         }
@@ -236,6 +243,16 @@ struct HomeV2Cards: View {
                     }
                     .listRowBackground(IronTheme.surface)
                     peptideCard.listRowBackground(IronTheme.surface)
+                    if HomePeptideSummary.hasContent(store: peptideStore, day: peptideDay) {
+                        HomePeptideSummary(day: peptideDay).listRowBackground(IronTheme.surface)
+                    }
+                    NavigationLink {
+                        PeptidesView()
+                    } label: {
+                        Text("Open Peptides")
+                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    }
+                    .listRowBackground(IronTheme.surface)
                 } header: {
                     IronSectionTitle(title: "Peptides")
                 }
@@ -249,8 +266,13 @@ struct HomeV2Cards: View {
         }
     }
 
+    private var peptideDay: String {
+        HomeV2Logic.newYorkDateString(from: selectedDate)
+    }
+
     private var peptideSectionVisible: Bool {
         if peptideError != nil { return true }
+        if peptideStore.hasLocalActivity(today: peptideDay) { return true }
         guard let peptideToday else { return false }
         return HomeV2Logic.peptideCardVisible(
             hasActiveSchedules: peptideToday.hasActiveSchedules || activeScheduleCount > 0,
@@ -813,7 +835,7 @@ struct HomeV2Cards: View {
                     completedRow(row)
                 }
                 Button("Log a dose I type") {
-                    peptideAction = .unscheduled
+                    showingPeptideLog = true
                 }
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
             }
@@ -1054,6 +1076,7 @@ struct HomeV2Cards: View {
                 peptideError = "Peptide schedule couldn’t be loaded."
             }
         }
+        await peptideStore.refreshIfStale()
     }
 }
 
@@ -1121,6 +1144,7 @@ private enum PeptideAction: Identifiable {
 
 private struct PeptideActionSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(PeptideLogStore.self) private var peptideStore
     let action: PeptideAction
     var onFinished: () -> Void
 
@@ -1229,26 +1253,21 @@ private struct PeptideActionSheet: View {
         let typed = Double(doseText.replacingOccurrences(of: ",", with: "."))
         let planned = row.dose
         let doseChanged = typed != nil && planned != nil && abs((typed ?? 0) - (planned ?? 0)) > 0.000_1
-        do {
-            _ = try await bridge.createCompletedAdministration(
-                clientRequestID: clientRequestID,
-                plannedID: row.id,
-                datetime: HomeV2Logic.iso8601NewYork(takenAt),
-                dose: doseChanged ? typed : nil,
-                units: nil,
-                compound: nil,
-                route: nil,
-                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes,
-                sourceVial: nil
-            )
-            onFinished()
-            dismiss()
-        } catch let error as NeonBridgeError where error.isAlreadyCompleted {
-            errorText = "That dose is already logged."
-            onFinished()
-        } catch {
-            errorText = error.localizedDescription
+        // Queued through the Peptides log so it survives being offline.
+        let opID = peptideStore.logPlanned(
+            plannedID: row.id,
+            takenAt: takenAt,
+            dose: doseChanged ? typed : nil,
+            notes: notes,
+            clientRequestID: clientRequestID
+        )
+        await peptideStore.flush()
+        if let message = peptideStore.failureMessage(forOp: opID) {
+            errorText = message
+            return
         }
+        onFinished()
+        dismiss()
     }
 
     private func logUnscheduled() async {
@@ -1285,23 +1304,26 @@ private struct PeptideActionSheet: View {
             errorText = "A reason is required."
             return
         }
-        var changes: [String: Any] = [
-            "datetime": HomeV2Logic.iso8601NewYork(takenAt),
-        ]
+        var changes = PeptideCorrectionChanges(datetime: HomeV2Logic.iso8601NewYork(takenAt))
         if let dose = Double(doseText.replacingOccurrences(of: ",", with: ".")) {
-            changes["dose"] = dose
+            changes.dose = dose
         }
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedNotes.isEmpty { changes["notes"] = trimmedNotes }
+        if !trimmedNotes.isEmpty { changes.notes = trimmedNotes }
         isSaving = true
         defer { isSaving = false }
-        do {
-            _ = try await bridge.correctAdministration(id: row.id, reason: trimmedReason, changes: changes)
-            onFinished()
-            dismiss()
-        } catch {
-            errorText = error.localizedDescription
+        // Queued through the Peptides log so it survives being offline.
+        if let message = peptideStore.correct(rowID: row.id, recordedVia: row.recordedVia, reason: trimmedReason, changes: changes) {
+            errorText = message
+            return
         }
+        await peptideStore.flush()
+        if let message = peptideStore.failureMessage(forRow: row.id) {
+            errorText = message
+            return
+        }
+        onFinished()
+        dismiss()
     }
 
     private func voidDose(_ row: PeptideAdministration) async {
@@ -1309,13 +1331,17 @@ private struct PeptideActionSheet: View {
         guard !trimmedReason.isEmpty else { return }
         isSaving = true
         defer { isSaving = false }
-        do {
-            _ = try await bridge.voidAdministration(id: row.id, reason: trimmedReason)
-            onFinished()
-            dismiss()
-        } catch {
-            errorText = error.localizedDescription
+        if let message = peptideStore.void(rowID: row.id, recordedVia: row.recordedVia, reason: trimmedReason) {
+            errorText = message
+            return
         }
+        await peptideStore.flush()
+        if let message = peptideStore.failureMessage(forRow: row.id) {
+            errorText = message
+            return
+        }
+        onFinished()
+        dismiss()
     }
 
     private func parseISO(_ raw: String) -> Date? {

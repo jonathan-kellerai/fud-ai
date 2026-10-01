@@ -4327,6 +4327,16 @@ struct ProfileView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
                 }
+                NavigationLink {
+                    PeptidesView()
+                } label: {
+                    SettingsHubRowLabel(
+                        title: "Peptides",
+                        systemImage: "syringe.fill",
+                        subtitle: "Log doses, vials, schedule"
+                    )
+                }
+                .accessibilityIdentifier("settings.category.peptides")
             }
             .listRowBackground(AppColors.appCard)
 
