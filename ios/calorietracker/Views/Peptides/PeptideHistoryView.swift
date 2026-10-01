@@ -17,18 +17,22 @@ struct PeptideHistoryView: View {
     @State private var selectedDay: String?
     @State private var showVoided = false
 
-    /// "Now" for the calendar and windows. Visual QA passes a fixed instant.
-    private let referenceDate: Date
+    /// Fixed "now" for the calendar and windows (Visual QA). Nil uses the
+    /// live date, refreshed on foreground and when the day changes.
+    private let referenceDate: Date?
+    @State private var now: Date
 
-    init(person: String = PeptidePerson.jonathan, initialDay: String? = nil, referenceDate: Date = Date()) {
+    init(person: String = PeptidePerson.jonathan, initialDay: String? = nil, referenceDate: Date? = nil) {
+        let start = referenceDate ?? Date()
         _person = State(initialValue: PeptidePerson.normalized(person))
-        let today = PeptideMath.civilDate(referenceDate)
+        let today = PeptideMath.civilDate(start)
         _anchor = State(initialValue: initialDay ?? today)
         _selectedDay = State(initialValue: initialDay)
+        _now = State(initialValue: start)
         self.referenceDate = referenceDate
     }
 
-    private var today: String { PeptideMath.civilDate(referenceDate) }
+    private var today: String { PeptideMath.civilDate(referenceDate ?? now) }
 
     private var personEntries: [PeptideLogEntry] {
         let owner = PeptidePerson.normalized(person)
@@ -67,6 +71,7 @@ struct PeptideHistoryView: View {
         .onChange(of: person) { _, _ in
             compoundFilter = nil
         }
+        .peptideLiveDate($now, fixed: referenceDate != nil)
     }
 
     private var compoundChoices: [String] {

@@ -239,9 +239,10 @@ nonisolated enum PeptideMath {
 
     /// Diluent minus every drawn volume logged from this vial. Never estimated:
     /// one unknown draw makes the whole figure uncalculable.
-    /// `incompleteHistory`: some bridge rows couldn't be read, so a dose from
-    /// this vial may be missing and the figure would look larger than it is.
-    static let incompleteHistoryReason = "Some bridge rows couldn't be read, so a dose from this vial may be missing."
+    /// `incompleteHistory`: bridge history isn't fully synced (a window failed
+    /// or hit its limit, or rows couldn't be read), so a dose from this vial
+    /// may be missing and the figure would look larger than it is.
+    static let incompleteHistoryReason = "Bridge history isn't fully synced yet, so a dose from this vial may be missing."
 
     static func remaining(vial: PeptideVial, entries: [PeptideLogEntry], incompleteHistory: Bool = false) -> Remaining {
         let linked = entries.filter { $0.vialID == vial.id && $0.countsAsTaken }

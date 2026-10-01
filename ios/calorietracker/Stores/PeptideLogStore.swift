@@ -83,6 +83,9 @@ final class PeptideLogStore {
     static let historyUnavailableMessage = "Bridge needs the history update. Showing today and what's saved on this phone."
     static let cancelledCreateReason = "Removed in the app before it synced."
     static let keyConflictMessage = "The bridge already has a different entry with this request ID. Refresh, then retry."
+    static let alreadyCompletedMissingMessage = "The bridge says this dose is already logged, but that entry isn't in the synced history yet. Refresh, then retry."
+    static let cancelUnconfirmedMessage = "Removed in the app, but an earlier send may have reached the bridge and that entry isn't in the synced history yet. Refresh to check."
+    static let plannedTakenElsewhereMessage = "This planned dose was already marked taken somewhere else, so these details weren't saved. Discard this, or log it again as a new dose."
     /// History is fetched in windows of this many days, each with this row limit.
     static let historyWindowDays = 90
     static let historyLimit = 5000
@@ -109,6 +112,10 @@ final class PeptideLogStore {
     private(set) var persistError: String?
     /// Bridge rows in the last refresh that couldn't be read (no id).
     private(set) var skippedRowCount = 0
+    /// True only after a refresh where every history window answered, none
+    /// reached its row limit and no row was skipped. Saved with the log; older
+    /// saves read as false until the next full refresh.
+    private(set) var historyComplete = false
     /// The queued create being sent right now, if any.
     private(set) var inFlightOpID: String?
     @ObservationIgnored private var flushTask: Task<Void, Never>?
@@ -192,12 +199,23 @@ final class PeptideLogStore {
     }
 
     func remaining(for vial: PeptideVial) -> PeptideMath.Remaining {
-        PeptideMath.remaining(vial: vial, entries: entries, incompleteHistory: skippedRowCount > 0)
+        PeptideMath.remaining(vial: vial, entries: entries, incompleteHistory: historyBlocksRemaining(for: vial))
     }
 
     /// Remaining as if `extra` (a dose being reviewed) were logged too.
     func remaining(for vial: PeptideVial, including extra: PeptideLogEntry) -> PeptideMath.Remaining {
-        PeptideMath.remaining(vial: vial, entries: entries + [extra], incompleteHistory: skippedRowCount > 0)
+        PeptideMath.remaining(vial: vial, entries: entries + [extra], incompleteHistory: historyBlocksRemaining(for: vial))
+    }
+
+    /// Remaining is uncalculable while bridge history isn't fully synced: a
+    /// dose from the vial could be in history that hasn't loaded. Exception: a
+    /// phone that has never synced history (no lastSync) and whose vial has
+    /// no doses from the bridge computes from what's on the phone, since the
+    /// vial and its links exist only here and every linked dose is local.
+    func historyBlocksRemaining(for vial: PeptideVial) -> Bool {
+        if historyComplete && skippedRowCount == 0 { return false }
+        if lastSync != nil { return true }
+        return entries.contains { $0.vialID == vial.id && $0.rowID != nil }
     }
 
     func lowStockVials(person: String?) -> [PeptideVial] {
@@ -436,14 +454,23 @@ final class PeptideLogStore {
         // A create stuck in an idempotency conflict is sent again; the bridge
         // answers with the conflict and reconciliation runs after a refresh.
         pendingOps[index].reconciling = nil
+        pendingOps[index].reconcileCause = nil
         didChange()
         scheduleFlush()
     }
 
     /// Drops a refused write. A create the bridge may already have is
     /// cancelled instead (voided there once it answers), never just forgotten.
+    /// A failed create whose bridge row is already known (its follow-up
+    /// couldn't be queued) is simply dropped: the bridge row stays as it is.
     func discard(opID: String) {
         guard let op = pendingOps.first(where: { $0.id == opID }) else { return }
+        if op.kind == .create && op.failed, let row = matchedRow(for: op) {
+            pendingOps.removeAll { $0.id == opID }
+            if row.clientRequestID?.lowercased() != op.id.lowercased() { meta[op.id] = nil }
+            didChange()
+            return
+        }
         if op.kind == .create {
             cancelCreate(opID: opID, reason: "")
             return
@@ -537,7 +564,6 @@ final class PeptideLogStore {
     private func runFlush() async {
         isFlushing = true
         var needsRefresh = false
-        var cancelAfterRefresh: [(clientRequestID: String, reason: String)] = []
         var attempted = Set<String>()
         // Writes queued during the pass (a void for a just-created row, a
         // follow-up correction) are picked up by the same loop.
@@ -559,20 +585,23 @@ final class PeptideLogStore {
             case .success(let row):
                 upsert(row)
                 if let index {
-                    let current = pendingOps.remove(at: index)
-                    if current.kind == .create {
-                        if let reason = current.cancelReason {
-                            queueVoid(for: row, reason: reason)
-                        } else if let edited = current.create, edited != op.create {
-                            queueDifferences(edited, against: row)
-                        }
-                    }
+                    let current = pendingOps[index]
+                    let result: FollowUp = current.kind == .create
+                        ? followUp(for: current, row: row, sent: op.create, isOwnCopy: true)
+                        : .nothingToDo
+                    settle(opID: id, result)
                 }
             case .alreadyDone:
                 if let index {
-                    let current = pendingOps.remove(at: index)
-                    if current.kind == .create, let reason = current.cancelReason, let payload = current.create {
-                        cancelAfterRefresh.append((clientRequestID: payload.clientRequestID, reason: reason))
+                    if pendingOps[index].kind == .create {
+                        // Kept (saved) until the completed row is found and
+                        // any void or correction for it is queued.
+                        pendingOps[index].reconciling = true
+                        pendingOps[index].reconcileCause = PeptidePendingOp.causeAlreadyCompleted
+                        pendingOps[index].attempts += 1
+                        pendingOps[index].lastError = nil
+                    } else {
+                        pendingOps.remove(at: index)
                     }
                 }
                 needsRefresh = true
@@ -588,9 +617,20 @@ final class PeptideLogStore {
             case .rejected(let message):
                 if let index {
                     if pendingOps[index].kind == .create && pendingOps[index].cancelReason != nil {
-                        // Already removed by the user and refused by the bridge: nothing to undo.
-                        let removed = pendingOps.remove(at: index)
-                        meta[removed.id] = nil
+                        if wasUncertain {
+                            // This send was refused, but an earlier one may
+                            // have committed: keep the cancellation and look
+                            // for the row on the next refresh.
+                            pendingOps[index].reconciling = true
+                            pendingOps[index].reconcileCause = PeptidePendingOp.causeRejectedAfterUncertain
+                            pendingOps[index].attempts += 1
+                            pendingOps[index].lastError = nil
+                            needsRefresh = true
+                        } else {
+                            // Removed by the user and the only send was refused: nothing to undo.
+                            let removed = pendingOps.remove(at: index)
+                            meta[removed.id] = nil
+                        }
                     } else {
                         pendingOps[index].failed = true
                         pendingOps[index].attempts += 1
@@ -613,17 +653,8 @@ final class PeptideLogStore {
         }
         isFlushing = false
         if needsRefresh {
+            // Reconciliation (see reconcilePending()) runs inside the refresh.
             await refreshRows(now: Date())
-            var queued = false
-            for item in cancelAfterRefresh {
-                if let row = row(forClientRequestID: item.clientRequestID) {
-                    queued = queueVoid(for: row, reason: item.reason) || queued
-                }
-            }
-            if queued {
-                didChange()
-                scheduleFlush()
-            }
         }
     }
 
@@ -712,6 +743,9 @@ final class PeptideLogStore {
         }
         // Whatever arrived is merged, even when a later window failed.
         mergeFetched(fetched)
+        // Complete only when every window answered, none hit the limit and
+        // nothing was skipped (the /today fallback is never complete).
+        historyComplete = failure == nil && !truncated && skipped == 0 && windowStart > to
         if let failure {
             if fetched.isEmpty && Self.isMissingRoute(failure) {
                 historyUnavailable = true
@@ -786,13 +820,92 @@ final class PeptideLogStore {
         return rows.values.first { $0.clientRequestID?.lowercased() == key }
     }
 
+    /// What happened to the follow-up write of a create whose row is known.
+    private enum FollowUp {
+        /// A void or correction was added to the queue.
+        case queued
+        /// Nothing left to send (or it was already queued).
+        case nothingToDo
+        /// It can't be sent (not the app's own completed row); the message says why.
+        case refused(String)
+    }
+
+    /// Same ownership rule as the public correct/void paths: only COMPLETED
+    /// rows recorded by this app (recorded_via == "app") can change.
+    private static func ownershipRefusal(_ row: PeptideAdministration) -> String? {
+        if let refusal = readOnlyRefusal(recordedVia: row.recordedVia, row: row) { return refusal }
+        if row.status.uppercased() != "COMPLETED" { return readOnlyMessage }
+        return nil
+    }
+
     /// Queues a void for a row the user removed before it synced.
-    @discardableResult
-    private func queueVoid(for row: PeptideAdministration, reason: String) -> Bool {
-        guard !row.voided, row.recordedVia != "peptide-agent", !row.id.isEmpty else { return false }
-        if pendingOps.contains(where: { $0.kind == .void && $0.rowID == row.id }) { return false }
+    private func queueVoid(for row: PeptideAdministration, reason: String) -> FollowUp {
+        if row.voided { return .nothingToDo }
+        if pendingOps.contains(where: { $0.kind == .void && $0.rowID == row.id }) { return .nothingToDo }
+        if let refusal = Self.ownershipRefusal(row) {
+            return .refused("Removed in the app, but the bridge entry can't be voided here. " + refusal)
+        }
+        guard !row.id.isEmpty else { return .refused("The bridge entry has no id, so it can't be voided.") }
         pendingOps.append(.makeVoid(rowID: row.id, reason: reason))
-        return true
+        return .queued
+    }
+
+    /// The follow-up for a create once its bridge row is known. `isOwnCopy`:
+    /// the row carries this create's client_request_id (or is the POST answer).
+    /// Otherwise it is a completion of the same planned dose made elsewhere.
+    private func followUp(
+        for op: PeptidePendingOp,
+        row: PeptideAdministration,
+        sent: PeptideCreatePayload?,
+        isOwnCopy: Bool
+    ) -> FollowUp {
+        guard let payload = op.create else { return .nothingToDo }
+        if let reason = op.cancelReason {
+            // Someone else's completion isn't the app's to void.
+            return isOwnCopy ? queueVoid(for: row, reason: reason) : .nothingToDo
+        }
+        if isOwnCopy {
+            if let sent, sent == payload { return .nothingToDo }
+            return queueDifferences(payload, against: row)
+        }
+        // "Mark taken" with nothing typed: the planned dose is taken, as asked.
+        if payload.dose == nil && payload.notes == nil { return .nothingToDo }
+        return .refused(Self.plannedTakenElsewhereMessage)
+    }
+
+    /// Drops a create whose follow-up is queued (or not needed). When the
+    /// follow-up can't be sent, the create stays saved as a failed
+    /// reconciliation with the reason, for Retry or Discard.
+    @discardableResult
+    private func settle(opID: String, _ result: FollowUp) -> Bool {
+        switch result {
+        case .queued:
+            pendingOps.removeAll { $0.id == opID }
+            return true
+        case .nothingToDo:
+            pendingOps.removeAll { $0.id == opID }
+            return false
+        case .refused(let message):
+            if let index = pendingOps.firstIndex(where: { $0.id == opID }) {
+                pendingOps[index].reconciling = true
+                pendingOps[index].failed = true
+                pendingOps[index].lastError = message
+            }
+            return false
+        }
+    }
+
+    /// The bridge row for a reconciling create: by client_request_id, or for
+    /// a planned dose the bridge called already_completed, by planned_id /
+    /// completed_id.
+    private func matchedRow(for op: PeptidePendingOp) -> PeptideAdministration? {
+        guard let payload = op.create else { return nil }
+        if let row = row(forClientRequestID: payload.clientRequestID) { return row }
+        guard op.reconcileCause == PeptidePendingOp.causeAlreadyCompleted, let plannedID = payload.plannedID else { return nil }
+        if let completedID = rows[plannedID]?.completedId, let row = rows[completedID] { return row }
+        return rows.values.first {
+            $0.plannedId == plannedID && $0.status.uppercased() == "COMPLETED" && !$0.voided
+        }
     }
 
     private func enqueueCreate(_ payload: PeptideCreatePayload) {
@@ -807,7 +920,7 @@ final class PeptideLogStore {
 
     /// An edit made while the create was in flight (or after an idempotency
     /// conflict) becomes a correction so nothing the user typed is lost.
-    private func queueDifferences(_ payload: PeptideCreatePayload, against row: PeptideAdministration) {
+    private func queueDifferences(_ payload: PeptideCreatePayload, against row: PeptideAdministration) -> FollowUp {
         var changes = PeptideCorrectionChanges()
         if let typed = PeptideMath.parseISO8601(payload.datetime),
            let stored = PeptideMath.parseISO8601(row.datetime),
@@ -822,38 +935,54 @@ final class PeptideLogStore {
             if let compound = payload.compound, compound != row.compound { changes.compound = compound }
             if let units = payload.units, units != (row.units ?? "") { changes.units = units }
         }
-        guard !changes.isEmpty, !row.voided, row.recordedVia != "peptide-agent" else { return }
+        guard !changes.isEmpty, !row.voided else { return .nothingToDo }
+        if let refusal = Self.ownershipRefusal(row) {
+            return .refused("Edits made before this entry synced couldn't be sent. " + refusal)
+        }
         pendingOps.append(.makeCorrect(rowID: row.id, reason: "Edited in the app before it synced.", changes: changes))
+        return .queued
     }
 
-    /// After a successful refresh: each create in an idempotency conflict is
-    /// matched to the server row with its client_request_id. The follow-up
-    /// correction (or void) is queued first; only then is the create dropped.
-    /// Not found: it stays queued, marked failed, for Retry.
+    /// After a successful refresh: each reconciling create (idempotency
+    /// conflict, already_completed, or a refused cancellation after an
+    /// uncertain send) and each uncertain create is matched to its bridge row.
+    /// The follow-up void or correction is queued first; only then is the
+    /// create dropped. Not found: it stays saved, marked failed with why, and
+    /// is checked again on every refresh.
     private func reconcilePending() {
         var changed = false
         var queued = false
         for op in pendingOps where op.kind == .create && op.id != inFlightOpID
-            && (op.isReconciling || op.isUncertain) && !op.failed {
+            && (op.isReconciling || (op.isUncertain && !op.failed)) {
             guard let payload = op.create else { continue }
-            if let row = row(forClientRequestID: payload.clientRequestID) {
+            if let row = matchedRow(for: op) {
                 // The bridge has it: the create is done; queue what's left.
-                if let reason = op.cancelReason {
-                    queueVoid(for: row, reason: reason)
-                } else {
-                    queueDifferences(payload, against: row)
-                }
-                pendingOps.removeAll { $0.id == op.id }
-                queued = true
+                let isOwnCopy = row.clientRequestID?.lowercased() == payload.clientRequestID.lowercased()
+                let result = followUp(for: op, row: row, sent: nil, isOwnCopy: isOwnCopy)
+                if settle(opID: op.id, result) { queued = true }
+                if !isOwnCopy && !pendingOps.contains(where: { $0.id == op.id }) { meta[op.id] = nil }
                 changed = true
-            } else if op.isReconciling, let index = pendingOps.firstIndex(where: { $0.id == op.id }) {
-                pendingOps[index].failed = true
-                pendingOps[index].lastError = Self.keyConflictMessage
+            } else if op.isReconciling {
+                if op.reconcileCause == PeptidePendingOp.causeRejectedAfterUncertain && historyComplete {
+                    // Full history has no row with this request id: no send
+                    // reached the bridge, so the removal is complete.
+                    pendingOps.removeAll { $0.id == op.id }
+                    meta[op.id] = nil
+                } else if let index = pendingOps.firstIndex(where: { $0.id == op.id }) {
+                    pendingOps[index].failed = true
+                    pendingOps[index].lastError = Self.reconcileMessage(cause: op.reconcileCause)
+                }
                 changed = true
             }
         }
         if changed { didChange() }
         if queued { scheduleFlush() }
+    }
+
+    private static func reconcileMessage(cause: String?) -> String {
+        if cause == PeptidePendingOp.causeAlreadyCompleted { return alreadyCompletedMissingMessage }
+        if cause == PeptidePendingOp.causeRejectedAfterUncertain { return cancelUnconfirmedMessage }
+        return keyConflictMessage
     }
 
     private func scheduleFlush() {
@@ -873,9 +1002,11 @@ final class PeptideLogStore {
         for op in pendingOps where op.kind != .create {
             if let rowID = op.rowID { opsByRow[rowID, default: []].append(op) }
         }
-        var cancelled: [String: PeptidePendingOp] = [:]
-        for op in pendingOps where op.kind == .create && op.cancelReason != nil {
-            if let crid = op.create?.clientRequestID { cancelled[crid.lowercased()] = op }
+        // Creates still queued although the bridge row is known (a removal or
+        // edit waiting to be queued, or one that couldn't be sent).
+        var createOps: [String: PeptidePendingOp] = [:]
+        for op in pendingOps where op.kind == .create {
+            if let crid = op.create?.clientRequestID { createOps[crid.lowercased()] = op }
         }
         var synced = Set<String>()
         var result: [PeptideLogEntry] = []
@@ -885,12 +1016,15 @@ final class PeptideLogStore {
             for op in opsByRow[row.id] ?? [] {
                 apply(op, to: &entry)
             }
-            if let crid = row.clientRequestID, let op = cancelled[crid.lowercased()], !entry.voided {
-                // Removed by the user before the create's answer arrived.
-                entry.voided = true
-                entry.voidReason = op.cancelReason
+            if let crid = row.clientRequestID, let op = createOps[crid.lowercased()],
+               op.cancelReason == nil || !entry.voided {
+                if op.cancelReason != nil {
+                    // Removed by the user before the create's answer arrived.
+                    entry.voided = true
+                    entry.voidReason = op.cancelReason
+                }
                 entry.pendingOpID = op.id
-                entry.syncState = .pending
+                entry.syncState = op.failed ? .failed(op.lastError ?? "The bridge didn't accept this change.") : .pending
             }
             result.append(entry)
         }
@@ -1040,9 +1174,10 @@ final class PeptideLogStore {
         var vials: [PeptideVial]
         var schedules: [PeptideUserSchedule]
         var lastSync: Date?
+        var historyComplete: Bool
 
         enum CodingKeys: String, CodingKey {
-            case version, rows, pendingOps, meta, vials, schedules, lastSync
+            case version, rows, pendingOps, meta, vials, schedules, lastSync, historyComplete
         }
 
         init(
@@ -1052,7 +1187,8 @@ final class PeptideLogStore {
             meta: [PeptideLocalMeta],
             vials: [PeptideVial],
             schedules: [PeptideUserSchedule],
-            lastSync: Date?
+            lastSync: Date?,
+            historyComplete: Bool
         ) {
             self.version = version
             self.rows = rows
@@ -1061,6 +1197,7 @@ final class PeptideLogStore {
             self.vials = vials
             self.schedules = schedules
             self.lastSync = lastSync
+            self.historyComplete = historyComplete
         }
 
         init(from decoder: Decoder) throws {
@@ -1077,6 +1214,8 @@ final class PeptideLogStore {
             let lossySchedules = (try? container.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
             schedules = lossySchedules.compactMap(\.value)
             lastSync = try? container.decodeIfPresent(Date.self, forKey: .lastSync)
+            // Older saves have no flag: not complete until the next full refresh.
+            historyComplete = (try? container.decodeIfPresent(Bool.self, forKey: .historyComplete)) ?? false
         }
 
         func encode(to encoder: Encoder) throws {
@@ -1088,6 +1227,7 @@ final class PeptideLogStore {
             try container.encode(vials, forKey: .vials)
             try container.encode(schedules, forKey: .schedules)
             try container.encodeIfPresent(lastSync, forKey: .lastSync)
+            try container.encode(historyComplete, forKey: .historyComplete)
         }
     }
 
@@ -1130,6 +1270,7 @@ final class PeptideLogStore {
         vials = snapshot.vials
         schedules = snapshot.schedules
         lastSync = snapshot.lastSync
+        historyComplete = snapshot.historyComplete
     }
 
     /// Never overwrite data that could not be read: set it aside first.
@@ -1149,7 +1290,8 @@ final class PeptideLogStore {
             meta: Array(meta.values),
             vials: vials,
             schedules: schedules,
-            lastSync: lastSync
+            lastSync: lastSync,
+            historyComplete: historyComplete
         )
         guard let data = try? JSONEncoder().encode(snapshot) else {
             persistError = "Peptide log couldn't be encoded."

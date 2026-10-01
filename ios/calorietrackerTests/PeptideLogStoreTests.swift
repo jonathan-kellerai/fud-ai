@@ -119,8 +119,19 @@ struct PeptideLogStoreTests {
     @Test func alreadyCompletedIsTreatedAsDone() async throws {
         let bridge = FakePeptideBridge()
         bridge.createError = PeptideBridgeWriteError(status: 409, code: "already_completed", message: "already_completed")
+        bridge.history = [
+            PeptideAdministration(
+                id: "srv-done",
+                datetime: PeptideMath.iso8601NewYork(Date(timeIntervalSince1970: 1_790_000_000)),
+                compound: "BPC-157",
+                dose: 500,
+                units: "mcg",
+                recordedVia: "app",
+                clientRequestID: "crid-done"
+            ),
+        ]
         let store = makeStore(bridge)
-        _ = try #require(store.log(draft()))
+        _ = try #require(store.log(draft(), clientRequestID: "crid-done"))
         await store.flush()
         #expect(store.pendingOps.isEmpty)
         #expect(store.failedCount == 0)
@@ -203,20 +214,14 @@ struct PeptideLogStoreTests {
 
     // MARK: Uncertain creates
 
-    /// Waits (bounded) until the fake bridge holds a create in flight.
-    private func waitForSuspendedCreate(_ bridge: FakePeptideBridge) async {
-        for _ in 0..<1_000 where !bridge.hasSuspendedCreate {
-            await Task.yield()
-        }
-    }
-
     @Test func voidDuringPostQueuesVoidForTheReturnedRow() async throws {
         let bridge = FakePeptideBridge()
         bridge.suspendCreates = true
         let store = makeStore(bridge)
         let crid = try #require(store.log(draft()))
         let flushing = Task { await store.flush() }
-        await waitForSuspendedCreate(bridge)
+        let started = await bridge.waitForSuspendedCreate()
+        try #require(started)
         #expect(bridge.hasSuspendedCreate)
         #expect(store.inFlightOpID == crid)
 
@@ -283,7 +288,8 @@ struct PeptideLogStoreTests {
         let store = makeStore(bridge)
         let first = try #require(store.log(draft()))
         let flushing = Task { await store.flush() }
-        await waitForSuspendedCreate(bridge)
+        let started = await bridge.waitForSuspendedCreate()
+        try #require(started)
         let second = try #require(store.log(draft(compound: "TB-500", amount: "2", units: "mg")))
         bridge.suspendCreates = false
         let waiting = Task { await store.flush() }
@@ -378,6 +384,7 @@ struct PeptideLogStoreTests {
         await store.refresh()
         #expect(store.lastSyncError?.contains("limit") == true)
         #expect(store.rows.count == PeptideLogStore.historyLimit)
+        #expect(!store.historyComplete)
     }
 
     @Test func olderRefreshDoesNotOverwriteANewerRow() async throws {
@@ -440,10 +447,330 @@ struct PeptideLogStoreTests {
         #expect(store.remaining(for: vial).calculable)
         await store.refresh()
         #expect(store.skippedRowCount > 0)
+        #expect(!store.historyComplete)
         #expect(store.syncWarning != nil)
         let remaining = store.remaining(for: vial)
         #expect(!remaining.calculable)
         #expect(remaining.reason == PeptideMath.incompleteHistoryReason)
+    }
+
+    // MARK: History completeness
+
+    private func bpcVial() -> PeptideVial {
+        PeptideVial(
+            id: "v-bpc",
+            person: "jonathan",
+            compound: "BPC-157",
+            components: [PeptideVialComponent(name: "BPC-157", amount: 10, unit: "mg")],
+            diluentML: 2,
+            concentrationConfirmed: true
+        )
+    }
+
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("peptide-log-test-\(UUID().uuidString).json")
+    }
+
+    @Test func remainingIsUncalculableWhileHistoryIsIncomplete() async throws {
+        let bridge = FakePeptideBridge()
+        let store = makeStore(bridge)
+        let vial = bpcVial()
+        store.saveVial(vial)
+        var local = draft()
+        local.vialID = vial.id
+        _ = try #require(store.log(local))
+        // Never synced and the only dose is on this phone: computed from it.
+        #expect(!store.historyComplete)
+        #expect(store.remaining(for: vial).calculable)
+
+        await store.refresh()
+        #expect(store.historyComplete)
+        let full = store.remaining(for: vial)
+        #expect(full.calculable)
+        #expect(full.linkedCount == 1)
+
+        // One window fails: incomplete until a full refresh succeeds again.
+        bridge.failingWindow = 2
+        await store.refresh()
+        #expect(!store.historyComplete)
+        let blocked = store.remaining(for: vial)
+        #expect(!blocked.calculable)
+        #expect(blocked.reason == PeptideMath.incompleteHistoryReason)
+
+        bridge.failingWindow = nil
+        await store.refresh()
+        #expect(store.historyComplete)
+        #expect(store.remaining(for: vial).calculable)
+    }
+
+    @Test func historyCompleteIsSavedAndOldSavesStartIncomplete() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let bridge = FakePeptideBridge()
+        let store = PeptideLogStore(persistence: .file(url), client: bridge, autoFlush: false)
+        await store.refresh()
+        #expect(store.historyComplete)
+        #expect(PeptideLogStore(persistence: .file(url), client: bridge, autoFlush: false).historyComplete)
+
+        bridge.failingWindow = 0
+        await store.refresh()
+        #expect(!store.historyComplete)
+        #expect(!PeptideLogStore(persistence: .file(url), client: bridge, autoFlush: false).historyComplete)
+
+        // A save from before the flag existed reads as incomplete.
+        let old = #"{"version":1,"rows":[],"pendingOps":[],"meta":[],"vials":[],"schedules":[],"lastSync":800000000}"#
+        try Data(old.utf8).write(to: url)
+        let upgraded = PeptideLogStore(persistence: .file(url), client: bridge, autoFlush: false)
+        #expect(!upgraded.historyComplete)
+        #expect(upgraded.lastSync != nil)
+        let vial = bpcVial()
+        upgraded.saveVial(vial)
+        #expect(upgraded.remaining(for: vial).reason == PeptideMath.incompleteHistoryReason)
+
+        bridge.failingWindow = nil
+        await upgraded.refresh()
+        #expect(upgraded.historyComplete)
+        #expect(upgraded.remaining(for: vial).calculable)
+    }
+
+    // MARK: already_completed
+
+    @Test func alreadyCompletedKeepsASavedOpUntilTheRowIsFound() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let bridge = FakePeptideBridge()
+        bridge.createError = PeptideBridgeWriteError(status: 409, code: "already_completed", message: "already_completed")
+        bridge.historyError = URLError(.notConnectedToInternet)
+        let store = PeptideLogStore(persistence: .file(url), client: bridge, autoFlush: false)
+        let crid = try #require(store.log(draft(), clientRequestID: "crid-ac"))
+        await store.flush()
+        let op = try #require(store.pendingOps.first)
+        #expect(op.isReconciling)
+        #expect(op.reconcileCause == PeptidePendingOp.causeAlreadyCompleted)
+        #expect(!op.failed)
+        #expect(store.entries.count == 1)
+
+        // Saved: it survives a relaunch, and it isn't sent again while it waits.
+        let relaunched = PeptideLogStore(persistence: .file(url), client: bridge, autoFlush: false)
+        #expect(relaunched.pendingOps.first?.reconcileCause == PeptidePendingOp.causeAlreadyCompleted)
+        await relaunched.flush()
+        #expect(bridge.createCalls.count == 1)
+
+        // History loads without the row: kept, visible as failed with why.
+        bridge.historyError = nil
+        await relaunched.refresh()
+        #expect(relaunched.pendingOps.count == 1)
+        #expect(relaunched.pendingOps.first?.failed == true)
+        #expect(relaunched.pendingOps.first?.lastError == PeptideLogStore.alreadyCompletedMissingMessage)
+        #expect(relaunched.entries.first?.syncState == .failed(PeptideLogStore.alreadyCompletedMissingMessage))
+
+        // Removed meanwhile: once the row shows up, its void is queued and sent.
+        let entry = try #require(relaunched.entries.first)
+        #expect(relaunched.void(entry, reason: "Duplicate") == nil)
+        #expect(relaunched.pendingOps.count == 1)
+        bridge.history = [
+            PeptideAdministration(
+                id: "srv-ac",
+                datetime: PeptideMath.iso8601NewYork(Date(timeIntervalSince1970: 1_790_000_000)),
+                compound: "BPC-157",
+                dose: 500,
+                units: "mcg",
+                recordedVia: "app",
+                clientRequestID: crid
+            ),
+        ]
+        await relaunched.refresh()
+        #expect(bridge.voidCalls.count == 1)
+        #expect(bridge.voidCalls.first?.rowID == "srv-ac")
+        #expect(bridge.voidCalls.first?.reason == "Duplicate")
+        #expect(relaunched.pendingOps.isEmpty)
+        #expect(bridge.createCalls.count == 1)
+    }
+
+    @Test func alreadyCompletedPlannedDoseIsMatchedByPlannedID() async throws {
+        let bridge = FakePeptideBridge()
+        bridge.createError = PeptideBridgeWriteError(status: 409, code: "already_completed", message: "already_completed")
+        bridge.history = [
+            PeptideAdministration(
+                id: "plan-1",
+                datetime: "2026-09-20T13:00:00Z",
+                compound: "Tesamorelin",
+                dose: 1.4,
+                units: "mg",
+                status: "PLANNED",
+                completedId: "done-1",
+                recordedVia: "peptide-agent"
+            ),
+            PeptideAdministration(
+                id: "done-1",
+                datetime: "2026-09-20T13:05:00Z",
+                compound: "Tesamorelin",
+                dose: 1.4,
+                units: "mg",
+                plannedId: "plan-1",
+                recordedVia: "peptide-agent"
+            ),
+        ]
+        let store = makeStore(bridge)
+        let takenAt = Date(timeIntervalSince1970: 1_790_000_000)
+        store.logPlanned(plannedID: "plan-1", takenAt: takenAt, dose: nil, notes: nil, clientRequestID: "crid-plan-a")
+        store.logPlanned(plannedID: "plan-1", takenAt: takenAt, dose: nil, notes: "Felt fine", clientRequestID: "crid-plan-b")
+        await store.flush()
+
+        // Nothing typed: the planned dose is taken, as asked.
+        #expect(!store.isQueued("crid-plan-a"))
+        // Notes typed: kept and explained; nothing is written to the assistant's row.
+        let kept = try #require(store.pendingOps.first { $0.id == "crid-plan-b" })
+        #expect(kept.failed)
+        #expect(kept.lastError == PeptideLogStore.plannedTakenElsewhereMessage)
+        #expect(bridge.correctCalls.isEmpty)
+        #expect(bridge.voidCalls.isEmpty)
+
+        store.discard(opID: "crid-plan-b")
+        #expect(store.pendingOps.isEmpty)
+        #expect(bridge.voidCalls.isEmpty)
+    }
+
+    // MARK: Ownership of follow-up writes
+
+    @Test func reconciledEditsAreNotSentToARowTheAppDidNotRecord() async throws {
+        let bridge = FakePeptideBridge()
+        bridge.createError = PeptideBridgeWriteError(status: 409, code: "idempotency_key_conflict", message: "idempotency_key_conflict")
+        bridge.history = [
+            PeptideAdministration(
+                id: "srv-x",
+                datetime: PeptideMath.iso8601NewYork(Date(timeIntervalSince1970: 1_790_000_000)),
+                compound: "BPC-157",
+                dose: 300,
+                units: "mcg",
+                clientRequestID: "crid-own"
+            ),
+        ]
+        let store = makeStore(bridge)
+        _ = try #require(store.log(draft(), clientRequestID: "crid-own"))
+        await store.flush()
+
+        let op = try #require(store.pendingOps.first { $0.id == "crid-own" })
+        #expect(op.failed)
+        #expect(op.isReconciling)
+        #expect(op.lastError?.contains(PeptideLogStore.unknownOriginMessage) == true)
+        #expect(bridge.correctCalls.isEmpty)
+        let entry = try #require(store.entries.first { $0.rowID == "srv-x" })
+        #expect(entry.syncState.failureMessage != nil)
+        #expect(entry.pendingOpID == "crid-own")
+
+        // Discard leaves the bridge row as it is.
+        store.discard(opID: "crid-own")
+        #expect(store.pendingOps.isEmpty)
+        #expect(bridge.correctCalls.isEmpty)
+        #expect(bridge.voidCalls.isEmpty)
+    }
+
+    @Test func voidDuringPostIsNotSentForARowTheAssistantRecorded() async throws {
+        let bridge = FakePeptideBridge()
+        bridge.suspendCreates = true
+        bridge.createRecordedVia = "peptide-agent"
+        let store = makeStore(bridge)
+        let crid = try #require(store.log(draft()))
+        let flushing = Task { await store.flush() }
+        let started = await bridge.waitForSuspendedCreate()
+        try #require(started)
+        let entry = try #require(store.entries.first)
+        #expect(store.void(entry, reason: "Wrong vial") == nil)
+
+        bridge.suspendCreates = false
+        bridge.resumeCreate()
+        await flushing.value
+
+        #expect(bridge.voidCalls.isEmpty)
+        let op = try #require(store.pendingOps.first { $0.id == crid })
+        #expect(op.failed)
+        #expect(op.lastError?.contains(PeptideLogStore.readOnlyMessage) == true)
+        #expect(store.entries.first?.syncState.failureMessage != nil)
+    }
+
+    // MARK: Refused cancelled creates
+
+    @Test func refusedCancelledCreateWithNoEarlierSendIsRemoved() async throws {
+        let bridge = FakePeptideBridge()
+        bridge.suspendCreates = true
+        bridge.createError = PeptideBridgeWriteError(status: 400, code: "invalid", message: "bad")
+        let store = makeStore(bridge)
+        _ = try #require(store.log(draft()))
+        let flushing = Task { await store.flush() }
+        let started = await bridge.waitForSuspendedCreate()
+        try #require(started)
+        let entry = try #require(store.entries.first)
+        #expect(store.void(entry, reason: "Wrong vial") == nil)
+        #expect(store.pendingOps.first?.cancelReason == "Wrong vial")
+
+        bridge.suspendCreates = false
+        bridge.resumeCreate()
+        await flushing.value
+
+        // The only send was refused: nothing reached the bridge.
+        #expect(store.pendingOps.isEmpty)
+        #expect(store.entries.isEmpty)
+        #expect(bridge.historyCalls == 0)
+    }
+
+    @Test func refusedCancelledCreateAfterAnUncertainSendIsReconciled() async throws {
+        let bridge = FakePeptideBridge()
+        bridge.createError = URLError(.timedOut)
+        let store = makeStore(bridge)
+        let crid = try #require(store.log(draft()))
+        await store.flush()
+        let entry = try #require(store.entries.first)
+        #expect(store.isCreateUncertain(entry))
+        #expect(store.void(entry, reason: "Wrong vial") == nil)
+
+        // The retry is refused and history can't be read: the cancellation is kept.
+        bridge.createError = PeptideBridgeWriteError(status: 400, code: "invalid", message: "bad")
+        bridge.historyError = URLError(.notConnectedToInternet)
+        await store.flush()
+        let op = try #require(store.pendingOps.first)
+        #expect(op.cancelReason == "Wrong vial")
+        #expect(op.isReconciling)
+        #expect(op.reconcileCause == PeptidePendingOp.causeRejectedAfterUncertain)
+        #expect(bridge.createCalls.count == 2)
+
+        // The timed-out send had reached the bridge: that row is voided.
+        bridge.historyError = nil
+        bridge.history = [
+            PeptideAdministration(
+                id: "srv-u",
+                datetime: PeptideMath.iso8601NewYork(Date(timeIntervalSince1970: 1_790_000_000)),
+                compound: "BPC-157",
+                dose: 500,
+                units: "mcg",
+                recordedVia: "app",
+                clientRequestID: crid
+            ),
+        ]
+        await store.refresh()
+        #expect(bridge.voidCalls.count == 1)
+        #expect(bridge.voidCalls.first?.rowID == "srv-u")
+        #expect(bridge.voidCalls.first?.reason == "Wrong vial")
+        #expect(store.pendingOps.isEmpty)
+        #expect(bridge.createCalls.count == 2)
+    }
+
+    @Test func refusedCancelledCreateIsDroppedWhenFullHistoryHasNoRow() async throws {
+        let bridge = FakePeptideBridge()
+        bridge.createError = URLError(.timedOut)
+        let store = makeStore(bridge)
+        _ = try #require(store.log(draft()))
+        await store.flush()
+        let entry = try #require(store.entries.first)
+        #expect(store.void(entry, reason: "Wrong vial") == nil)
+
+        bridge.createError = PeptideBridgeWriteError(status: 400, code: "invalid", message: "bad")
+        await store.flush()
+        // A full refresh ran and has no row with this request id.
+        #expect(store.historyComplete)
+        #expect(store.pendingOps.isEmpty)
+        #expect(store.entries.isEmpty)
+        #expect(bridge.voidCalls.isEmpty)
     }
 }
 
@@ -465,7 +792,14 @@ final class FakePeptideBridge: PeptideBridgeClient {
     var voidCalls: [(rowID: String, reason: String)] = []
     /// When true, `create` waits until `resumeCreate()` (a POST in flight).
     var suspendCreates = false
+    /// recorded_via on rows `create` returns.
+    var createRecordedVia: String? = "app"
+    /// Zero-based window (counted per refresh) that fails with `URLError(.timedOut)`.
+    var failingWindow: Int?
+    private var windowInRefresh = 0
     private var createContinuation: CheckedContinuation<Void, Never>?
+    /// Tests waiting for a create to suspend, by token.
+    private var suspendWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     nonisolated deinit {}
 
@@ -477,11 +811,51 @@ final class FakePeptideBridge: PeptideBridgeClient {
         continuation?.resume()
     }
 
+    /// Handshake: returns true once `create` is suspended (immediately if it
+    /// already is), or false after `seconds` so a test can't hang.
+    func waitForSuspendedCreate(seconds: Double = 5) async -> Bool {
+        if createContinuation != nil { return true }
+        let token = UUID()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            suspendWaiters[token] = continuation
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                self?.finishWaiter(token, started: false)
+            }
+        }
+    }
+
+    private func finishWaiter(_ token: UUID, started: Bool) {
+        guard let continuation = suspendWaiters.removeValue(forKey: token) else { return }
+        continuation.resume(returning: started)
+    }
+
+    private func notifySuspended() {
+        for token in Array(suspendWaiters.keys) {
+            finishWaiter(token, started: true)
+        }
+    }
+
+    /// Position of the window just recorded within its refresh: windows of
+    /// one refresh are consecutive, a new refresh starts over.
+    private func windowIndex(from: String) -> Int {
+        let count = historyWindows.count
+        let previous: (from: String, to: String, limit: Int)? = count >= 2 ? historyWindows[count - 2] : nil
+        if let previous, ReconMath.addDays(previous.to, 1) == from {
+            windowInRefresh += 1
+        } else {
+            windowInRefresh = 0
+        }
+        return windowInRefresh
+    }
+
     func fetchAdministrations(from: String, to: String, limit: Int) async throws -> PeptideAdministrationList {
         historyCalls += 1
         let isFirst = historyWindows.isEmpty
         historyWindows.append((from: from, to: to, limit: limit))
+        let index = windowIndex(from: from)
         if let historyError { throw historyError }
+        if let failingWindow, failingWindow == index { throw URLError(.timedOut) }
         // Every window answers with the whole scripted history (tests don't
         // depend on the wall clock); the store merges by id.
         return PeptideAdministrationList(
@@ -507,6 +881,7 @@ final class FakePeptideBridge: PeptideBridgeClient {
         if suspendCreates {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 createContinuation = continuation
+                notifySuspended()
             }
         }
         if let createError { throw createError }
@@ -519,7 +894,7 @@ final class FakePeptideBridge: PeptideBridgeClient {
             route: payload.route,
             notes: payload.notes,
             person: payload.person,
-            recordedVia: "app",
+            recordedVia: createRecordedVia,
             clientRequestID: payload.clientRequestID
         )
         history.removeAll { $0.id == row.id }

@@ -28,16 +28,20 @@ struct PeptidesView: View {
     @State private var showVoided = false
     @State private var actionMessage: String?
 
-    /// "Now" for the date strip and due list. Visual QA passes a fixed instant.
-    private let referenceDate: Date
+    /// Fixed "now" for the date strip and due list (Visual QA). Nil uses the
+    /// live date, refreshed on foreground and when the day changes.
+    private let referenceDate: Date?
+    @State private var now: Date
 
-    init(initialPerson: String? = nil, initialDay: String? = nil, referenceDate: Date = Date()) {
+    init(initialPerson: String? = nil, initialDay: String? = nil, referenceDate: Date? = nil) {
+        let start = referenceDate ?? Date()
         _person = State(initialValue: initialPerson.map(PeptidePerson.normalized) ?? PeptidePersonMemory.load())
-        _day = State(initialValue: initialDay ?? PeptideMath.civilDate(referenceDate))
+        _day = State(initialValue: initialDay ?? PeptideMath.civilDate(start))
+        _now = State(initialValue: start)
         self.referenceDate = referenceDate
     }
 
-    private var today: String { PeptideMath.civilDate(referenceDate) }
+    private var today: String { PeptideMath.civilDate(referenceDate ?? now) }
 
     var body: some View {
         List {
@@ -67,6 +71,11 @@ struct PeptidesView: View {
         }
         .onChange(of: person) { _, newValue in
             PeptidePersonMemory.save(newValue)
+        }
+        .peptideLiveDate($now, fixed: referenceDate != nil)
+        .onChange(of: today) { oldToday, newToday in
+            // Showing "Today" when the date rolls over: follow it.
+            if day == oldToday { day = newToday }
         }
         .sheet(item: $logRequest) { request in
             PeptideLogSheetHost(request: request)

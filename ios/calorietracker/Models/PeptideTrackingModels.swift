@@ -301,6 +301,12 @@ nonisolated struct PeptidePendingOp: Codable, Equatable, Identifiable {
     /// sent) until the matching server row is found and the user's edits are
     /// queued as a correction.
     var reconciling: Bool? = nil
+    /// Creates only: why it is reconciling (nil = idempotency conflict).
+    /// Kept in the saved queue so recovery survives an app restart.
+    var reconcileCause: String? = nil
+
+    static let causeAlreadyCompleted = "already_completed"
+    static let causeRejectedAfterUncertain = "rejected_after_uncertain"
 
     var isUncertain: Bool { outcomeUncertain == true }
     var isReconciling: Bool { reconciling == true }

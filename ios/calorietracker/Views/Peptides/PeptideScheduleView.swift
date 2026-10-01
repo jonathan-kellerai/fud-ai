@@ -19,15 +19,18 @@ struct PeptideScheduleView: View {
     @State private var person: String
     @State private var editorTarget: PeptideScheduleEditorTarget?
 
-    /// "Now" for adherence. Visual QA passes a fixed instant.
-    private let referenceDate: Date
+    /// Fixed "now" for adherence (Visual QA). Nil uses the live date,
+    /// refreshed on foreground and when the day changes.
+    private let referenceDate: Date?
+    @State private var now: Date
 
-    init(person: String = PeptidePerson.jonathan, referenceDate: Date = Date()) {
+    init(person: String = PeptidePerson.jonathan, referenceDate: Date? = nil) {
         _person = State(initialValue: PeptidePerson.normalized(person))
+        _now = State(initialValue: referenceDate ?? Date())
         self.referenceDate = referenceDate
     }
 
-    private var today: String { PeptideMath.civilDate(referenceDate) }
+    private var today: String { PeptideMath.civilDate(referenceDate ?? now) }
 
     var body: some View {
         ScrollView {
@@ -50,6 +53,7 @@ struct PeptideScheduleView: View {
         .navigationTitle("Schedule & adherence")
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.refreshIfStale() }
+        .peptideLiveDate($now, fixed: referenceDate != nil)
         .sheet(item: $editorTarget) { target in
             PeptideScheduleEditor(schedule: target.schedule, person: target.person)
         }
