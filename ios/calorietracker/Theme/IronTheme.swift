@@ -199,8 +199,10 @@ extension View {
 }
 
 /// Text that may scale or wrap onto a second line, but does not hyphenate inside a word.
-/// A single word ("Acknowledgements") stays on one line, capped at AX1, and scales down
-/// instead, because a lone word too wide for the row would otherwise truncate or break mid-word.
+/// A single word ("Acknowledgements") always stays on one line: it is laid out at its ideal width
+/// at AX1, then xxxLarge, xLarge and large, and the first size that fits the row wins. Only if none
+/// fits does it fall back to scaling down at large. `minimumScaleFactor` alone is unreliable in a
+/// List row Label, where the word was truncated instead of shrunk.
 struct UnbrokenText: View {
     private let string: String
     private let isSingleWord: Bool
@@ -218,17 +220,31 @@ struct UnbrokenText: View {
 
     var body: some View {
         if isSingleWord {
-            Text(verbatim: string)
-                .lineLimit(1)
-                .minimumScaleFactor(0.4)
-                .allowsTightening(true)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            ViewThatFits(in: .horizontal) {
+                singleLine(cappedAt: .accessibility1)
+                singleLine(cappedAt: .xxxLarge)
+                singleLine(cappedAt: .xLarge)
+                singleLine(cappedAt: .large)
+                Text(verbatim: string)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+                    .allowsTightening(true)
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+            }
         } else {
             Text(verbatim: string)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
                 .allowsTightening(true)
         }
+    }
+
+    /// The word at its full ideal width, so ViewThatFits rejects it rather than letting it truncate.
+    private func singleLine(cappedAt size: DynamicTypeSize) -> some View {
+        Text(verbatim: string)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .dynamicTypeSize(...size)
     }
 
     static func isSingleWord(_ string: String) -> Bool {
