@@ -925,7 +925,7 @@ enum VisualQADiagnostics {
 
     static func assertHubRowsAboveTabBar(in window: UIWindow) {
         let rows = [
-            ("settings.category.reconBench", "Recon Bench"),
+            ("settings.category.peptides", "Peptides"),
             ("settings.category.training", "Training"),
             ("settings.category.foodAI", "Food & AI"),
             ("settings.category.bodyHealth", "Body & Health"),

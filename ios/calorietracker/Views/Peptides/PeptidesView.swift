@@ -395,6 +395,12 @@ struct PeptidesView: View {
                 linkLabel("History", systemImage: "chart.bar.xaxis", detail: "Calendar, totals, chart", warning: nil)
             }
             .listRowBackground(IronTheme.surface)
+            NavigationLink {
+                ReconView()
+            } label: {
+                linkLabel("Recon Bench", systemImage: "cross.vial.fill", detail: "Reconstitution calculator", warning: nil)
+            }
+            .listRowBackground(IronTheme.surface)
         } header: {
             IronSectionTitle(title: "More")
         }

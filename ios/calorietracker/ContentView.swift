@@ -4312,31 +4312,23 @@ struct ProfileView: View {
     private var settingsHub: some View {
         List {
             Section {
-                NavigationLink {
-                    ReconView()
-                } label: {
-                    SettingsHubRowLabel(
-                        title: "Recon Bench",
-                        systemImage: "cross.vial.fill",
-                        subtitle: reconHubSubtitle
-                    )
-                }
-                .accessibilityIdentifier("settings.category.reconBench")
-                .overlay {
-                    SettingsHubRowAnchor(identifier: "settings.category.reconBench")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false)
-                }
+                // One row for the whole peptide area so the hub keeps seven rows on iPhone SE.
+                // Recon Bench opens from the Peptides screen.
                 NavigationLink {
                     PeptidesView()
                 } label: {
                     SettingsHubRowLabel(
                         title: "Peptides",
-                        systemImage: "syringe.fill",
-                        subtitle: "Log doses, vials, schedule"
+                        systemImage: "cross.vial.fill",
+                        subtitle: "Log, vials, Recon Bench"
                     )
                 }
                 .accessibilityIdentifier("settings.category.peptides")
+                .overlay {
+                    SettingsHubRowAnchor(identifier: "settings.category.peptides")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
+                }
             }
             .listRowBackground(AppColors.appCard)
 
