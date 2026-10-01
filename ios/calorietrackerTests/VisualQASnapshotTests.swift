@@ -738,7 +738,7 @@ final class VisualQASnapshotTests: XCTestCase {
     func test67PeptideHistory() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
-        try await eachSize("67-peptide-history", heightMultiplier: 3.5) { _ in
+        try await eachSize("67-peptide-history", heightMultiplier: 3) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "Peptides") { PeptideHistoryView(person: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }

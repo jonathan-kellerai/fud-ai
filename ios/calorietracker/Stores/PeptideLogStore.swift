@@ -1215,7 +1215,11 @@ final class PeptideLogStore {
             schedules = lossySchedules.compactMap(\.value)
             lastSync = try? container.decodeIfPresent(Date.self, forKey: .lastSync)
             // Older saves have no flag: not complete until the next full refresh.
-            historyComplete = (try? container.decodeIfPresent(Bool.self, forKey: .historyComplete)) ?? false
+            let savedComplete = (try? container.decodeIfPresent(Bool.self, forKey: .historyComplete)) ?? false
+            // A saved row or local link that no longer decodes may have been a dose from a vial,
+            // so the cache can't vouch for completeness until the next full refresh.
+            let droppedSomething = rows.count != lossyRows.count || meta.count != lossyMeta.count
+            historyComplete = savedComplete && !droppedSomething
         }
 
         func encode(to encoder: Encoder) throws {
