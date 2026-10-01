@@ -1317,6 +1317,7 @@ private struct WorkoutLogSetValueField: View {
     let keyboardType: UIKeyboardType
     let focus: WorkoutLogSetFocus
     let focusedField: FocusState<WorkoutLogSetFocus?>.Binding
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Group {
@@ -1332,8 +1333,11 @@ private struct WorkoutLogSetValueField: View {
                 baseTextField
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        // Three fields share an iPhone SE row: at accessibility sizes trim the
+        // inset and cap the text so placeholders like "RPE" never truncate.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 4 : 10)
+        .frame(minHeight: 36)
         .background(IronTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)

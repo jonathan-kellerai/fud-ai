@@ -23,6 +23,9 @@ struct WorkoutHistoryEditView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmDelete = false
+    /// Widens the RPE input with Dynamic Type (capped at the row's xxLarge
+    /// ceiling) so its placeholder never truncates.
+    @ScaledMetric(relativeTo: .body) private var inputScale: CGFloat = 1
 
     private let neonBridge = NeonBridgeService.shared
 
@@ -66,7 +69,8 @@ struct WorkoutHistoryEditView: View {
                                     TextField("RPE", text: $set.rpeText)
                                         .keyboardType(.decimalPad)
                                         .textFieldStyle(.roundedBorder)
-                                        .frame(width: 52)
+                                        .frame(width: (52 * min(max(inputScale, 1), 1.4)).rounded())
+                                        .accessibilityLabel("RPE, rate of perceived exertion")
                                 }
                                 // Five inputs share one row; at accessibility
                                 // sizes the load showed "…" and "lb ×" wrapped.

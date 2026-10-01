@@ -110,6 +110,7 @@ struct CCLaddersView: View {
                     ForEach(response.series) { series in
                         CCSeriesCard(
                             series: series,
+                            rule: response.rule,
                             isSaving: isSaving,
                             onChange: { direction in requestChange(series, direction: direction) }
                         )
@@ -231,11 +232,7 @@ private struct CCLadderRuleCard: View {
     let rule: CCLadderRule?
 
     private var text: String {
-        let streak = rule?.requiredStreak ?? 2
-        let sets = rule?.workingSets ?? 2
-        let rir = rule?.maxRir ?? 2
-        let setsText: String = sets == 2 ? "both" : "all \(sets)"
-        return "Advance after \(streak) consecutive sessions with \(setsText) working sets at target reps at ≤ \(rir) RIR. The bridge decides readiness; you advance manually."
+        CCLadderLogic.ruleText(rule)
     }
 
     var body: some View {
@@ -284,6 +281,7 @@ private struct CCLadderErrorBanner: View {
 
 private struct CCSeriesCard: View {
     let series: CCSeriesState
+    let rule: CCLadderRule?
     let isSaving: Bool
     let onChange: (CCStepChangeDirection) -> Void
 
@@ -305,6 +303,7 @@ private struct CCSeriesCard: View {
                 if let step = CCLadderLogic.currentStepInfo(series) {
                     CCStepStatsPanel(
                         series: series,
+                        rule: rule,
                         step: step,
                         isSaving: isSaving,
                         onChange: onChange
@@ -315,7 +314,7 @@ private struct CCSeriesCard: View {
                     Text("Not set up yet")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(IronTheme.textPrimary)
-                    Text("Step data not loaded. Add the CC-Tracker files to set up this ladder.")
+                    Text("The bridge sent no steps for this ladder. Update the bridge, then pull to refresh.")
                         .font(.footnote)
                         .foregroundStyle(IronTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -377,7 +376,11 @@ private struct CCSeriesCard: View {
     private var rail: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(series.steps.sorted { $0.step < $1.step }) { step in
-                CCStepRow(step: step, status: CCLadderLogic.stepStatus(step: step.step, current: series.currentStep))
+                CCStepRow(
+                    step: step,
+                    status: CCLadderLogic.stepStatus(step: step.step, current: series.currentStep),
+                    targetLabel: CCLadderLogic.stepTargetLabel(step, series: series.series, rule: rule)
+                )
             }
         }
         .background(alignment: .leading) {
@@ -394,6 +397,15 @@ private struct CCSeriesCard: View {
 private struct CCStepRow: View {
     let step: CCLadderStep
     let status: CCStepStatus
+    /// Graduate-at target ("3×50", "2:00 hold"); nil on older bridges.
+    let targetLabel: String?
+
+    /// Older bridges only send the working range.
+    private var detailText: String? {
+        if let targetLabel { return "Graduate at \(targetLabel)" }
+        if let workingReps = step.workingReps, !workingReps.isEmpty { return "\(workingReps) reps" }
+        return nil
+    }
 
     private var textColor: Color {
         switch status {
@@ -411,10 +423,11 @@ private struct CCStepRow: View {
                     .font(.subheadline.weight(status == .current ? .heavy : .regular))
                     .foregroundStyle(textColor)
                     .fixedSize(horizontal: false, vertical: true)
-                if let workingReps = step.workingReps, !workingReps.isEmpty {
-                    Text("\(workingReps) reps")
-                        .font(.caption)
+                if let detailText {
+                    Text(detailText)
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(status == .current ? IronTheme.textPrimary : IronTheme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
@@ -456,8 +469,8 @@ private struct CCStepRow: View {
         case .done: state = "done"
         case .upcoming: state = "upcoming"
         }
-        let reps = step.workingReps.map { ", \($0) reps" } ?? ""
-        return "Step \(step.step), \(step.name)\(reps), \(state)"
+        let detail = detailText.map { ", \($0)" } ?? ""
+        return "Step \(step.step), \(step.name)\(detail), \(state)"
     }
 }
 
@@ -465,22 +478,43 @@ private struct CCStepRow: View {
 
 private struct CCStepStatsPanel: View {
     let series: CCSeriesState
+    let rule: CCLadderRule?
     let step: CCLadderStep
     let isSaving: Bool
     let onChange: (CCStepChangeDirection) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private var isHold: Bool {
+        CCLadderLogic.isHoldSeries(series, rule: rule)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             IronSectionTitle(title: "Step \(step.step) · \(step.name)")
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let graduateAt = CCLadderLogic.graduateAtText(series, rule: rule) {
+                // Wraps rather than truncating the target at large type on iPhone SE.
+                Label {
+                    Text(graduateAt)
+                        .font(.subheadline.weight(.heavy).monospacedDigit())
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: isHold ? "timer" : "flag.checkered")
+                        .foregroundStyle(IronTheme.brass)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if let book = bookText {
+                Text(book)
+                    .font(.caption)
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let workingReps = step.workingReps, !workingReps.isEmpty {
                 statRow("Working range", "\(workingReps) reps")
-            }
-            if let target = CCLadderLogic.targetReps(series) {
-                statRow("Target", "\(target) reps")
             }
             statRow("Streak", "\(series.streak) / \(series.requiredStreak)")
             if let since = series.since {
@@ -488,6 +522,8 @@ private struct CCStepStatsPanel: View {
             }
 
             readiness
+
+            repProgress
 
             recentSessions
 
@@ -520,6 +556,40 @@ private struct CCStepStatsPanel: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .ironCard(fill: IronTheme.surfaceRaised)
+    }
+
+    /// "Book: Full push-ups · p. 54" when the bridge sends it.
+    private var bookText: String? {
+        let name = step.bookName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pages = step.pages?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var parts: [String] = []
+        if !name.isEmpty, name.caseInsensitiveCompare(step.name) != .orderedSame {
+            parts.append(name)
+        }
+        if !pages.isEmpty {
+            parts.append("p. \(pages)")
+        }
+        return parts.isEmpty ? nil : "Book: " + parts.joined(separator: " · ")
+    }
+
+    /// Within-step progress. improved == true is a positive sign even before Ready.
+    @ViewBuilder
+    private var repProgress: some View {
+        if let text = CCLadderLogic.progressText(series.progress, isHold: isHold) {
+            let improving = CCLadderLogic.isImproving(series)
+            Label {
+                Text(text)
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(improving ? IronTheme.olive : IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: improving ? "arrow.up.right" : "chart.line.uptrend.xyaxis")
+                    .font(.footnote.weight(.heavy))
+                    .foregroundStyle(improving ? IronTheme.olive : IronTheme.textTertiary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(improving ? "Improving. \(text)" : text)
+        }
     }
 
     @ViewBuilder
@@ -592,10 +662,22 @@ private struct CCStepStatsPanel: View {
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(session.countsTowardCurrentStep ? IronTheme.textPrimary : IronTheme.textTertiary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(CCLadderLogic.setsSummary(session.sets))
+                        Text(CCLadderLogic.setsSummary(session.sets, isHold: isHold && session.countsTowardCurrentStep))
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(session.qualifying ? IronTheme.brass : IronTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let totals = CCLadderLogic.sessionTotalsText(session, isHold: isHold && session.countsTowardCurrentStep) {
+                            Text(totals)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(IronTheme.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if CCLadderLogic.showsRepProgress(session) {
+                            Label("Rep progress", systemImage: "arrow.up.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(IronTheme.olive)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .accessibilityElement(children: .combine)
                 }

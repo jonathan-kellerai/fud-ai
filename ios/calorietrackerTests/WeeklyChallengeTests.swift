@@ -212,3 +212,53 @@ struct WeeklyChallengeTests {
         )
     }
 }
+
+@MainActor
+@Suite("Weekly Challenge auto delete")
+struct WeeklyChallengeAutoDeleteTests {
+    @Test("Token present and not done deletes the remote profile")
+    func tokenPresentDeletes() {
+        #expect(WeeklyChallengeAutoDelete.decision(isDone: false, hasToken: true) == .delete)
+    }
+
+    @Test("Done skips, with or without a token")
+    func doneSkips() {
+        #expect(WeeklyChallengeAutoDelete.decision(isDone: true, hasToken: true) == .skip)
+        #expect(WeeklyChallengeAutoDelete.decision(isDone: true, hasToken: false) == .skip)
+    }
+
+    @Test("No token marks done with nothing to delete")
+    func noTokenMarksNothingToDelete() {
+        #expect(WeeklyChallengeAutoDelete.decision(isDone: false, hasToken: false) == .markNothingToDelete)
+    }
+
+    @Test("Status line and failure reasons never carry a token or server message")
+    func statusLineText() {
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        let day = date.formatted(date: .abbreviated, time: .omitted)
+        let deleted = WeeklyChallengeAutoDelete.Outcome(date: date, participantID: "p-123", result: .deleted, reason: nil)
+        #expect(WeeklyChallengeAutoDelete.statusLine(deleted) == "Old Weekly Challenge profile (participant p-123) deleted from fud-ai.app on \(day).")
+        let nothing = WeeklyChallengeAutoDelete.Outcome(date: date, participantID: nil, result: .nothingToDelete, reason: nil)
+        #expect(WeeklyChallengeAutoDelete.statusLine(nothing) == "No Weekly Challenge profile to delete (checked \(day)).")
+        let failed = WeeklyChallengeAutoDelete.Outcome(date: date, participantID: nil, result: .failed, reason: "offline")
+        #expect(WeeklyChallengeAutoDelete.statusLine(failed).contains("failed on \(day): offline"))
+
+        let serverError = WeeklyChallengeAPIError.server(statusCode: 500, code: "x", message: "server body")
+        #expect(WeeklyChallengeAutoDelete.shortReason(for: serverError) == "HTTP 500")
+        let offline = WeeklyChallengeAPIError.transport(URLError(.notConnectedToInternet))
+        #expect(WeeklyChallengeAutoDelete.shortReason(for: offline) == "offline")
+        #expect(WeeklyChallengeAutoDelete.shortReason(for: WeeklyChallengeAPIError.invalidResponse) == "invalid response")
+    }
+
+    @Test("Outcome round-trips through its UserDefaults JSON")
+    func outcomeCodable() throws {
+        let outcome = WeeklyChallengeAutoDelete.Outcome(
+            date: Date(timeIntervalSince1970: 1_790_000_000),
+            participantID: "p-1",
+            result: .failed,
+            reason: "HTTP 503"
+        )
+        let data = try JSONEncoder().encode(outcome)
+        #expect(try JSONDecoder().decode(WeeklyChallengeAutoDelete.Outcome.self, from: data) == outcome)
+    }
+}

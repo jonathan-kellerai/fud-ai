@@ -146,7 +146,11 @@ struct calorietrackerApp: App {
                     )
                 }
                 await cloudBackupService.runSmokeTestIfRequested()
-                await weeklyChallengeStore.retryPendingDeletionIfNeeded()
+                // JL Physical: delete an old fud-ai.app challenge profile once.
+                // On failure the pending deletion stays and retries next launch.
+                if !(await weeklyChallengeStore.runOneTimeAutoDeleteIfNeeded()) {
+                    await weeklyChallengeStore.retryPendingDeletionIfNeeded()
+                }
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
