@@ -842,7 +842,7 @@ enum CCLadderLogic {
         let isHold: Bool
         if let logged = loggedStep(series, exerciseKey: exerciseKey, exerciseName: exerciseName),
            logged.step != current.step {
-            isHold = (target(for: logged, series: series.series, rule: response.rule).holdSec ?? 0) > 0
+            isHold = (Self.target(for: logged, series: series.series, rule: response.rule).holdSec ?? 0) > 0
         } else {
             isHold = isHoldSeries(series, rule: response.rule)
         }
