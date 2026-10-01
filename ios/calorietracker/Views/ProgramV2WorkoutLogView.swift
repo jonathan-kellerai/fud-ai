@@ -30,6 +30,12 @@ struct ProgramV2WorkoutLogView: View {
     @State private var showingReplaceDraftPrompt = false
     /// The session date is the day the logger was opened, even if it is saved after midnight.
     @State private var openedAt = Date()
+    /// Grows the narrow reps/RPE inputs with Dynamic Type so their placeholders
+    /// never truncate. Capped at the set row's xxLarge text-size ceiling.
+    @ScaledMetric(relativeTo: .body) private var inputScale: CGFloat = 1
+    /// CC ladder state for graduate-at hints on ladder finishers. Starts from
+    /// the Ladders screen's memory cache and refreshes once per open.
+    @State private var ccLadders: CCLaddersResponse? = CCLadderMemoryCache.last
 
     /// Logged sets live in the app-level draft store so they survive tab
     /// switches, dismissal and relaunch until the bridge confirms the save.
@@ -97,6 +103,7 @@ struct ProgramV2WorkoutLogView: View {
             .task {
                 lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
                 refreshPrefilledLoads()
+                await loadLaddersIfNeeded()
             }
             .onAppear {
                 if draftStore.hasDraft(otherThan: day) {
@@ -308,6 +315,13 @@ struct ProgramV2WorkoutLogView: View {
                 Spacer(minLength: 0)
             }
 
+            if let hint = ladderHint(for: exercise) {
+                Label(hint.text, systemImage: hint.isHold ? "timer" : "flag.checkered")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(IronTheme.brass)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(spacing: 16) {
                 Text("\(exercise.sets) sets × \(exercise.reps)")
                     .font(.caption.monospacedDigit())
@@ -418,7 +432,7 @@ struct ProgramV2WorkoutLogView: View {
                     loadField(exercise, setIndex: setIndex, set: set)
                     rowLabel("lb ×")
                     repsField(exercise, setIndex: setIndex, set: set)
-                    rowLabel("reps")
+                    rowLabel(ladderHint(for: exercise)?.isHold == true ? "sec" : "reps")
                 }
                 HStack(spacing: 8) {
                     rowLabel("RIR")
@@ -484,13 +498,16 @@ struct ProgramV2WorkoutLogView: View {
 
     private func repsField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
         // Unlogged sets (0 reps) show the placeholder rather than a 0.
-        TextField("Reps", value: Binding<Int?>(
+        // Timed CC holds log seconds in the reps field.
+        let isHold = ladderHint(for: exercise)?.isHold == true
+        return TextField(isHold ? "Sec" : "Reps", value: Binding<Int?>(
             get: { set.reps == 0 ? nil : set.reps },
             set: { newValue in updateSet(exercise, at: setIndex) { $0.reps = newValue ?? 0 } }
         ), format: .number)
         .keyboardType(.numberPad)
         .textFieldStyle(.roundedBorder)
-        .frame(width: 50)
+        .frame(width: scaledInputWidth(50))
+        .accessibilityLabel(isHold ? "Hold seconds" : "Reps")
     }
 
     private func rirField(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
@@ -513,7 +530,14 @@ struct ProgramV2WorkoutLogView: View {
         ))
         .keyboardType(.decimalPad)
         .textFieldStyle(.roundedBorder)
-        .frame(width: 44)
+        .frame(width: scaledInputWidth(44))
+        .accessibilityLabel("RPE, rate of perceived exertion")
+    }
+
+    /// Regular size keeps the original width; larger text widens the field up
+    /// to the xxLarge ceiling the set row is clamped to.
+    private func scaledInputWidth(_ base: CGFloat) -> CGFloat {
+        (base * min(max(inputScale, 1), 1.4)).rounded()
     }
 
     private func logSetButton(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
@@ -538,6 +562,21 @@ struct ProgramV2WorkoutLogView: View {
                 .foregroundStyle(IronTheme.bloodText)
         }
         .buttonStyle(.plain)
+    }
+
+    private func ladderHint(for exercise: ProgramV2Exercise) -> CCLoggerLadderHint? {
+        guard CCLadderLogic.isLadderExerciseName(exercise.name) else { return nil }
+        return CCLadderLogic.loggerHint(exerciseKey: exercise.key, exerciseName: exercise.name, in: ccLadders)
+    }
+
+    /// Best effort: without the bridge the logger simply shows no ladder hint.
+    private func loadLaddersIfNeeded() async {
+        guard day.exercises.contains(where: { CCLadderLogic.isLadderExerciseName($0.name) }) else { return }
+        guard let fresh = try? await CCLadderClient.fetchLadders(settings: NeonBridgeService.shared.settings),
+              !Task.isCancelled
+        else { return }
+        ccLadders = fresh
+        CCLadderMemoryCache.last = fresh
     }
 
     private func lastPerformance(for exercise: ProgramV2Exercise) -> LastPerformance? {

@@ -5608,7 +5608,9 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
 
                 Section {
-                    AdaptiveLabelValue {
+                    // One line when the label fits, stacked otherwise, so the
+                    // label never truncates at large type on iPhone SE.
+                    FittingLabelValue {
                         Label {
                             UnbrokenText("Request Timeout")
                         } icon: {
@@ -5620,16 +5622,17 @@ struct ProfileView: View {
                             requestTimeoutInput
                             Text("sec")
                                 .foregroundStyle(.secondary)
+                                .fixedSize()
                         }
                     }
-                    HStack {
+                    FittingLabelValue {
                         Label {
-                            Text("Max Response Tokens")
+                            UnbrokenText("Max Response Tokens")
                         } icon: {
                             Image(systemName: "text.append")
                                 .foregroundStyle(AppColors.calorie)
                         }
-                        Spacer()
+                    } value: {
                         maxResponseTokensInput
                     }
                     if selectedProvider == .openrouter
@@ -5854,6 +5857,24 @@ struct ProfileView: View {
                 .listRowBackground(AppColors.appCard)
 
                 CloudBackupSettingsSection()
+
+                if let outcome = weeklyChallengeStore.autoDeleteOutcome {
+                    Section {
+                        Label {
+                            Text(WeeklyChallengeAutoDelete.statusLine(outcome))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: outcome.result == .failed ? "exclamationmark.triangle" : "checkmark.shield")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                        .accessibilityElement(children: .combine)
+                    } header: {
+                        IronSectionTitle(title: "Weekly Challenge")
+                    }
+                    .listRowBackground(AppColors.appCard)
+                }
 
                 Section {
                     // Export Food Diary

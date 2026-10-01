@@ -199,22 +199,40 @@ extension View {
 }
 
 /// Text that may scale or wrap onto a second line, but does not hyphenate inside a word.
+/// A single word ("Acknowledgements") stays on one line and scales down instead,
+/// because a lone word too wide for the row would otherwise break mid-word.
 struct UnbrokenText: View {
     private let content: Text
+    private let isSingleWord: Bool
 
     init(_ string: String) {
         content = Text(Self.attributed(string))
+        isSingleWord = Self.isSingleWord(string)
     }
 
     init(_ resource: LocalizedStringResource) {
-        content = Text(Self.attributed(String(localized: resource)))
+        let string = String(localized: resource)
+        content = Text(Self.attributed(string))
+        isSingleWord = Self.isSingleWord(string)
     }
 
     var body: some View {
-        content
-            .lineLimit(2)
-            .minimumScaleFactor(0.8)
-            .allowsTightening(true)
+        if isSingleWord {
+            content
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .allowsTightening(true)
+        } else {
+            content
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .allowsTightening(true)
+        }
+    }
+
+    static func isSingleWord(_ string: String) -> Bool {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && !trimmed.contains { $0.isWhitespace }
     }
 
     private static func attributed(_ string: String) -> AttributedString {
@@ -223,6 +241,30 @@ struct UnbrokenText: View {
         paragraph.lineBreakStrategy = .pushOut
         let raw = NSAttributedString(string: string, attributes: [.paragraphStyle: paragraph])
         return AttributedString(raw)
+    }
+}
+
+/// Label and a fixed-width control on one line when the whole label fits;
+/// otherwise the control drops below the label, which wraps instead of truncating.
+struct FittingLabelValue<Label: View, Value: View>: View {
+    @ViewBuilder var label: () -> Label
+    @ViewBuilder var value: () -> Value
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                label()
+                    .fixedSize()
+                Spacer(minLength: 8)
+                value()
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                label()
+                    .fixedSize(horizontal: false, vertical: true)
+                value()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

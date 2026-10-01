@@ -642,6 +642,58 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    /// All six series with graduate-at targets. HSP (a 2:00 hold) and SQT
+    /// (rep progress, not ready) come first so both fit in the capture.
+    func test53TrainLaddersTargets() async throws {
+        VisualQAFixtures.ccLaddersJSONOverride = VisualQAFixtures.ccLaddersTargetsFirstJSON
+        defer { VisualQAFixtures.ccLaddersJSONOverride = nil }
+        CCLadderMemoryCache.last = nil
+        defer { CCLadderMemoryCache.last = nil }
+        try await eachSize("53-train-ladders-targets", heightMultiplier: 4) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false), initialMode: .ladders)
+            }
+        }
+    }
+
+    /// Logger with unlogged set rows so the RPE and reps placeholders show,
+    /// plus the CC leg raise finisher's graduate-at hint.
+    func test54LoggerSetRowRPE() async throws {
+        let full = TrainingProgramBody.bundledV2().days[1].asProgramV2Day()
+        let ladder = full.exercises.filter { CCLadderLogic.isLadderExerciseName($0.name) }
+        let day = ProgramV2Day(
+            id: full.id,
+            title: full.title,
+            conditioning: full.conditioning,
+            conditioningMinimum: full.conditioningMinimum,
+            exercises: Array(full.exercises.prefix(1)) + ladder
+        )
+        let drafts = WorkoutDraftStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("visual-qa-set-row-\(UUID().uuidString)", isDirectory: true)
+        )
+        drafts.update(day) { draft in
+            for exercise in day.exercises {
+                let load: Double = exercise.startLoadLb ?? 0
+                draft.sets[exercise.name] = [
+                    LoggedSet(weight: load, reps: 10, rir: 2, rpeText: "8"),
+                    LoggedSet(weight: load, reps: 0, rir: 2, rpeText: ""),
+                ]
+            }
+        }
+        VisualQAGraveyard.keep(drafts)
+        CCLadderMemoryCache.last = nil
+        defer { CCLadderMemoryCache.last = nil }
+        try await eachSize("54-logger-set-row-rpe", sheet: {
+            ProgramV2WorkoutLogView(day: day)
+                .environment(drafts)
+        }) { _ in
+            VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
+            }
+        }
+    }
+
     func test52HomePeptideCard() async throws {
         let savedLayout = HomeCardLayout.load()
         defer { HomeCardLayout.save(order: savedLayout.order, hidden: savedLayout.hidden) }
@@ -1599,59 +1651,158 @@ enum VisualQAFixtures {
     {"schedules":[{"id":"qa-schedule-1","active":true}]}
     """
 
-    /// Modeled on a live /api/cc/ladders response. Step names, ranges and
-    /// targets are copied from the bridge payload, not invented.
-    static let ccLaddersJSON = #"""
+    /// When set, /api/cc/ladders answers with this payload instead of `ccLaddersJSON`.
+    static var ccLaddersJSONOverride: String?
+
+    /// Modeled on the /api/cc/ladders response with book graduate-at targets
+    /// for all six series. HSP steps 1-3 are timed holds; SQT and HSP show
+    /// within-step rep progress (improved, not ready); LGR is ready.
+    static let ccLaddersTargetsFirstJSON = #"""
     {"generated_at":"2026-09-30T12:29:09.967Z",
-     "rule":{"target_reps_by_step":{"1":15,"2":15,"3":15,"4":15,"5":15,"6":12,"7":12,"8":12,"9":8,"10":8},"max_rir":2,"working_sets":2,"required_streak":2,"master_step":10},
+     "rule":{"description":"A session qualifies when it reaches the step graduate-at target. Ready after 2 consecutive qualifying sessions.","required_streak":2,"master_step":10,"targets_by_series":{"PSH":{"1":{"sets":3,"reps":50,"hold_sec":null,"label":"3×50"},"2":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":2,"reps":25,"hold_sec":null,"label":"2×25"},"5":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"6":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"7":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"8":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"9":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"10":{"sets":1,"reps":100,"hold_sec":null,"label":"1×100"}},"SQT":{"1":{"sets":3,"reps":50,"hold_sec":null,"label":"3×50"},"2":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":2,"reps":50,"hold_sec":null,"label":"2×50"},"5":{"sets":2,"reps":30,"hold_sec":null,"label":"2×30"},"6":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"7":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"8":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"9":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"10":{"sets":2,"reps":50,"hold_sec":null,"label":"2×50"}},"PLL":{"1":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"2":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"3":{"sets":3,"reps":20,"hold_sec":null,"label":"3×20"},"4":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"5":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"6":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"7":{"sets":2,"reps":9,"hold_sec":null,"label":"2×9"},"8":{"sets":2,"reps":8,"hold_sec":null,"label":"2×8"},"9":{"sets":2,"reps":7,"hold_sec":null,"label":"2×7"},"10":{"sets":2,"reps":6,"hold_sec":null,"label":"2×6"}},"LGR":{"1":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"2":{"sets":3,"reps":35,"hold_sec":null,"label":"3×35"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":3,"reps":25,"hold_sec":null,"label":"3×25"},"5":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"6":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"7":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"8":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"9":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"10":{"sets":2,"reps":30,"hold_sec":null,"label":"2×30"}},"BRG":{"1":{"sets":3,"reps":50,"hold_sec":null,"label":"3×50"},"2":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":2,"reps":25,"hold_sec":null,"label":"2×25"},"5":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"6":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"7":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"8":{"sets":2,"reps":8,"hold_sec":null,"label":"2×8"},"9":{"sets":2,"reps":6,"hold_sec":null,"label":"2×6"},"10":{"sets":2,"reps":30,"hold_sec":null,"label":"2×30"}},"HSP":{"1":{"sets":1,"reps":null,"hold_sec":120,"label":"2:00 hold"},"2":{"sets":1,"reps":null,"hold_sec":60,"label":"1:00 hold"},"3":{"sets":1,"reps":null,"hold_sec":120,"label":"2:00 hold"},"4":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"5":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"6":{"sets":2,"reps":12,"hold_sec":null,"label":"2×12"},"7":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"8":{"sets":2,"reps":8,"hold_sec":null,"label":"2×8"},"9":{"sets":2,"reps":6,"hold_sec":null,"label":"2×6"},"10":{"sets":1,"reps":5,"hold_sec":null,"label":"1×5"}}}},
      "active_program":{"id":"qa-program","name":"Program V2","version":3},
      "series":[
-      {"series":"PSH","label":"Push-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]},
-      {"series":"SQT","label":"Squat","current_step":2,"step_name":"Jackknife squat","since":"2026-09-26T14:35:00.000Z","target_reps":15,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,
-       "program_exercises":[{"day":"Lower B + Cond","exercise":"CC squat ladder - step 2 Jackknife squat","step":2,"sets":2,"reps":"8-15"}],"last_event":null,
-       "sessions":[{"workout_id":"qa-sqt-1","session_date":"2026-09-24","program_day":"Day5_LowerB_Cond","title":"Lower B","exercise":"Shoulderstand squat","step":1,"sets":[{"set_order":6,"reps":15,"rir":5,"load_lb":0},{"set_order":7,"reps":15,"rir":5,"load_lb":0}],"counts_toward_current_step":false,"qualifying":false,"flags":["different_step","before_step_start","rir_above_max"]}],
-       "steps":[
-        {"step":1,"name":"Shoulderstand squat","working_reps":"8–15","target_reps":15},
-        {"step":2,"name":"Jackknife squat","working_reps":"8–15","target_reps":15},
-        {"step":3,"name":"Supported squat","working_reps":"8–15","target_reps":15},
-        {"step":4,"name":"Half squat","working_reps":"8–15","target_reps":15},
-        {"step":5,"name":"Full squat","working_reps":"8–15","target_reps":15},
-        {"step":6,"name":"Close squat","working_reps":"6–12","target_reps":12},
-        {"step":7,"name":"Uneven squat","working_reps":"6–12","target_reps":12},
-        {"step":8,"name":"Half one-leg squat","working_reps":"6–12","target_reps":12},
-        {"step":9,"name":"Assisted one-leg squat","working_reps":"3–8","target_reps":8},
-        {"step":10,"name":"One-leg squat (pistol)","working_reps":"3–8","target_reps":8}]},
-      {"series":"PLL","label":"Pull-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]},
-      {"series":"LGR","label":"Leg raise","current_step":1,"step_name":"Knee tuck","since":"2026-09-15T04:00:00.000Z","target_reps":15,"master":false,"ready":true,"streak":2,"required_streak":2,"flags":[],"in_program":true,
-       "program_exercises":[{"day":"Upper Push","exercise":"CC leg raise ladder - step 1 Knee tuck","step":1,"sets":2,"reps":"8-15"}],"last_event":null,
-       "sessions":[{"workout_id":"qa-lgr-2","session_date":"2026-09-29","program_day":"Day2_UpperPush","title":"Upper Push","exercise":"Knee tuck","step":1,"sets":[{"set_order":3,"reps":15,"rir":2,"load_lb":0},{"set_order":4,"reps":15,"rir":1,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[]},
-                   {"workout_id":"qa-lgr-1","session_date":"2026-09-22","program_day":"Day2_UpperPush","title":"Upper Push","exercise":"Knee tuck","step":1,"sets":[{"set_order":8,"reps":15,"rir":2,"load_lb":0},{"set_order":9,"reps":15,"rir":2,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[]}],
-       "steps":[
-        {"step":1,"name":"Knee tuck","working_reps":"8–15","target_reps":15},
-        {"step":2,"name":"Flat knee raise","working_reps":"8–15","target_reps":15},
-        {"step":3,"name":"Flat bent-leg raise","working_reps":"8–15","target_reps":15},
-        {"step":4,"name":"Flat frog raise","working_reps":"8–15","target_reps":15},
-        {"step":5,"name":"Flat straight-leg raise","working_reps":"8–15","target_reps":15},
-        {"step":6,"name":"Hanging knee raise","working_reps":"6–12","target_reps":12},
-        {"step":7,"name":"Hanging bent-leg raise","working_reps":"6–12","target_reps":12},
-        {"step":8,"name":"Hanging frog raise","working_reps":"6–12","target_reps":12},
-        {"step":9,"name":"Partial hanging straight-leg raise","working_reps":"3–8","target_reps":8},
-        {"step":10,"name":"Hanging straight-leg raise","working_reps":"3–8","target_reps":8}]},
-      {"series":"BRG","label":"Bridge","current_step":1,"step_name":"Short bridge","since":"2026-09-21T04:00:00.000Z","target_reps":15,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,
-       "program_exercises":[{"day":"Upper Physique","exercise":"CC bridge ladder - step 1 Short bridge","step":1,"sets":2,"reps":"8-15"}],"last_event":null,
-       "sessions":[{"workout_id":"qa-brg-1","session_date":"2026-09-21","program_day":"Day4_UpperPhysique","title":"Upper Physique","exercise":"Short bridge","step":1,"sets":[{"set_order":9,"reps":8,"rir":2,"load_lb":0},{"set_order":10,"reps":8,"rir":2,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"]}],
-       "steps":[
-        {"step":1,"name":"Short bridge","working_reps":"8–15","target_reps":15},
-        {"step":2,"name":"Straight bridge","working_reps":"8–15","target_reps":15},
-        {"step":3,"name":"Angled bridge","working_reps":"8–15","target_reps":15},
-        {"step":4,"name":"Head bridge","working_reps":"8–15","target_reps":15},
-        {"step":5,"name":"Half bridge","working_reps":"8–15","target_reps":15},
-        {"step":6,"name":"Full bridge","working_reps":"6–12","target_reps":12},
-        {"step":7,"name":"Wall-walk bridge (down)","working_reps":"6–12","target_reps":12},
-        {"step":8,"name":"Wall-walk bridge (up)","working_reps":"6–12","target_reps":12},
-        {"step":9,"name":"Closing bridge","working_reps":"3–8","target_reps":8},
-        {"step":10,"name":"Stand-to-stand bridge","working_reps":"3–8","target_reps":8}]},
-      {"series":"HSP","label":"Handstand push-up","current_step":null,"step_name":null,"since":null,"target_reps":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[]}
+      {"series":"HSP","label":"Handstand push-up","current_step":1,"step_name":"Wall headstand","since":"2026-09-15T04:00:00.000Z","target_reps":null,"target_sets":1,"target_hold_sec":120,"target_label":"2:00 hold","progress":{"best_total_reps_last":75,"best_total_reps_prev":60,"delta":15,"improved":true,"pct_of_target":62.5},"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[{"workout_id":"qa-hsp-2","session_date":"2026-09-28","program_day":null,"title":null,"exercise":"Wall headstand","step":1,"sets":[{"set_order":1,"reps":75,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["rep_progress","hold_below_target"],"total_reps":75,"pct_of_target":62.5},{"workout_id":"qa-hsp-1","session_date":"2026-09-25","program_day":null,"title":null,"exercise":"Wall headstand","step":1,"sets":[{"set_order":1,"reps":60,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["hold_below_target"],"total_reps":60,"pct_of_target":50}],"steps":[
+        {"step":1,"name":"Wall headstand","target_sets":1,"target_reps":null,"target_hold_sec":120,"target_label":"2:00 hold"},
+        {"step":2,"name":"Crow stand","target_sets":1,"target_reps":null,"target_hold_sec":60,"target_label":"1:00 hold"},
+        {"step":3,"name":"Wall handstand","target_sets":1,"target_reps":null,"target_hold_sec":120,"target_label":"2:00 hold"},
+        {"step":4,"name":"Half handstand push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":5,"name":"Handstand push-up","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":6,"name":"Close handstand push-up","target_sets":2,"target_reps":12,"target_hold_sec":null,"target_label":"2×12"},
+        {"step":7,"name":"Uneven handstand push-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":8,"name":"Half one-arm handstand push-up","target_sets":2,"target_reps":8,"target_hold_sec":null,"target_label":"2×8"},
+        {"step":9,"name":"Lever handstand push-up","target_sets":2,"target_reps":6,"target_hold_sec":null,"target_label":"2×6"},
+        {"step":10,"name":"One-arm handstand push-up","target_sets":1,"target_reps":5,"target_hold_sec":null,"target_label":"1×5"}]},
+      {"series":"SQT","label":"Squat","current_step":2,"step_name":"Jackknife squat","since":"2026-09-15T04:00:00.000Z","target_reps":40,"target_sets":3,"target_hold_sec":null,"target_label":"3×40","progress":{"best_total_reps_last":52,"best_total_reps_prev":46,"delta":6,"improved":true,"pct_of_target":43.3},"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,"program_exercises":[{"day":"Lower B + Cond","exercise":"CC squat ladder - step 2 Jackknife squat","step":2,"sets":2,"reps":"8-15"}],"last_event":null,"sessions":[{"workout_id":"qa-sqt-2","session_date":"2026-09-29","program_day":null,"title":null,"exercise":"Jackknife squat","step":2,"sets":[{"set_order":1,"reps":18,"rir":null,"load_lb":0},{"set_order":2,"reps":17,"rir":null,"load_lb":0},{"set_order":3,"reps":17,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["rep_progress","reps_below_target"],"total_reps":52,"pct_of_target":43.3},{"workout_id":"qa-sqt-1","session_date":"2026-09-26","program_day":null,"title":null,"exercise":"Jackknife squat","step":2,"sets":[{"set_order":1,"reps":16,"rir":null,"load_lb":0},{"set_order":2,"reps":15,"rir":null,"load_lb":0},{"set_order":3,"reps":15,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"],"total_reps":46,"pct_of_target":38.3}],"steps":[
+        {"step":1,"name":"Shoulderstand squat","target_sets":3,"target_reps":50,"target_hold_sec":null,"target_label":"3×50"},
+        {"step":2,"name":"Jackknife squat","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":3,"name":"Supported squat","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Half squat","target_sets":2,"target_reps":50,"target_hold_sec":null,"target_label":"2×50"},
+        {"step":5,"name":"Full squat","target_sets":2,"target_reps":30,"target_hold_sec":null,"target_label":"2×30"},
+        {"step":6,"name":"Close squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":7,"name":"Uneven squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":8,"name":"Half one-leg squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":9,"name":"Assisted one-leg squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":10,"name":"One-leg squat (pistol)","target_sets":2,"target_reps":50,"target_hold_sec":null,"target_label":"2×50"}]},
+      {"series":"LGR","label":"Leg raise","current_step":1,"step_name":"Knee tuck","since":"2026-09-15T04:00:00.000Z","target_reps":40,"target_sets":3,"target_hold_sec":null,"target_label":"3×40","progress":{"best_total_reps_last":120,"best_total_reps_prev":120,"delta":0,"improved":false,"pct_of_target":100},"master":false,"ready":true,"streak":2,"required_streak":2,"flags":[],"in_program":true,"program_exercises":[{"day":"Upper Push","exercise":"CC leg raise ladder - step 1 Knee tuck","step":1,"sets":2,"reps":"8-15"}],"last_event":null,"sessions":[{"workout_id":"qa-lgr-2","session_date":"2026-09-29","program_day":null,"title":null,"exercise":"Knee tuck","step":1,"sets":[{"set_order":1,"reps":40,"rir":null,"load_lb":0},{"set_order":2,"reps":40,"rir":null,"load_lb":0},{"set_order":3,"reps":40,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[],"total_reps":120,"pct_of_target":100},{"workout_id":"qa-lgr-1","session_date":"2026-09-22","program_day":null,"title":null,"exercise":"Knee tuck","step":1,"sets":[{"set_order":1,"reps":40,"rir":null,"load_lb":0},{"set_order":2,"reps":40,"rir":null,"load_lb":0},{"set_order":3,"reps":40,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[],"total_reps":120,"pct_of_target":100}],"steps":[
+        {"step":1,"name":"Knee tuck","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":2,"name":"Flat knee raise","target_sets":3,"target_reps":35,"target_hold_sec":null,"target_label":"3×35"},
+        {"step":3,"name":"Flat bent-leg raise","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Flat frog raise","target_sets":3,"target_reps":25,"target_hold_sec":null,"target_label":"3×25"},
+        {"step":5,"name":"Flat straight-leg raise","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":6,"name":"Hanging knee raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":7,"name":"Hanging bent-leg raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":8,"name":"Hanging frog raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":9,"name":"Partial hanging straight-leg raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":10,"name":"Hanging straight-leg raise","target_sets":2,"target_reps":30,"target_hold_sec":null,"target_label":"2×30"}]},
+      {"series":"PSH","label":"Push-up","current_step":1,"step_name":"Wall push-up","since":"2026-09-15T04:00:00.000Z","target_reps":50,"target_sets":3,"target_hold_sec":null,"target_label":"3×50","progress":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[
+        {"step":1,"name":"Wall push-up","target_sets":3,"target_reps":50,"target_hold_sec":null,"target_label":"3×50"},
+        {"step":2,"name":"Incline push-up","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":3,"name":"Kneeling push-up","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Half push-up","target_sets":2,"target_reps":25,"target_hold_sec":null,"target_label":"2×25"},
+        {"step":5,"name":"Full push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":6,"name":"Close push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":7,"name":"Uneven push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":8,"name":"Half one-arm push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":9,"name":"Lever push-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":10,"name":"One-arm push-up","target_sets":1,"target_reps":100,"target_hold_sec":null,"target_label":"1×100"}]},
+      {"series":"PLL","label":"Pull-up","current_step":1,"step_name":"Vertical pull","since":"2026-09-15T04:00:00.000Z","target_reps":40,"target_sets":3,"target_hold_sec":null,"target_label":"3×40","progress":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[
+        {"step":1,"name":"Vertical pull","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":2,"name":"Horizontal pull","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":3,"name":"Jackknife pull-up","target_sets":3,"target_reps":20,"target_hold_sec":null,"target_label":"3×20"},
+        {"step":4,"name":"Half pull-up","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":5,"name":"Full pull-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":6,"name":"Close pull-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":7,"name":"Uneven pull-up","target_sets":2,"target_reps":9,"target_hold_sec":null,"target_label":"2×9"},
+        {"step":8,"name":"Half one-arm pull-up","target_sets":2,"target_reps":8,"target_hold_sec":null,"target_label":"2×8"},
+        {"step":9,"name":"Assisted one-arm pull-up","target_sets":2,"target_reps":7,"target_hold_sec":null,"target_label":"2×7"},
+        {"step":10,"name":"One-arm pull-up","target_sets":2,"target_reps":6,"target_hold_sec":null,"target_label":"2×6"}]},
+      {"series":"BRG","label":"Bridge","current_step":1,"step_name":"Short bridge","since":"2026-09-15T04:00:00.000Z","target_reps":50,"target_sets":3,"target_hold_sec":null,"target_label":"3×50","progress":{"best_total_reps_last":40,"best_total_reps_prev":null,"delta":null,"improved":false,"pct_of_target":26.7},"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,"program_exercises":[{"day":"Upper Physique","exercise":"CC bridge ladder - step 1 Short bridge","step":1,"sets":2,"reps":"8-15"}],"last_event":null,"sessions":[{"workout_id":"qa-brg-1","session_date":"2026-09-21","program_day":null,"title":null,"exercise":"Short bridge","step":1,"sets":[{"set_order":1,"reps":20,"rir":null,"load_lb":0},{"set_order":2,"reps":20,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"],"total_reps":40,"pct_of_target":26.7}],"steps":[
+        {"step":1,"name":"Short bridge","target_sets":3,"target_reps":50,"target_hold_sec":null,"target_label":"3×50"},
+        {"step":2,"name":"Straight bridge","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":3,"name":"Angled bridge","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Head bridge","target_sets":2,"target_reps":25,"target_hold_sec":null,"target_label":"2×25"},
+        {"step":5,"name":"Half bridge","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":6,"name":"Full bridge","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":7,"name":"Wall-walk bridge (down)","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":8,"name":"Wall-walk bridge (up)","target_sets":2,"target_reps":8,"target_hold_sec":null,"target_label":"2×8"},
+        {"step":9,"name":"Closing bridge","target_sets":2,"target_reps":6,"target_hold_sec":null,"target_label":"2×6"},
+        {"step":10,"name":"Stand-to-stand bridge","target_sets":2,"target_reps":30,"target_hold_sec":null,"target_label":"2×30"}]}
+     ]}
+    """#
+
+    /// Same payload in bridge order (PSH, SQT, PLL, LGR, BRG, HSP).
+    static let ccLaddersJSON = #"""
+    {"generated_at":"2026-09-30T12:29:09.967Z",
+     "rule":{"description":"A session qualifies when it reaches the step graduate-at target. Ready after 2 consecutive qualifying sessions.","required_streak":2,"master_step":10,"targets_by_series":{"PSH":{"1":{"sets":3,"reps":50,"hold_sec":null,"label":"3×50"},"2":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":2,"reps":25,"hold_sec":null,"label":"2×25"},"5":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"6":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"7":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"8":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"9":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"10":{"sets":1,"reps":100,"hold_sec":null,"label":"1×100"}},"SQT":{"1":{"sets":3,"reps":50,"hold_sec":null,"label":"3×50"},"2":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":2,"reps":50,"hold_sec":null,"label":"2×50"},"5":{"sets":2,"reps":30,"hold_sec":null,"label":"2×30"},"6":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"7":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"8":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"9":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"10":{"sets":2,"reps":50,"hold_sec":null,"label":"2×50"}},"PLL":{"1":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"2":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"3":{"sets":3,"reps":20,"hold_sec":null,"label":"3×20"},"4":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"5":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"6":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"7":{"sets":2,"reps":9,"hold_sec":null,"label":"2×9"},"8":{"sets":2,"reps":8,"hold_sec":null,"label":"2×8"},"9":{"sets":2,"reps":7,"hold_sec":null,"label":"2×7"},"10":{"sets":2,"reps":6,"hold_sec":null,"label":"2×6"}},"LGR":{"1":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"2":{"sets":3,"reps":35,"hold_sec":null,"label":"3×35"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":3,"reps":25,"hold_sec":null,"label":"3×25"},"5":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"6":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"7":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"8":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"9":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"10":{"sets":2,"reps":30,"hold_sec":null,"label":"2×30"}},"BRG":{"1":{"sets":3,"reps":50,"hold_sec":null,"label":"3×50"},"2":{"sets":3,"reps":40,"hold_sec":null,"label":"3×40"},"3":{"sets":3,"reps":30,"hold_sec":null,"label":"3×30"},"4":{"sets":2,"reps":25,"hold_sec":null,"label":"2×25"},"5":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"6":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"7":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"8":{"sets":2,"reps":8,"hold_sec":null,"label":"2×8"},"9":{"sets":2,"reps":6,"hold_sec":null,"label":"2×6"},"10":{"sets":2,"reps":30,"hold_sec":null,"label":"2×30"}},"HSP":{"1":{"sets":1,"reps":null,"hold_sec":120,"label":"2:00 hold"},"2":{"sets":1,"reps":null,"hold_sec":60,"label":"1:00 hold"},"3":{"sets":1,"reps":null,"hold_sec":120,"label":"2:00 hold"},"4":{"sets":2,"reps":20,"hold_sec":null,"label":"2×20"},"5":{"sets":2,"reps":15,"hold_sec":null,"label":"2×15"},"6":{"sets":2,"reps":12,"hold_sec":null,"label":"2×12"},"7":{"sets":2,"reps":10,"hold_sec":null,"label":"2×10"},"8":{"sets":2,"reps":8,"hold_sec":null,"label":"2×8"},"9":{"sets":2,"reps":6,"hold_sec":null,"label":"2×6"},"10":{"sets":1,"reps":5,"hold_sec":null,"label":"1×5"}}}},
+     "active_program":{"id":"qa-program","name":"Program V2","version":3},
+     "series":[
+      {"series":"PSH","label":"Push-up","current_step":1,"step_name":"Wall push-up","since":"2026-09-15T04:00:00.000Z","target_reps":50,"target_sets":3,"target_hold_sec":null,"target_label":"3×50","progress":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[
+        {"step":1,"name":"Wall push-up","target_sets":3,"target_reps":50,"target_hold_sec":null,"target_label":"3×50"},
+        {"step":2,"name":"Incline push-up","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":3,"name":"Kneeling push-up","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Half push-up","target_sets":2,"target_reps":25,"target_hold_sec":null,"target_label":"2×25"},
+        {"step":5,"name":"Full push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":6,"name":"Close push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":7,"name":"Uneven push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":8,"name":"Half one-arm push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":9,"name":"Lever push-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":10,"name":"One-arm push-up","target_sets":1,"target_reps":100,"target_hold_sec":null,"target_label":"1×100"}]},
+      {"series":"SQT","label":"Squat","current_step":2,"step_name":"Jackknife squat","since":"2026-09-15T04:00:00.000Z","target_reps":40,"target_sets":3,"target_hold_sec":null,"target_label":"3×40","progress":{"best_total_reps_last":52,"best_total_reps_prev":46,"delta":6,"improved":true,"pct_of_target":43.3},"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,"program_exercises":[{"day":"Lower B + Cond","exercise":"CC squat ladder - step 2 Jackknife squat","step":2,"sets":2,"reps":"8-15"}],"last_event":null,"sessions":[{"workout_id":"qa-sqt-2","session_date":"2026-09-29","program_day":null,"title":null,"exercise":"Jackknife squat","step":2,"sets":[{"set_order":1,"reps":18,"rir":null,"load_lb":0},{"set_order":2,"reps":17,"rir":null,"load_lb":0},{"set_order":3,"reps":17,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["rep_progress","reps_below_target"],"total_reps":52,"pct_of_target":43.3},{"workout_id":"qa-sqt-1","session_date":"2026-09-26","program_day":null,"title":null,"exercise":"Jackknife squat","step":2,"sets":[{"set_order":1,"reps":16,"rir":null,"load_lb":0},{"set_order":2,"reps":15,"rir":null,"load_lb":0},{"set_order":3,"reps":15,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"],"total_reps":46,"pct_of_target":38.3}],"steps":[
+        {"step":1,"name":"Shoulderstand squat","target_sets":3,"target_reps":50,"target_hold_sec":null,"target_label":"3×50"},
+        {"step":2,"name":"Jackknife squat","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":3,"name":"Supported squat","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Half squat","target_sets":2,"target_reps":50,"target_hold_sec":null,"target_label":"2×50"},
+        {"step":5,"name":"Full squat","target_sets":2,"target_reps":30,"target_hold_sec":null,"target_label":"2×30"},
+        {"step":6,"name":"Close squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":7,"name":"Uneven squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":8,"name":"Half one-leg squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":9,"name":"Assisted one-leg squat","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":10,"name":"One-leg squat (pistol)","target_sets":2,"target_reps":50,"target_hold_sec":null,"target_label":"2×50"}]},
+      {"series":"PLL","label":"Pull-up","current_step":1,"step_name":"Vertical pull","since":"2026-09-15T04:00:00.000Z","target_reps":40,"target_sets":3,"target_hold_sec":null,"target_label":"3×40","progress":null,"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[],"steps":[
+        {"step":1,"name":"Vertical pull","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":2,"name":"Horizontal pull","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":3,"name":"Jackknife pull-up","target_sets":3,"target_reps":20,"target_hold_sec":null,"target_label":"3×20"},
+        {"step":4,"name":"Half pull-up","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":5,"name":"Full pull-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":6,"name":"Close pull-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":7,"name":"Uneven pull-up","target_sets":2,"target_reps":9,"target_hold_sec":null,"target_label":"2×9"},
+        {"step":8,"name":"Half one-arm pull-up","target_sets":2,"target_reps":8,"target_hold_sec":null,"target_label":"2×8"},
+        {"step":9,"name":"Assisted one-arm pull-up","target_sets":2,"target_reps":7,"target_hold_sec":null,"target_label":"2×7"},
+        {"step":10,"name":"One-arm pull-up","target_sets":2,"target_reps":6,"target_hold_sec":null,"target_label":"2×6"}]},
+      {"series":"LGR","label":"Leg raise","current_step":1,"step_name":"Knee tuck","since":"2026-09-15T04:00:00.000Z","target_reps":40,"target_sets":3,"target_hold_sec":null,"target_label":"3×40","progress":{"best_total_reps_last":120,"best_total_reps_prev":120,"delta":0,"improved":false,"pct_of_target":100},"master":false,"ready":true,"streak":2,"required_streak":2,"flags":[],"in_program":true,"program_exercises":[{"day":"Upper Push","exercise":"CC leg raise ladder - step 1 Knee tuck","step":1,"sets":2,"reps":"8-15"}],"last_event":null,"sessions":[{"workout_id":"qa-lgr-2","session_date":"2026-09-29","program_day":null,"title":null,"exercise":"Knee tuck","step":1,"sets":[{"set_order":1,"reps":40,"rir":null,"load_lb":0},{"set_order":2,"reps":40,"rir":null,"load_lb":0},{"set_order":3,"reps":40,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[],"total_reps":120,"pct_of_target":100},{"workout_id":"qa-lgr-1","session_date":"2026-09-22","program_day":null,"title":null,"exercise":"Knee tuck","step":1,"sets":[{"set_order":1,"reps":40,"rir":null,"load_lb":0},{"set_order":2,"reps":40,"rir":null,"load_lb":0},{"set_order":3,"reps":40,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":true,"flags":[],"total_reps":120,"pct_of_target":100}],"steps":[
+        {"step":1,"name":"Knee tuck","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":2,"name":"Flat knee raise","target_sets":3,"target_reps":35,"target_hold_sec":null,"target_label":"3×35"},
+        {"step":3,"name":"Flat bent-leg raise","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Flat frog raise","target_sets":3,"target_reps":25,"target_hold_sec":null,"target_label":"3×25"},
+        {"step":5,"name":"Flat straight-leg raise","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":6,"name":"Hanging knee raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":7,"name":"Hanging bent-leg raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":8,"name":"Hanging frog raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":9,"name":"Partial hanging straight-leg raise","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":10,"name":"Hanging straight-leg raise","target_sets":2,"target_reps":30,"target_hold_sec":null,"target_label":"2×30"}]},
+      {"series":"BRG","label":"Bridge","current_step":1,"step_name":"Short bridge","since":"2026-09-15T04:00:00.000Z","target_reps":50,"target_sets":3,"target_hold_sec":null,"target_label":"3×50","progress":{"best_total_reps_last":40,"best_total_reps_prev":null,"delta":null,"improved":false,"pct_of_target":26.7},"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":true,"program_exercises":[{"day":"Upper Physique","exercise":"CC bridge ladder - step 1 Short bridge","step":1,"sets":2,"reps":"8-15"}],"last_event":null,"sessions":[{"workout_id":"qa-brg-1","session_date":"2026-09-21","program_day":null,"title":null,"exercise":"Short bridge","step":1,"sets":[{"set_order":1,"reps":20,"rir":null,"load_lb":0},{"set_order":2,"reps":20,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["reps_below_target"],"total_reps":40,"pct_of_target":26.7}],"steps":[
+        {"step":1,"name":"Short bridge","target_sets":3,"target_reps":50,"target_hold_sec":null,"target_label":"3×50"},
+        {"step":2,"name":"Straight bridge","target_sets":3,"target_reps":40,"target_hold_sec":null,"target_label":"3×40"},
+        {"step":3,"name":"Angled bridge","target_sets":3,"target_reps":30,"target_hold_sec":null,"target_label":"3×30"},
+        {"step":4,"name":"Head bridge","target_sets":2,"target_reps":25,"target_hold_sec":null,"target_label":"2×25"},
+        {"step":5,"name":"Half bridge","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":6,"name":"Full bridge","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":7,"name":"Wall-walk bridge (down)","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":8,"name":"Wall-walk bridge (up)","target_sets":2,"target_reps":8,"target_hold_sec":null,"target_label":"2×8"},
+        {"step":9,"name":"Closing bridge","target_sets":2,"target_reps":6,"target_hold_sec":null,"target_label":"2×6"},
+        {"step":10,"name":"Stand-to-stand bridge","target_sets":2,"target_reps":30,"target_hold_sec":null,"target_label":"2×30"}]},
+      {"series":"HSP","label":"Handstand push-up","current_step":1,"step_name":"Wall headstand","since":"2026-09-15T04:00:00.000Z","target_reps":null,"target_sets":1,"target_hold_sec":120,"target_label":"2:00 hold","progress":{"best_total_reps_last":75,"best_total_reps_prev":60,"delta":15,"improved":true,"pct_of_target":62.5},"master":false,"ready":false,"streak":0,"required_streak":2,"flags":[],"in_program":false,"program_exercises":[],"last_event":null,"sessions":[{"workout_id":"qa-hsp-2","session_date":"2026-09-28","program_day":null,"title":null,"exercise":"Wall headstand","step":1,"sets":[{"set_order":1,"reps":75,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["rep_progress","hold_below_target"],"total_reps":75,"pct_of_target":62.5},{"workout_id":"qa-hsp-1","session_date":"2026-09-25","program_day":null,"title":null,"exercise":"Wall headstand","step":1,"sets":[{"set_order":1,"reps":60,"rir":null,"load_lb":0}],"counts_toward_current_step":true,"qualifying":false,"flags":["hold_below_target"],"total_reps":60,"pct_of_target":50}],"steps":[
+        {"step":1,"name":"Wall headstand","target_sets":1,"target_reps":null,"target_hold_sec":120,"target_label":"2:00 hold"},
+        {"step":2,"name":"Crow stand","target_sets":1,"target_reps":null,"target_hold_sec":60,"target_label":"1:00 hold"},
+        {"step":3,"name":"Wall handstand","target_sets":1,"target_reps":null,"target_hold_sec":120,"target_label":"2:00 hold"},
+        {"step":4,"name":"Half handstand push-up","target_sets":2,"target_reps":20,"target_hold_sec":null,"target_label":"2×20"},
+        {"step":5,"name":"Handstand push-up","target_sets":2,"target_reps":15,"target_hold_sec":null,"target_label":"2×15"},
+        {"step":6,"name":"Close handstand push-up","target_sets":2,"target_reps":12,"target_hold_sec":null,"target_label":"2×12"},
+        {"step":7,"name":"Uneven handstand push-up","target_sets":2,"target_reps":10,"target_hold_sec":null,"target_label":"2×10"},
+        {"step":8,"name":"Half one-arm handstand push-up","target_sets":2,"target_reps":8,"target_hold_sec":null,"target_label":"2×8"},
+        {"step":9,"name":"Lever handstand push-up","target_sets":2,"target_reps":6,"target_hold_sec":null,"target_label":"2×6"},
+        {"step":10,"name":"One-arm handstand push-up","target_sets":1,"target_reps":5,"target_hold_sec":null,"target_label":"1×5"}]}
      ]}
     """#
 
@@ -1673,7 +1824,7 @@ enum VisualQAFixtures {
             "/api/peptides/inventory": (200, Data(peptideInventoryJSON.utf8)),
             "/api/peptides/schedules": (200, Data(peptideSchedulesJSON.utf8)),
             "/api/peptides/administrations": (200, peptideAdministrationsJSON()),
-            "/api/cc/ladders": (200, Data(ccLaddersJSON.utf8)),
+            "/api/cc/ladders": (200, Data((ccLaddersJSONOverride ?? ccLaddersJSON).utf8)),
         ]
     }
 }
