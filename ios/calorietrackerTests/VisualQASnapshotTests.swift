@@ -820,6 +820,64 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - On-device model picker (55, 56)
+
+    /// Apple Foundation Models picked, Gemma not downloaded, one fallback notice. Fixed state:
+    /// no device availability checks and no UserDefaults reads.
+    func test55SettingsOnDeviceModelPicker() async throws {
+        let state = OnDeviceModelState(
+            choice: .appleFoundationModels,
+            apple: .available,
+            gemma: .unavailable("Gemma 4 isn't downloaded and prepared yet")
+        )
+        let notice = OnDeviceFallbackNotice(
+            provider: AIProvider.gemini.displayName,
+            reason: "Could not read the workout. Please try again.",
+            date: Date(timeIntervalSince1970: 1_790_000_000)
+        )
+        try await settingsScreen("55-settings-on-device-model-picker", heightMultiplier: 1.6) {
+            OnDeviceModelPickerView(preview: state, previewNotice: notice)
+        }
+    }
+
+    /// Router stats with Model tiers activity: picked on-device, image kept on cloud, and a fallback.
+    func test56JevRouterStatsTiers() async throws {
+        let suiteName = "jev.router.visual.tiers"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let telemetry = JevRouterTelemetry(defaults: defaults)
+        for latency in [150, 190, 240] {
+            telemetry.recordNetwork(use: .tierRouting, latencyMs: latency, inputTokens: 300)
+        }
+        telemetry.recordCacheHit(use: .tierRouting)
+        telemetry.record(
+            .tierRouting,
+            .localShortcut(label: "Apple on-device (picked)", llmCallsAvoided: 0),
+            preview: "2 eggs and toast",
+            latencyMs: nil,
+            model: nil
+        )
+        telemetry.record(
+            .tierRouting,
+            .localShortcut(label: "Apple on-device (picked)", llmCallsAvoided: 0),
+            preview: "bench 3x10 at 60kg",
+            latencyMs: nil,
+            model: nil
+        )
+        telemetry.record(
+            .tierRouting,
+            .localShortcut(label: "image → cloud", llmCallsAvoided: 0),
+            preview: "food_photo",
+            latencyMs: nil,
+            model: nil
+        )
+        telemetry.record(.tierRouting, .fellBack(.skipped), preview: "what should I eat tonight?", latencyMs: nil, model: nil)
+        try await settingsScreen("56-jev-router-stats", heightMultiplier: 3) {
+            JevRouterStatsView(telemetry: telemetry)
+        }
+    }
+
     // MARK: - Rendering
 
     private func eachSize<Content: View>(

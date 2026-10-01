@@ -97,9 +97,11 @@ struct ChatService {
         )
 
         let baseConfig = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
-        let tierPlan = JevTierRouter.routes(hasImage: imageData != nil, hosted: false)
-            ? await JevTierRouter.plan(.coachChat(newUserMessage), base: baseConfig)
-            : JevTierPlan(primary: baseConfig, strong: baseConfig, tier: .strong)
+        // Messages with an image always keep the cloud config; text may use a cheaper or on-device tier.
+        let tierPlan = await JevTierRouter.plan(
+            imageData == nil ? JevTierRequest.coachChat(newUserMessage) : JevTierRequest.coachPhoto(newUserMessage),
+            base: baseConfig
+        )
         let config = tierPlan.primary
         func request(
             provider: AIProvider,
@@ -152,28 +154,17 @@ struct ChatService {
         }
 
         do {
-            return try await request(
-                provider: config.provider,
-                model: config.model,
-                baseURL: config.baseURL,
-                apiKey: config.apiKey
-            )
+            // A cheaper or on-device tier that fails retries once on the strong config.
+            return try await JevTierRouter.run(tierPlan) { tier in
+                try await request(
+                    provider: tier.provider,
+                    model: tier.model,
+                    baseURL: tier.baseURL,
+                    apiKey: tier.apiKey
+                )
+            }
         } catch {
             if error is CancellationError { throw error }
-            if tierPlan.tier != .strong {
-                do {
-                    return try await request(
-                        provider: tierPlan.strong.provider,
-                        model: tierPlan.strong.model,
-                        baseURL: tierPlan.strong.baseURL,
-                        apiKey: tierPlan.strong.apiKey
-                    )
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    // Cheaper tier failed once. The existing fallback chain still runs from the original error.
-                }
-            }
             let fallback = imageData == nil
                 ? AIProviderSettings.currentTextFallbackConfig(
                     excludingPrimary: config.provider,
