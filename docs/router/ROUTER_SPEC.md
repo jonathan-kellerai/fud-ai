@@ -645,9 +645,20 @@ Sends the request text only (typed meal or chat message). Never images: image re
 5. `lowConfidenceKeepsStrong`.
 6. `timeoutKeepsStrong`.
 7. `planNeverChangesProviderOrKey` (the cheap plan keeps provider/baseURL/apiKey and only the model differs).
-8. `imageRequestNotRouted`.
+8. `imageRequestAlwaysCloudTier`, `workoutParseEligibleForOnDevice`, `disabledRouterReturnsBase`.
+9. Picker: `selectorTable`, `pickedAppleBypassesComplexityScore`, `pickedButUnavailableFallsBackToCloudWithNotice`, `pickedOnDeviceFailureEscalatesToCloudAndNotes`.
 
 Test `JevTierRouter` with injected `base: RequestConfig` and eligibility closures (no `AIProviderSettings` / Keychain reads).
+
+### Update: every cloud-mode AI path goes through `JevTierRouter.plan`
+Request kinds: `textFood` (`food_text`), `coachChat` (`coach_chat`), `workoutParse` (`workout_parse`), `foodPhoto(caption:)` (`food_photo`), `coachPhoto` (`coach_photo`). Hosted mode still branches off first.
+
+Order inside `plan`:
+1. **Image requests** (`foodPhoto`, `coachPhoto`) return `base` with tier `strong`: on-device image input isn't available on iOS 26, so photos stay on the user's cloud vision provider. Zero Jev calls. When Model tiers or the picker is on, the decision is recorded as a `tierRouting` local shortcut ("image → cloud") so Router stats counts it.
+2. **Settings → AI → On-device model** (`ai.onDeviceModel.choice`: `off` (default) | `appleFoundationModels` | `gemma4`). When set, the three text kinds use that model directly (no complexity score, no `needs_user_data` gate), with `strong = base`. If the model can't run now (Apple Intelligence off / model not ready, Gemma not downloaded and prepared), `base` answers and a one-line notice is stored (`ai.onDeviceModel.lastFallback`) for the picker screen. Recorded as `tierRouting` local shortcut "… (picked)" or `fellBack(skipped)`.
+3. **Picker Off:** the Jev complexity score, exactly as above. Disabled tier routing returns `base`.
+
+`JevTierRouter.run(plan)` is the shared escalation: try `primary`; if a cheaper or picked on-device tier throws, note the fallback (picked only), retry once on `strong`; if that fails, rethrow the primary error into each call site's existing text/image fallback chain. Workout clarifying questions are answers, not failures, so they never escalate.
 
 ---
 

@@ -4199,6 +4199,7 @@ struct ProfileView: View {
     @State private var textFallbackBaseURL: String = AIProviderSettings.fallbackCustomBaseURL(for: AIProviderSettings.selectedTextFallbackProvider) ?? ""
     @State private var showTextFallbackAPIKey = false
     @State private var localModelAvailabilityRevision = 0
+    @AppStorage(OnDeviceModelSettings.choiceKey) private var onDeviceModelChoiceRaw = OnDeviceModelChoice.off.rawValue
     @State private var selectedSpeechProvider: SpeechProvider = SpeechSettings.selectedProvider
     @State private var selectedSpeechLanguage: SpeechLanguage = SpeechSettings.selectedLanguage(for: SpeechSettings.selectedProvider)
     @State private var speechApiKeyText: String = SpeechSettings.apiKey(for: SpeechSettings.selectedProvider) ?? ""
@@ -4402,6 +4403,10 @@ struct ProfileView: View {
 
     private var gemmaStatusLabel: String {
         Gemma4LocalModelManager.shared.settingsSubtitle
+    }
+
+    private var onDeviceModelSubtitle: String {
+        (OnDeviceModelChoice(rawValue: onDeviceModelChoiceRaw) ?? .off).shortTitle
     }
 
     private var bridgeStatusLabel: String {
@@ -5013,6 +5018,12 @@ struct ProfileView: View {
                     NavigationLink(value: ProfileSettingsCategory.aiProviders) {
                         SettingsHubRowLabel(title: "AI Providers", systemImage: "sparkles", subtitle: aiProvidersSubtitle)
                     }
+                    NavigationLink {
+                        OnDeviceModelPickerView()
+                    } label: {
+                        SettingsHubRowLabel(title: "On-device model", systemImage: "cpu", subtitle: onDeviceModelSubtitle)
+                    }
+                    .accessibilityIdentifier("settings.onDeviceModel.picker")
                     NavigationLink(value: ProfileSettingsCategory.onDeviceModels) {
                         SettingsHubRowLabel(title: "On-Device Models", systemImage: "iphone.gen3", subtitle: gemmaStatusLabel)
                     }
@@ -6187,6 +6198,7 @@ struct ProfileView: View {
                         SpeechSettings.deleteAllData()
                         TypeSafeSettings.deleteAllData()
                         JevRouterSettings.deleteAllData()
+                        OnDeviceModelSettings.deleteAllData()
                         chatStore.reset()
                         WidgetSnapshot.clear()
                         WidgetCenter.shared.reloadAllTimelines()
