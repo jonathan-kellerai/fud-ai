@@ -105,6 +105,7 @@ struct ManualEntryView: View {
                         onSave(entry)
                     } label: {
                         Text("Save")
+                            .font(.headline.weight(.heavy))
                     }
                     .buttonStyle(IronPrimaryButtonStyle(enabled: canSave && !submissionGate.isSubmitting))
                     .disabled(!canSave || submissionGate.isSubmitting)
