@@ -413,6 +413,31 @@ struct CCLadderTests {
         ))
         #expect(squat.text == "Ladder now at step 3 · Supported squat · graduate at 3×30")
 
+        // Units follow the logged step, not the current one. HSP is on step 1 (a hold).
+        let pushUp = try #require(CCLadderLogic.loggerHint(
+            exerciseKey: "Half handstand push-up",
+            exerciseName: "CC handstand ladder - step 4 Half handstand push-up",
+            in: response
+        ))
+        #expect(pushUp == CCLoggerLadderHint(text: "Ladder now at step 1 · Wall headstand · graduate at 2:00 hold", isHold: false))
+
+        // HSP moved to step 4 (reps), but the program still logs the step 2 hold.
+        var hspMoved = response
+        let hspIndex = try #require(hspMoved.series.firstIndex { $0.series == "HSP" })
+        hspMoved.series[hspIndex].currentStep = 4
+        hspMoved.series[hspIndex].targetLabel = nil
+        hspMoved.series[hspIndex].targetSets = nil
+        hspMoved.series[hspIndex].targetHoldSec = nil
+        let crow = try #require(CCLadderLogic.loggerHint(
+            exerciseKey: "Crow stand",
+            exerciseName: "CC handstand ladder - step 2 Crow stand",
+            in: hspMoved
+        ))
+        #expect(crow.isHold)
+        #expect(crow.text.hasPrefix("Ladder now at step 4 · Half handstand push-up"))
+        let hspSeries = try #require(hspMoved.series.first { $0.series == "HSP" })
+        #expect(CCLadderLogic.loggedStep(hspSeries, exerciseKey: "", exerciseName: "CC handstand ladder - Half handstand push-up")?.step == 4)
+
         #expect(CCLadderLogic.loggerHint(exerciseKey: "Knee tuck", exerciseName: "Knee tuck", in: nil) == nil)
         #expect(CCLadderLogic.loggerHint(exerciseKey: "lat pulldown", exerciseName: "Lat pulldown", in: response) == nil)
         #expect(CCLadderLogic.isLadderExerciseName("CC bridge ladder - step 1 Short bridge"))

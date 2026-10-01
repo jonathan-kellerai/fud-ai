@@ -56,6 +56,8 @@ struct OnDeviceModelState: Equatable, Sendable {
     var apple: OnDeviceModelAvailability
     var gemma: OnDeviceModelAvailability
 
+    /// Reads MainActor-isolated settings; the type itself is Sendable and otherwise nonisolated.
+    @MainActor
     static var current: OnDeviceModelState {
         OnDeviceModelState(
             choice: OnDeviceModelSettings.choice,

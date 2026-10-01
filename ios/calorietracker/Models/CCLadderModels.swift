@@ -559,7 +559,7 @@ enum CCStepStatus: Equatable {
 /// What the workout logger shows next to a CC ladder exercise.
 struct CCLoggerLadderHint: Equatable {
     var text: String
-    /// The current step is a timed hold: the reps field takes seconds.
+    /// The logged step is a timed hold: the reps field takes seconds.
     var isHold: Bool
 }
 
@@ -838,7 +838,41 @@ enum CCLadderLogic {
         let text = isCurrent
             ? "Graduate at \(target)"
             : "Ladder now at step \(current.step) · \(current.name) · graduate at \(target)"
-        return CCLoggerLadderHint(text: text, isHold: isHoldSeries(series, rule: response.rule))
+        // Units follow the step being logged, which can differ from the current step.
+        let isHold: Bool
+        if let logged = loggedStep(series, exerciseKey: exerciseKey, exerciseName: exerciseName),
+           logged.step != current.step {
+            isHold = (target(for: logged, series: series.series, rule: response.rule).holdSec ?? 0) > 0
+        } else {
+            isHold = isHoldSeries(series, rule: response.rule)
+        }
+        return CCLoggerLadderHint(text: text, isHold: isHold)
+    }
+
+    /// The step a logged exercise names: a step or book name equal to the key or name,
+    /// then "step N" in the program label, then a step or book name ending the label.
+    static func loggedStep(_ series: CCSeriesState, exerciseKey: String, exerciseName: String) -> CCLadderStep? {
+        let key = normalized(exerciseKey)
+        let name = normalized(exerciseName)
+        func names(_ step: CCLadderStep) -> [String] {
+            [normalized(step.name), normalized(step.bookName ?? "")].filter { !$0.isEmpty }
+        }
+        if let exact = series.steps.first(where: { names($0).contains { $0 == key || $0 == name } }) {
+            return exact
+        }
+        if let range = name.range(of: #"\bstep\s+\d+"#, options: .regularExpression),
+           let number = Int(name[range].filter(\.isNumber)),
+           let numbered = series.steps.first(where: { $0.step == number }) {
+            return numbered
+        }
+        // Longest suffix wins: "half handstand push-up" over "handstand push-up".
+        var best: (step: CCLadderStep, length: Int)?
+        for step in series.steps {
+            for candidate in names(step) where name.hasSuffix(candidate) && candidate.count > (best?.length ?? 0) {
+                best = (step, candidate.count)
+            }
+        }
+        return best?.step
     }
 
     private static func normalized(_ text: String) -> String {

@@ -250,6 +250,25 @@ struct WeeklyChallengeAutoDeleteTests {
         #expect(WeeklyChallengeAutoDelete.shortReason(for: WeeklyChallengeAPIError.invalidResponse) == "invalid response")
     }
 
+    @Test("404 counts as deleted; 401/403 is token rejected, never labeled deleted")
+    func deleteStatusOutcomes() {
+        func server(_ status: Int) -> WeeklyChallengeAPIError {
+            .server(statusCode: status, code: "x", message: "server body")
+        }
+        #expect(WeeklyChallengeAutoDelete.completedResult(for: server(404)) == .deleted)
+        #expect(WeeklyChallengeAutoDelete.completedResult(for: server(401)) == .tokenRejected)
+        #expect(WeeklyChallengeAutoDelete.completedResult(for: server(403)) == .tokenRejected)
+        #expect(WeeklyChallengeAutoDelete.completedResult(for: server(500)) == nil)
+        #expect(WeeklyChallengeAutoDelete.completedResult(for: WeeklyChallengeAPIError.transport(URLError(.notConnectedToInternet))) == nil)
+
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        let day = date.formatted(date: .abbreviated, time: .omitted)
+        let rejected = WeeklyChallengeAutoDelete.Outcome(date: date, participantID: "p-123", result: .tokenRejected, reason: nil)
+        let line = WeeklyChallengeAutoDelete.statusLine(rejected)
+        #expect(line == "Old Weekly Challenge profile (participant p-123): token rejected (profile likely already removed by the 90-day inactivity purge) on \(day). The local credential was cleared.")
+        #expect(!line.contains("deleted from"))
+    }
+
     @Test("Outcome round-trips through its UserDefaults JSON")
     func outcomeCodable() throws {
         let outcome = WeeklyChallengeAutoDelete.Outcome(

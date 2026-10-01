@@ -35,7 +35,11 @@ enum WeeklyChallengeAutoDelete {
         case deleted
         case nothingToDelete
         case failed
+        /// 401/403: the server no longer accepts the token. Done, but not confirmed deleted.
+        case tokenRejected
     }
+
+    static let tokenRejectedText = "token rejected (profile likely already removed by the 90-day inactivity purge)"
 
     struct Outcome: Codable, Equatable {
         var date: Date
@@ -62,6 +66,23 @@ enum WeeklyChallengeAutoDelete {
         case .failed:
             let reason = outcome.reason.map { ": \($0)" } ?? ""
             return "Deleting the old Weekly Challenge profile\(participant) failed on \(date)\(reason). It retries at next launch."
+        case .tokenRejected:
+            return "Old Weekly Challenge profile\(participant): \(tokenRejectedText) on \(date). The local credential was cleared."
+        }
+    }
+
+    /// A delete error that still finishes the cleanup: 404 means the profile is gone;
+    /// 401/403 means the token can't be retried. Anything else is a failure that retries.
+    static func completedResult(for error: Error) -> Result? {
+        guard let apiError = error as? WeeklyChallengeAPIError,
+              case .server(let statusCode, _, _) = apiError
+        else {
+            return nil
+        }
+        switch statusCode {
+        case 404: return .deleted
+        case 401, 403: return .tokenRejected
+        default: return nil
         }
     }
 
@@ -241,12 +262,23 @@ final class WeeklyChallengeStore {
             let knownParticipantID = participantID
             markDeletionPending()
             do {
-                try await deleteRemoteProfile(token: token)
+                // Not deleteRemoteProfile: it treats 401 as deleted, and this records which it was.
+                let response = try await api.deleteProfile(token: token)
+                guard response.deleted else { throw WeeklyChallengeAPIError.invalidResponse }
                 clearLocalIdentity()
                 isOffline = false
                 recordAutoDelete(.deleted, participantID: knownParticipantID, reason: nil, done: true)
             } catch is CancellationError {
                 // The pending marker and credential stay in Keychain.
+            } catch let error where WeeklyChallengeAutoDelete.completedResult(for: error) != nil {
+                clearLocalIdentity()
+                isOffline = false
+                recordAutoDelete(
+                    WeeklyChallengeAutoDelete.completedResult(for: error) ?? .failed,
+                    participantID: knownParticipantID,
+                    reason: nil,
+                    done: true
+                )
             } catch {
                 // Not done: the pending marker and credential stay in Keychain
                 // and the next launch tries again.

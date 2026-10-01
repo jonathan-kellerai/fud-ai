@@ -114,9 +114,11 @@ enum JevTierRouter {
     /// parse, Coach (text and image) and photo food. Hosted mode branches off before this.
     ///
     /// Order: images always keep `base` (cloud). A picked on-device model answers the text
-    /// requests directly, without the complexity score; when it can't run, `base` answers and
-    /// the picker screen shows why. With the picker Off, Jev tier routing decides as before,
-    /// and returns `base` when tier routing is disabled.
+    /// requests directly, without the complexity score; when it can't run, the cloud config
+    /// answers and the picker screen shows why. The cloud config is `base`, or the configured
+    /// text fallback when `base` is itself on-device (Apple Intelligence or Gemma). With the
+    /// picker Off, Jev tier routing decides as before, and returns `base` when tier routing
+    /// is disabled.
     static func plan(
         _ request: JevTierRequest,
         base: AIProviderSettings.RequestConfig,
@@ -124,11 +126,13 @@ enum JevTierRouter {
         eligibility: (() -> JevTierEligibility)? = nil,
         isEnabled: (() -> Bool)? = nil,
         onDevice: (() -> OnDeviceModelState)? = nil,
+        cloudFallback: (() -> AIProviderSettings.RequestConfig?)? = nil,
         recordFallback: ((OnDeviceFallbackNotice?) -> Void)? = nil
     ) async -> JevTierPlan {
         let isEnabled = isEnabled ?? { JevRouterSettings.isActive(.tierRouting) }
         let onDeviceState = (onDevice ?? { OnDeviceModelState.current })()
         let recordFallback = recordFallback ?? { OnDeviceModelSettings.lastFallback = $0 }
+        let cloudFallback = cloudFallback ?? { configuredTextFallback(for: base) }
         let basePlan = JevTierPlan(primary: base, strong: base, tier: .strong)
 
         switch OnDeviceModelSelector.select(onDeviceState, request: request) {
@@ -140,14 +144,17 @@ enum JevTierRouter {
             return basePlan
         case .onDevice(let tier):
             let primary = config(for: tier, base: base, cheapModel: "")
+            let strong = cloudConfig(base: base, cloudFallback: cloudFallback)
             await router.report(.tierRouting, .localShortcut(label: "\(tierLabel(tier)) (picked)", llmCallsAvoided: 0), preview: request.text)
-            // Base already on the same on-device provider: nothing cheaper to escalate from.
-            let routedTier: JevTier = primary.provider == base.provider ? .strong : tier
-            return JevTierPlan(primary: primary, strong: base, tier: routedTier, pickedOnDevice: true)
+            // No cloud config and base on the same on-device provider: nothing to escalate to.
+            let routedTier: JevTier = primary.provider == strong.provider ? .strong : tier
+            return JevTierPlan(primary: primary, strong: strong, tier: routedTier, pickedOnDevice: true)
         case .fallBack(let reason):
-            recordFallback(OnDeviceFallbackNotice(provider: base.provider.displayName, reason: reason, date: Date()))
+            let strong = cloudConfig(base: base, cloudFallback: cloudFallback)
+            let noted = isOnDeviceProvider(strong.provider) ? "\(reason); \(noCloudProviderReason)" : reason
+            recordFallback(OnDeviceFallbackNotice(provider: strong.provider.displayName, reason: noted, date: Date()))
             await router.report(.tierRouting, .fellBack(.skipped), preview: request.text)
-            return basePlan
+            return JevTierPlan(primary: strong, strong: strong, tier: .strong)
         case .router:
             break
         }
@@ -172,15 +179,19 @@ enum JevTierRouter {
             appleIntelligence: flags.appleIntelligence,
             cheapModel: cheapIsDifferent ? cheapModel : ""
         )
+        // Built here, on the caller's actor; the @Sendable builder only captures values.
+        let requestType = request.requestType
+        let text = request.text
+        let tierQuestions = questions(for: request)
         let outcome = await router.ask(
             .tierRouting,
-            cacheKey: "\(request.requestType)|\(JevText.normalize(request.text))",
-            preview: request.text
+            cacheKey: "\(requestType)|\(JevText.normalize(text))",
+            preview: text
         ) { model in
             TypeSafeRequest(state: .object([
-                "request_type": .string(request.requestType),
-                "text": .string(request.text)
-            ]), model: model, questions: questions(for: request))
+                "request_type": .string(requestType),
+                "text": .string(text)
+            ]), model: model, questions: tierQuestions)
         }
         guard case .answered(let response, _, _) = outcome else {
             return JevTierPlan(primary: strong, strong: strong, tier: .strong)
@@ -206,14 +217,15 @@ enum JevTierRouter {
             return value
         } catch {
             if error is CancellationError { throw error }
-            guard plan.tier != .strong else { throw error }
             if plan.pickedOnDevice {
+                let reason = OnDeviceFallbackNotice.reason(for: error)
                 recordFallback(OnDeviceFallbackNotice(
                     provider: plan.strong.provider.displayName,
-                    reason: OnDeviceFallbackNotice.reason(for: error),
+                    reason: isOnDeviceProvider(plan.strong.provider) ? "\(reason); \(noCloudProviderReason)" : reason,
                     date: Date()
                 ))
             }
+            guard plan.tier != .strong else { throw error }
             do {
                 return try await perform(plan.strong)
             } catch is CancellationError {
@@ -223,6 +235,36 @@ enum JevTierRouter {
             }
             throw error
         }
+    }
+
+    static let noCloudProviderReason = "no cloud provider configured"
+
+    static func isOnDeviceProvider(_ provider: AIProvider) -> Bool {
+        provider == .appleIntelligence || provider == .gemma4Local
+    }
+
+    /// The config a picked on-device model falls back to: `base` when it's already cloud,
+    /// otherwise the configured cloud text fallback, or `base` again when there is none.
+    private static func cloudConfig(
+        base: AIProviderSettings.RequestConfig,
+        cloudFallback: () -> AIProviderSettings.RequestConfig?
+    ) -> AIProviderSettings.RequestConfig {
+        guard isOnDeviceProvider(base.provider) else { return base }
+        if let cloud = cloudFallback(), !isOnDeviceProvider(cloud.provider) { return cloud }
+        return base
+    }
+
+    /// Settings → AI → Text fallback, resolved the same way the text request paths resolve it.
+    private static func configuredTextFallback(for base: AIProviderSettings.RequestConfig) -> AIProviderSettings.RequestConfig? {
+        guard let fallback = AIProviderSettings.currentTextFallbackConfig(excludingPrimary: base.provider, model: base.model) else {
+            return nil
+        }
+        return AIProviderSettings.RequestConfig(
+            provider: fallback.provider,
+            model: fallback.model,
+            baseURL: fallback.baseURL,
+            apiKey: fallback.apiKey
+        )
     }
 
     private static func tierLabel(_ tier: JevTier) -> String {

@@ -279,6 +279,85 @@ struct JevTierRoutingTests {
         #expect(TypeSafeStub.requests.isEmpty)
     }
 
+    @Test func pickedFallbackReachesCloudWhenTextProviderIsOnDevice() async throws {
+        let appleBase = AIProviderSettings.RequestConfig(provider: .appleIntelligence, model: "System Language Model", baseURL: "", apiKey: nil)
+        let cloud = base
+
+        // Picked Apple on an Apple text provider: escalates to the cloud text fallback.
+        let picked = await JevTierRouter.plan(
+            .textFood("toast"),
+            base: appleBase,
+            router: makeRouter(),
+            eligibility: { JevTierEligibility() },
+            isEnabled: { false },
+            onDevice: { Self.state(.appleFoundationModels) },
+            cloudFallback: { cloud },
+            recordFallback: { _ in Issue.record("Available model never notes a fallback") }
+        )
+        #expect(picked.tier == .appleIntelligence)
+        #expect(picked.primary.provider == .appleIntelligence)
+        #expect(picked.strong.provider == .gemini)
+        #expect(picked.strong.model == cloud.model)
+
+        // Picked Gemma unavailable on an Apple text provider: the cloud fallback answers.
+        var notices: [OnDeviceFallbackNotice?] = []
+        let unavailable = await JevTierRouter.plan(
+            .textFood("toast"),
+            base: appleBase,
+            router: makeRouter(),
+            eligibility: { JevTierEligibility() },
+            isEnabled: { false },
+            onDevice: { Self.state(.gemma4, gemma: .unavailable("Gemma 4 isn't downloaded and prepared yet")) },
+            cloudFallback: { cloud },
+            recordFallback: { notices.append($0) }
+        )
+        #expect(unavailable.tier == .strong)
+        #expect(unavailable.primary.provider == .gemini)
+        #expect(notices.first??.provider == AIProvider.gemini.displayName)
+        #expect(notices.first??.reason == "Gemma 4 isn't downloaded and prepared yet")
+
+        // No cloud fallback configured: keeps base and says so.
+        notices = []
+        let noCloud = await JevTierRouter.plan(
+            .textFood("toast"),
+            base: appleBase,
+            router: makeRouter(),
+            eligibility: { JevTierEligibility() },
+            isEnabled: { false },
+            onDevice: { Self.state(.appleFoundationModels) },
+            cloudFallback: { nil }
+        )
+        #expect(noCloud.tier == .strong)
+        #expect(noCloud.strong.provider == .appleIntelligence)
+        do {
+            _ = try await JevTierRouter.run(noCloud, recordFallback: { notices.append($0) }) { _ -> String in
+                throw Self.StubError.failed
+            }
+            Issue.record("Expected the primary error")
+        } catch {
+            #expect(error is Self.StubError)
+        }
+        #expect(notices.count == 1)
+        #expect(notices.first??.reason == "on-device failed; \(JevTierRouter.noCloudProviderReason)")
+
+        // Cloud base: the cloud fallback is never consulted.
+        let cloudBase = await JevTierRouter.plan(
+            .textFood("toast"),
+            base: base,
+            router: makeRouter(),
+            eligibility: { JevTierEligibility() },
+            isEnabled: { false },
+            onDevice: { Self.state(.gemma4) },
+            cloudFallback: {
+                Issue.record("Cloud base needs no fallback lookup")
+                return nil
+            }
+        )
+        #expect(cloudBase.tier == .onDevice)
+        #expect(cloudBase.strong.provider == base.provider)
+        #expect(cloudBase.strong.model == base.model)
+    }
+
     @Test func pickedOnDeviceFailureEscalatesToCloudAndNotes() async throws {
         let plan = JevTierPlan(
             primary: AIProviderSettings.RequestConfig(provider: .appleIntelligence, model: "System Language Model", baseURL: "", apiKey: nil),
