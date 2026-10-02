@@ -96,7 +96,13 @@ struct ChatService {
             workoutAccessEnabled: workoutAccessEnabled
         )
 
-        let config = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
+        let baseConfig = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
+        // Messages with an image always keep the cloud config; text may use a cheaper or on-device tier.
+        let tierPlan = await JevTierRouter.plan(
+            imageData == nil ? JevTierRequest.coachChat(newUserMessage) : JevTierRequest.coachPhoto(newUserMessage),
+            base: baseConfig
+        )
+        let config = tierPlan.primary
         func request(
             provider: AIProvider,
             model: String,
@@ -148,12 +154,15 @@ struct ChatService {
         }
 
         do {
-            return try await request(
-                provider: config.provider,
-                model: config.model,
-                baseURL: config.baseURL,
-                apiKey: config.apiKey
-            )
+            // A cheaper or on-device tier that fails retries once on the strong config.
+            return try await JevTierRouter.run(tierPlan) { tier in
+                try await request(
+                    provider: tier.provider,
+                    model: tier.model,
+                    baseURL: tier.baseURL,
+                    apiKey: tier.apiKey
+                )
+            }
         } catch {
             if error is CancellationError { throw error }
             let fallback = imageData == nil

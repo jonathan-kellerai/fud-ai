@@ -8,10 +8,9 @@ struct WatchNutritionView: View {
     @State private var showsWaterLogger = false
 
     private var themeGradient: [Color] {
-        [
-            Color(hex: receiver.snapshot.themeStartHex ?? 0xFF375F),
-            Color(hex: receiver.snapshot.themeEndHex ?? 0xFF6B8A),
-        ]
+        _ = receiver.snapshot.themeStartHex
+        _ = receiver.snapshot.themeEndHex
+        return [WatchIron.blood, WatchIron.bloodPressed]
     }
 
     var body: some View {
@@ -231,13 +230,7 @@ private struct WatchNutrientBar: View {
     }
 }
 
-extension Color {
-    init(hex: UInt, opacity: Double = 1.0) {
-        self.init(
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
-            opacity: opacity
-        )
-    }
+enum WatchIron {
+    static let blood = Color(.sRGB, red: 179.0 / 255.0, green: 18.0 / 255.0, blue: 27.0 / 255.0, opacity: 1)
+    static let bloodPressed = Color(.sRGB, red: 138.0 / 255.0, green: 14.0 / 255.0, blue: 21.0 / 255.0, opacity: 1)
 }

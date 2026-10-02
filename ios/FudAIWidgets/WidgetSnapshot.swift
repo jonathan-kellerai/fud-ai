@@ -59,13 +59,13 @@ struct WidgetSnapshot: Codable, Equatable {
     var waterCurrentMl: Int? = nil
     var waterGoalMl: Int? = nil
     var waterUnitRaw: String? = nil
-    /// User's theme gradient as raw hex (e.g. 0xFF375F). Optional so snapshots
+    /// User's theme gradient as a raw integer. Optional so snapshots
     /// written by older builds still decode; consumers fall back to Fud Pink.
     var themeStartHex: UInt?
     var themeEndHex: UInt?
 
-    private static let productionAppGroupID = "group.com.apoorvdarshan.calorietracker"
-    private static let debugAppGroupID = "group.com.apoorvdarshan.calorietracker.debug"
+    private static let productionAppGroupID = "group.com.jonathanbowe.jlphysical"
+    private static let debugAppGroupID = "group.com.jonathanbowe.jlphysical.debug"
     private static let key = "widget_snapshot_v1"
     private static let fileName = "widget_snapshot_v1.json"
 

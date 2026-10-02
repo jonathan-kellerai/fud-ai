@@ -671,7 +671,7 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center)
 
                 VStack(spacing: 12) {
-                    Text("Fud AI would like to send you Notifications")
+                    Text("JL Physical would like to send you Notifications")
                         .font(.system(.subheadline, design: .rounded, weight: .medium))
                         .multilineTextAlignment(.center)
                     Divider()
@@ -891,7 +891,7 @@ struct OnboardingView: View {
     private var aiProviderSubtitle: String {
         switch aiSubstep {
         case .choice:
-            String(localized: "Choose how you want to power AI in Fud AI. The app stays free either way.")
+            String(localized: "Choose how you want to power AI in JL Physical. The app stays free either way.")
         case .byok:
             String(localized: "Add your own AI provider key — Gemini, OpenAI, Groq, and more are supported.")
         case .hosted:
@@ -1034,7 +1034,7 @@ struct OnboardingView: View {
                 icon: "photo.fill",
                 title: "AI analysis",
                 text: isHosted
-                    ? String(localized: "Food photos, voice transcripts, and typed meals are processed through Fud AI's hosted service.")
+                    ? String(localized: "Food photos, voice transcripts, and typed meals are processed through JL Physical's hosted service.")
                     : String(localized: "Food photos, voice transcripts, and typed meals are sent directly to your selected AI provider.")
             )
             aiNoticeRow(

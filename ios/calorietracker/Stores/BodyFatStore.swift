@@ -18,10 +18,26 @@ class BodyFatStore {
     /// also pull the matching HK sample (matched by fudai_bodyfat_id metadata).
     var onEntryDeleted: ((UUID) -> Void)?
 
+    static let externalChangeNotification = "ai.fud.bodyFatEntriesDidChange"
     private let storageKey = "bodyFatEntries"
+    private let observesExternalChanges: Bool
 
-    init() {
+    init(observesExternalChanges: Bool = true) {
+        self.observesExternalChanges = observesExternalChanges
         loadEntries()
+        if observesExternalChanges {
+            startObservingExternalChanges()
+        }
+    }
+
+    deinit {
+        guard observesExternalChanges else { return }
+        CFNotificationCenterRemoveObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            CFNotificationName(Self.externalChangeNotification as CFString),
+            nil
+        )
     }
 
     /// Seed the first entry from the user's onboarding-set body fat. Called
@@ -80,14 +96,55 @@ class BodyFatStore {
         saveEntries()
     }
 
-    /// Bulk-import body-fat samples discovered from HealthKit (e.g. years of
-    /// smart-scale history). Bypasses onEntryAdded so the imports don't echo
-    /// back to HK as fresh writes — these samples already exist there.
+    /// Bulk-import body-fat samples discovered from HealthKit. Bypasses
+    /// onEntryAdded so the imports don't echo back to HealthKit. Dedupes by
+    /// entry id and HealthKit sample UUID.
     func importExternalEntries(_ external: [BodyFatEntry]) {
-        guard !external.isEmpty else { return }
-        entries.append(contentsOf: external)
+        var seenIDs = Set(entries.map(\.id))
+        var seenHealthUUIDs = Set(entries.compactMap(\.healthKitSampleUUID))
+        let fresh = external.filter { entry in
+            if let sampleUUID = entry.healthKitSampleUUID,
+               seenHealthUUIDs.contains(sampleUUID) || seenIDs.contains(sampleUUID) {
+                return false
+            }
+            guard seenIDs.insert(entry.id).inserted else { return false }
+            if let sampleUUID = entry.healthKitSampleUUID {
+                seenHealthUUIDs.insert(sampleUUID)
+            }
+            return true
+        }
+        guard !fresh.isEmpty else { return }
+        entries.append(contentsOf: fresh)
         saveEntries()
         syncProfileBodyFatToLatest()
+        Self.postExternalChangeNotification()
+    }
+
+    static func postExternalChangeNotification() {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(externalChangeNotification as CFString),
+            nil,
+            nil,
+            true
+        )
+    }
+
+    private func startObservingExternalChanges() {
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            { _, observer, _, _, _ in
+                guard let observer else { return }
+                let store = Unmanaged<BodyFatStore>.fromOpaque(observer).takeUnretainedValue()
+                DispatchQueue.main.async {
+                    store.reloadFromDefaults()
+                }
+            },
+            Self.externalChangeNotification as CFString,
+            nil,
+            .deliverImmediately
+        )
     }
 
     private func saveEntries() {

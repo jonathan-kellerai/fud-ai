@@ -72,7 +72,7 @@ struct LogFoodWidget: Widget {
                 .containerBackground(WidgetPalette.background, for: .widget)
         }
         .configurationDisplayName("Log Food")
-        .description("Tap to open Fud AI directly into your chosen logging method.")
+        .description("Tap to open JL Physical directly into your chosen logging method.")
         .supportedFamilies([.systemSmall])
     }
 }

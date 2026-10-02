@@ -1,0 +1,253 @@
+name: iOS Build CI
+
+on:
+  push:
+    branches: [ main, 'cursor/**', 'feat/**', 'integ/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build iOS App
+    runs-on: macos-15  # Latest macOS runner for Xcode 26
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: List available Xcode versions
+      run: ls -la /Applications/ | grep Xcode
+      
+    - name: Select latest Xcode 26
+      run: |
+        # Find and select the latest Xcode 26.x
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          echo "Available Xcode versions:"
+          ls -d /Applications/Xcode*.app
+          exit 1
+        fi
+        echo "Selected: $LATEST_XCODE"
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+      
+    - name: Show Xcode version
+      run: |
+        xcodebuild -version
+        swift --version
+      
+    - name: Build for iOS Simulator
+      run: |
+        cd ios
+        xcodebuild clean build \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -configuration Debug \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty && exit ${PIPESTATUS[0]}
+      
+    - name: Build for Generic iOS Device (Release)
+      run: |
+        cd ios
+        xcodebuild clean build \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'generic/platform=iOS' \
+          -configuration Release \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty && exit ${PIPESTATUS[0]}
+
+  recon-math-tests:
+    name: Recon math tests
+    runs-on: macos-15
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select latest Xcode 26
+      run: |
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          exit 1
+        fi
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+
+    - name: Run ReconMath tests
+      run: |
+        cd ios
+        xcodebuild test \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -only-testing:calorietrackerTests/ReconMathTests \
+          -only-testing:calorietrackerTests/SettingsKeyPreservationTests \
+          -only-testing:calorietrackerTests/TypeSafeEstimateCheckTests \
+          -only-testing:calorietrackerTests/JevRouterCoreTests \
+          -only-testing:calorietrackerTests/JevMealMatchTests \
+          -only-testing:calorietrackerTests/JevCoachIntentTests \
+          -only-testing:calorietrackerTests/JevExerciseMatchTests \
+          -only-testing:calorietrackerTests/JevTierRoutingTests \
+          -only-testing:calorietrackerTests/PlausibilityRulesTests \
+          -only-testing:calorietrackerTests/JevPlausibilityTests \
+          -only-testing:calorietrackerTests/WorkoutDraftStoreTests \
+          -only-testing:calorietrackerTests/WorkoutLoggerLogicTests \
+          -only-testing:calorietrackerTests/CCLadderTests \
+          -only-testing:calorietrackerTests/BridgeKeyStorageTests \
+          -only-testing:calorietrackerTests/ProgressV2MathTests \
+          -only-testing:calorietrackerTests/PeptideMathTests \
+          -only-testing:calorietrackerTests/PeptideLogStoreTests \
+          -parallel-testing-enabled NO \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
+        STATUS=${PIPESTATUS[0]}
+        echo "---- Swift Testing results (raw log) ----"
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        if [ "$STATUS" -ne 0 ]; then
+          echo "---- raw compiler errors ----"
+          grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
+        fi
+        # runSelfTest asserts all 42 recon-bench self-test rows pass.
+        if ! grep -qE "runSelfTest\(\).*passed" "$RUNNER_TEMP/recon-tests.log"; then
+          echo "runSelfTest() did not report a pass; treating as failure."
+          exit 1
+        fi
+        exit $STATUS
+
+  visual-qa:
+    name: Visual QA screenshots
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select latest Xcode 26
+      run: |
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          exit 1
+        fi
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+
+    - name: Pick simulators (Pro size + small size)
+      id: sims
+      run: |
+        set -euo pipefail
+        RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x.get('platform')=='iOS' and x.get('isAvailable')]; r.sort(key=lambda x:[int(p) for p in x['version'].split('.')]); print(r[-1]['identifier'])")
+        echo "Runtime: $RUNTIME"
+        create() {
+          xcrun simctl create "$1" "$2" "$RUNTIME" 2>/dev/null || true
+        }
+        PRO=""
+        for type in iPhone-17-Pro iPhone-16-Pro; do
+          PRO=$(create "QA Pro" "com.apple.CoreSimulator.SimDeviceType.$type")
+          if [ -n "$PRO" ]; then PRO_LABEL=$(echo "$type" | tr -d '-'); break; fi
+        done
+        SMALL=""
+        for type in iPhone-SE-3rd-generation iPhone-SE-2nd-generation iPhone-13-mini iPhone-12-mini; do
+          SMALL=$(create "QA Small" "com.apple.CoreSimulator.SimDeviceType.$type")
+          if [ -n "$SMALL" ]; then SMALL_LABEL=$(echo "$type" | tr -d '-'); break; fi
+        done
+        if [ -z "$PRO" ] || [ -z "$SMALL" ]; then
+          echo "Could not create simulators. Available device types:"
+          xcrun simctl list devicetypes
+          exit 1
+        fi
+        echo "Pro: $PRO_LABEL $PRO"
+        echo "Small: $SMALL_LABEL $SMALL"
+        echo "pro=$PRO" >> "$GITHUB_OUTPUT"
+        echo "pro_label=$PRO_LABEL" >> "$GITHUB_OUTPUT"
+        echo "small=$SMALL" >> "$GITHUB_OUTPUT"
+        echo "small_label=$SMALL_LABEL" >> "$GITHUB_OUTPUT"
+
+    - name: Build for testing
+      run: |
+        set -o pipefail
+        cd ios
+        xcodebuild build-for-testing \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination "id=${{ steps.sims.outputs.pro }}" \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty
+
+    - name: Capture screenshots
+      id: capture
+      run: |
+        set -o pipefail
+        cd ios
+        STATUS=0
+        run_device() {
+          local udid="$1" label="$2"
+          local out="$GITHUB_WORKSPACE/visual-qa/$label"
+          local result="$RUNNER_TEMP/visual-qa-$label.xcresult"
+          local log="$GITHUB_WORKSPACE/visual-qa/logs/xcodebuild-$label.log"
+          mkdir -p "$out" "$(dirname "$log")"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b || true
+          TEST_RUNNER_VISUAL_QA_DIR="$out" TEST_RUNNER_VISUAL_QA_DEVICE="$label" \
+          xcodebuild test-without-building \
+            -project calorietracker.xcodeproj \
+            -scheme calorietracker \
+            -destination "id=$udid" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$result" \
+            -only-testing:calorietrackerTests/VisualQASnapshotTests \
+            -only-testing:calorietrackerTests/ProgressV2VisualQATests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$log" | xcpretty || STATUS=1
+          grep -E "Test Case .*(passed|failed)|error:|Executed [0-9]+ tests" "$log" | tail -60 || true
+          if ! ls "$out"/*.png >/dev/null 2>&1; then
+            echo "No PNGs written directly; exporting attachments from $result"
+            xcrun xcresulttool export attachments --path "$result" --output-path "$out" || true
+          fi
+          echo "$label: $(ls "$out" | grep -c '\.png$' || true) PNGs"
+        }
+        run_device "${{ steps.sims.outputs.pro }}" "${{ steps.sims.outputs.pro_label }}"
+        run_device "${{ steps.sims.outputs.small }}" "${{ steps.sims.outputs.small_label }}"
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Visual QA screenshots"
+          find "$GITHUB_WORKSPACE/visual-qa" -name '*.png' | sed "s|$GITHUB_WORKSPACE/||" | sort
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-qa-screenshots
+        path: visual-qa/
+        if-no-files-found: warn
+        retention-days: 14
+
+    - name: Upload result bundles
+      if: failure() || steps.capture.outputs.status == '1'
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-qa-xcresult
+        path: ${{ runner.temp }}/visual-qa-*.xcresult
+        retention-days: 7
+
+    - name: Fail if snapshot tests failed
+      if: steps.capture.outputs.status == '1'
+      run: |
+        echo "VisualQASnapshotTests reported failures; see the xcresult artifact."
+        exit 1

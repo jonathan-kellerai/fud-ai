@@ -363,6 +363,77 @@ struct DiaryPersistenceSafetyTests {
         }
     }
 
+    @Test func healthSampleUUIDIsImportedOnce() {
+        let sampleID = UUID()
+        let manual = WeightEntry(date: Date(timeIntervalSince1970: 10), weightKg: 80)
+        let reading = HealthSampleReading(
+            sampleUUID: sampleID,
+            value: 81,
+            date: Date(timeIntervalSince1970: 20),
+            fudaiID: nil,
+            sourceName: "Withings"
+        )
+        let first = HealthBodyMeasurementImport.weightEntries(from: [reading], existing: [manual])
+        #expect(first.count == 1)
+        #expect(first.first?.id == sampleID)
+        #expect(first.first?.healthKitSampleUUID == sampleID)
+        #expect(first.first?.healthSourceName == "Withings")
+        #expect(first.first?.isLeanBodyMass == false)
+        let second = HealthBodyMeasurementImport.weightEntries(from: [reading], existing: [manual] + first)
+        #expect(second.isEmpty)
+
+        let leanID = UUID()
+        let lean = HealthSampleReading(
+            sampleUUID: leanID,
+            value: 64,
+            date: Date(timeIntervalSince1970: 21),
+            fudaiID: nil,
+            sourceName: " Withings "
+        )
+        let leanNormalized = HealthSampleReading(
+            sampleUUID: leanID,
+            value: 64,
+            date: Date(timeIntervalSince1970: 21),
+            fudaiID: nil,
+            sourceName: HealthSampleReading.normalizedSourceName(lean.sourceName)
+        )
+        let leanRows = HealthBodyMeasurementImport.weightEntries(
+            from: [leanNormalized],
+            existing: [manual] + first,
+            leanBodyMass: true
+        )
+        #expect(leanRows.count == 1)
+        #expect(leanRows.first?.isLeanBodyMass == true)
+        #expect(leanRows.first?.healthSourceName == "Withings")
+        #expect(leanRows.first?.weightKg == 64)
+        let leanAgain = HealthBodyMeasurementImport.weightEntries(
+            from: [leanNormalized],
+            existing: [manual] + first + leanRows,
+            leanBodyMass: true
+        )
+        #expect(leanAgain.isEmpty)
+
+        let ownSample = UUID()
+        let ownID = UUID()
+        let tagged = HealthSampleReading(sampleUUID: ownSample, value: 70, date: .now, fudaiID: ownID)
+        let alongsideManual = HealthBodyMeasurementImport.weightEntries(from: [tagged], existing: [manual])
+        #expect(alongsideManual.isEmpty)
+        let restored = HealthBodyMeasurementImport.weightEntries(from: [tagged], existing: [])
+        #expect(restored.count == 1)
+        #expect(restored.first?.id == ownID)
+        #expect(restored.first?.healthKitSampleUUID == ownSample)
+    }
+
+    @Test func weekRangeIncludesToday() {
+        let range = TimeRange.week.dateRange()
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: .now)
+        #expect(range.contains(Date()))
+        #expect(range.contains(startOfToday))
+        let dayBeforeWindow = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+        #expect(!range.contains(dayBeforeWindow))
+    }
+
     @Test func corruptWeightBlobIsNotReplacedByANewEntry() throws {
         try withDefaults { defaults, _ in
             let garbage = Data("broken".utf8)

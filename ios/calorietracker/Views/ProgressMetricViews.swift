@@ -7,116 +7,6 @@ enum ProgressHistoryCountText {
     }
 }
 
-enum ProgressMetric: String, CaseIterable, Identifiable, Equatable {
-    case weight
-    case bodyFat
-    case workouts
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .weight: String(localized: "Weight")
-        case .bodyFat: String(localized: "Body Fat")
-        case .workouts: String(localized: "Workouts")
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .weight: "scalemass.fill"
-        case .bodyFat: "percent"
-        case .workouts: "dumbbell.fill"
-        }
-    }
-
-    static func available(
-        bodyFatAvailable: Bool,
-        workoutBurnAvailable: Bool,
-        importedWorkoutsAvailable: Bool = false
-    ) -> [ProgressMetric] {
-        var metrics: [ProgressMetric] = [.weight]
-        if bodyFatAvailable { metrics.append(.bodyFat) }
-        if workoutBurnAvailable || importedWorkoutsAvailable { metrics.append(.workouts) }
-        return metrics
-    }
-}
-
-struct ProgressOverviewModeSelector: View {
-    @Binding var selection: ProgressOverviewMode
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: 6) {
-                    ForEach(ProgressOverviewMode.allCases) { mode in
-                        Button {
-                            withAnimation(.snappy) { selection = mode }
-                        } label: {
-                            Label(mode.title, systemImage: mode.icon)
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                .foregroundStyle(selection == mode ? Color.white : Color.secondary)
-                                .lineLimit(1)
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: 44)
-                                .background {
-                                    if selection == mode {
-                                        Capsule().fill(
-                                            LinearGradient(
-                                                colors: AppColors.calorieGradient,
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
-                                        )
-                                    } else {
-                                        Capsule().fill(Color.clear)
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selection == mode ? .isSelected : [])
-                        .id(mode)
-                    }
-                }
-                .padding(4)
-            }
-            .scrollIndicators(.hidden)
-            .background(AppColors.appCard, in: Capsule())
-            .overlay {
-                Capsule().stroke(AppColors.calorie.opacity(0.12), lineWidth: 0.75)
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(WeeklyChallengeL10n.text("Progress view"))
-            .onChange(of: selection) { _, selected in
-                withAnimation(.snappy) {
-                    proxy.scrollTo(selected, anchor: .center)
-                }
-            }
-        }
-    }
-}
-
-struct ProgressMetricSelector: View {
-    let metrics: [ProgressMetric]
-    @Binding var selection: ProgressMetric
-
-    var body: some View {
-        Picker("Progress metric", selection: $selection) {
-            ForEach(metrics) { metric in
-                Text(metric.title).tag(metric)
-            }
-        }
-        .pickerStyle(.segmented)
-        .tint(AppColors.calorie)
-        .accessibilityLabel("Progress metric")
-        .onChange(of: metrics) { _, available in
-            if !available.contains(selection), let first = available.first {
-                selection = first
-            }
-        }
-    }
-}
-
 struct WorkoutBurnDay: Identifiable, Equatable {
     let date: Date
     let calories: Int
@@ -185,8 +75,7 @@ struct WorkoutBurnChartSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Calculated Workout Burn", systemImage: "flame.fill")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+            ProgressV2SectionTitle(title: String(localized: "Calculated Workout Burn"))
 
             if days.isEmpty {
                 ProgressMetricEmptyState("No calculated workout burn in this range")
@@ -198,43 +87,35 @@ struct WorkoutBurnChartSection: View {
                         x: .value("Date", day.date, unit: .day),
                         y: .value("Calculated calories burned", day.calories)
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: AppColors.calorieGradient,
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .clipShape(.rect(cornerRadius: 4))
+                    .foregroundStyle(IronTheme.blood)
                 }
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
-                            .foregroundStyle(Color.primary.opacity(0.11))
+                    AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                            .foregroundStyle(IronTheme.hairline)
                         AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 5)) {
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(Color.primary.opacity(0.10))
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) {
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(IronTheme.hairline)
                         AxisValueLabel()
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                 }
-                .chartPlotStyle { plotArea in
-                    plotArea.background(
-                        AppColors.calorie.opacity(0.025),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                }
                 .frame(height: 190)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(localized: "Calculated workout burn chart"))
+                .accessibilityValue(String(localized: "\(days.count) days, \(total.formatted()) kilocalories total, average \(average.formatted())."))
             }
 
-            Text("Only workout burns calculated in Fud AI are shown. Workouts without a burn estimate are not included.")
-                .font(.system(.caption2, design: .rounded))
-                .foregroundStyle(.secondary)
+            Text("Only workout burns calculated in JL Physical are shown. Workouts without a burn estimate are not included.")
+                .font(.caption)
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding()
         .progressMetricCardStyle()
@@ -315,8 +196,7 @@ struct ImportedHealthWorkoutChartSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Apple Health Workouts", systemImage: "applewatch")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+            ProgressV2SectionTitle(title: String(localized: "Apple Health Workouts"))
 
             if days.isEmpty {
                 ProgressMetricEmptyState("No Apple Health workouts in this range")
@@ -328,43 +208,35 @@ struct ImportedHealthWorkoutChartSection: View {
                         x: .value("Date", day.date, unit: .day),
                         y: .value("Sessions", day.sessionCount)
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [AppColors.calorie.opacity(0.55), AppColors.calorie],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .clipShape(.rect(cornerRadius: 4))
+                    .foregroundStyle(IronTheme.rust)
                 }
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
-                            .foregroundStyle(Color.primary.opacity(0.11))
+                    AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                            .foregroundStyle(IronTheme.hairline)
                         AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                 }
                 .chartYAxis {
                     AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) {
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(Color.primary.opacity(0.10))
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(IronTheme.hairline)
                         AxisValueLabel()
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                 }
-                .chartPlotStyle { plotArea in
-                    plotArea.background(
-                        AppColors.calorie.opacity(0.025),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                }
                 .frame(height: 190)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(localized: "Apple Health workouts chart"))
+                .accessibilityValue(String(localized: "\(totalSessions) sessions on \(days.count) days."))
             }
 
             Text("Imported from Apple Health and Apple Watch. Read-only here — edit or delete them in the Health app. These sessions do not affect Energy Burn goals.")
-                .font(.system(.caption2, design: .rounded))
-                .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding()
         .progressMetricCardStyle()
@@ -404,8 +276,8 @@ struct ProgressMetricEmptyState: View {
 
     var body: some View {
         Text(message)
-            .font(.system(.subheadline, design: .rounded))
-            .foregroundStyle(.secondary)
+            .font(.subheadline)
+            .foregroundStyle(IronTheme.textSecondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, minHeight: 80)
     }
@@ -413,12 +285,7 @@ struct ProgressMetricEmptyState: View {
 
 private struct ProgressMetricCardStyle: ViewModifier {
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
-        content
-            .background(AppColors.appCard)
-            .overlay { shape.stroke(AppColors.calorie.opacity(0.09), lineWidth: 0.75) }
-            .compositingGroup()
-            .clipShape(shape)
+        content.ironCard()
     }
 }
 

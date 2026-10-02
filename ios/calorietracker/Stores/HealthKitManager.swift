@@ -102,6 +102,121 @@ struct HealthFoodServingMetadata: Equatable {
     }
 }
 
+struct HealthSampleReading {
+    let sampleUUID: UUID
+    let value: Double
+    let date: Date
+    let fudaiID: UUID?
+    var sourceName: String? = nil
+
+    static func normalizedSourceName(_ name: String?) -> String? {
+        guard let name else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Turns HealthKit quantity samples into local weight and body-fat rows.
+/// Dedupes by sample UUID. Manual rows have a nil `healthKitSampleUUID` and stay.
+enum HealthBodyMeasurementImport {
+    static func weightEntries(
+        from samples: [HealthSampleReading],
+        existing: [WeightEntry],
+        leanBodyMass: Bool = false
+    ) -> [WeightEntry] {
+        let existingBodyWeight = existing.filter { !$0.isLeanBodyMass }
+        let relevantExisting = leanBodyMass ? existing.filter(\.isLeanBodyMass) : existingBodyWeight
+        // Dedup against every stored sample UUID so a lean row cannot reuse a body-mass UUID.
+        let allHealthUUIDs = Set(existing.compactMap(\.healthKitSampleUUID))
+        return entries(
+            from: samples,
+            existingIDs: Set(relevantExisting.map(\.id)),
+            existingHealthUUIDs: allHealthUUIDs,
+            restoringOwnHistory: relevantExisting.isEmpty
+        ) { sample, entryID in
+            WeightEntry(
+                id: entryID,
+                date: sample.date,
+                weightKg: sample.value,
+                healthKitSampleUUID: sample.sampleUUID,
+                healthSourceName: sample.sourceName,
+                leanBodyMass: leanBodyMass ? true : nil
+            )
+        }
+    }
+
+    static func bodyFatEntries(from samples: [HealthSampleReading], existing: [BodyFatEntry]) -> [BodyFatEntry] {
+        entries(from: samples, existingIDs: Set(existing.map(\.id)), existingHealthUUIDs: Set(existing.compactMap(\.healthKitSampleUUID)), restoringOwnHistory: existing.isEmpty) { sample, entryID in
+            BodyFatEntry(
+                id: entryID,
+                date: sample.date,
+                bodyFatFraction: sample.value,
+                healthKitSampleUUID: sample.sampleUUID,
+                healthSourceName: sample.sourceName
+            )
+        }
+    }
+
+    private static func entries<Entry>(
+        from samples: [HealthSampleReading],
+        existingIDs: Set<UUID>,
+        existingHealthUUIDs: Set<UUID>,
+        restoringOwnHistory: Bool,
+        make: (HealthSampleReading, UUID) -> Entry
+    ) -> [Entry] {
+        var seenIDs = existingIDs
+        var seenHealthUUIDs = existingHealthUUIDs
+        var fresh: [Entry] = []
+        for sample in samples {
+            if seenHealthUUIDs.contains(sample.sampleUUID) || seenIDs.contains(sample.sampleUUID) {
+                continue
+            }
+            let entryID: UUID
+            if let fudaiID = sample.fudaiID {
+                if seenIDs.contains(fudaiID) { continue }
+                // Our own HealthKit writes are already local rows. Only a wiped
+                // store should restore them, and it keeps the original entry id
+                // so a later delete still matches fudai_* metadata.
+                guard restoringOwnHistory else { continue }
+                entryID = fudaiID
+            } else {
+                entryID = sample.sampleUUID
+            }
+            fresh.append(make(sample, entryID))
+            seenIDs.insert(entryID)
+            seenIDs.insert(sample.sampleUUID)
+            seenHealthUUIDs.insert(sample.sampleUUID)
+        }
+        return fresh
+    }
+}
+
+/// HealthKit may invoke a completion more than once. Resume the matching
+/// continuation on the first call and ignore the rest.
+nonisolated private final class OneShotContinuation<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+
+    func resume(
+        _ continuation: CheckedContinuation<Value, Error>,
+        returning value: Value,
+        throwing error: Error?
+    ) {
+        lock.lock()
+        if didResume {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        lock.unlock()
+        if let error {
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume(returning: value)
+        }
+    }
+}
+
 @Observable
 class HealthKitManager {
     var authorizationStatus: HKAuthorizationStatus = .notDetermined
@@ -129,8 +244,15 @@ class HealthKitManager {
     /// v8: stepCount joined the read set for daily steps on Home.
     /// v9: workout samples joined the read set so Apple Watch / Health workouts
     /// can be imported into Fud AI without a Watch companion app.
-    private let typesVersion = 9
+    /// v10: lean body mass joined the read set for Withings and other scales.
+    /// v11: the body-measurement import used to prompt for only body mass, lean
+    /// body mass, and body fat. Re-request the full share/read set, including
+    /// stepCount, so that narrow grant is not the only Health permission.
+    /// v12: sleep, resting heart rate, and HRV (SDNN) joined the same read set.
+    private let typesVersion = 12
     private let typesVersionKey = "healthKitTypesVersion"
+    private static let authorizationLock = NSLock()
+    private static var inFlightFullAuthorization: (id: UUID, task: Task<Bool, Never>)?
 
     /// Active-energy samples written for the workout diary are deliberately
     /// app-owned and tagged. The stable session id makes updates/deletes exact,
@@ -217,10 +339,8 @@ class HealthKitManager {
     /// scene-active wire-ups skip it. Keeps these separate from the nutrition
     /// backfill version so each one can be re-run independently if we ever bump
     /// only one of the type sets.
-    private let weightBackfillVersionKey = "healthKitWeightBackfillVersion"
-    private let bodyFatBackfillVersionKey = "healthKitBodyFatBackfillVersion"
-    private var isBackfillingWeight = false
-    private var isBackfillingBodyFat = false
+    private var bodyMeasurementImportTail: Task<Void, Never>?
+    private let bodyMeasurementImportLock = NSLock()
     private var isBackfillingWorkoutBurn = false
     private let workoutImportLookbackDays = 90
     private let workoutImportLastSyncKey = "healthKitWorkoutImportLastSync"
@@ -236,6 +356,7 @@ class HealthKitManager {
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [
             HKQuantityType(.bodyMass),
+            HKQuantityType(.leanBodyMass),
             HKQuantityType(.height),
             HKQuantityType(.bodyFatPercentage),
             HKQuantityType(.activeEnergyBurned),
@@ -248,6 +369,11 @@ class HealthKitManager {
         // rebuilding the food log from our own tagged samples after a reinstall.
         types.formUnion(nutritionTypeIdentifiers.map { HKQuantityType($0) })
         types.insert(HKObjectType.workoutType())
+        types.insert(HKQuantityType(.restingHeartRate))
+        types.insert(HKQuantityType(.heartRateVariabilitySDNN))
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            types.insert(sleep)
+        }
         return types
     }
 
@@ -271,9 +397,76 @@ class HealthKitManager {
             try await healthStore.requestAuthorization(toShare: shareTypes, read: readTypes)
             authorizationStatus = healthStore.authorizationStatus(for: HKQuantityType(.bodyMass))
             persistCurrentTypesVersion()
+            // This fork asks once for the full set, then treats Health as on.
+            // Upstream keeps an opt-in toggle; a completed full request is enough here.
+            UserDefaults.standard.set(true, forKey: "healthKitEnabled")
             return true
         } catch {
             return false
+        }
+    }
+
+    /// One in-flight full request for the process. A second caller waits instead
+    /// of presenting another Health sheet.
+    func ensureFullAuthorization() async -> Bool {
+        let flight: (id: UUID, task: Task<Bool, Never>) = Self.authorizationLock.withLock {
+            if let inFlightFullAuthorization = Self.inFlightFullAuthorization {
+                return inFlightFullAuthorization
+            }
+            let created = (id: UUID(), task: Task { await self.performEnsureFullAuthorization() })
+            Self.inFlightFullAuthorization = created
+            return created
+        }
+        let granted = await flight.task.value
+        Self.authorizationLock.withLock {
+            if Self.inFlightFullAuthorization?.id == flight.id {
+                Self.inFlightFullAuthorization = nil
+            }
+        }
+        return granted
+    }
+
+    private func performEnsureFullAuthorization() async -> Bool {
+        guard HKHealthStore.isHealthDataAvailable() else { return false }
+        if await fullAuthorizationNeedsRequest() {
+            return await requestAuthorization()
+        }
+        return true
+    }
+
+    /// True when stepCount or any other read/share type has not been requested,
+    /// or when `typesVersion` moved since the last full request.
+    private func fullAuthorizationNeedsRequest() async -> Bool {
+        if needsReauthorization { return true }
+        let share = shareTypes
+        let read = readTypes
+        do {
+            let status = try await Self.authorizationRequestStatus(
+                healthStore: healthStore,
+                shareTypes: share,
+                readTypes: read
+            )
+            return status == .shouldRequest
+        } catch {
+            return true
+        }
+    }
+
+    /// HealthKit calls the completion on a private queue. Keep that callback off the
+    /// main actor, and resume the continuation on only the first invocation.
+    nonisolated private static func authorizationRequestStatus(
+        healthStore: HKHealthStore,
+        shareTypes: Set<HKSampleType>,
+        readTypes: Set<HKObjectType>
+    ) async throws -> HKAuthorizationRequestStatus {
+        let gate = OneShotContinuation<HKAuthorizationRequestStatus>()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKAuthorizationRequestStatus, Error>) in
+            healthStore.getRequestStatusForAuthorization(
+                toShare: shareTypes,
+                read: readTypes
+            ) { status, error in
+                gate.resume(continuation, returning: status, throwing: error)
+            }
         }
     }
 
@@ -787,110 +980,118 @@ class HealthKitManager {
         }
     }
 
-    /// One-shot import of every weight sample HealthKit knows about. Skips
-    /// our own writes (fudai_weight_id present), and dedupes against existing
-    /// entries by same-day + same-value so re-running this — or running it
-    /// when the user already incrementally synced via the change-token observer
-    /// — never creates duplicates. Stamps weightBackfillVersionKey on success
-    /// so subsequent scene-active wire-ups skip it.
+    /// Read body mass and body fat from Apple Health into the local stores.
+    /// Does not require the HealthKit write toggle. Manual Log Weight still
+    /// works; imported rows are deduped by HealthKit sample UUID.
+    @MainActor
+    func importBodyMeasurementsFromHealth(
+        existingWeights: @escaping () -> [WeightEntry],
+        importWeights: @escaping ([WeightEntry]) -> Void,
+        existingBodyFat: @escaping () -> [BodyFatEntry],
+        importBodyFat: @escaping ([BodyFatEntry]) -> Void
+    ) async {
+        let operation: Task<Void, Never> = bodyMeasurementImportLock.withLock {
+            let previous = bodyMeasurementImportTail
+            let task = Task { @MainActor in
+                await previous?.value
+                await self.performBodyMeasurementImport(
+                    existingWeights: existingWeights,
+                    importWeights: importWeights,
+                    existingBodyFat: existingBodyFat,
+                    importBodyFat: importBodyFat
+                )
+            }
+            bodyMeasurementImportTail = task
+            return task
+        }
+        await operation.value
+    }
+
+    @MainActor
+    func importBodyMeasurementsIntoAppStores(weightStore: WeightStore, bodyFatStore: BodyFatStore) async {
+        await importBodyMeasurementsFromHealth(
+            existingWeights: { weightStore.entries },
+            importWeights: { weightStore.importExternalEntries($0) },
+            existingBodyFat: { bodyFatStore.entries },
+            importBodyFat: { bodyFatStore.importExternalEntries($0) }
+        )
+    }
+
+    /// Used when a background launch has not installed the app's live stores yet.
+    @MainActor
+    static func importBodyMeasurementsIntoTemporaryStores() async {
+        let weightStore = WeightStore(observesExternalChanges: false)
+        let bodyFatStore = BodyFatStore(observesExternalChanges: false)
+        await HealthKitManager().importBodyMeasurementsIntoAppStores(
+            weightStore: weightStore,
+            bodyFatStore: bodyFatStore
+        )
+    }
+
+    @MainActor
+    private func performBodyMeasurementImport(
+        existingWeights: @escaping () -> [WeightEntry],
+        importWeights: @escaping ([WeightEntry]) -> Void,
+        existingBodyFat: @escaping () -> [BodyFatEntry],
+        importBodyFat: @escaping ([BodyFatEntry]) -> Void
+    ) async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        // The full share/read set, not the three body-composition types. A
+        // narrow request is what the first Health sheet shows, and later
+        // requests only add types the user has not already answered.
+        guard await ensureFullAuthorization() else { return }
+        if let samples = await fetchAllSamples(.bodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: "fudai_weight_id") {
+            let fresh = HealthBodyMeasurementImport.weightEntries(from: samples, existing: existingWeights())
+            if !fresh.isEmpty {
+                importWeights(fresh)
+            }
+        }
+        if let samples = await fetchAllSamples(.leanBodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: nil) {
+            let fresh = HealthBodyMeasurementImport.weightEntries(
+                from: samples,
+                existing: existingWeights(),
+                leanBodyMass: true
+            )
+            if !fresh.isEmpty {
+                importWeights(fresh)
+            }
+        }
+        if let samples = await fetchAllSamples(.bodyFatPercentage, unit: .percent(), fudaiMetadataKey: "fudai_bodyfat_id") {
+            let fresh = HealthBodyMeasurementImport.bodyFatEntries(from: samples, existing: existingBodyFat())
+            if !fresh.isEmpty {
+                importBodyFat(fresh)
+            }
+        }
+    }
+
+    /// Compatibility entry point. Imports by HealthKit sample UUID and does not
+    /// require `healthKitEnabled`. Repeated calls do not double-count.
     func backfillWeightFromHealthKitIfNeeded(
         existing: @escaping () -> [WeightEntry],
         importBatch: @escaping ([WeightEntry]) -> Void
     ) {
-        guard UserDefaults.standard.bool(forKey: "healthKitEnabled") else { return }
-        let backfilled = UserDefaults.standard.integer(forKey: weightBackfillVersionKey)
-        guard backfilled < typesVersion else { return }
-        guard !isBackfillingWeight else { return }
-        isBackfillingWeight = true
-        Task {
-            defer { isBackfillingWeight = false }
-            // A failed query (auth not determined, transient HK error) returns nil —
-            // bail WITHOUT stamping the version so the backfill retries next scene-active
-            // instead of being permanently burned by one bad run.
-            guard let samples = await fetchAllSamples(.bodyMass, unit: .gramUnit(with: .kilo), fudaiMetadataKey: "fudai_weight_id") else { return }
-            // Build the dedup index from the *current* store snapshot — the
-            // observer might have added rows while we were querying HK.
-            let calendar = Calendar.current
-            let snapshot = existing()
-            // Restore mode = empty local store (reinstall / new phone). Only then do we
-            // import our own fudai-tagged samples: when entries exist locally, own samples
-            // are either already represented or synthetic profile-pushes
-            // (writeWeight(kg:date:)) that never had an entry — importing those would
-            // fabricate history the user never logged.
-            let restoringOwnHistory = snapshot.isEmpty
-            var newEntries: [WeightEntry] = []
-            // Same-day + close-value match catches our own pre-metadata writes,
-            // externals already imported via the change-token loop, and same-day
-            // duplicates within this batch (an entry write + a profile push on the
-            // same day carry the same value).
-            let isAlreadyLogged: (Date, Double) -> Bool = { date, kg in
-                snapshot.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.weightKg - kg) < 0.01
-                } || newEntries.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.weightKg - kg) < 0.01
-                }
-            }
-            for s in samples {
-                if isAlreadyLogged(s.date, s.value) { continue }
-                if let fudaiID = s.fudaiID {
-                    guard restoringOwnHistory else { continue }
-                    // Keep the ORIGINAL entry id so a later in-app delete of the
-                    // restored entry still finds and removes its HK sample via the
-                    // fudai_weight_id metadata predicate.
-                    newEntries.append(WeightEntry(id: fudaiID, date: s.date, weightKg: s.value))
-                } else {
-                    newEntries.append(WeightEntry(date: s.date, weightKg: s.value))
-                }
-            }
-            if !newEntries.isEmpty {
-                await MainActor.run { importBatch(newEntries) }
-            }
-            UserDefaults.standard.set(typesVersion, forKey: weightBackfillVersionKey)
+        Task { @MainActor in
+            await importBodyMeasurementsFromHealth(
+                existingWeights: existing,
+                importWeights: importBatch,
+                existingBodyFat: { [] },
+                importBodyFat: { _ in }
+            )
         }
     }
 
-    /// Mirror of backfillWeightFromHealthKitIfNeeded for body-fat samples.
-    /// Same dedup discipline (skip our writes via fudai_bodyfat_id, dedup
-    /// externals by same-day + same-fraction) and same one-shot-per-version
-    /// guard so it doesn't re-scan on every scene-active.
+    /// Compatibility entry point for body-fat samples. See the weight backfill.
     func backfillBodyFatFromHealthKitIfNeeded(
         existing: @escaping () -> [BodyFatEntry],
         importBatch: @escaping ([BodyFatEntry]) -> Void
     ) {
-        guard UserDefaults.standard.bool(forKey: "healthKitEnabled") else { return }
-        let backfilled = UserDefaults.standard.integer(forKey: bodyFatBackfillVersionKey)
-        guard backfilled < typesVersion else { return }
-        guard !isBackfillingBodyFat else { return }
-        isBackfillingBodyFat = true
-        Task {
-            defer { isBackfillingBodyFat = false }
-            guard let samples = await fetchAllSamples(.bodyFatPercentage, unit: .percent(), fudaiMetadataKey: "fudai_bodyfat_id") else { return }
-            let calendar = Calendar.current
-            let snapshot = existing()
-            // Same restore-mode / original-id / batch-dedup discipline as the
-            // weight backfill — see backfillWeightFromHealthKitIfNeeded.
-            let restoringOwnHistory = snapshot.isEmpty
-            var newEntries: [BodyFatEntry] = []
-            let isAlreadyLogged: (Date, Double) -> Bool = { date, fraction in
-                snapshot.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.bodyFatFraction - fraction) < 0.001
-                } || newEntries.contains {
-                    calendar.isDate($0.date, inSameDayAs: date) && abs($0.bodyFatFraction - fraction) < 0.001
-                }
-            }
-            for s in samples {
-                if isAlreadyLogged(s.date, s.value) { continue }
-                if let fudaiID = s.fudaiID {
-                    guard restoringOwnHistory else { continue }
-                    newEntries.append(BodyFatEntry(id: fudaiID, date: s.date, bodyFatFraction: s.value))
-                } else {
-                    newEntries.append(BodyFatEntry(date: s.date, bodyFatFraction: s.value))
-                }
-            }
-            if !newEntries.isEmpty {
-                await MainActor.run { importBatch(newEntries) }
-            }
-            UserDefaults.standard.set(typesVersion, forKey: bodyFatBackfillVersionKey)
+        Task { @MainActor in
+            await importBodyMeasurementsFromHealth(
+                existingWeights: { [] },
+                importWeights: { _ in },
+                existingBodyFat: existing,
+                importBodyFat: importBatch
+            )
         }
     }
 
@@ -1068,8 +1269,10 @@ class HealthKitManager {
 
     /// Daily step total for one local calendar day. Read-only — watches and phones
     /// write steps to HealthKit; Fud AI surfaces the aggregate on Home.
+    /// Requests the full Health set first when stepCount has never been asked.
+    /// A false `healthKitEnabled` flag does not skip the read.
     func fetchStepsForDay(_ date: Date) async -> Int? {
-        guard UserDefaults.standard.bool(forKey: "healthKitEnabled") else { return nil }
+        guard await ensureFullAuthorization() else { return nil }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: date)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return nil }
@@ -1103,6 +1306,113 @@ class HealthKitManager {
         }
     }
 
+    /// Step totals for each local day in `start...through`, inclusive. Nil when the query fails.
+    func fetchStepsByDay(from startDate: Date, through endDate: Date) async -> [Date: Int]? {
+        guard await ensureFullAuthorization() else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        let last = calendar.startOfDay(for: endDate)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: last), end > start else { return [:] }
+        let type = HKQuantityType(.stepCount)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        var interval = DateComponents()
+        interval.day = 1
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: .cumulativeSum,
+                anchorDate: start,
+                intervalComponents: interval
+            )
+            query.initialResultsHandler = { _, collection, error in
+                guard error == nil, let collection else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                var values: [Date: Int] = [:]
+                collection.enumerateStatistics(from: start, to: end) { statistics, _ in
+                    let count = statistics.sumQuantity()?.doubleValue(for: .count()) ?? 0
+                    values[calendar.startOfDay(for: statistics.startDate)] = Int(count.rounded())
+                }
+                continuation.resume(returning: values)
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    /// Quantity samples in a local date range, oldest first. Nil when the query fails.
+    func fetchSamples(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from startDate: Date,
+        through endDate: Date
+    ) async -> [HealthSampleReading]? {
+        guard await ensureFullAuthorization() else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)) else {
+            return nil
+        }
+        let type = HKQuantityType(identifier)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, results, error in
+                guard error == nil, let samples = results as? [HKQuantitySample] else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: samples.map { sample in
+                    HealthSampleReading(
+                        sampleUUID: sample.uuid,
+                        value: sample.quantity.doubleValue(for: unit),
+                        date: sample.startDate,
+                        fudaiID: nil,
+                        sourceName: HealthSampleReading.normalizedSourceName(sample.sourceRevision.source.name)
+                    )
+                })
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    /// Asleep time for the night that ends on `date` (previous evening through that morning).
+    /// Nil when Health has no sleep samples in the window.
+    func fetchAsleepSeconds(on date: Date) async -> TimeInterval? {
+        guard await ensureFullAuthorization() else { return nil }
+        guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return nil }
+        let calendar = Calendar.current
+        let morning = calendar.startOfDay(for: date)
+        guard let windowStart = calendar.date(byAdding: .hour, value: -12, to: morning),
+              let windowEnd = calendar.date(byAdding: .hour, value: 12, to: morning) else {
+            return nil
+        }
+        let predicate = HKQuery.predicateForSamples(withStart: windowStart, end: windowEnd, options: .strictStartDate)
+        let asleepValues: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
+        ]
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, results, error in
+                guard error == nil, let samples = results as? [HKCategorySample], !samples.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let seconds = samples.reduce(0.0) { total, sample in
+                    guard asleepValues.contains(sample.value) else { return total }
+                    let start = max(sample.startDate, windowStart)
+                    let end = min(sample.endDate, windowEnd)
+                    return total + max(0, end.timeIntervalSince(start))
+                }
+                continuation.resume(returning: seconds)
+            }
+            healthStore.execute(query)
+        }
+    }
+
     /// Dated measured energy for adaptive-goal evidence. This uses the same active-energy
     /// query as `fetchRecentEnergySummary`, including the predicate that removes every
     /// Fud-AI-tagged workout estimate. Returned days are oldest-first and contain no zero rows.
@@ -1131,7 +1441,7 @@ class HealthKitManager {
     /// chart. Sorted oldest-first so callers can append in chronological order.
     /// Returns nil on query failure (vs [] for genuinely no data) so callers can
     /// leave their one-shot stamps unset and retry later.
-    func fetchAllSamples(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, fudaiMetadataKey: String?) async -> [(value: Double, date: Date, fudaiID: UUID?)]? {
+    func fetchAllSamples(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, fudaiMetadataKey: String?) async -> [HealthSampleReading]? {
         let type = HKQuantityType(identifier)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let predicate = HKQuery.predicateForSamples(withStart: nil, end: nil, options: .strictEndDate)
@@ -1142,10 +1452,16 @@ class HealthKitManager {
                     continuation.resume(returning: nil)
                     return
                 }
-                let mapped = samples.map { sample -> (value: Double, date: Date, fudaiID: UUID?) in
+                let mapped = samples.map { sample -> HealthSampleReading in
                     let idString = fudaiMetadataKey.flatMap { sample.metadata?[$0] as? String }
                     let fudaiID = idString.flatMap(UUID.init(uuidString:))
-                    return (sample.quantity.doubleValue(for: unit), sample.startDate, fudaiID)
+                    return HealthSampleReading(
+                        sampleUUID: sample.uuid,
+                        value: sample.quantity.doubleValue(for: unit),
+                        date: sample.startDate,
+                        fudaiID: fudaiID,
+                        sourceName: HealthSampleReading.normalizedSourceName(sample.sourceRevision.source.name)
+                    )
                 }
                 continuation.resume(returning: mapped)
             }
@@ -1509,7 +1825,7 @@ class HealthKitManager {
         // N times (once per cold-launch-plus-background-resume cycle in the session).
         stopObserver()
 
-        let types: [HKQuantityTypeIdentifier] = [.bodyMass, .height, .bodyFatPercentage]
+        let types: [HKQuantityTypeIdentifier] = [.bodyMass, .leanBodyMass, .height, .bodyFatPercentage]
         for identifier in types {
             let type = HKQuantityType(identifier)
             let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completionHandler, _ in

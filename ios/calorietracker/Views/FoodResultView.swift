@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 
 struct FoodSubmissionGate {
@@ -20,6 +21,14 @@ struct FoodResultView: View {
     let source: FoodSource
     let progressiveMeal: Bool
     let productMetadata: FoodProductMetadata?
+    let estimateCheck: EstimateCheckMode
+    let onReestimate: ((EstimateDirection) -> Void)?
+    let savedMatch: SavedMatchBanner?
+    let onEstimateInstead: (() -> Void)?
+    private let originalCalories: Int
+    private let originalProtein: Double
+    private let originalCarbs: Double
+    private let originalFat: Double
 
     @State private var baseServingSizeGrams: Double
     @State private var servingUnitOptions: [ServingUnitOption]
@@ -33,6 +42,7 @@ struct FoodResultView: View {
     @State private var isQuantityEditing = false
     @State private var nutritionUnlocked = false
     @State private var editableCalories: Int
+    @State private var estimateOutcome: EstimateCheckOutcome?
     @State private var editableProtein: Double
     @State private var editableCarbs: Double
     @State private var editableFat: Double
@@ -75,6 +85,7 @@ struct FoodResultView: View {
     let weightMetric: Bool
     var onLog: (FoodEntry) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // Scaling factor based on user-adjusted serving size
     private var scale: Double {
@@ -165,7 +176,11 @@ struct FoodResultView: View {
         profile: UserProfile,
         entriesForDate: @escaping (Date) -> [FoodEntry],
         weightMetric: Bool,
-        onLog: @escaping (FoodEntry) -> Void
+        onLog: @escaping (FoodEntry) -> Void,
+        estimateCheck: EstimateCheckMode = .off,
+        onReestimate: ((EstimateDirection) -> Void)? = nil,
+        savedMatch: SavedMatchBanner? = nil,
+        onEstimateInstead: (() -> Void)? = nil
     ) {
         let normalizedServingUnitOptions = servingSizeIsKnown
             ? ServingUnitOption.normalizedOptions(servingUnitOptions, totalGrams: servingSizeGrams)
@@ -212,6 +227,19 @@ struct FoodResultView: View {
         ))
         self._selectedServingUnitID = State(initialValue: initialServingUnitID)
         self._editableCalories = State(initialValue: headerCalories)
+        self.originalCalories = headerCalories
+        self.originalProtein = headerProtein
+        self.originalCarbs = headerCarbs
+        self.originalFat = headerFat
+        self.estimateCheck = estimateCheck
+        self.onReestimate = onReestimate
+        self.savedMatch = savedMatch
+        self.onEstimateInstead = onEstimateInstead
+        if case .preview(let outcome) = estimateCheck {
+            self._estimateOutcome = State(initialValue: outcome)
+        } else {
+            self._estimateOutcome = State(initialValue: nil)
+        }
         self._editableProtein = State(initialValue: headerProtein)
         self._editableCarbs = State(initialValue: headerCarbs)
         self._editableFat = State(initialValue: headerFat)
@@ -245,6 +273,24 @@ struct FoodResultView: View {
         self.entriesForDate = entriesForDate
         self.weightMetric = weightMetric
         self.onLog = onLog
+    }
+
+    private var isEstimatePreview: Bool {
+        if case .preview = estimateCheck { return true }
+        return false
+    }
+
+    private var userEditedNutrition: Bool {
+        editableCalories != originalCalories
+            || editableProtein != originalProtein
+            || editableCarbs != originalCarbs
+            || editableFat != originalFat
+            || abs(servingSizeGrams - baseServingSizeGrams) > 0.49
+    }
+
+    private var showsEstimateBadge: Bool {
+        guard case .looksOff = estimateOutcome, !userEditedNutrition else { return false }
+        return onReestimate != nil || isEstimatePreview
     }
 
     private var whatIfDayEntries: [FoodEntry] {
@@ -430,6 +476,41 @@ struct FoodResultView: View {
                         }
                     }
 
+                    if showsEstimateBadge, case .looksOff(let direction, let expectedBandLabel, _) = estimateOutcome {
+                        Section {
+                            EstimateCheckBadge(
+                                expectedBandLabel: expectedBandLabel,
+                                onReestimate: onReestimate.map { callback in { callback(direction) } }
+                            )
+                        }
+                        .listRowBackground(AppColors.appCard)
+                    }
+
+                    if let savedMatch {
+                        Section {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Image(systemName: "bookmark.fill")
+                                        .foregroundStyle(AppColors.calorie)
+                                    (
+                                        Text("Matched your saved meal · ")
+                                            .font(.subheadline.weight(.semibold))
+                                        + Text(savedMatch.entryName)
+                                            .font(.subheadline.weight(.semibold).italic())
+                                    )
+                                    .fixedSize(horizontal: false, vertical: true)
+                                }
+                                if let onEstimateInstead {
+                                    Button("Estimate with AI instead", action: onEstimateInstead)
+                                        .buttonStyle(.bordered)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier("foodReview.savedMatch.estimateInstead")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+
                     Section("Food Details") {
                         HStack {
                             Text("Name")
@@ -463,9 +544,16 @@ struct FoodResultView: View {
                     }
 
                     Section("Serving") {
-                        HStack {
+                        // Stack label over editor at accessibility sizes; side by
+                        // side, "Quantity" broke mid-word ("Quan- / tity").
+                        let quantityLayout = dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                            : AnyLayout(HStackLayout())
+                        quantityLayout {
                             Text("Quantity")
-                            Spacer()
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Spacer()
+                            }
                             ServingUnitEditor(
                                 quantityText: $servingSizeText,
                                 servingSizeGrams: $servingSizeGrams,
@@ -641,6 +729,15 @@ struct FoodResultView: View {
                     scrollQuantityIntoView(scrollProxy)
                 }
                 .navigationTitle("Review Food")
+                .task {
+                    guard case .live(let input) = estimateCheck else { return }
+                    let outcome = await TypeSafeEstimateChecker.liveCheck(input)
+                    estimateOutcome = outcome
+                    if case .unavailable(let reason) = outcome {
+                        Logger(subsystem: Bundle.main.bundleIdentifier ?? "calorietracker", category: "TypeSafe")
+                            .error("Estimate check unavailable: \(String(describing: reason), privacy: .public)")
+                    }
+                }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -1369,7 +1466,7 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
             }
 
             let doneItem = UIBarButtonItem(title: "Done", style: .plain, target: self, action: #selector(doneTapped))
-            doneItem.tintColor = Self.calorieTint
+            doneItem.tintColor = Self.accentText
 
             let toolbar = UIToolbar()
             toolbar.items = [flexibleSpace(), doneItem]
@@ -1386,7 +1483,7 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
             let material: UIVisualEffect
             if #available(iOS 26.0, *) {
                 let glass = UIGlassEffect(style: .regular)
-                glass.tintColor = Self.calorieTint.withAlphaComponent(0.08)
+                glass.tintColor = Self.accentFill.withAlphaComponent(0.08)
                 material = glass
             } else {
                 material = UIBlurEffect(style: .systemChromeMaterial)
@@ -1494,12 +1591,12 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
         ) -> UIButton {
             let button = UIButton(type: .system)
             button.setTitle(title, for: .normal)
-            button.setTitleColor(emphasized ? .white : Self.calorieTint, for: .normal)
+            button.setTitleColor(emphasized ? Self.onAccent : Self.accentText, for: .normal)
             button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
             button.titleLabel?.adjustsFontSizeToFitWidth = true
             button.titleLabel?.minimumScaleFactor = 0.72
-            button.backgroundColor = emphasized ? Self.calorieTint : .clear
-            button.layer.cornerRadius = 10
+            button.backgroundColor = emphasized ? Self.accentFill : .clear
+            button.layer.cornerRadius = 4
             button.accessibilityLabel = accessibilityLabel
             button.addTarget(self, action: action, for: .touchUpInside)
             return button
@@ -1509,7 +1606,9 @@ struct EndEditingDecimalTextField: UIViewRepresentable {
             UIBarButtonItem(systemItem: .flexibleSpace)
         }
 
-        private static let calorieTint = UIColor(red: 1.0, green: 55.0 / 255.0, blue: 95.0 / 255.0, alpha: 1.0)
+        private static let accentFill = UIColor(IronTheme.blood)
+        private static let accentText = UIColor(IronTheme.bloodText)
+        private static let onAccent = UIColor(IronTheme.textPrimary)
     }
 }
 
@@ -1542,6 +1641,7 @@ private struct ReviewNutritionValueRow: View {
         HStack {
             Text(LocalizedDisplayText.text(label))
                 .foregroundStyle(dim ? .secondary : .primary)
+                .avoidsMidWordBreak()
             Spacer()
             if isUnlocked {
                 TextField("0", text: Binding(
@@ -1575,10 +1675,15 @@ private struct ReviewNutritionValueRow: View {
             } else {
                 Text(displayValue)
                     .fontWeight(.medium)
+                    .avoidsMidWordBreak()
             }
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                // 36pt minimum keeps the default column; grows instead of
+                // wrapping "kcal" to "k / c" at accessibility sizes.
+                .frame(minWidth: 36, alignment: .leading)
+                .fixedSize()
         }
     }
 }
@@ -1591,12 +1696,18 @@ struct NutritionDisplayRow: View {
     var body: some View {
         HStack {
             Text(LocalizedDisplayText.text(label))
+                .avoidsMidWordBreak()
             Spacer()
             Text(value)
                 .fontWeight(.medium)
+                .avoidsMidWordBreak()
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                // 36pt minimum keeps the default column; grows instead of
+                // wrapping "kcal" to "k / c" at accessibility sizes.
+                .frame(minWidth: 36, alignment: .leading)
+                .fixedSize()
         }
     }
 }
@@ -1610,12 +1721,18 @@ struct OptionalNutritionDisplayRow: View {
         HStack {
             Text(LocalizedDisplayText.text(label))
                 .foregroundStyle(.secondary)
+                .avoidsMidWordBreak()
             Spacer()
             Text(value.map { String(format: "%.1f", $0) } ?? "—")
                 .fontWeight(.medium)
+                .avoidsMidWordBreak()
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                // 36pt minimum keeps the default column; grows instead of
+                // wrapping "kcal" to "k / c" at accessibility sizes.
+                .frame(minWidth: 36, alignment: .leading)
+                .fixedSize()
         }
     }
 }

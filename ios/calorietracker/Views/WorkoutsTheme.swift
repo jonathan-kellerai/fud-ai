@@ -4,54 +4,38 @@ import UIKit
 // MARK: - Workouts theme bridge
 // The Workouts exercise library is ported from Delts (github.com/apoorvdarshan/delts).
 // Delts styles its views through a small set of `delts*` palette tokens and view
-// modifiers; this file re-implements that exact surface on top of Fud AI's theme
-// (AppColors + the user-selectable AppThemeColor accent), so the ported views render
-// with Fud AI's default look while keeping their code byte-for-byte close to Delts.
+// modifiers; this file re-implements that surface on the Iron & Blood tokens.
 
 extension Color {
-    /// Screen background — Fud AI's warm cream in light, near-black in dark.
+    /// Screen background — iron canvas.
     static var workoutBackground: Color { AppColors.appBackground }
 
     /// Card surface behind rows and hero imagery.
     static var workoutCard: Color { AppColors.appCard }
 
-    /// Elevated panel behind menus / pills — one step off the card tone.
-    static var workoutPanel: Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.165, green: 0.165, blue: 0.180, alpha: 1)
-                : UIColor(red: 0.937, green: 0.906, blue: 0.875, alpha: 1)
-        })
-    }
+    /// Elevated panel behind menus.
+    static var workoutPanel: Color { IronTheme.surfaceRaised }
 
-    /// Hairline strokes — matches Fud AI's divider tones.
-    static var workoutHairline: Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.173, green: 0.173, blue: 0.180, alpha: 1)
-                : UIColor(red: 0.780, green: 0.760, blue: 0.740, alpha: 1)
-        })
-    }
+    /// Hairline strokes.
+    static var workoutHairline: Color { IronTheme.hairline }
 
-    /// Primary accent — the user's Fud AI theme color (default Fud Pink).
-    static var workoutAccent: Color { AppColors.calorie }
+    /// Accent text and thin marks.
+    static var workoutAccent: Color { IronTheme.bloodText }
 
-    /// Softer companion accent — the gradient end of the theme color.
-    static var workoutSecondaryAccent: Color {
-        AppThemeColor.current.gradientColors.last ?? AppColors.calorie
-    }
+    /// Fill companion for bars and pressed states.
+    static var workoutSecondaryAccent: Color { IronTheme.blood }
 
     /// Delts aliased "inferno" to its secondary accent; keep the alias.
     static var workoutInferno: Color { Color.workoutSecondaryAccent }
 
     /// Strong text.
-    static var workoutCharcoal: Color { Color.primary }
+    static var workoutCharcoal: Color { IronTheme.textPrimary }
 
     /// Muted/supporting text.
-    static var workoutMutedText: Color { Color.secondary }
+    static var workoutMutedText: Color { IronTheme.textSecondary }
 
-    /// Text/icons rendered on top of the accent color.
-    static var workoutOnAccent: Color { Color.white }
+    /// Text/icons rendered on top of the accent fill.
+    static var workoutOnAccent: Color { IronTheme.textPrimary }
 }
 
 struct WorkoutBackground: View {
@@ -68,7 +52,7 @@ extension View {
     }
 
     @ViewBuilder
-    func workoutLiquidBarSurface(cornerRadius: CGFloat = 32) -> some View {
+    func workoutLiquidBarSurface(cornerRadius: CGFloat = IronTheme.cardRadius) -> some View {
         modifier(WorkoutLiquidBarSurfaceModifier(cornerRadius: cornerRadius))
     }
 
@@ -79,23 +63,12 @@ extension View {
 
 private struct WorkoutLiquidBarSurfaceModifier: ViewModifier {
     let cornerRadius: CGFloat
-    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-
-        if colorScheme == .light {
-            content
-                .background(Color.workoutPanel.opacity(0.72), in: shape)
-                .overlay(shape.stroke(Color.workoutHairline.opacity(0.58), lineWidth: 0.6))
-        } else if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular.interactive(), in: shape)
-        } else {
-            content
-                .background(Color.workoutPanel.opacity(0.62), in: shape)
-                .overlay(shape.stroke(Color.workoutHairline.opacity(0.52), lineWidth: 0.5))
-        }
+        content
+            .background(Color.workoutPanel, in: shape)
+            .overlay(shape.stroke(Color.workoutHairline, lineWidth: 1))
     }
 }
 

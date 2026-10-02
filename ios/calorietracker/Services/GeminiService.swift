@@ -263,7 +263,7 @@ struct GeminiService {
         let bodyFat = profile.bodyFatPercentage.map { "\(Int(($0 * 100).rounded()))%" } ?? "not set"
 
         let prompt = """
-        You are a concise nutrition coach inside Fud AI. The user is reviewing a meal before logging it.
+        You are a concise nutrition coach inside JL Physical. The user is reviewing a meal before logging it.
         Analyze this what-if scenario only. Do not say the meal has already been logged. Do not change the user's goals.
 
         Return 2-4 short plain-English sentences, no markdown and no bullets.
@@ -304,12 +304,94 @@ struct GeminiService {
         guard !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, description.count <= 16000 else {
             throw WorkoutTextError.invalid("The workout conversation is too long. Please start over.")
         }
+        if !description.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{"),
+           let draft = await WorkoutFastPath.draft(description: description, date: date, unit: unit, library: library) {
+            return draft
+        }
         return try await runWithHostedQuota(.workoutAI) {
-            let searchResponse = try await callAI(prompt: WorkoutTextDraft.searchPrompt(description: description), image: nil)
+            try await callWorkoutAnalysis(description: description, date: date, unit: unit, library: library)
+        }
+    }
+
+    /// Same prompts and parser for every provider, including Apple Foundation Models and Gemma.
+    /// Cloud mode routes through JevTierRouter like text food.
+    private static func callWorkoutAnalysis(description: String, date: Date, unit: WeightUnit,
+                                            library: [ExerciseLibraryItem]) async throws -> WorkoutTextDraft {
+        /// A clarifying question is a valid answer: it ends routing instead of escalating.
+        func analyze(_ ask: (String) async throws -> String) async throws -> Result<WorkoutTextDraft, WorkoutClarification> {
+            let searchResponse = try await ask(WorkoutTextDraft.searchPrompt(description: description))
             let queries = WorkoutTextDraft.searchQueries(searchResponse, fallback: description)
             let prompt = WorkoutTextDraft.prompt(description: description, selectedDate: date, unit: unit, library: library, searchQueries: queries)
-            return try WorkoutTextDraft.parse(try await callAI(prompt: prompt, image: nil), library: library)
+            let response = try await ask(prompt)
+            do {
+                return .success(try WorkoutTextDraft.parse(response, library: library))
+            } catch let clarification as WorkoutClarification {
+                return .failure(clarification)
+            }
         }
+
+        if AIModeSettings.isHosted {
+            let hosted = try await analyze { prompt in
+                try await callAI(prompt: prompt, image: nil)
+            }
+            return try hosted.get()
+        }
+        let base = AIProviderSettings.currentConfig(requiresVision: false)
+        let plan = await JevTierRouter.plan(.workoutParse(description), base: base)
+        let primary = plan.primary
+        if primary.provider.requiresAPIKey, primary.apiKey == nil {
+            throw AnalysisError.noAPIKey
+        }
+
+        let result: Result<WorkoutTextDraft, WorkoutClarification>
+        do {
+            // A cheaper or on-device tier that fails, including unreadable JSON, retries once on the strong config.
+            result = try await JevTierRouter.run(plan) { config in
+                try await analyze { prompt in
+                    try await dispatch(
+                        provider: config.provider,
+                        model: config.model,
+                        baseURL: config.baseURL,
+                        apiKey: config.apiKey,
+                        prompt: prompt,
+                        imageDataList: []
+                    )
+                }
+            }
+        } catch {
+            if error is CancellationError { throw error }
+            // Unreadable drafts surface as before; only request failures use the text fallback.
+            if error is WorkoutTextError { throw error }
+            guard let fallback = AIProviderSettings.currentTextFallbackConfig(
+                excludingPrimary: primary.provider,
+                model: primary.model
+            ) else {
+                throw error
+            }
+            do {
+                result = try await analyze { prompt in
+                    try await dispatch(
+                        provider: fallback.provider,
+                        model: fallback.model,
+                        baseURL: fallback.baseURL,
+                        apiKey: fallback.apiKey,
+                        prompt: prompt,
+                        imageDataList: []
+                    )
+                }
+            } catch let fallbackError {
+                if fallbackError is CancellationError { throw fallbackError }
+                if fallbackError is WorkoutTextError { throw fallbackError }
+                let chosenError = AIRequestErrorPolicy.errorToSurface(
+                    primaryProvider: primary.provider, primaryError: error, fallbackError: fallbackError
+                )
+                let detail = (chosenError as? AnalysisError)?.localizedDescription
+                    ?? (primary.provider == .gemma4Local ? chosenError.localizedDescription : AIErrorKind.generic.message)
+                throw AnalysisFallbackError(primaryName: primary.provider.displayName,
+                    fallbackName: fallback.provider.displayName, detail: detail)
+            }
+        }
+        return try result.get()
     }
 
     static func analyzeTextInput(description: String, skipHostedMetering: Bool = false) async throws -> FoodAnalysis {
@@ -346,7 +428,7 @@ struct GeminiService {
         Use null for any nutrient you cannot estimate.
         """
         return try await runWithHostedQuota(.photoFood) {
-            let text = try await callAI(prompt: prompt, image: image)
+            let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: ""))
             let analysis = try parseFoodAnalysis(from: text)
             return await addingFallbackServingUnits(to: analysis, image: image, description: nil)
         }
@@ -371,7 +453,7 @@ struct GeminiService {
         }
 
         return try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
-            let text = try await callAI(prompt: prompt, image: image)
+            let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: description ?? ""))
             let analysis = try parseFoodAnalysis(from: text)
             return await addingFallbackServingUnits(to: analysis, image: image, description: description)
         }
@@ -428,7 +510,7 @@ struct GeminiService {
         let prompt = multiPhotoAnalysisPrompt(progressiveMeal: progressiveMeal, description: description)
 
         return try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
-            let text = try await callAI(prompt: prompt, images: images)
+            let text = try await callAI(prompt: prompt, images: images, route: .foodPhoto(caption: description ?? ""))
             let analysis = try parseFoodAnalysis(from: text)
             var result = await addingFallbackServingUnits(to: analysis, image: images[0], description: description)
             result.progressiveMeal = progressiveMeal
@@ -761,8 +843,13 @@ struct GeminiService {
     /// - Parameter jsonResponse: true (default) for prompts that demand a JSON object; providers with
     ///   structured output are asked for `application/json` so they cannot wander off into prose.
     ///   Pass false for the few plain-English prompts.
-    private static func callAI(prompt: String, image: UIImage?, jsonResponse: Bool = true) async throws -> String {
-        try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse)
+    private static func callAI(
+        prompt: String,
+        image: UIImage?,
+        jsonResponse: Bool = true,
+        route: JevTierRequest? = nil
+    ) async throws -> String {
+        try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse, route: route)
     }
 
     private static func callTextFoodAnalysis(prompt: String, description: String) async throws -> FoodAnalysis {
@@ -774,20 +861,25 @@ struct GeminiService {
             )
             return try parseFoodAnalysis(from: text)
         }
-        let primary = AIProviderSettings.currentConfig(requiresVision: false)
+        let base = AIProviderSettings.currentConfig(requiresVision: false)
+        let plan = await JevTierRouter.plan(.textFood(description), base: base)
+        let primary = plan.primary
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
             throw AnalysisError.noAPIKey
         }
 
         do {
-            return try await dispatchFoodAnalysis(
-                provider: primary.provider,
-                model: primary.model,
-                baseURL: primary.baseURL,
-                apiKey: primary.apiKey,
-                prompt: prompt,
-                description: description
-            )
+            // A cheaper or on-device tier that fails retries once on the strong config.
+            return try await JevTierRouter.run(plan) { config in
+                try await dispatchFoodAnalysis(
+                    provider: config.provider,
+                    model: config.model,
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    prompt: prompt,
+                    description: description
+                )
+            }
         } catch {
             if error is CancellationError { throw error }
             guard let fallback = AIProviderSettings.currentTextFallbackConfig(
@@ -857,7 +949,14 @@ struct GeminiService {
         return try await AIGate.runWithHostedQuota(action, work)
     }
 
-    private static func callAI(prompt: String, images: [UIImage], jsonResponse: Bool = true) async throws -> String {
+    /// - Parameter route: photo food logging passes `.foodPhoto`. JevTierRouter keeps image
+    ///   requests on the configured cloud provider and records the decision.
+    private static func callAI(
+        prompt: String,
+        images: [UIImage],
+        jsonResponse: Bool = true,
+        route: JevTierRequest? = nil
+    ) async throws -> String {
         if AIModeSettings.isHosted {
             let capped = Array(images.prefix(HostedAIConstants.maxHostedImages))
             let imageDataList = try capped.map { try encodedJPEGData(for: $0) }
@@ -867,7 +966,11 @@ struct GeminiService {
                 systemInstruction: AIProviderSettings.currentUserContext
             )
         }
-        let primary = AIProviderSettings.currentConfig(requiresVision: !images.isEmpty)
+        let base = AIProviderSettings.currentConfig(requiresVision: !images.isEmpty)
+        var primary = base
+        if let route {
+            primary = await JevTierRouter.plan(route, base: base).primary
+        }
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
             throw AnalysisError.noAPIKey
         }
@@ -1117,7 +1220,7 @@ struct GeminiService {
         }
         if provider == .openrouter {
             headers["HTTP-Referer"] = "https://github.com/apoorvdarshan/fud-ai"
-            headers["X-Title"] = "Fud AI"
+            headers["X-Title"] = "JL Physical"
         }
 
         func request(_ requestPrompt: String, compactRetry: Bool) async throws -> OpenAITextResponse {

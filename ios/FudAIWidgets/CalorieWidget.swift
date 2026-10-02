@@ -36,7 +36,7 @@ struct CalorieWidget: Widget {
             CalorieWidgetView(entry: entry)
                 .containerBackground(WidgetPalette.background, for: .widget)
         }
-        .configurationDisplayName("Fud AI")
+        .configurationDisplayName("JL Physical")
         .description("See today's calories and macros at a glance.")
         .supportedFamilies([
             .systemSmall,

@@ -90,7 +90,7 @@ class NotificationManager {
 
         let content = UNMutableNotificationContent()
         content.title = "Time to Hydrate"
-        content.body = "Have some water and log it in Fud AI."
+        content.body = "Have some water and log it in JL Physical."
         content.sound = .default
 
         var dateComponents = DateComponents()
@@ -270,7 +270,7 @@ class NotificationManager {
         let currentStreak = computeCurrentStreak(foodStore: foodStore)
 
         let calendar = Calendar.current
-        let hasLoggedWeightToday = weightStore.entries.contains { calendar.isDateInToday($0.date) }
+        let hasLoggedWeightToday = weightStore.bodyWeightEntries.contains { calendar.isDateInToday($0.date) }
         let hasLoggedBodyFatToday = bodyFatStore.entries.contains { calendar.isDateInToday($0.date) }
 
         scheduleStreakReminder(
@@ -319,7 +319,7 @@ class NotificationManager {
 
         let content = UNMutableNotificationContent()
         content.title = "Update Available"
-        content.body = "Fud AI \(version) is ready. Tap to update."
+        content.body = "JL Physical \(version) is ready. Tap to update."
         content.sound = .default
         content.userInfo = ["updateURL": url.absoluteString]
 

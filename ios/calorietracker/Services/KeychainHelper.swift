@@ -3,18 +3,39 @@ import Security
 
 struct KeychainHelper {
     private static let service = "com.apoorvdarshan.calorietracker"
+    static var lastStatus: OSStatus = errSecSuccess
 
-    static func save(key: String, value: String) {
-        guard let data = value.data(using: .utf8) else { return }
+    private static func isThisDeviceOnly(_ accessible: CFString) -> Bool {
+        accessible == kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            || accessible == kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            || accessible == kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+    }
+
+    @discardableResult
+    static func save(key: String, value: String) -> Bool {
+        save(key: key, value: value, accessible: kSecAttrAccessibleAfterFirstUnlock)
+    }
+
+    /// `ThisDeviceOnly` keeps the item out of iCloud Keychain and device backups.
+    @discardableResult
+    static func save(key: String, value: String, accessible: CFString) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
         delete(key: key)
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible as String: accessible,
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        // ThisDeviceOnly already excludes iCloud Keychain and backups. Pairing it
+        // with kSecAttrSynchronizable makes SecItemAdd fail.
+        if !isThisDeviceOnly(accessible) {
+            query[kSecAttrSynchronizable as String] = false
+        }
+        let status = SecItemAdd(query as CFDictionary, nil)
+        lastStatus = status
+        return status == errSecSuccess
     }
 
     static func load(key: String) -> String? {
@@ -29,6 +50,33 @@ struct KeychainHelper {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    /// Updates the existing item in place (or adds it if missing), so a failed
+    /// write never leaves the old value deleted. True only on errSecSuccess.
+    @discardableResult
+    static func upsert(
+        key: String,
+        value: String,
+        accessible: CFString = kSecAttrAccessibleAfterFirstUnlock
+    ) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: accessible,
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = accessible
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
     }
 
     static func delete(key: String) {
