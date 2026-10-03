@@ -222,6 +222,11 @@ enum ProgressionRule {
         guard let first = last?.firstSet else { return startLoadLb }
         guard first.load > 0 else { return 0 }
         guard let range = repRange(reps) else { return first.load }
+        return adjustedLoad(after: first, range: range)
+    }
+
+    static func adjustedLoad(after first: WorkingSetSummary, range: RepRange) -> Double {
+        guard first.load > 0 else { return 0 }
         if first.reps >= range.high, let rir = first.rir, rir >= 4 {
             return first.load + incrementLb
         }
