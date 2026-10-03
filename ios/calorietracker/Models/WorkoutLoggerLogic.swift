@@ -31,7 +31,7 @@ struct ExerciseBlock: Identifiable {
 }
 
 /// The next set to do inside a superset.
-struct ExerciseStep: Equatable {
+struct ExerciseStep: Equatable, Hashable {
     let exerciseName: String
     let setIndex: Int
 }

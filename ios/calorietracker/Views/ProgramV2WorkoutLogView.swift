@@ -91,7 +91,23 @@ struct ProgramV2WorkoutLogView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(IronTheme.canvas)
+            .safeAreaInset(edge: .bottom) {
+                if let deletion = entry.deletion {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        if deletion.canRestore(at: context.date) {
+                            HStack {
+                                Text("Set \(deletion.index + 1) deleted")
+                                Spacer()
+                                Button("Undo") { entry.undo(in: draftStore, startedAt: openedAt) }
+                                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                    .foregroundStyle(IronTheme.brass)
+                            }.padding(.horizontal).background(IronTheme.surfaceRaised)
+                        }
+                    }
+                }
+            }
             .navigationTitle(day.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -397,18 +413,28 @@ struct ProgramV2WorkoutLogView: View {
     @ViewBuilder
     private func setRows(_ exercise: ProgramV2Exercise, in block: ExerciseBlock) -> some View {
         let sets = workoutSets[exercise.name] ?? []
-        ForEach(Array(sets.enumerated()), id: \.offset) { index, set in
-            setRow(exercise: exercise, block: block, setIndex: index, set: set)
+        ForEach(0..<SetEntryLogic.plannedRowCount(exercise: exercise, sets: sets), id: \.self) { index in
+            setRow(exercise: exercise, block: block, setIndex: index,
+                   set: entry.row(for: exercise, at: index, in: draftStore))
         }
     }
 
     private func addSetButton(_ exercise: ProgramV2Exercise) -> some View {
-        Button {
-            addSet(for: exercise)
-        } label: {
-            Label("Add Set", systemImage: "plus.circle.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(IronTheme.bloodText)
+        VStack(alignment: .leading, spacing: 4) {
+            if let source = entry.repeatSource(for: exercise, in: draftStore) {
+                Button {
+                    if let index = entry.repeatLast(exercise, in: draftStore, startedAt: openedAt),
+                       let block = blocks.first(where: { $0.exercises.contains { $0.name == exercise.name } }) {
+                        logSet(exercise, in: block, setIndex: index)
+                    }
+                } label: { Label("Repeat set \(source + 1)", systemImage: "arrow.clockwise") }
+                .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                .buttonStyle(.plain).foregroundStyle(IronTheme.textPrimary)
+            }
+            Button { addSet(for: exercise) } label: {
+                Label("Add Set", systemImage: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(IronTheme.bloodText)
+            }.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
         }
     }
 
@@ -416,15 +442,26 @@ struct ProgramV2WorkoutLogView: View {
         LoggerSetRow(
             setIndex: setIndex, set: set, startLoadLb: exercise.startLoadLb,
             isHold: ladderHint(for: exercise)?.isHold == true,
-            isCurrent: SetEntryLogic.isCurrent(setIndex: setIndex, sets: workoutSets[exercise.name] ?? []),
+            kind: SetEntryLogic.rowKind(at: setIndex, sets: workoutSets[exercise.name] ?? [],
+                editing: entry.editingStep == ExerciseStep(exerciseName: exercise.name, setIndex: setIndex)),
             isPersonalRecord: SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise)),
-            onChange: { edit in updateSet(exercise, at: setIndex, edit) },
-            onLog: { logSet(exercise, in: block, setIndex: setIndex) },
-            onRemove: {
-                updateDraft { draft in
-                    guard draft.sets[exercise.name]?.indices.contains(setIndex) == true else { return }
-                    draft.sets[exercise.name]?.remove(at: setIndex)
+            targetText: exercise.reps,
+            targetChips: SetEntryLogic.targetChips(for: exercise, at: setIndex),
+            loadStep: SetEntryLogic.loadStep(set.weight),
+            onEdit: { entry.editingStep = ExerciseStep(exerciseName: exercise.name, setIndex: setIndex) },
+            onChange: { edit in entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt, edit) },
+            onStep: { load, direction in
+                entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt) {
+                    $0 = SetEntryLogic.stepped($0, load: load, direction: direction, isHold: ladderHint(for: exercise)?.isHold == true)
                 }
+            },
+            onLog: {
+                if let index = entry.log(exercise, at: setIndex, in: draftStore, startedAt: openedAt) {
+                    logSet(exercise, in: block, setIndex: index)
+                }
+            },
+            onRemove: {
+                entry.remove(exercise, at: setIndex, in: draftStore, startedAt: openedAt)
             }
         )
     }
