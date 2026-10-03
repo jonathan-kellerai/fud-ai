@@ -84,6 +84,19 @@ final class WorkoutSetEntry {
 
     init(day: ProgramV2Day) { self.day = day }
 
+    func nextStep(in store: WorkoutDraftStore) -> ExerciseStep? {
+        let sets = store.existingDraft(for: day)?.sets ?? [:]
+        for block in order(in: store).blocks {
+            if let step = SupersetGrouping.nextUp(in: block, sets: sets) { return step }
+        }
+        return nil
+    }
+
+    func nextStepLabel(in store: WorkoutDraftStore) -> String {
+        guard let next = nextStep(in: store) else { return "Finish → list" }
+        return "Next: \(next.exerciseName) S\(next.setIndex + 1)"
+    }
+
     func lastPerformance(for exercise: ProgramV2Exercise) -> LastPerformance? {
         lastPerformances[LastPerformanceBuilder.key(for: exercise.name)]
     }

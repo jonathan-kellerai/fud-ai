@@ -10,15 +10,22 @@ import SwiftUI
 struct RestTimerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var timer: RestTimerService
+    @State private var timer: RestSession
     @State private var zeroFlash = false
-    @State private var cuesMuted: Bool
     let defaultSeconds: Int
+    private let ownsSession: Bool
+    private var cuesMuted: Bool { timer.muted }
     
     init(defaultSeconds: Int = 90, initiallyMuted: Bool = false) {
         self.defaultSeconds = defaultSeconds
-        _timer = State(initialValue: RestTimerService())
-        _cuesMuted = State(initialValue: initiallyMuted)
+        _timer = State(initialValue: RestSession(driver: RestTimerService(), initiallyMuted: initiallyMuted))
+        ownsSession = true
+    }
+
+    init(session: RestSession) {
+        defaultSeconds = session.duration
+        _timer = State(initialValue: session)
+        ownsSession = false
     }
 
     private var inFinalSeconds: Bool {
@@ -26,6 +33,10 @@ struct RestTimerSheet: View {
     }
     
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in content }
+    }
+
+    private var content: some View {
         VStack(spacing: 24) {
             ZStack {
                 Circle()
@@ -52,7 +63,7 @@ struct RestTimerSheet: View {
             
             HStack(spacing: 20) {
                 Button {
-                    if timer.isRunning {
+                    if timer.isActive && !timer.isPaused {
                         timer.pause()
                     } else if timer.isPaused {
                         timer.resume()
@@ -60,7 +71,7 @@ struct RestTimerSheet: View {
                         timer.start(seconds: defaultSeconds)
                     }
                 } label: {
-                    Image(systemName: timer.isRunning ? "pause.circle.fill" : "play.circle.fill")
+                    Image(systemName: timer.isActive && !timer.isPaused ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 60))
                         .foregroundStyle(IronTheme.bloodText)
                 }
@@ -72,10 +83,10 @@ struct RestTimerSheet: View {
                         .font(.system(size: 60))
                         .foregroundStyle(IronTheme.bloodText)
                 }
-                .disabled(!timer.isRunning && !timer.isPaused)
+                .disabled(!timer.isActive)
                 
                 Button {
-                    timer.reset(to: defaultSeconds)
+                    timer.start(seconds: defaultSeconds)
                 } label: {
                     Image(systemName: "arrow.clockwise.circle.fill")
                         .font(.system(size: 60))
@@ -83,8 +94,7 @@ struct RestTimerSheet: View {
                 }
 
                 Button {
-                    cuesMuted.toggle()
-                    timer.cuesMuted = cuesMuted
+                    timer.muted.toggle()
                 } label: {
                     Image(systemName: cuesMuted ? "speaker.slash.circle.fill" : "speaker.wave.2.circle.fill")
                         .font(.system(size: 60))
@@ -114,7 +124,7 @@ struct RestTimerSheet: View {
                                 .frame(maxWidth: 88, minHeight: 44)
                                 .foregroundStyle(IronTheme.textPrimary)
                                 .background(
-                                    timer.totalSeconds == seconds ? IronTheme.blood : IronTheme.surfaceRaised,
+                                    timer.duration == seconds ? IronTheme.blood : IronTheme.surfaceRaised,
                                     in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
                                 )
                                 .overlay {
@@ -132,7 +142,7 @@ struct RestTimerSheet: View {
             Spacer()
             
             Button {
-                timer.stop()
+                if ownsSession { timer.stop() }
                 dismiss()
             } label: {
                 Text("Done")
@@ -142,12 +152,9 @@ struct RestTimerSheet: View {
         .padding()
         .background(zeroFlash ? IronTheme.blood : IronTheme.canvas)
         .foregroundStyle(IronTheme.textPrimary)
-        .onAppear {
-            timer.cuesMuted = cuesMuted
-            timer.start(seconds: defaultSeconds)
-        }
+        .onAppear { timer.startIfNeeded(seconds: defaultSeconds) }
         .onDisappear {
-            timer.stop()
+            if ownsSession { timer.stop() }
         }
         .onChange(of: timer.remainingSeconds) { _, seconds in
             guard seconds == 0, !reduceMotion else { return }

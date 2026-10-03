@@ -20,7 +20,7 @@ struct ProgramV2WorkoutLogView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutDraftStore.self) private var draftStore
     @State private var showingRestTimer = false
-    @State private var restDuration = RestTimerSettings.defaultSeconds
+    @State private var restSession = RestSession(driver: RestTimerService())
     @State private var entry: WorkoutSetEntry
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false
@@ -94,6 +94,8 @@ struct ProgramV2WorkoutLogView: View {
             .scrollDismissesKeyboard(.interactively)
             .background(IronTheme.canvas)
             .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 0) {
+                LoggerRestBar(session: restSession) { showingRestTimer = true }
                 if let deletion = entry.deletion {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         if deletion.canRestore(at: context.date) {
@@ -107,6 +109,7 @@ struct ProgramV2WorkoutLogView: View {
                         }
                     }
                 }
+                }
             }
             .navigationTitle(day.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -114,12 +117,13 @@ struct ProgramV2WorkoutLogView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     // Logged sets stay in the draft; closing never loses them.
                     Button("Close") {
+                        restSession.stop()
                         dismiss()
                     }
                 }
             }
             .sheet(isPresented: $showingRestTimer) {
-                RestTimerSheet(defaultSeconds: restDuration)
+                RestTimerSheet(session: restSession)
             }
             .task {
                 entry.lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
@@ -131,6 +135,7 @@ struct ProgramV2WorkoutLogView: View {
                     showingReplaceDraftPrompt = true
                 }
             }
+            .onDisappear { restSession.stop() }
             .alert("Unsaved Workout", isPresented: $showingReplaceDraftPrompt) {
                 Button("Discard and Start", role: .destructive) {
                     draftStore.discard()
@@ -143,6 +148,7 @@ struct ProgramV2WorkoutLogView: View {
             }
             .confirmationDialog("Discard this workout?", isPresented: $showingDiscardConfirmation, titleVisibility: .visible) {
                 Button("Discard Workout", role: .destructive) {
+                    restSession.stop()
                     draftStore.discard()
                     dismiss()
                 }
@@ -505,7 +511,8 @@ struct ProgramV2WorkoutLogView: View {
             block: block,
             sets: sets
         ) else { return }
-        restDuration = seconds
+        restSession.stepLabel = entry.nextStepLabel(in: draftStore)
+        restSession.start(seconds: seconds)
         showingRestTimer = true
     }
 
@@ -585,6 +592,7 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private func saveWorkout() async {
+        restSession.stop()
         isSaving = true
         defer {
             Task { @MainActor in
