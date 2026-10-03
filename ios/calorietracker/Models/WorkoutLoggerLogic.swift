@@ -144,6 +144,7 @@ struct WorkingSetSummary: Equatable {
 struct LastPerformance: Equatable {
     let sessionDate: String
     let sets: [WorkingSetSummary]
+    var doneLaterThanPlanned: Bool = false
 
     var firstSet: WorkingSetSummary? { sets.first }
     var heaviestLoad: Double? { sets.map(\.load).max() }
@@ -181,7 +182,11 @@ enum LastPerformanceBuilder {
                     .map { WorkingSetSummary(load: $0.loadLb, reps: $0.reps, rir: $0.rir) }
                 result[exerciseKey] = LastPerformance(
                     sessionDate: String(detail.workout.sessionDate.prefix(10)),
-                    sets: summaries
+                    sets: summaries,
+                    doneLaterThanPlanned: sets.contains { row in
+                        guard let performed = row.exercisePosition, let planned = row.plannedPosition else { return false }
+                        return performed > planned
+                    }
                 )
             }
         }
@@ -194,6 +199,15 @@ enum LastPerformanceBuilder {
 struct RepRange: Equatable {
     let low: Int
     let high: Int
+}
+
+enum ProgressionReason: Equatable {
+    case increase, decrease, hold, holdPreFatigued, holdReductionWeek, noHistory
+}
+
+struct ProgressionDecision: Equatable {
+    let load: Double?
+    let reason: ProgressionReason
 }
 
 enum ProgressionRule {
@@ -218,23 +232,52 @@ enum ProgressionRule {
     /// Set 1 of the last session: top of the range with 4+ RIR adds 5 lb, missing the
     /// bottom of the range or hitting 0 RIR drops 5 lb, anything else holds.
     /// No history falls back to the program start load (nil when it is picked on the day).
-    static func suggestedLoad(last: LastPerformance?, reps: String, startLoadLb: Double?, holdLoads: Bool = false) -> Double? {
-        guard let first = last?.firstSet else { return startLoadLb }
-        if holdLoads { return last?.sets.last?.load ?? first.load }
-        guard first.load > 0 else { return 0 }
-        guard let range = repRange(reps) else { return first.load }
-        return adjustedLoad(after: first, range: range)
+    static func suggestedLoad(last: LastPerformance?, reps: String, startLoadLb: Double?, holdLoads: Bool = false,
+                              doneLaterThanPlanned: Bool = false) -> Double? {
+        suggestedDecision(last: last, reps: reps, startLoadLb: startLoadLb, holdLoads: holdLoads,
+                          doneLaterThanPlanned: doneLaterThanPlanned).load
+    }
+
+    static func suggestedDecision(last: LastPerformance?, reps: String, startLoadLb: Double?,
+                                  holdLoads: Bool = false, doneLaterThanPlanned: Bool = false) -> ProgressionDecision {
+        guard let last, let first = last.firstSet else {
+            return ProgressionDecision(load: startLoadLb, reason: .noHistory)
+        }
+        if holdLoads {
+            return ProgressionDecision(load: last.sets.last?.load ?? first.load, reason: .holdReductionWeek)
+        }
+        guard first.load > 0 else { return ProgressionDecision(load: 0, reason: .hold) }
+        guard let range = repRange(reps) else { return ProgressionDecision(load: first.load, reason: .hold) }
+        let preFatigued = last.doneLaterThanPlanned || doneLaterThanPlanned
+        let decision = adjustedDecision(after: first, range: range, doneLaterThanPlanned: preFatigued)
+        // History still progresses from set 1. A later missed set explains why
+        // the baseline holds after pre-exhaustion (the 9/29 chest-press case).
+        if decision.reason != .increase, preFatigued,
+           last.sets.contains(where: { $0.reps < range.low || $0.rir == 0 }) {
+            return ProgressionDecision(load: first.load, reason: .holdPreFatigued)
+        }
+        return decision
     }
 
     static func adjustedLoad(after first: WorkingSetSummary, range: RepRange) -> Double {
-        guard first.load > 0 else { return 0 }
+        adjustedDecision(after: first, range: range).load ?? first.load
+    }
+
+    static func adjustedDecision(after first: WorkingSetSummary, range: RepRange?,
+                                 doneLaterThanPlanned: Bool = false, holdLoads: Bool = false) -> ProgressionDecision {
+        if holdLoads { return ProgressionDecision(load: first.load, reason: .holdReductionWeek) }
+        guard first.load > 0 else { return ProgressionDecision(load: 0, reason: .hold) }
+        guard let range else { return ProgressionDecision(load: first.load, reason: .hold) }
         if first.reps >= range.high, let rir = first.rir, rir >= 4 {
-            return first.load + incrementLb
+            return ProgressionDecision(load: first.load + incrementLb, reason: .increase)
         }
         if first.reps < range.low || first.rir == 0 {
-            return max(0, first.load - incrementLb)
+            if doneLaterThanPlanned {
+                return ProgressionDecision(load: first.load, reason: .holdPreFatigued)
+            }
+            return ProgressionDecision(load: max(0, first.load - incrementLb), reason: .decrease)
         }
-        return first.load
+        return ProgressionDecision(load: first.load, reason: .hold)
     }
 }
 

@@ -45,7 +45,12 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private var blocks: [ExerciseBlock] {
-        SupersetGrouping.blocks(for: day.exercises)
+        sessionOrder.blocks
+    }
+
+    private var sessionOrder: SessionOrder {
+        SessionOrder(plannedBlocks: SupersetGrouping.blocks(for: day.exercises),
+                     exerciseOrder: draftStore.existingDraft(for: day)?.exerciseOrder)
     }
 
     private func updateDraft(_ change: (inout WorkoutDraft) -> Void) {
@@ -416,7 +421,7 @@ struct ProgramV2WorkoutLogView: View {
             isHold: ladderHint(for: exercise)?.isHold == true,
             isCurrent: SetEntryLogic.isCurrent(setIndex: setIndex, sets: workoutSets[exercise.name] ?? []),
             isPersonalRecord: SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise)),
-            onChange: { next in updateSet(exercise, at: setIndex) { $0 = next } },
+            onChange: { edit in updateSet(exercise, at: setIndex, edit) },
             onLog: { logSet(exercise, in: block, setIndex: setIndex) },
             onRemove: {
                 updateDraft { draft in
@@ -451,7 +456,8 @@ struct ProgramV2WorkoutLogView: View {
             last: lastPerformance(for: exercise),
             reps: exercise.reps,
             startLoadLb: exercise.startLoadLb,
-            holdLoads: day.holdLoads
+            holdLoads: day.holdLoads,
+            doneLaterThanPlanned: sessionOrder.isDoneLaterThanPlanned(exercise.name)
         )
     }
 
@@ -498,16 +504,18 @@ struct ProgramV2WorkoutLogView: View {
         }
     }
 
-    /// Prefills the load from the previous set this session, else the suggestion.
+    /// Uses the last logged set, never an unfinished row. Prefilled reps stay
+    /// outside the draft so only entered reps count as logged.
     private func addSet(for exercise: ProgramV2Exercise) {
-        let load = SetEntryLogic.prefillLoad(sets: workoutSets[exercise.name] ?? [], suggestion: suggestedLoad(for: exercise))
+        let rows = workoutSets[exercise.name] ?? []
+        let prefill = SetEntryLogic.nextSetPrefill(exercise: exercise, setIndex: rows.count,
+            sets: rows, last: lastPerformance(for: exercise),
+            doneLaterThanPlanned: sessionOrder.isDoneLaterThanPlanned(exercise.name), holdLoads: day.holdLoads)
 
         let newSet = LoggedSet(
-            weight: load,
+            weight: prefill.load ?? 0,
             reps: 0,
-            rir: RIRTargetParser.defaultRIR(for: RIRTargetParser.target(for: exercise),
-                                           setIndex: workoutSets[exercise.name]?.count ?? 0,
-                                           setCount: exercise.sets),
+            rir: prefill.rir,
             rpeText: ""
         )
 

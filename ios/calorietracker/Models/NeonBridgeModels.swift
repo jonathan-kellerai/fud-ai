@@ -38,6 +38,14 @@ struct WorkoutSet: Codable, Equatable, Hashable {
     let rir: Int?
     let rpe: Double?
     let order: Int
+    var exercisePosition: Int? = nil
+    var plannedPosition: Int? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case exercise, load, reps, rir, rpe, order
+        case exercisePosition = "exercise_position"
+        case plannedPosition = "planned_position"
+    }
 }
 
 struct WorkoutPayload: Codable {
@@ -108,6 +116,8 @@ struct RemoteWorkoutSet: Codable, Identifiable, Equatable {
     let reps: Int
     let rir: Int?
     let rpe: Double?
+    var exercisePosition: Int? = nil
+    var plannedPosition: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -118,6 +128,8 @@ struct RemoteWorkoutSet: Codable, Identifiable, Equatable {
         case reps
         case rir
         case rpe
+        case exercisePosition = "exercise_position"
+        case plannedPosition = "planned_position"
     }
 }
 

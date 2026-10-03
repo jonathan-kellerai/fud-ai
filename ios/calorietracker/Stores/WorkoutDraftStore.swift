@@ -42,6 +42,8 @@ struct WorkoutDraft: Codable, Equatable {
     var updatedAt: Date
     var weekNote: String? = nil
     var holdLoads: Bool? = nil
+    /// Nil preserves the planned-order payload and the legacy JSON shape.
+    var exerciseOrder: [String]? = nil
 
     init(day: ProgramV2Day, now: Date = Date()) {
         programDay = day.id
@@ -126,8 +128,15 @@ struct WorkoutDraft: Codable, Equatable {
     func payload(now: Date = Date()) -> WorkoutPayload {
         var allSets: [WorkoutSet] = []
         var order = 0
+        let sessionOrder = SessionOrder(plannedBlocks: SupersetGrouping.blocks(for: programV2Day.exercises),
+                                        exerciseOrder: exerciseOrder)
+        let performedNames = sessionOrder.exerciseOrder
+        let orderedExercises = exerciseOrder == nil ? exercises : performedNames.compactMap { name in
+            exercises.first { $0.name == name }
+        }
 
-        for exercise in exercises {
+        for exercise in orderedExercises {
+            let position = exerciseOrder == nil ? nil : sessionOrder.position(for: exercise.name)
             if let loggedSets = sets[exercise.name] {
                 for set in loggedSets {
                     let rpe = Double(set.rpeText.replacingOccurrences(of: ",", with: "."))
@@ -137,7 +146,9 @@ struct WorkoutDraft: Codable, Equatable {
                         reps: set.reps,
                         rir: set.rir,
                         rpe: rpe,
-                        order: order
+                        order: order,
+                        exercisePosition: position?.performed,
+                        plannedPosition: position?.planned
                     ))
                     order += 1
                 }
@@ -147,7 +158,11 @@ struct WorkoutDraft: Codable, Equatable {
         // Sets logged under an exercise that has since left the day would
         // otherwise be dropped from the payload and deleted on save.
         let exerciseNames = Set(exercises.map(\.name))
-        for name in sets.keys.sorted() where !exerciseNames.contains(name) {
+        let orphanNames = sets.keys.sorted().filter { !exerciseNames.contains($0) }
+        for (orphanIndex, name) in orphanNames.enumerated() {
+            // Orphans retain their alphabetical tail order. With explicit
+            // ordering, both positions follow all current planned exercises.
+            let position = exerciseOrder == nil ? nil : exercises.count + orphanIndex + 1
             for set in sets[name] ?? [] {
                 let rpe = Double(set.rpeText.replacingOccurrences(of: ",", with: "."))
                 allSets.append(WorkoutSet(
@@ -156,7 +171,9 @@ struct WorkoutDraft: Codable, Equatable {
                     reps: set.reps,
                     rir: set.rir,
                     rpe: rpe,
-                    order: order
+                    order: order,
+                    exercisePosition: position,
+                    plannedPosition: position
                 ))
                 order += 1
             }

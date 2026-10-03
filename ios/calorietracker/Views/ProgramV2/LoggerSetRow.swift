@@ -8,7 +8,7 @@ struct LoggerSetRow: View {
     let isHold: Bool
     let isCurrent: Bool
     let isPersonalRecord: Bool
-    let onChange: (LoggedSet) -> Void
+    let onChange: ((inout LoggedSet) -> Void) -> Void
     let onLog: () -> Void
     let onRemove: () -> Void
 
@@ -83,9 +83,7 @@ struct LoggerSetRow: View {
     }
 
     private func change(_ edit: (inout LoggedSet) -> Void) {
-        var next = set
-        edit(&next)
-        onChange(next)
+        onChange(edit)
     }
 
     private var loadField: some View {
