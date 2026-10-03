@@ -39,14 +39,17 @@ struct LoggerSetRow: View {
         }
         .contextMenu {
             if kind != .ghost { Button("Delete set", role: .destructive, action: onRemove) }
+            if kind == .current { Button("RPE…") { showsRPE = true; focus = .rpe } }
         }
         .toolbar {
             if focus != nil {
                 ToolbarItemGroup(placement: .keyboard) {
                     Button(focus == .load ? "−\(LoggerFormatting.load(loadStep))" : "−1") { stepFocused(-1) }
                         .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        .disabled(focus == .rpe)
                     Button(focus == .load ? "+\(LoggerFormatting.load(loadStep))" : "+1") { stepFocused(1) }
                         .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        .disabled(focus == .rpe)
                     Spacer(minLength: 0)
                     Button("Next ›") { focus = focus == .load ? .reps : focus == .reps && showsRPE ? .rpe : nil }
                         .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
@@ -111,10 +114,6 @@ struct LoggerSetRow: View {
                     .keyboardType(.decimalPad).focused($focus, equals: .rpe)
                     .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                     .accessibilityLabel("RPE, rate of perceived exertion")
-            } else {
-                Button("RPE…") { showsRPE = true; focus = .rpe }
-                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    .buttonStyle(.plain).foregroundStyle(IronTheme.textSecondary)
             }
         }
     }

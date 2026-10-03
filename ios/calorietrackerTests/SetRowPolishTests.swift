@@ -82,4 +82,21 @@ extension WorkoutDraftStoreTests {
         #expect(store.draft == nil)
         #expect(entry.editingStep?.setIndex == 0)
     }
+
+    @Test func typingRepsKeepsLegacyRowEditorUntilCheckmark() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let day = ProgramV2Templates.day1LowerA
+        let exercise = day.exercises[0]
+        let store = WorkoutDraftStore(directory: dir)
+        let entry = WorkoutSetEntry(day: day)
+        entry.add(exercise, in: store, startedAt: Date())
+        entry.edit(exercise, at: 0, in: store, startedAt: Date()) { $0.reps = 1 }
+        #expect(entry.editingStep == ExerciseStep(exerciseName: exercise.name, setIndex: 0))
+        #expect(store.draft?.loggedSetCount == 1)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date()) { $0.reps = 13 }
+        #expect(entry.log(exercise, at: 0, in: store, startedAt: Date()) == 0)
+        #expect(store.draft?.sets[exercise.name]?.first?.reps == 13)
+        #expect(entry.editingStep == nil)
+    }
 }

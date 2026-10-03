@@ -107,6 +107,9 @@ final class WorkoutSetEntry {
     func edit(_ exercise: ProgramV2Exercise, at index: Int, in store: WorkoutDraftStore,
               startedAt: Date, _ change: (inout LoggedSet) -> Void) {
         let step = ExerciseStep(exerciseName: exercise.name, setIndex: index)
+        // Reps still count as logged immediately, but a live editor must not
+        // disappear after the first digit of a multi-digit entry.
+        editingStep = step
         if store.existingDraft(for: day)?.sets[exercise.name]?.indices.contains(index) == true {
             update(exercise, at: index, in: store, startedAt: startedAt, change)
         } else {
