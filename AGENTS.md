@@ -1,6 +1,6 @@
 # AGENTS.md — JL Physical (jonathan-kellerai/fud-ai)
 
-> PROPOSED. This file has not been committed. It needs Jonathan's approval before it is added to the repo root.
+> Approved by Jonathan Bowe (decision D2, 2026-10-02). This is the repo-root rulebook; changes to it need his approval.
 > Sources:
 > - `/workspace/jeffrey-study/METHODS.md` (Jeffrey Emanuel's practices)
 > - Tomas Vykruta's "Timeless constraints" (https://x.com/tvykruta/status/2105122130908074219, https://x.com/tvykruta/status/2105306637904863429)
@@ -110,7 +110,8 @@ Hard invariants:
 - God files (e.g. `ContentView.swift`, about 338 KB on main) only shrink. Extract code isomorphically, never add new features into them.
 
 ## Git
-- Branches are `feat/*`, `integ/*`, and `cursor/*`. Open PRs against main.
+- Branches are `feat/*`, `integ/*`, `cursor/*`, `docs/*`, and `engine/*` (improvement-engine variants only).
+- Open PRs against the launch branch `cursor/jl-physical-neon-bridge-366e`, not main. Nothing merges into main without Jonathan's explicit approval.
 - No destructive git: no `reset --hard`, no force-push, no history rewrite on shared branches.
 - Commit messages say *why*, and name the one concern touched.
 - At the end of a session: commit, push, update the plan or task status, and write a handoff note with the CI run URLs.
