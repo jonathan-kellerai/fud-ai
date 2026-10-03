@@ -30,9 +30,6 @@ struct ProgramV2WorkoutLogView: View {
     @State private var showingReplaceDraftPrompt = false
     /// The session date is the day the logger was opened, even if it is saved after midnight.
     @State private var openedAt = Date()
-    /// Grows the narrow reps/RPE inputs with Dynamic Type so their placeholders
-    /// never truncate. Capped at the set row's xxLarge text-size ceiling.
-    @ScaledMetric(relativeTo: .body) private var inputScale: CGFloat = 1
     /// CC ladder state for graduate-at hints on ladder finishers. Starts from
     /// the Ladders screen's memory cache and refreshes once per open.
     @State private var ccLadders: CCLaddersResponse? = CCLadderMemoryCache.last
@@ -408,159 +405,20 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private func setRow(exercise: ProgramV2Exercise, block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
-        let isCurrent = SetEntryLogic.isCurrent(setIndex: setIndex, sets: workoutSets[exercise.name] ?? [])
-        let isPersonalRecord = SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise))
-        // Narrow cards (iPhone SE) can't fit every input on one line; fall
-        // back to load/reps on the first line and effort/actions on the second.
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                setNumber(setIndex, isPersonalRecord: isPersonalRecord)
-                loadField(exercise, setIndex: setIndex, set: set)
-                rowLabel("lb ×")
-                repsField(exercise, setIndex: setIndex, set: set)
-                rowLabel("RIR")
-                rirField(exercise, in: block, setIndex: setIndex, set: set)
-                rpeField(exercise, setIndex: setIndex, set: set)
-                logSetButton(exercise, in: block, setIndex: setIndex, set: set)
-                removeSetButton(exercise, setIndex: setIndex)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    setNumber(setIndex, isPersonalRecord: isPersonalRecord)
-                    loadField(exercise, setIndex: setIndex, set: set)
-                    rowLabel("lb ×")
-                    repsField(exercise, setIndex: setIndex, set: set)
-                    rowLabel(ladderHint(for: exercise)?.isHold == true ? "sec" : "reps")
+        LoggerSetRow(
+            setIndex: setIndex, set: set, startLoadLb: exercise.startLoadLb,
+            isHold: ladderHint(for: exercise)?.isHold == true,
+            isCurrent: SetEntryLogic.isCurrent(setIndex: setIndex, sets: workoutSets[exercise.name] ?? []),
+            isPersonalRecord: SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise)),
+            onChange: { next in updateSet(exercise, at: setIndex) { $0 = next } },
+            onLog: { logSet(exercise, in: block, setIndex: setIndex) },
+            onRemove: {
+                updateDraft { draft in
+                    guard draft.sets[exercise.name]?.indices.contains(setIndex) == true else { return }
+                    draft.sets[exercise.name]?.remove(at: setIndex)
                 }
-                HStack(spacing: 8) {
-                    rowLabel("RIR")
-                    rirField(exercise, in: block, setIndex: setIndex, set: set)
-                    rpeField(exercise, setIndex: setIndex, set: set)
-                    logSetButton(exercise, in: block, setIndex: setIndex, set: set)
-                    removeSetButton(exercise, setIndex: setIndex)
-                }
-                // Indent under the fields: set-number width plus spacing.
-                .padding(.leading, 28)
             }
-        }
-        // Fixed-width numeric inputs: keep labels on one line and stop the
-        // row growing past the card at accessibility sizes.
-        .lineLimit(1)
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-        .padding(.vertical, 4)
-        .padding(.leading, 8)
-        .overlay(alignment: .leading) {
-            if isCurrent {
-                Rectangle()
-                    .fill(IronTheme.blood)
-                    .frame(width: IronTheme.ruleWidth)
-            }
-        }
-    }
-
-    private func setNumber(_ setIndex: Int, isPersonalRecord: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text("\(setIndex + 1)")
-                .font(.caption.bold().monospacedDigit())
-                .foregroundStyle(IronTheme.textSecondary)
-                .frame(width: 20)
-            if isPersonalRecord {
-                Text("PR")
-                    .font(.system(size: 11, weight: .heavy))
-                    .fontWidth(.condensed)
-                    .tracking(0.6)
-                    .foregroundStyle(IronTheme.brass)
-                    .fixedSize()
-            }
-        }
-    }
-
-    private func rowLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize()
-    }
-
-    private func loadField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
-        // Bodyweight exercises (start load 0) show 0; otherwise an unset load is blank.
-        let showsBlankLoad = set.weight == 0 && exercise.startLoadLb != 0
-        return TextField("Load", value: Binding<Double?>(
-            get: { showsBlankLoad ? nil : set.weight },
-            set: { newValue in updateSet(exercise, at: setIndex) { $0.weight = newValue ?? 0 } }
-        ), format: .number)
-        .keyboardType(.decimalPad)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: 60)
-    }
-
-    private func repsField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
-        // Unlogged sets (0 reps) show the placeholder rather than a 0.
-        // Timed CC holds log seconds in the reps field.
-        let isHold = ladderHint(for: exercise)?.isHold == true
-        return TextField(isHold ? "Sec" : "Reps", value: Binding<Int?>(
-            get: { set.reps == 0 ? nil : set.reps },
-            set: { newValue in updateSet(exercise, at: setIndex) { $0.reps = newValue ?? 0 } }
-        ), format: .number)
-        .keyboardType(.numberPad)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: scaledInputWidth(64))
-        .accessibilityLabel(isHold ? "Hold seconds" : "Reps")
-    }
-
-    private func rirField(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
-        TextField("", value: Binding(
-            get: { set.rir },
-            set: { newValue in updateSet(exercise, at: setIndex) { $0.rir = newValue } }
-        ), format: .number)
-        .keyboardType(.numberPad)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: 40)
-        .onSubmit {
-            logSet(exercise, in: block, setIndex: setIndex)
-        }
-    }
-
-    private func rpeField(_ exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
-        TextField("RPE", text: Binding(
-            get: { set.rpeText },
-            set: { newValue in updateSet(exercise, at: setIndex) { $0.rpeText = newValue } }
-        ))
-        .keyboardType(.decimalPad)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: scaledInputWidth(60))
-        .accessibilityLabel("RPE, rate of perceived exertion")
-    }
-
-    /// Regular size keeps the original width; larger text widens the field up
-    /// to the xxLarge ceiling the set row is clamped to.
-    private func scaledInputWidth(_ base: CGFloat) -> CGFloat {
-        (base * min(max(inputScale, 1), 1.4)).rounded()
-    }
-
-    private func logSetButton(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
-        Button {
-            logSet(exercise, in: block, setIndex: setIndex)
-        } label: {
-            Image(systemName: set.reps > 0 ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(set.reps > 0 ? IronTheme.olive : IronTheme.textTertiary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Log set")
-    }
-
-    private func removeSetButton(_ exercise: ProgramV2Exercise, setIndex: Int) -> some View {
-        Button {
-            updateDraft { draft in
-                guard draft.sets[exercise.name]?.indices.contains(setIndex) == true else { return }
-                draft.sets[exercise.name]?.remove(at: setIndex)
-            }
-        } label: {
-            Image(systemName: "minus.circle.fill")
-                .foregroundStyle(IronTheme.bloodText)
-        }
-        .buttonStyle(.plain)
+        )
     }
 
     private func ladderHint(for exercise: ProgramV2Exercise) -> CCLoggerLadderHint? {
