@@ -498,7 +498,9 @@ struct ProgramV2WorkoutLogView: View {
         let newSet = LoggedSet(
             weight: load,
             reps: 0,
-            rir: Int(exercise.rirTarget) ?? 0,
+            rir: RIRTargetParser.defaultRIR(for: RIRTargetParser.target(for: exercise),
+                                           setIndex: workoutSets[exercise.name]?.count ?? 0,
+                                           setCount: exercise.sets),
             rpeText: ""
         )
 
