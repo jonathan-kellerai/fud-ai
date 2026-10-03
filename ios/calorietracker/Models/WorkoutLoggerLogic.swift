@@ -218,8 +218,9 @@ enum ProgressionRule {
     /// Set 1 of the last session: top of the range with 4+ RIR adds 5 lb, missing the
     /// bottom of the range or hitting 0 RIR drops 5 lb, anything else holds.
     /// No history falls back to the program start load (nil when it is picked on the day).
-    static func suggestedLoad(last: LastPerformance?, reps: String, startLoadLb: Double?) -> Double? {
+    static func suggestedLoad(last: LastPerformance?, reps: String, startLoadLb: Double?, holdLoads: Bool = false) -> Double? {
         guard let first = last?.firstSet else { return startLoadLb }
+        if holdLoads { return last?.sets.last?.load ?? first.load }
         guard first.load > 0 else { return 0 }
         guard let range = repRange(reps) else { return first.load }
         return adjustedLoad(after: first, range: range)

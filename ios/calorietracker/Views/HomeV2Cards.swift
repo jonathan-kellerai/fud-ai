@@ -482,11 +482,17 @@ struct HomeV2Cards: View {
             Text(name)
                 .font(.system(.title3, design: .rounded, weight: .bold))
             if let day = TrainingProgramSchedule.programDay(in: programBody, matching: resolved) {
-                Text("\(day.exercises.count) exercises · \(day.conditioningSummary)")
+                let datedDay = programBody.programV2Day(for: day, on: selectedDate)
+                if let weekNote = datedDay.weekNote {
+                    Text(weekNote)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text("\(datedDay.exercises.count) exercises · \(datedDay.conditioning)")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                 Button {
-                    loggingDay = day.asProgramV2Day()
+                    loggingDay = datedDay
                 } label: {
                     Label("Start", systemImage: "play.fill")
                 }

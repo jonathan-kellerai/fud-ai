@@ -57,6 +57,9 @@ struct ProgramV2DayDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if let weekNote = day.weekNote {
+                    Text(weekNote).font(.subheadline).foregroundStyle(.secondary)
+                }
                 // Conditioning Section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -107,7 +110,7 @@ struct ProgramV2DayDetailView: View {
             }
             
             HStack(spacing: 16) {
-                Label("\(exercise.sets) sets", systemImage: "repeat")
+                Label("\(exercise.setsLabel ?? String(exercise.sets)) sets", systemImage: "repeat")
                 Label(exercise.reps, systemImage: "number")
                 if let load = exercise.startLoadLb {
                     Label("\(Int(load)) lb", systemImage: "scalemass")

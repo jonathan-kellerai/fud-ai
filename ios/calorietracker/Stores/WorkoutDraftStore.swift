@@ -24,6 +24,7 @@ struct WorkoutDraft: Codable, Equatable {
         var loadNote: String
         /// Optional so drafts written before supersets still decode.
         var supersetGroup: String?
+        var setsLabel: String? = nil
     }
 
     var programDay: String
@@ -39,6 +40,8 @@ struct WorkoutDraft: Codable, Equatable {
     /// When the session was started. Optional so older drafts on disk still decode.
     var startedAt: Date?
     var updatedAt: Date
+    var weekNote: String? = nil
+    var holdLoads: Bool? = nil
 
     init(day: ProgramV2Day, now: Date = Date()) {
         programDay = day.id
@@ -51,6 +54,8 @@ struct WorkoutDraft: Codable, Equatable {
         sessionDate = Self.sessionDateString(from: now)
         startedAt = now
         updatedAt = now
+        weekNote = day.weekNote
+        holdLoads = day.holdLoads ? true : nil
     }
 
     /// Keeps the day snapshot in step with the day the logger is showing, so
@@ -60,6 +65,8 @@ struct WorkoutDraft: Codable, Equatable {
         conditioning = day.conditioning
         conditioningMinimum = day.conditioningMinimum
         exercises = Self.exercises(of: day)
+        weekNote = day.weekNote
+        holdLoads = day.holdLoads ? true : nil
     }
 
     private static func exercises(of day: ProgramV2Day) -> [Exercise] {
@@ -75,7 +82,8 @@ struct WorkoutDraft: Codable, Equatable {
                 startLoadLb: exercise.startLoadLb,
                 notes: exercise.notes,
                 loadNote: exercise.loadNote,
-                supersetGroup: exercise.supersetGroup
+                supersetGroup: exercise.supersetGroup,
+                setsLabel: exercise.setsLabel
             )
         }
     }
@@ -104,9 +112,12 @@ struct WorkoutDraft: Codable, Equatable {
                     startLoadLb: exercise.startLoadLb,
                     notes: exercise.notes,
                     loadNote: exercise.loadNote,
-                    supersetGroup: exercise.supersetGroup
+                    supersetGroup: exercise.supersetGroup,
+                    setsLabel: exercise.setsLabel
                 )
-            }
+            },
+            weekNote: weekNote,
+            holdLoads: holdLoads ?? false
         )
     }
 

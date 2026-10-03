@@ -133,7 +133,8 @@ struct JLPhysicalTabView: View {
         let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
             ?? programBody.days.first { $0.dayIndex == dayIndex }
         guard let day else { return }
-        switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft, today: day.asProgramV2Day()) {
+        switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft,
+            today: programBody.programV2Day(for: day, on: referenceDate ?? Date())) {
         case .openToday(let today):
             loggingDay = today
         case .offerResume(let draft, let today):
@@ -225,17 +226,23 @@ struct JLPhysicalTabView: View {
             }
         }
         if let day {
+            let datedDay = programBody.programV2Day(for: day, on: referenceDate ?? Date())
+            if let weekNote = datedDay.weekNote {
+                Text(weekNote)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "heart.fill")
                         .foregroundStyle(AppColors.calorie)
-                    Text("Conditioning: \(day.conditioningSummary)")
+                    Text("Conditioning: \(datedDay.conditioning)")
                         .font(.subheadline)
                 }
                 HStack {
                     Image(systemName: "dumbbell.fill")
-                    Text("\(day.exercises.count) exercises")
+                    Text("\(datedDay.exercises.count) exercises")
                         .font(.subheadline)
                 }
             }
@@ -245,7 +252,7 @@ struct JLPhysicalTabView: View {
     
     private func startButton(_ day: TrainingProgramDay, fullWidth: Bool) -> some View {
         Button {
-            loggingDay = day.asProgramV2Day()
+            loggingDay = programBody.programV2Day(for: day, on: referenceDate ?? Date())
         } label: {
             Label("Start", systemImage: "play.fill")
                 .font(.headline)

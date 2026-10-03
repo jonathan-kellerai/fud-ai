@@ -11,15 +11,16 @@ struct ProgramV2Exercise: Identifiable {
     let id = UUID()
     let key: String
     let name: String
-    let sets: Int
+    var sets: Int
     let reps: String
     let restSeconds: ClosedRange<Int>
-    let rirTarget: String
+    var rirTarget: String
     let startLoadLb: Double?
     let notes: String
     var loadNote: String = ""
     /// Consecutive exercises sharing a group are done as a superset.
     var supersetGroup: String? = nil
+    var setsLabel: String? = nil
 }
 
 struct ProgramV2Day: Identifiable {
@@ -27,7 +28,9 @@ struct ProgramV2Day: Identifiable {
     let title: String
     let conditioning: String
     let conditioningMinimum: String
-    let exercises: [ProgramV2Exercise]
+    var exercises: [ProgramV2Exercise]
+    var weekNote: String? = nil
+    var holdLoads: Bool = false
 }
 
 enum ProgramV2Templates {

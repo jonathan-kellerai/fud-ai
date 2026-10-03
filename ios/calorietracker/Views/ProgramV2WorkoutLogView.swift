@@ -63,6 +63,12 @@ struct ProgramV2WorkoutLogView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    if let weekNote = day.weekNote {
+                        Text(weekNote)
+                            .font(.subheadline)
+                            .foregroundStyle(IronTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if draftStore.persistError != nil {
                         persistErrorBanner
                     }
@@ -320,7 +326,7 @@ struct ProgramV2WorkoutLogView: View {
             }
 
             HStack(spacing: 16) {
-                Text("\(exercise.sets) sets × \(exercise.reps)")
+                Text("\(exercise.setsLabel ?? String(exercise.sets)) sets × \(exercise.reps)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(IronTheme.textSecondary)
 
@@ -444,7 +450,8 @@ struct ProgramV2WorkoutLogView: View {
         ProgressionRule.suggestedLoad(
             last: lastPerformance(for: exercise),
             reps: exercise.reps,
-            startLoadLb: exercise.startLoadLb
+            startLoadLb: exercise.startLoadLb,
+            holdLoads: day.holdLoads
         )
     }
 

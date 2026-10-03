@@ -316,6 +316,11 @@ struct TrainingProgramDay: Codable, Equatable, Hashable, Identifiable {
 }
 
 struct TrainingProgramBody: Codable, Equatable, Hashable {
+    /// One builder for every dated session surface. Resume uses its saved snapshot.
+    func programV2Day(for day: TrainingProgramDay, on date: Date) -> ProgramV2Day {
+        ProgramWeekRules.apply(to: day.asProgramV2Day(), dayIndex: day.dayIndex, on: date, body: self)
+    }
+
     var startDate: String
     var dailyStepsTarget: Int
     var weeks: Int?
