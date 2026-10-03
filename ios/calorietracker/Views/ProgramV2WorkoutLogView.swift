@@ -408,9 +408,8 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private func setRow(exercise: ProgramV2Exercise, block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
-        let currentIndex = (workoutSets[exercise.name] ?? []).firstIndex { $0.reps == 0 }
-        let previous = lastPerformance(for: exercise)?.heaviestLoad
-        let isPersonalRecord = set.reps > 0 && previous.map { set.weight > $0 && $0 > 0 } == true
+        let isCurrent = SetEntryLogic.isCurrent(setIndex: setIndex, sets: workoutSets[exercise.name] ?? [])
+        let isPersonalRecord = SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise))
         // Narrow cards (iPhone SE) can't fit every input on one line; fall
         // back to load/reps on the first line and effort/actions on the second.
         return ViewThatFits(in: .horizontal) {
@@ -452,7 +451,7 @@ struct ProgramV2WorkoutLogView: View {
         .padding(.vertical, 4)
         .padding(.leading, 8)
         .overlay(alignment: .leading) {
-            if currentIndex == setIndex {
+            if isCurrent {
                 Rectangle()
                     .fill(IronTheme.blood)
                     .frame(width: IronTheme.ruleWidth)
@@ -618,13 +617,10 @@ struct ProgramV2WorkoutLogView: View {
     /// that is once per round, after the last member's set.
     private func logSet(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int) {
         let sets = workoutSets
-        guard let exerciseSets = sets[exercise.name],
-              exerciseSets.indices.contains(setIndex),
-              exerciseSets[setIndex].reps > 0 else { return }
-        guard let seconds = SupersetGrouping.restSeconds(
-            afterLogging: exercise.name,
+        guard let seconds = SetEntryLogic.restAfterLogging(
+            exerciseName: exercise.name,
             setIndex: setIndex,
-            in: block,
+            block: block,
             sets: sets
         ) else { return }
         restDuration = seconds
@@ -639,7 +635,7 @@ struct ProgramV2WorkoutLogView: View {
 
     /// Prefills the load from the previous set this session, else the suggestion.
     private func addSet(for exercise: ProgramV2Exercise) {
-        let load = workoutSets[exercise.name]?.last?.weight ?? suggestedLoad(for: exercise) ?? 0
+        let load = SetEntryLogic.prefillLoad(sets: workoutSets[exercise.name] ?? [], suggestion: suggestedLoad(for: exercise))
 
         let newSet = LoggedSet(
             weight: load,
@@ -741,13 +737,6 @@ struct ProgramV2WorkoutLogView: View {
             }
         }
     }
-}
-
-struct LoggedSet: Codable, Equatable {
-    var weight: Double
-    var reps: Int
-    var rir: Int
-    var rpeText: String
 }
 
 /// Today/Train entry point for an unsaved logger session.

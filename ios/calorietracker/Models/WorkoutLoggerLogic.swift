@@ -113,7 +113,7 @@ enum SupersetGrouping {
     /// A1, B1, A2, B2...: the first unlogged member in the first unfinished round.
     static func nextUp(in block: ExerciseBlock, sets: [String: [LoggedSet]]) -> ExerciseStep? {
         let counts = block.exercises.map { exercise in
-            max(exercise.sets, sets[exercise.name]?.count ?? 0)
+            SetEntryLogic.plannedRowCount(exercise: exercise, sets: sets[exercise.name] ?? [])
         }
         let rounds = counts.max() ?? 0
         for round in 0..<rounds {
