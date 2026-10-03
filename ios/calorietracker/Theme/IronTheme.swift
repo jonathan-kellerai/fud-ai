@@ -335,17 +335,21 @@ struct IronCompactButtonStyle: ButtonStyle {
 
 struct IronPrimaryButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Grows with Dynamic Type so taller labels keep their breathing room.
+    @ScaledMetric(relativeTo: .headline) private var verticalPadding: CGFloat = 14
     var enabled: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .heavy))
+            // .headline is 17 pt at the default size and scales with Dynamic Type.
+            .font(.headline.weight(.heavy))
             .fontWidth(.condensed)
             .tracking(1.0)
             .textCase(.uppercase)
+            .multilineTextAlignment(.center)
             .foregroundStyle(IronTheme.textPrimary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, verticalPadding)
             .background(
                 enabled ? (configuration.isPressed ? IronTheme.bloodPressed : IronTheme.blood) : IronTheme.concrete,
                 in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
