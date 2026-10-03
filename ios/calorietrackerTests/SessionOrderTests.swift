@@ -203,9 +203,9 @@ extension WorkoutDraftStoreTests {
         let workout = RemoteWorkout(id: "w1", kind: "COMPLETED", programVersion: "program-v2",
             programDay: "Day1", title: "Push", units: "lb", sessionDate: "2026-09-29",
             conditioning: nil, notes: [], contentHash: nil, synthetic: nil, recordedAt: nil)
-        for positions in ["", #",\"exercise_position\":null,\"planned_position\":null"#,
-                          #",\"exercise_position\":6"#, #",\"planned_position\":1"#,
-                          #",\"exercise_position\":1,\"planned_position\":6"#] {
+        for positions in ["", #","exercise_position":null,"planned_position":null"#,
+                          #","exercise_position":6"#, #","planned_position":1"#,
+                          #","exercise_position":1,"planned_position":6"#] {
             let json = #"{"id":"s1","set_order":0,"exercise":"Press","load_lb":145,"reps":9,"rir":0"# + positions + "}"
             let row = try JSONDecoder().decode(RemoteWorkoutSet.self, from: Data(json.utf8))
             let last = try #require(LastPerformanceBuilder.build(from: [WorkoutDetailResponse(workout: workout, sets: [row])])["press"])
