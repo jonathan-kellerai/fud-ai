@@ -4,8 +4,12 @@ enum RIRTargetParser {
     /// Set indices are zero-based, as in the logger. Only defaults are clamped;
     /// an explicitly entered or historical 0 RIR remains a real value.
     static func defaultRIR(for rirTarget: String, setIndex: Int, setCount: Int) -> Int? {
+        targetRange(for: rirTarget, setIndex: setIndex, setCount: setCount)?.lowerBound
+    }
+
+    static func targetRange(for rirTarget: String, setIndex: Int, setCount: Int) -> ClosedRange<Int>? {
         guard setIndex >= 0, setCount > 0 else { return nil }
-        var fallback: Int?
+        var fallback: ClosedRange<Int>?
         for raw in rirTarget.components(separatedBy: CharacterSet(charactersIn: ";,")) {
             let segment = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if segment.lowercased().hasPrefix("no set") { continue }
@@ -34,11 +38,12 @@ enum RIRTargetParser {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private static func value(in text: String, allowsBare: Bool) -> Int? {
+    private static func value(in text: String, allowsBare: Bool) -> ClosedRange<Int>? {
         let withUnit = match(#"(\d+)(?:\s*[-–]\s*(\d+))?\s*RIR"#, in: text)
         let bare = allowsBare ? match(#"^\s*~?(\d+)(?:\s*[-–]\s*(\d+))?\s*$"#, in: text) : nil
         guard let numbers = withUnit ?? bare, let low = Int(numbers[1]) else { return nil }
-        return max(1, min(low, Int(numbers[2]) ?? low))
+        let high = Int(numbers[2]) ?? low
+        return max(1, min(low, high))...max(1, max(low, high))
     }
 
     private static func match(_ pattern: String, in text: String) -> [String]? {
