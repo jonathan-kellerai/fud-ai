@@ -321,7 +321,7 @@ struct ProgramV2WorkoutLogView: View {
                 addRound(to: block)
             } label: {
                 Label("Add Round", systemImage: "plus.square.on.square")
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
             }
             .buttonStyle(IronCompactButtonStyle())
         }

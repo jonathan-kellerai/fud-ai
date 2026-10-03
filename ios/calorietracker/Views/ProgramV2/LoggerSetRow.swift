@@ -44,10 +44,10 @@ struct LoggerSetRow: View {
         .toolbar {
             if focus != nil {
                 ToolbarItemGroup(placement: .keyboard) {
-                    Button(focus == .load ? "−\(LoggerFormatting.load(loadStep))" : "−1") { stepFocused(-1) }
+                    Button("−\(focusedStep)") { stepFocused(-1) }
                         .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                         .disabled(focus == .rpe)
-                    Button(focus == .load ? "+\(LoggerFormatting.load(loadStep))" : "+1") { stepFocused(1) }
+                    Button("+\(focusedStep)") { stepFocused(1) }
                         .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                         .disabled(focus == .rpe)
                     Spacer(minLength: 0)
@@ -101,7 +101,12 @@ struct LoggerSetRow: View {
                 HStack(spacing: 4) { number; loadControl }
                 repsControl
             } else {
-                HStack(spacing: 4) { loadControl; repsControl }
+                HStack(spacing: 2) {
+                    number
+                    loadControl
+                    Text("×").font(.caption).foregroundStyle(IronTheme.textTertiary)
+                    repsControl
+                }
             }
             HStack(spacing: 0) {
                 RIRChips(value: set.rir, targets: targetChips) { value in onChange { $0.rir = value } }
@@ -156,6 +161,10 @@ struct LoggerSetRow: View {
     private func stepFocused(_ direction: Int) {
         if focus == .rpe { return }
         onStep(focus == .load, direction)
+    }
+
+    private var focusedStep: String {
+        focus == .load ? LoggerFormatting.load(loadStep) : isHold ? "5" : "1"
     }
 }
 
