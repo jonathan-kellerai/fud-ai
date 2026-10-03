@@ -123,4 +123,54 @@ extension WorkoutDraftStoreTests {
         #expect(!rest.isActive)
         #expect(store.draft?.sets["A"] == nil)
     }
+
+    @Test func oldPlaceholderUsesWithinSessionLoadAndReopenRefreshesEditedReference() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = sequenceExercise("A", sets: 3)
+        let day = ProgramV2Day(id: "Day", title: "Day", conditioning: "", conditioningMinimum: "", exercises: [a])
+        let store = WorkoutDraftStore(directory: dir)
+        store.update(day) { draft in
+            draft.sets["A"] = [LoggedSet(weight: 145, reps: 15, rir: 4, rpeText: ""),
+                               LoggedSet(weight: 145, reps: 0, rir: 0, rpeText: "7")]
+        }
+        let entry = WorkoutSetEntry(day: day)
+        let rest = RestSession()
+        entry.prepareNext(after: nil, in: store)
+        #expect(entry.nextValue?.weight == 150)
+        #expect(entry.nextValue?.rir == 2)
+        #expect(entry.nextValue?.rpeText == "7")
+        #expect(store.draft?.sets["A"]?[1].reps == 0)
+        entry.editNext { $0.reps = 13 }
+        rest.start(seconds: 90)
+        let end = rest.endDate
+        entry.refreshRestEntry(in: store, rest: rest)
+        #expect(entry.nextValue?.reps == 13)
+        #expect(rest.endDate == end)
+        entry.edit(a, at: 0, in: store, startedAt: Date()) { $0.reps = 9; $0.rir = 0 }
+        entry.refreshRestEntry(in: store, rest: rest)
+        let details = try #require(entry.restDetails(in: store, isHold: false))
+        #expect(details.value.weight == 140)
+        #expect(details.reason == "−5: below 10 reps")
+        #expect(rest.endDate == end)
+    }
+
+    @Test func lateHistoryOnlyRefreshesUntouchedRestPrefill() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = sequenceExercise("A")
+        let day = ProgramV2Day(id: "Day", title: "Day", conditioning: "", conditioningMinimum: "", exercises: [a])
+        let store = WorkoutDraftStore(directory: dir)
+        let entry = WorkoutSetEntry(day: day)
+        let rest = RestSession()
+        entry.prepareNext(after: nil, in: store)
+        entry.lastPerformances["a"] = LastPerformance(sessionDate: "2026-10-01", sets: [WorkingSetSummary(load: 145, reps: 15, rir: 4)])
+        entry.refreshRestEntry(in: store, rest: rest)
+        #expect(entry.nextValue?.weight == 150)
+        entry.editNext { $0.weight = 160 }
+        entry.lastPerformances["a"] = LastPerformance(sessionDate: "2026-10-02", sets: [WorkingSetSummary(load: 145, reps: 9, rir: 0)])
+        entry.refreshRestEntry(in: store, rest: rest)
+        #expect(entry.nextValue?.weight == 160)
+        #expect(store.draft == nil)
+    }
 }

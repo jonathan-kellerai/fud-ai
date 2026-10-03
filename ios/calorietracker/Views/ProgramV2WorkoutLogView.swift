@@ -98,7 +98,10 @@ struct ProgramV2WorkoutLogView: View {
             .background(IronTheme.canvas)
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) {
-                LoggerRestBar(session: restSession) { showingRestTimer = true }
+                LoggerRestBar(session: restSession) {
+                    entry.refreshRestEntry(in: draftStore, rest: restSession)
+                    showingRestTimer = true
+                }
                 if let deletion = entry.deletion {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         if deletion.canRestore(at: context.date) {
@@ -143,6 +146,7 @@ struct ProgramV2WorkoutLogView: View {
             .task {
                 entry.lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
                 refreshPrefilledLoads()
+                entry.refreshRestEntry(in: draftStore, rest: restSession)
                 await loadLaddersIfNeeded()
             }
             .onAppear {

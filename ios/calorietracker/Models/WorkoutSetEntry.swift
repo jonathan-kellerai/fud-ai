@@ -13,6 +13,9 @@ final class WorkoutSetEntry {
     private(set) var restStep: ExerciseStep?
     private(set) var nextValue: LoggedSet?
     private var nextDecision: ProgressionDecision?
+    private var nextBasis: [String: [LoggedSet]] = [:]
+    private var nextHistory: [String: LastPerformance] = [:]
+    private var nextWasEdited = false
 
     func startRestAfterLogging(_ exercise: ProgramV2Exercise, at index: Int,
                                in store: WorkoutDraftStore, rest: RestSession) {
@@ -31,6 +34,9 @@ final class WorkoutSetEntry {
 
     func prepareNext(after step: ExerciseStep?, in store: WorkoutDraftStore) {
         let sets = store.existingDraft(for: day)?.sets ?? [:]
+        nextBasis = sets
+        nextHistory = lastPerformances
+        nextWasEdited = false
         restStep = cursor.next(in: order(in: store).blocks, sets: sets, after: step)
         guard let restStep, let exercise = day.exercises.first(where: { $0.name == restStep.exerciseName }) else {
             nextValue = nil
@@ -40,12 +46,18 @@ final class WorkoutSetEntry {
         let target = prefill(for: exercise, at: restStep.setIndex, in: store)
         nextDecision = target.decision
         let index = cursor.storageIndex(for: restStep)
-        if let existing = sets[exercise.name], existing.indices.contains(index) {
-            nextValue = existing[index]
-            if nextValue?.reps == 0 { nextValue?.reps = target.reps }
-        } else {
-            nextValue = LoggedSet(weight: target.load ?? 0, reps: target.reps, rir: target.rir, rpeText: "")
-        }
+        let existing = sets[exercise.name].flatMap { $0.indices.contains(index) ? $0[index] : nil }
+        // Old Add Set placeholders carry a stale load. Rest entry always uses
+        // the current within-session decision, while preserving optional RPE.
+        nextValue = LoggedSet(weight: target.load ?? existing?.weight ?? 0,
+                              reps: target.reps, rir: target.rir, rpeText: existing?.rpeText ?? "")
+    }
+
+    func refreshRestEntry(in store: WorkoutDraftStore, rest: RestSession) {
+        let sets = store.existingDraft(for: day)?.sets ?? [:]
+        guard sets != nextBasis || (!nextWasEdited && nextHistory != lastPerformances) else { return }
+        prepareNext(after: restStep, in: store)
+        rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
     }
 
     func restDetails(in store: WorkoutDraftStore, isHold: Bool) -> RestNextSet? {
@@ -66,6 +78,7 @@ final class WorkoutSetEntry {
         guard var value = nextValue else { return }
         change(&value)
         nextValue = value
+        nextWasEdited = true
     }
 
     func stepNext(load: Bool, direction: Int, isHold: Bool) {

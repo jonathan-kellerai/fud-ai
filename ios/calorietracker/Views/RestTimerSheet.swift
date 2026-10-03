@@ -143,6 +143,7 @@ struct RestTimerSheet: View {
                 }
             }
             .buttonStyle(IronPrimaryButtonStyle())
+            .disabled(next.map { !$0.canLog } ?? false)
             .accessibilityLabel(next?.logLabel ?? (ownsSession ? "Done" : "Finish to list"))
             if !ownsSession {
                 HStack(spacing: 8) {
