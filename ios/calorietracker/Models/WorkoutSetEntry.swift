@@ -75,16 +75,8 @@ final class WorkoutSetEntry {
     func logNext(in store: WorkoutDraftStore, startedAt: Date, rest: RestSession) {
         guard let step = restStep, let value = nextValue,
               let exercise = day.exercises.first(where: { $0.name == step.exerciseName }),
-              let block = order(in: store).blocks.first(where: { $0.exercises.contains { $0.name == step.exerciseName } }),
-              log(exercise, at: cursor.storageIndex(for: step), in: store, startedAt: startedAt, value: value) != nil else { return }
-        let sets = cursor.projectedSets(store.existingDraft(for: day)?.sets ?? [:], skippedReps: 0)
-        if let seconds = SupersetGrouping.restSeconds(afterLogging: step.exerciseName, setIndex: step.setIndex,
-                                                      in: block, sets: sets) {
-            rest.start(seconds: seconds)
-            rest.rangeLabel = LoggerFormatting.restRange(exercise.restSeconds)
-        }
-        prepareNext(after: step, in: store)
-        rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
+              let index = log(exercise, at: cursor.storageIndex(for: step), in: store, startedAt: startedAt, value: value) else { return }
+        startRestAfterLogging(exercise, at: index, in: store, rest: rest)
     }
 
     func skipNext(in store: WorkoutDraftStore, rest: RestSession) {
