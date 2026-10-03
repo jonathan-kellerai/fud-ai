@@ -123,7 +123,14 @@ struct ProgramV2WorkoutLogView: View {
                 }
             }
             .sheet(isPresented: $showingRestTimer) {
-                RestTimerSheet(session: restSession)
+                NavigationStack {
+                    RestTimerSheet(session: restSession,
+                        next: entry.restDetails(in: draftStore, isHold: nextIsHold),
+                        onChange: { entry.editNext($0) },
+                        onStep: { entry.stepNext(load: $0, direction: $1, isHold: nextIsHold) },
+                        onLog: { entry.logNext(in: draftStore, startedAt: openedAt, rest: restSession) },
+                        onSkip: { entry.skipNext(in: draftStore, rest: restSession) })
+                }
             }
             .task {
                 entry.lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
@@ -504,16 +511,14 @@ struct ProgramV2WorkoutLogView: View {
     /// Starts the rest timer when the rest policy asks for one. In a superset
     /// that is once per round, after the last member's set.
     private func logSet(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int) {
-        let sets = workoutSets
-        guard let seconds = SetEntryLogic.restAfterLogging(
-            exerciseName: exercise.name,
-            setIndex: setIndex,
-            block: block,
-            sets: sets
-        ) else { return }
-        restSession.stepLabel = entry.nextStepLabel(in: draftStore)
-        restSession.start(seconds: seconds)
+        entry.startRestAfterLogging(exercise, at: setIndex, in: draftStore, rest: restSession)
         showingRestTimer = true
+    }
+
+    private var nextIsHold: Bool {
+        guard let name = entry.restStep?.exerciseName,
+              let exercise = day.exercises.first(where: { $0.name == name }) else { return false }
+        return ladderHint(for: exercise)?.isHold == true
     }
 
     private func addRound(to block: ExerciseBlock) {

@@ -9,6 +9,91 @@ final class WorkoutSetEntry {
     var editingStep: ExerciseStep?
     var pending: [ExerciseStep: LoggedSet] = [:]
     var deletion: SetDeletionUndo?
+    var cursor = SessionStepCursor()
+    private(set) var restStep: ExerciseStep?
+    private(set) var nextValue: LoggedSet?
+    private var nextDecision: ProgressionDecision?
+
+    func startRestAfterLogging(_ exercise: ProgramV2Exercise, at index: Int,
+                               in store: WorkoutDraftStore, rest: RestSession) {
+        let step = ExerciseStep(exerciseName: exercise.name,
+            setIndex: cursor.logicalIndex(exerciseName: exercise.name, storageIndex: index))
+        let sets = cursor.projectedSets(store.existingDraft(for: day)?.sets ?? [:], skippedReps: 0)
+        if let block = order(in: store).blocks.first(where: { $0.exercises.contains { $0.name == exercise.name } }),
+           let seconds = SetEntryLogic.restAfterLogging(exerciseName: exercise.name, setIndex: step.setIndex,
+                                                        block: block, sets: sets) {
+            rest.start(seconds: seconds)
+            rest.rangeLabel = LoggerFormatting.restRange(exercise.restSeconds)
+        }
+        prepareNext(after: step, in: store)
+        rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
+    }
+
+    func prepareNext(after step: ExerciseStep?, in store: WorkoutDraftStore) {
+        let sets = store.existingDraft(for: day)?.sets ?? [:]
+        restStep = cursor.next(in: order(in: store).blocks, sets: sets, after: step)
+        guard let restStep, let exercise = day.exercises.first(where: { $0.name == restStep.exerciseName }) else {
+            nextValue = nil
+            nextDecision = nil
+            return
+        }
+        let target = prefill(for: exercise, at: restStep.setIndex, in: store)
+        nextDecision = target.decision
+        let index = cursor.storageIndex(for: restStep)
+        if let existing = sets[exercise.name], existing.indices.contains(index) {
+            nextValue = existing[index]
+            if nextValue?.reps == 0 { nextValue?.reps = target.reps }
+        } else {
+            nextValue = LoggedSet(weight: target.load ?? 0, reps: target.reps, rir: target.rir, rpeText: "")
+        }
+    }
+
+    func restDetails(in store: WorkoutDraftStore, isHold: Bool) -> RestNextSet? {
+        guard let step = restStep, let value = nextValue, let decision = nextDecision,
+              let exercise = day.exercises.first(where: { $0.name == step.exerciseName }) else { return nil }
+        let rows = store.existingDraft(for: day)?.sets[exercise.name] ?? []
+        let previous = rows.last { $0.reps > 0 }
+        let last = lastPerformance(for: exercise)
+        let reference = previous.map { WorkingSetSummary(load: $0.weight, reps: $0.reps, rir: $0.rir) } ?? last?.firstSet
+        return RestNextSet(step: step, exercise: exercise, value: value,
+            targetChips: SetEntryLogic.targetChips(for: exercise, at: step.setIndex),
+            reference: LoggerFormatting.nextSetReference(sets: rows, last: last, at: step.setIndex),
+            referenceLoad: reference?.load ?? exercise.startLoadLb,
+            reason: LoggerFormatting.progressionReason(decision, exercise: exercise, reference: reference), isHold: isHold)
+    }
+
+    func editNext(_ change: (inout LoggedSet) -> Void) {
+        guard var value = nextValue else { return }
+        change(&value)
+        nextValue = value
+    }
+
+    func stepNext(load: Bool, direction: Int, isHold: Bool) {
+        editNext { $0 = SetEntryLogic.stepped($0, load: load, direction: direction, isHold: isHold) }
+    }
+
+    func logNext(in store: WorkoutDraftStore, startedAt: Date, rest: RestSession) {
+        guard let step = restStep, let value = nextValue,
+              let exercise = day.exercises.first(where: { $0.name == step.exerciseName }),
+              let block = order(in: store).blocks.first(where: { $0.exercises.contains { $0.name == step.exerciseName } }),
+              log(exercise, at: cursor.storageIndex(for: step), in: store, startedAt: startedAt, value: value) != nil else { return }
+        let sets = cursor.projectedSets(store.existingDraft(for: day)?.sets ?? [:], skippedReps: 0)
+        if let seconds = SupersetGrouping.restSeconds(afterLogging: step.exerciseName, setIndex: step.setIndex,
+                                                      in: block, sets: sets) {
+            rest.start(seconds: seconds)
+            rest.rangeLabel = LoggerFormatting.restRange(exercise.restSeconds)
+        }
+        prepareNext(after: step, in: store)
+        rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
+    }
+
+    func skipNext(in store: WorkoutDraftStore, rest: RestSession) {
+        guard let step = restStep else { return }
+        cursor.skip(step)
+        rest.stop()
+        prepareNext(after: step, in: store)
+        rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
+    }
 
     func row(for exercise: ProgramV2Exercise, at index: Int, in store: WorkoutDraftStore) -> LoggedSet {
         let step = ExerciseStep(exerciseName: exercise.name, setIndex: index)
@@ -85,11 +170,7 @@ final class WorkoutSetEntry {
     init(day: ProgramV2Day) { self.day = day }
 
     func nextStep(in store: WorkoutDraftStore) -> ExerciseStep? {
-        let sets = store.existingDraft(for: day)?.sets ?? [:]
-        for block in order(in: store).blocks {
-            if let step = SupersetGrouping.nextUp(in: block, sets: sets) { return step }
-        }
-        return nil
+        cursor.next(in: order(in: store).blocks, sets: store.existingDraft(for: day)?.sets ?? [:])
     }
 
     func nextStepLabel(in store: WorkoutDraftStore) -> String {
