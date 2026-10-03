@@ -14,13 +14,14 @@ struct ProgramV2WorkoutLogView: View {
     init(day: ProgramV2Day, onSaved: @escaping () -> Void = {}) {
         self.day = day
         self.onSaved = onSaved
+        _entry = State(initialValue: WorkoutSetEntry(day: day))
     }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutDraftStore.self) private var draftStore
     @State private var showingRestTimer = false
     @State private var restDuration = RestTimerSettings.defaultSeconds
-    @State private var lastPerformances: [String: LastPerformance] = [:]
+    @State private var entry: WorkoutSetEntry
     @State private var isSaving = false
     @State private var showingSaveConfirmation = false
     @State private var saveError: String?
@@ -49,8 +50,7 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private var sessionOrder: SessionOrder {
-        SessionOrder(plannedBlocks: SupersetGrouping.blocks(for: day.exercises),
-                     exerciseOrder: draftStore.existingDraft(for: day)?.exerciseOrder)
+        entry.order(in: draftStore)
     }
 
     private func updateDraft(_ change: (inout WorkoutDraft) -> Void) {
@@ -58,10 +58,7 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private func updateSet(_ exercise: ProgramV2Exercise, at setIndex: Int, _ change: (inout LoggedSet) -> Void) {
-        updateDraft { draft in
-            guard let sets = draft.sets[exercise.name], sets.indices.contains(setIndex) else { return }
-            change(&draft.sets[exercise.name]![setIndex])
-        }
+        entry.update(exercise, at: setIndex, in: draftStore, startedAt: openedAt, change)
     }
 
     var body: some View {
@@ -109,7 +106,7 @@ struct ProgramV2WorkoutLogView: View {
                 RestTimerSheet(defaultSeconds: restDuration)
             }
             .task {
-                lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
+                entry.lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
                 refreshPrefilledLoads()
                 await loadLaddersIfNeeded()
             }
@@ -448,40 +445,17 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private func lastPerformance(for exercise: ProgramV2Exercise) -> LastPerformance? {
-        lastPerformances[LastPerformanceBuilder.key(for: exercise.name)]
+        entry.lastPerformance(for: exercise)
     }
 
     private func suggestedLoad(for exercise: ProgramV2Exercise) -> Double? {
-        ProgressionRule.suggestedLoad(
-            last: lastPerformance(for: exercise),
-            reps: exercise.reps,
-            startLoadLb: exercise.startLoadLb,
-            holdLoads: day.holdLoads,
-            doneLaterThanPlanned: sessionOrder.isDoneLaterThanPlanned(exercise.name)
-        )
+        entry.suggestedLoad(for: exercise, in: draftStore)
     }
 
     /// Sets added before history loaded were prefilled without it; move the
     /// untouched ones to the suggestion. Never creates a draft.
     private func refreshPrefilledLoads() {
-        guard !Task.isCancelled, draftStore.existingDraft(for: day) != nil else { return }
-        var suggestions: [String: Double] = [:]
-        for exercise in day.exercises where suggestions[exercise.name] == nil {
-            if let suggestion = suggestedLoad(for: exercise) {
-                suggestions[exercise.name] = suggestion
-            }
-        }
-        let refreshed = PrefillRefresh.refreshedSets(
-            exercises: day.exercises,
-            sets: workoutSets,
-            suggestions: suggestions
-        )
-        guard !refreshed.isEmpty else { return }
-        updateDraft { draft in
-            for (name, sets) in refreshed {
-                draft.sets[name] = sets
-            }
-        }
+        entry.refreshPrefilledLoads(in: draftStore, startedAt: openedAt)
     }
 
     /// Starts the rest timer when the rest policy asks for one. In a superset
@@ -507,24 +481,7 @@ struct ProgramV2WorkoutLogView: View {
     /// Uses the last logged set, never an unfinished row. Prefilled reps stay
     /// outside the draft so only entered reps count as logged.
     private func addSet(for exercise: ProgramV2Exercise) {
-        let rows = workoutSets[exercise.name] ?? []
-        let prefill = SetEntryLogic.nextSetPrefill(exercise: exercise, setIndex: rows.count,
-            sets: rows, last: lastPerformance(for: exercise),
-            doneLaterThanPlanned: sessionOrder.isDoneLaterThanPlanned(exercise.name), holdLoads: day.holdLoads)
-
-        let newSet = LoggedSet(
-            weight: prefill.load ?? 0,
-            reps: 0,
-            rir: prefill.rir,
-            rpeText: ""
-        )
-
-        updateDraft { draft in
-            if draft.sets[exercise.name] == nil {
-                draft.sets[exercise.name] = []
-            }
-            draft.sets[exercise.name]?.append(newSet)
-        }
+        entry.add(exercise, in: draftStore, startedAt: openedAt)
     }
 
     private var saveButton: some View {
