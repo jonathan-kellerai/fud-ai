@@ -169,6 +169,31 @@ final class WorkoutSetEntry {
 
     init(day: ProgramV2Day) { self.day = day }
 
+    func canMove(_ block: ExerciseBlock, direction: SessionOrder.Direction, in store: WorkoutDraftStore) -> Bool {
+        let blocks = order(in: store).blocks
+        guard let index = blocks.firstIndex(where: { $0.id == block.id }) else { return false }
+        switch direction {
+        case .up: return index > 0
+        case .down: return index + 1 < blocks.count
+        }
+    }
+
+    func move(_ block: ExerciseBlock, direction: SessionOrder.Direction,
+              in store: WorkoutDraftStore, startedAt: Date, rest: RestSession) {
+        guard canMove(block, direction: direction, in: store) else { return }
+        var sessionOrder = order(in: store)
+        guard let index = sessionOrder.blocks.firstIndex(where: { $0.id == block.id }) else { return }
+        sessionOrder.move(blockAt: index, direction: direction)
+        store.update(day, startedAt: startedAt) { $0.exerciseOrder = sessionOrder.exerciseOrder }
+        prepareNext(after: nil, in: store)
+        rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
+    }
+
+    func preExhaustionNote(for exercise: ProgramV2Exercise, in store: WorkoutDraftStore) -> String? {
+        order(in: store).isDoneLaterThanPlanned(exercise.name)
+            ? "Done later than planned · a miss holds the load" : nil
+    }
+
     func nextStep(in store: WorkoutDraftStore) -> ExerciseStep? {
         cursor.next(in: order(in: store).blocks, sets: store.existingDraft(for: day)?.sets ?? [:])
     }

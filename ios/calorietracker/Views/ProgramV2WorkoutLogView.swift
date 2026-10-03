@@ -19,6 +19,8 @@ struct ProgramV2WorkoutLogView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutDraftStore.self) private var draftStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isReordering = false
     @State private var showingRestTimer = false
     @State private var restSession = RestSession(driver: RestTimerService())
     @State private var entry: WorkoutSetEntry
@@ -68,7 +70,7 @@ struct ProgramV2WorkoutLogView: View {
                     if let weekNote = day.weekNote {
                         Text(weekNote)
                             .font(.subheadline)
-                            .foregroundStyle(IronTheme.textSecondary)
+                            .foregroundStyle(IronTheme.brass)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if draftStore.persistError != nil {
@@ -90,6 +92,7 @@ struct ProgramV2WorkoutLogView: View {
                     }
                 }
                 .padding()
+                .animation(reduceMotion ? nil : IronTheme.motion, value: sessionOrder.exerciseOrder)
             }
             .scrollDismissesKeyboard(.interactively)
             .background(IronTheme.canvas)
@@ -119,7 +122,12 @@ struct ProgramV2WorkoutLogView: View {
                     Button("Close") {
                         restSession.stop()
                         dismiss()
-                    }
+                    }.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(isReordering ? "Done" : "Reorder") { isReordering.toggle() }
+                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        .disabled(isSaving)
                 }
             }
             .sheet(isPresented: $showingRestTimer) {
@@ -259,6 +267,7 @@ struct ProgramV2WorkoutLogView: View {
 
     private func exerciseCard(_ exercise: ProgramV2Exercise, in block: ExerciseBlock) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            if isReordering { reorderControls(block) }
             exerciseHeader(exercise, badge: nil)
             setRows(exercise, in: block)
             addSetButton(exercise)
@@ -269,6 +278,7 @@ struct ProgramV2WorkoutLogView: View {
 
     private func supersetCard(_ block: ExerciseBlock) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            if isReordering { reorderControls(block) }
             VStack(alignment: .leading, spacing: 4) {
                 Text("SUPERSET · \(block.exercises.map(\.name).joined(separator: " + "))")
                     .font(.system(size: 15, weight: .heavy))
@@ -315,6 +325,14 @@ struct ProgramV2WorkoutLogView: View {
         .ironCard(rule: true)
     }
 
+    private func reorderControls(_ block: ExerciseBlock) -> some View {
+        LoggerReorderControls(name: block.exercises.map(\.name).joined(separator: " + "),
+            canMoveUp: entry.canMove(block, direction: .up, in: draftStore),
+            canMoveDown: entry.canMove(block, direction: .down, in: draftStore),
+            onMoveUp: { entry.move(block, direction: .up, in: draftStore, startedAt: openedAt, rest: restSession) },
+            onMoveDown: { entry.move(block, direction: .down, in: draftStore, startedAt: openedAt, rest: restSession) })
+    }
+
     private func supersetSubtitle(_ block: ExerciseBlock) -> String {
         let labels = block.exercises.indices.map { ExerciseBlock.memberLabel(at: $0) }
         let members: String
@@ -347,6 +365,11 @@ struct ProgramV2WorkoutLogView: View {
                     .foregroundStyle(IronTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
+            }
+
+            if let note = entry.preExhaustionNote(for: exercise, in: draftStore) {
+                Text(note).font(.caption).foregroundStyle(IronTheme.brass)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let hint = ladderHint(for: exercise) {
