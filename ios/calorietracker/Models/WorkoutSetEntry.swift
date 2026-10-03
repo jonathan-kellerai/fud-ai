@@ -7,9 +7,9 @@ final class WorkoutSetEntry {
     let day: ProgramV2Day
     var lastPerformances: [String: LastPerformance] = [:]
     var editingStep: ExerciseStep?
-    var pending: [ExerciseStep: LoggedSet] = [:]
-    var deletion: SetDeletionUndo?
-    var cursor = SessionStepCursor()
+    private var pending: [ExerciseStep: LoggedSet] = [:]
+    private(set) var deletion: SetDeletionUndo?
+    private var cursor = SessionStepCursor()
     private(set) var restStep: ExerciseStep?
     private(set) var nextValue: LoggedSet?
     private var nextDecision: ProgressionDecision?
@@ -200,15 +200,6 @@ final class WorkoutSetEntry {
     func preExhaustionNote(for exercise: ProgramV2Exercise, in store: WorkoutDraftStore) -> String? {
         order(in: store).isDoneLaterThanPlanned(exercise.name)
             ? "Done later than planned · a miss holds the load" : nil
-    }
-
-    func nextStep(in store: WorkoutDraftStore) -> ExerciseStep? {
-        cursor.next(in: order(in: store).blocks, sets: store.existingDraft(for: day)?.sets ?? [:])
-    }
-
-    func nextStepLabel(in store: WorkoutDraftStore) -> String {
-        guard let next = nextStep(in: store) else { return "Finish → list" }
-        return "Next: \(next.exerciseName) S\(next.setIndex + 1)"
     }
 
     func lastPerformance(for exercise: ProgramV2Exercise) -> LastPerformance? {

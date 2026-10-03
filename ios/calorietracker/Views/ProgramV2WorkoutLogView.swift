@@ -59,10 +59,6 @@ struct ProgramV2WorkoutLogView: View {
         draftStore.update(day, startedAt: openedAt, change)
     }
 
-    private func updateSet(_ exercise: ProgramV2Exercise, at setIndex: Int, _ change: (inout LoggedSet) -> Void) {
-        entry.update(exercise, at: setIndex, in: draftStore, startedAt: openedAt, change)
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -145,7 +141,7 @@ struct ProgramV2WorkoutLogView: View {
             }
             .task {
                 entry.lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
-                refreshPrefilledLoads()
+                entry.refreshPrefilledLoads(in: draftStore, startedAt: openedAt)
                 entry.refreshRestEntry(in: draftStore, rest: restSession)
                 await loadLaddersIfNeeded()
             }
@@ -273,7 +269,7 @@ struct ProgramV2WorkoutLogView: View {
         VStack(alignment: .leading, spacing: 12) {
             if isReordering { reorderControls(block) }
             exerciseHeader(exercise, badge: nil)
-            setRows(exercise, in: block)
+            setRows(exercise)
             addSetButton(exercise)
         }
         .padding()
@@ -313,7 +309,7 @@ struct ProgramV2WorkoutLogView: View {
                         .frame(height: 1)
                 }
                 exerciseHeader(exercise, badge: ExerciseBlock.memberLabel(at: index))
-                setRows(exercise, in: block)
+                setRows(exercise)
                 addSetButton(exercise)
             }
 
@@ -451,10 +447,10 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     @ViewBuilder
-    private func setRows(_ exercise: ProgramV2Exercise, in block: ExerciseBlock) -> some View {
+    private func setRows(_ exercise: ProgramV2Exercise) -> some View {
         let sets = workoutSets[exercise.name] ?? []
         ForEach(0..<SetEntryLogic.plannedRowCount(exercise: exercise, sets: sets), id: \.self) { index in
-            setRow(exercise: exercise, block: block, setIndex: index,
+            setRow(exercise: exercise, setIndex: index,
                    set: entry.row(for: exercise, at: index, in: draftStore))
         }
     }
@@ -463,9 +459,8 @@ struct ProgramV2WorkoutLogView: View {
         VStack(alignment: .leading, spacing: 4) {
             if let source = entry.repeatSource(for: exercise, in: draftStore) {
                 Button {
-                    if let index = entry.repeatLast(exercise, in: draftStore, startedAt: openedAt),
-                       let block = blocks.first(where: { $0.exercises.contains { $0.name == exercise.name } }) {
-                        logSet(exercise, in: block, setIndex: index)
+                    if let index = entry.repeatLast(exercise, in: draftStore, startedAt: openedAt) {
+                        logSet(exercise, setIndex: index)
                     }
                 } label: { Label("Repeat set \(source + 1)", systemImage: "arrow.clockwise") }
                 .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
@@ -478,7 +473,7 @@ struct ProgramV2WorkoutLogView: View {
         }
     }
 
-    private func setRow(exercise: ProgramV2Exercise, block: ExerciseBlock, setIndex: Int, set: LoggedSet) -> some View {
+    private func setRow(exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
         LoggerSetRow(
             setIndex: setIndex, set: set, startLoadLb: exercise.startLoadLb,
             isHold: ladderHint(for: exercise)?.isHold == true,
@@ -497,7 +492,7 @@ struct ProgramV2WorkoutLogView: View {
             },
             onLog: {
                 if let index = entry.log(exercise, at: setIndex, in: draftStore, startedAt: openedAt) {
-                    logSet(exercise, in: block, setIndex: index)
+                    logSet(exercise, setIndex: index)
                 }
             },
             onRemove: {
@@ -529,15 +524,9 @@ struct ProgramV2WorkoutLogView: View {
         entry.suggestedLoad(for: exercise, in: draftStore)
     }
 
-    /// Sets added before history loaded were prefilled without it; move the
-    /// untouched ones to the suggestion. Never creates a draft.
-    private func refreshPrefilledLoads() {
-        entry.refreshPrefilledLoads(in: draftStore, startedAt: openedAt)
-    }
-
     /// Starts the rest timer when the rest policy asks for one. In a superset
     /// that is once per round, after the last member's set.
-    private func logSet(_ exercise: ProgramV2Exercise, in block: ExerciseBlock, setIndex: Int) {
+    private func logSet(_ exercise: ProgramV2Exercise, setIndex: Int) {
         entry.startRestAfterLogging(exercise, at: setIndex, in: draftStore, rest: restSession)
         showingRestTimer = true
     }

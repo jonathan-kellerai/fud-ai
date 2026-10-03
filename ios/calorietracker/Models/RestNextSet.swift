@@ -10,7 +10,6 @@ struct RestNextSet {
     let reason: String
     let isHold: Bool
     var canLog: Bool { value.reps > 0 && (value.weight > 0 || exercise.startLoadLb == 0) }
-    var loadStep: Double { SetEntryLogic.loadStep(value.weight) }
     var repChoices: [Int] {
         guard let range = ProgressionRule.repRange(exercise.reps), range.high - range.low <= 12 else { return [] }
         return Array(range.low...range.high)
