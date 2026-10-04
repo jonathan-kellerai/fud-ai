@@ -1987,8 +1987,14 @@ extension VisualQASnapshotTests {
         // Tall build-62 renders reach ~21k px on the Pro simulator; the 2-minute default
         // allowance timed out test74 there in run 37165562250. CI caps this at 240 s.
         executionTimeAllowance = 240
+        // Snapshots taller than the GPU texture limit (~8192 px) come back solid black
+        // (run 37165562250: SE 10672 px and every Pro shot over 8000 px). Cap the
+        // canvas per device; the top of each tall logger stays in frame.
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let pixelHeight = (scene?.screen.bounds.height ?? 667) * (scene?.screen.scale ?? 2)
+        let cappedMultiplier = min(heightMultiplier, (8000 / pixelHeight * 10).rounded(.down) / 10)
         var fixture: VisualQABuild62Fixture?
-        try await eachSize(name, heightMultiplier: heightMultiplier, sheet: {
+        try await eachSize(name, heightMultiplier: cappedMultiplier, sheet: {
             let seeded = VisualQABuild62Fixture(scenario: scenario)
             fixture = seeded
             seeded.assertScenario()
