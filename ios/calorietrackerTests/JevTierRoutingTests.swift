@@ -516,7 +516,7 @@ struct JevTierRoutingTests {
         }
     }
 
-    @Test func seamPickedEscalationThenFallback_currentBehavior() async {
+    @Test func seamPickedEscalationSkipsDuplicateFallback() async {
         let log = RouteLog()
         let apple = Self.config(.appleIntelligence, "System Language Model")
         let cloud = Self.config(.openai, "cloud-text")
@@ -531,12 +531,113 @@ struct JevTierRoutingTests {
                 try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
             }
             Issue.record("Expected both providers to fail")
+        } catch let error as AnalysisFallbackError {
+            #expect(error.fallbackName == AIProvider.openai.displayName)
+        } catch {
+            Issue.record("Unexpected error \(error)")
+        }
+        // The escalation already tried the configured fallback, so it isn't sent a second time.
+        #expect(log.sent == ["System Language Model", "cloud-text"])
+        #expect(log.notices.count == 1)
+    }
+
+    @Test func fallbackDifferentFromStrongStillRuns() async {
+        let log = RouteLog()
+        let apple = Self.config(.appleIntelligence, "System Language Model")
+        let cloud = Self.config(.openai, "cloud-text")
+        let environment = routeEnvironment(
+            log,
+            base: apple,
+            plan: { _, _ in JevTierPlan(primary: apple, strong: cloud, tier: .appleIntelligence, pickedOnDevice: true) },
+            textFallback: Self.config(.anthropic, "other-fallback")
+        ) { _ in throw StubError.failed }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+            }
+            Issue.record("Expected every provider to fail")
         } catch {
             #expect(error is AnalysisFallbackError)
         }
-        // Today the escalation target runs a second time as the configured fallback.
+        #expect(log.sent == ["System Language Model", "cloud-text", "other-fallback"])
+    }
+
+    @Test func cheapTierSkipsFallbackEqualToBase() async {
+        let log = RouteLog()
+        let cheap = AIProviderSettings.RequestConfig(provider: base.provider, model: "gemini-cheap", baseURL: base.baseURL, apiKey: base.apiKey)
+        let strong = base
+        let environment = routeEnvironment(
+            log,
+            plan: { _, _ in JevTierPlan(primary: cheap, strong: strong, tier: .cheap) },
+            textFallback: base
+        ) { _ in throw StubError.failed }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeTextInput(description: "burrito", skipHostedMetering: true)
+            }
+            Issue.record("Expected both tiers to fail")
+        } catch {
+            #expect(error is AnalysisFallbackError)
+        }
+        #expect(log.sent == ["gemini-cheap", "gemini-strong"])
+    }
+
+    @Test func strongPlanFallbackUnchanged() async {
+        // A strong plan only tries the primary, so the configured fallback always runs, even one
+        // that matches the primary (the live settings already exclude that case).
+        for fallback in [Self.config(.openai, "text-fallback"), base] {
+            let log = RouteLog()
+            let environment = routeEnvironment(log, textFallback: fallback) { _ in throw StubError.failed }
+            do {
+                _ = try await withRoute(environment) {
+                    try await GeminiService.analyzeTextInput(description: "rice", skipHostedMetering: true)
+                }
+                Issue.record("Expected both providers to fail")
+            } catch {
+                #expect(error is AnalysisFallbackError)
+            }
+            #expect(log.sent == ["gemini-strong", fallback.model])
+        }
+    }
+
+    @Test func skippedFallbackKeepsWorkoutTerminalError() async {
+        let log = RouteLog()
+        let apple = Self.config(.appleIntelligence, "System Language Model")
+        let cloud = Self.config(.openai, "cloud-text")
+        let environment = routeEnvironment(
+            log,
+            base: apple,
+            plan: { _, _ in JevTierPlan(primary: apple, strong: cloud, tier: .appleIntelligence, pickedOnDevice: true) },
+            textFallback: cloud
+        ) { config in
+            if config.provider == .appleIntelligence { throw StubError.failed }
+            return "not a workout"
+        }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+            }
+            Issue.record("Expected the unreadable draft")
+        } catch {
+            // As before: the unreadable cloud draft surfaces directly, never wrapped as "both failed".
+            #expect(error is WorkoutTextError)
+        }
+        // Apple fails on the search prompt; the escalation reads both prompts; no third try.
         #expect(log.sent == ["System Language Model", "cloud-text", "cloud-text"])
-        #expect(log.notices.count == 1)
+    }
+
+    @Test func alreadyTriedTable() {
+        let apple = Self.config(.appleIntelligence, "System Language Model")
+        let picked = JevTierPlan(primary: apple, strong: base, tier: .appleIntelligence, pickedOnDevice: true)
+        #expect(picked.attempted.map(\.model) == ["System Language Model", "gemini-strong"])
+        #expect(picked.alreadyTried(provider: base.provider, model: base.model, baseURL: base.baseURL))
+        #expect(!picked.alreadyTried(provider: base.provider, model: base.model, baseURL: "https://other.test"))
+        #expect(!picked.alreadyTried(provider: base.provider, model: "gemini-cheap", baseURL: base.baseURL))
+        #expect(!picked.alreadyTried(provider: .openai, model: base.model, baseURL: base.baseURL))
+
+        let strong = JevTierPlan(primary: base, strong: base, tier: .strong)
+        #expect(strong.attempted.map(\.model) == ["gemini-strong"])
+        #expect(strong.alreadyTried(provider: base.provider, model: base.model, baseURL: base.baseURL))
     }
 
     @Test func runWithFallbackSurfacesBothErrors() async {

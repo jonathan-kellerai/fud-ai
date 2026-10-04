@@ -19,6 +19,17 @@ struct JevTierPlan: Sendable {
     var tier: JevTier
     /// The primary came from Settings → On-device model, not the complexity score.
     var pickedOnDevice = false
+
+    /// The configs `JevTierRouter.run` sends the request to, in order: the primary, plus the
+    /// escalation for every tier but `.strong`.
+    var attempted: [AIProviderSettings.RequestConfig] {
+        tier == .strong ? [primary] : [primary, strong]
+    }
+
+    /// Same target means the same provider, model and server, the rule the configured fallbacks use.
+    func alreadyTried(provider: AIProvider, model: String, baseURL: String) -> Bool {
+        attempted.contains { $0.provider == provider && $0.model == model && $0.baseURL == baseURL }
+    }
 }
 
 enum JevTierRequest: Sendable {
@@ -241,6 +252,8 @@ enum JevTierRouter {
     /// `plan.primary` and returns the fallback config, or nil when there is none.
     /// A `terminal` error surfaces as is, from either attempt, without trying the fallback.
     /// When both fail, `surface` turns the two errors into the one the caller throws.
+    /// A fallback the escalation already tried is not sent again: the escalation's error stands
+    /// in for it, so the caller sees what a second try would have thrown.
     static func runWithFallback<T>(
         _ plan: JevTierPlan,
         fallback: (AIProviderSettings.RequestConfig) -> AIProviderSettings.RequestConfig?,
@@ -249,12 +262,28 @@ enum JevTierRouter {
         recordFallback: ((OnDeviceFallbackNotice?) -> Void)? = nil,
         _ perform: (AIProviderSettings.RequestConfig) async throws -> T
     ) async throws -> T {
+        var attempts = 0
+        var escalationError: Error?
         do {
-            return try await run(plan, recordFallback: recordFallback, perform)
+            return try await run(plan, recordFallback: recordFallback) { (config: AIProviderSettings.RequestConfig) async throws -> T in
+                attempts += 1
+                let isEscalation = attempts > 1
+                do {
+                    return try await perform(config)
+                } catch {
+                    if isEscalation { escalationError = error }
+                    throw error
+                }
+            }
         } catch {
             if error is CancellationError { throw error }
             if terminal(error) { throw error }
             guard let fallbackConfig = fallback(plan.primary) else { throw error }
+            if let escalationError,
+               plan.alreadyTried(provider: fallbackConfig.provider, model: fallbackConfig.model, baseURL: fallbackConfig.baseURL) {
+                if terminal(escalationError) { throw escalationError }
+                throw surface(error, fallbackConfig, escalationError)
+            }
             do {
                 return try await perform(fallbackConfig)
             } catch let fallbackError {
