@@ -3,6 +3,57 @@ import Testing
 @testable import calorietracker
 
 extension WorkoutDraftStoreTests {
+    @Test func loggedBlocksCannotMoveOrBeDisplacedByTheirNeighbor() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let day = ProgramV2Templates.day4UpperPhysique
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        let rest = RestSession()
+        let blocks = entry.order(in: store).blocks
+        // Establish explicit positions before performing anything.
+        entry.move(blocks[0], direction: .down, in: store, startedAt: Date(), rest: rest)
+        let reordered = entry.order(in: store).blocks
+        let performed = try #require(reordered[0].exercises.first)
+        _ = entry.log(performed, at: 0, in: store, startedAt: Date(),
+                      value: LoggedSet(weight: 25, reps: 12, rir: 2, rpeText: ""))
+        let before = try #require(store.draft)
+        #expect(!entry.canMove(reordered[0], direction: .down, in: store))
+        #expect(!entry.canMove(reordered[1], direction: .up, in: store))
+        entry.move(reordered[0], direction: .down, in: store, startedAt: Date(), rest: rest)
+        entry.move(reordered[1], direction: .up, in: store, startedAt: Date(), rest: rest)
+        #expect(store.draft == before)
+        #expect(store.draft?.payload().sets == before.payload().sets)
+        #expect(WorkoutDraftStore(directory: directory).draft == before)
+        // Unstarted blocks farther down can still swap without changing performed positions.
+        #expect(entry.canMove(reordered[2], direction: .down, in: store))
+        entry.move(reordered[2], direction: .down, in: store, startedAt: Date(), rest: rest)
+        #expect(store.draft?.payload().sets == before.payload().sets)
+    }
+
+    @Test func loggingAnySupersetMemberLocksTheWholeBlock() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let day = ProgramV2Templates.day4UpperPhysique
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        let rest = RestSession()
+        let blocks = entry.order(in: store).blocks
+        let index = try #require(blocks.firstIndex { $0.isSuperset })
+        let pair = blocks[index]
+        let member = try #require(pair.exercises.last)
+        _ = entry.log(member, at: 0, in: store, startedAt: Date(),
+                      value: LoggedSet(weight: 25, reps: 12, rir: nil, rpeText: ""))
+        let before = store.draft
+        #expect(!entry.canMove(pair, direction: .up, in: store))
+        #expect(!entry.canMove(pair, direction: .down, in: store))
+        #expect(!entry.canMove(blocks[index - 1], direction: .down, in: store))
+        #expect(!entry.canMove(blocks[index + 1], direction: .up, in: store))
+        entry.move(pair, direction: .up, in: store, startedAt: Date(), rest: rest)
+        entry.move(blocks[index + 1], direction: .up, in: store, startedAt: Date(), rest: rest)
+        #expect(store.draft == before)
+    }
+
     @Test func loggerMovesAtomicBlocksAndRestFollowsSavedOrder() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }

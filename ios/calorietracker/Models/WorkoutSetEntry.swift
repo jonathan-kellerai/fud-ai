@@ -205,9 +205,17 @@ final class WorkoutSetEntry {
     func canMove(_ block: ExerciseBlock, direction: SessionOrder.Direction, in store: WorkoutDraftStore) -> Bool {
         let blocks = order(in: store).blocks
         guard let index = blocks.firstIndex(where: { $0.id == block.id }) else { return false }
+        let destination: Int
         switch direction {
-        case .up: return index > 0
-        case .down: return index + 1 < blocks.count
+        case .up: destination = index - 1
+        case .down: destination = index + 1
+        }
+        guard blocks.indices.contains(destination) else { return false }
+        let sets = store.existingDraft(for: day)?.sets ?? [:]
+        return [blocks[index], blocks[destination]].allSatisfy { candidate in
+            candidate.exercises.allSatisfy { exercise in
+                !(sets[exercise.name] ?? []).contains { $0.reps > 0 }
+            }
         }
     }
 
