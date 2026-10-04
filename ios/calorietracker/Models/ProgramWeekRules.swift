@@ -29,6 +29,10 @@ enum ProgramWeekRules {
         guard let week = weekNumber(on: date, body: body) else { return day }
         var adjusted = day
         if week == body.reductionWeek {
+            if dayIndex == 3 {
+                adjusted.conditioning = "12 min bike steady, RPE 5-6/10"
+                adjusted.conditioningMinimum = "12 min steady"
+            }
             for index in adjusted.exercises.indices {
                 let exercise = adjusted.exercises[index]
                 if isCCFinisher(exercise) {

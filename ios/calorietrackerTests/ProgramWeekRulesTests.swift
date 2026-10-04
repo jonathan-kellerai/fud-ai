@@ -94,6 +94,34 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
+    @Test func reductionDayThreeDisplaysAndSavesTwelveMinutesSteady() throws {
+        var body = weekRulesV4Body()
+        body.reductionWeek = 4
+        let date = weekRulesDate("2026-10-21")
+        let schedule = TrainingProgramSchedule.resolve(body, on: date, calendar: ProgramWeekRules.easternCalendar)
+        let selected = try #require(TrainingProgramSchedule.programDay(in: body, matching: schedule))
+        #expect(selected.dayIndex == 3)
+        let day = body.programV2Day(for: selected, on: date)
+        #expect(day.conditioning == "12 min bike steady, RPE 5-6/10")
+        #expect(day.conditioningMinimum == "12 min steady")
+        #expect(!day.conditioning.lowercased().contains("interval"))
+        #expect(!day.conditioningMinimum.lowercased().contains("round"))
+        // The template's separate minimum must also lose its interval prescription.
+        let template = ProgramWeekRules.apply(to: ProgramV2Templates.day3PullHinge,
+            dayIndex: 3, on: date, body: body)
+        #expect(template.conditioningMinimum == day.conditioningMinimum)
+        var draft = WorkoutDraft(day: day, now: date)
+        #expect(draft.payload().conditioning == nil)
+        draft.conditioningCompleted = true
+        let restored = try JSONDecoder().decode(WorkoutDraft.self, from: JSONEncoder().encode(draft))
+        #expect(restored.programV2Day.conditioning == day.conditioning)
+        #expect(restored.payload().conditioning == day.conditioning)
+        for normalDate in ["2026-10-14", "2026-10-28"] {
+            #expect(body.programV2Day(for: selected, on: weekRulesDate(normalDate)).conditioning
+                    == selected.conditioningSummary)
+        }
+    }
+
     @Test func datedArmGhostsLogAndResumeWithAdjustedCounts() throws {
         var body = weekRulesV4Body()
         body.reductionWeek = 4

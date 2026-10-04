@@ -26,8 +26,8 @@ struct ProgramV2Exercise: Identifiable {
 struct ProgramV2Day: Identifiable {
     let id: String  // program_day
     let title: String
-    let conditioning: String
-    let conditioningMinimum: String
+    var conditioning: String
+    var conditioningMinimum: String
     var exercises: [ProgramV2Exercise]
     var weekNote: String? = nil
     var holdLoads: Bool = false
