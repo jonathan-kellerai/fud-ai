@@ -215,7 +215,8 @@ enum WorkoutHandoffDecision {
     case offerResume(draft: WorkoutDraft, today: ProgramV2Day)
 
     static func decide(draft: WorkoutDraft?, today: ProgramV2Day) -> WorkoutHandoffDecision {
-        guard let draft, draft.programDay != today.id else { return .openToday(today) }
+        guard let draft else { return .openToday(today) }
+        if draft.programDay == today.id { return .openToday(draft.programV2Day) }
         return .offerResume(draft: draft, today: today)
     }
 }
@@ -247,7 +248,8 @@ final class WorkoutDraftStore {
 
     /// One resolution boundary for Coach, Train Start and Home Start.
     func dayToOpen(_ day: TrainingProgramDay, in body: TrainingProgramBody, on date: Date) -> ProgramV2Day {
-        body.programV2Day(for: day, on: date)
+        if let draft = existingDraft(for: day.asProgramV2Day()) { return draft.programV2Day }
+        return body.programV2Day(for: day, on: date)
     }
 
     /// True when an unsaved session for a different program day is on disk.

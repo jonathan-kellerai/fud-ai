@@ -94,6 +94,51 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
+    @Test func matchingStartAndCoachResumeKeepTheOriginalWeekSnapshot() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var body = weekRulesV4Body()
+        body.reductionWeek = 4
+        let selected = body.days[1]
+        let startedAt = weekRulesDate("2026-10-13")
+        let resumedAt = weekRulesDate("2026-10-20")
+        let originalDay = body.programV2Day(for: selected, on: startedAt)
+        let currentDay = body.programV2Day(for: selected, on: resumedAt)
+        #expect(currentDay.holdLoads)
+        let store = WorkoutDraftStore(directory: directory)
+        store.update(originalDay, startedAt: startedAt) { draft in
+            draft.sets["Chest press machine"] = [LoggedSet(weight: 125, reps: 12, rir: nil, rpeText: "")]
+        }
+        let reopened = WorkoutDraftStore(directory: directory)
+        let before = try #require(reopened.draft)
+        // Home Start and Train Start share this resolver; Coach also resolves through it.
+        let startDay = reopened.dayToOpen(selected, in: body, on: resumedAt)
+        #expect(WorkoutDraft(day: startDay, now: startedAt) == WorkoutDraft(day: originalDay, now: startedAt))
+        #expect(!startDay.holdLoads)
+        #expect(startDay.exercises.first { $0.name == "Overhead triceps extension (cable or DB)" }?.sets == 3)
+        guard case .openToday(let coachDay) = WorkoutHandoffDecision.decide(draft: before, today: currentDay)
+        else { Issue.record("Matching Coach handoff must open the saved draft"); return }
+        #expect(WorkoutDraft(day: coachDay, now: startedAt) == WorkoutDraft(day: originalDay, now: startedAt))
+        reopened.update(startDay, startedAt: resumedAt) { $0.conditioningCompleted = true }
+        let after = try #require(WorkoutDraftStore(directory: directory).draft)
+        #expect(after.sessionDate == before.sessionDate)
+        #expect(after.startedAt == startedAt)
+        #expect(after.exercises == before.exercises)
+        #expect(after.weekNote == before.weekNote)
+        #expect(after.holdLoads == before.holdLoads)
+        #expect(after.sets == before.sets)
+        #expect(after.payload().sets == before.payload().sets)
+        // A different day and an empty store still use today's dated prescription.
+        let newDay = reopened.dayToOpen(body.days[2], in: body, on: resumedAt)
+        #expect(newDay.holdLoads)
+        guard case .offerResume(let offered, let today) = WorkoutHandoffDecision.decide(draft: before, today: newDay)
+        else { Issue.record("A different-day draft must still be offered for resume"); return }
+        #expect(offered == before)
+        #expect(today.holdLoads)
+        let empty = WorkoutDraftStore(directory: directory.appendingPathComponent("empty"))
+        #expect(empty.dayToOpen(selected, in: body, on: resumedAt).holdLoads)
+    }
+
     @Test func reductionDayThreeDisplaysAndSavesTwelveMinutesSteady() throws {
         var body = weekRulesV4Body()
         body.reductionWeek = 4
