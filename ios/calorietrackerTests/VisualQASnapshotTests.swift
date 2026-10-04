@@ -2292,3 +2292,173 @@ final class VisualQABuild62Fixture {
         }
     }
 }
+
+// MARK: - Build 65: CC ladder form sheet (additive, human-owned goldens-update)
+
+/// Shots 85-94: the step form sheet over a plain canvas, default + axL. Steps
+/// are stub bridge data copied from lib/cc.ts CC_LADDERS, so nothing hits the
+/// network. Ladders without bundled art yet show the SF Symbol placeholder.
+extension VisualQASnapshotTests {
+    func test85CCForm_SQT03() async throws {
+        try await ccFormShot("85-ccform-sqt03", series: "SQT", step: 3)
+    }
+
+    func test86CCForm_PSH01() async throws {
+        try await ccFormShot("86-ccform-psh01", series: "PSH", step: 1)
+    }
+
+    func test87CCForm_PSH10() async throws {
+        try await ccFormShot("87-ccform-psh10", series: "PSH", step: 10)
+    }
+
+    func test88CCForm_PLL03() async throws {
+        try await ccFormShot("88-ccform-pll03", series: "PLL", step: 3)
+    }
+
+    func test89CCForm_LGR02() async throws {
+        try await ccFormShot("89-ccform-lgr02", series: "LGR", step: 2)
+    }
+
+    func test90CCForm_LGR06() async throws {
+        try await ccFormShot("90-ccform-lgr06", series: "LGR", step: 6)
+    }
+
+    func test91CCForm_BRG01() async throws {
+        try await ccFormShot("91-ccform-brg01", series: "BRG", step: 1)
+    }
+
+    func test92CCForm_BRG10() async throws {
+        try await ccFormShot("92-ccform-brg10", series: "BRG", step: 10)
+    }
+
+    func test93CCForm_HSP01() async throws {
+        try await ccFormShot("93-ccform-hsp01", series: "HSP", step: 1)
+    }
+
+    func test94CCForm_HSP10() async throws {
+        try await ccFormShot("94-ccform-hsp10", series: "HSP", step: 10)
+    }
+
+    private func ccFormShot(_ name: String, series code: String, step: Int) async throws {
+        let series = try XCTUnwrap(VisualQACCFormFixtures.series(code, currentStep: step), "No stub ladder \(code)")
+        XCTAssertNotNil(CCLadderLogic.stepInfo(step, in: series))
+        try await eachSize(name, heightMultiplier: 1.5, sheet: {
+            CCStepFormSheet(series: series, rule: nil, step: step)
+        }) { _ in
+            IronTheme.canvas.ignoresSafeArea()
+        }
+    }
+}
+
+/// Stub CC ladders for the form sheet shots, matching lib/cc.ts CC_LADDERS.
+@MainActor
+enum VisualQACCFormFixtures {
+    private struct Row {
+        var name: String
+        var bookName: String
+        var pages: String?
+        var sets: Int
+        var reps: Int?
+        var holdSec: Int?
+    }
+
+    private static func r(_ name: String, _ book: String, _ pages: String?, _ sets: Int, _ reps: Int) -> Row {
+        Row(name: name, bookName: book, pages: pages, sets: sets, reps: reps, holdSec: nil)
+    }
+
+    private static func hold(_ name: String, _ book: String, _ pages: String?, _ seconds: Int) -> Row {
+        Row(name: name, bookName: book, pages: pages, sets: 1, reps: nil, holdSec: seconds)
+    }
+
+    private static let ladders: [String: (label: String, rows: [Row])] = [
+        "PSH": ("Push-up", [
+            r("Wall push-up", "Wall Pushups", "46-47", 3, 50),
+            r("Incline push-up", "Incline Pushups", "48-49", 3, 40),
+            r("Kneeling push-up", "Kneeling Pushups", "50-51", 3, 30),
+            r("Half push-up", "Half Pushups", "52-53", 2, 25),
+            r("Full push-up", "Full Pushups", "54-55", 2, 20),
+            r("Close push-up", "Close Pushups", "56-57", 2, 20),
+            r("Uneven push-up", "Uneven Pushups", "58-59", 2, 20),
+            r("Half one-arm push-up", "1/2 One-Arm Pushups", "60-61", 2, 20),
+            r("Lever push-up", "Lever Pushups", "62-63", 2, 20),
+            r("One-arm push-up", "One-Arm Pushups", "64-65", 1, 100),
+        ]),
+        "SQT": ("Squat", [
+            r("Shoulderstand squat", "Shoulderstand Squats", "84-85", 3, 50),
+            r("Jackknife squat", "Jackknife Squats", "86-87", 3, 40),
+            r("Supported squat", "Supported Squats", "88-89", 3, 30),
+            r("Half squat", "Half Squats", "90-91", 2, 50),
+            r("Full squat", "Full Squats", "92-93", 2, 30),
+            r("Close squat", "Close Squats", "94-95", 2, 20),
+            r("Uneven squat", "Uneven Squats", "96-97", 2, 20),
+            r("Half one-leg squat", "1/2 One-Leg Squats", "98-99", 2, 20),
+            r("Assisted one-leg squat", "Assisted One-Leg Squats", "100-101", 2, 20),
+            r("One-leg squat (pistol)", "One-Leg Squats", "102-103", 2, 50),
+        ]),
+        "PLL": ("Pull-up", [
+            r("Vertical pull", "Vertical Pulls", "122-123", 3, 40),
+            r("Horizontal pull", "Horizontal Pulls", "124-125", 3, 30),
+            r("Jackknife pull", "Jackknife Pulls", "126-127", 3, 20),
+            r("Half pull-up", "Half Pullups", "128-129", 2, 15),
+            r("Full pull-up", "Full Pullups", "130-131", 2, 10),
+            r("Close pull-up", "Close Pullups", "132-133", 2, 10),
+            r("Uneven pull-up", "Uneven Pullups", "134-135", 2, 9),
+            r("Half one-arm pull-up", "1/2 One-Arm Pullups", "136-137", 2, 8),
+            r("Assisted one-arm pull-up", "Assisted One-Arm Pullups", "138-139", 2, 7),
+            r("One-arm pull-up", "One-Arm Pullups", "140-141", 2, 6),
+        ]),
+        "LGR": ("Leg raise", [
+            r("Knee tuck", "Knee Tucks", "156-157", 3, 40),
+            r("Flat knee raise", "Flat Knee Raises", "158-159", 3, 35),
+            r("Flat bent-leg raise", "Flat Bent Leg Raises", "160-161", 3, 30),
+            r("Flat frog raise", "Flat Frog Raises", "162-163", 3, 15),
+            r("Flat straight-leg raise", "Flat Straight Leg Raises", nil, 2, 20),
+            r("Hanging knee raise", "Hanging Knee Raises", "166-167", 2, 15),
+            r("Hanging bent-leg raise", "Hanging Bent Leg Raises", "168-169", 2, 15),
+            r("Hanging frog raise", "Hanging Frog Raises", "170-171", 2, 15),
+            r("Partial hanging straight-leg raise", "Partial Straight Leg Raises", "172-173", 2, 15),
+            r("Hanging straight-leg raise", "Hanging Straight Leg Raises", "174-175", 2, 30),
+        ]),
+        "BRG": ("Bridge", [
+            r("Short bridge", "Short Bridges", "194-195", 3, 50),
+            r("Straight bridge", "Straight Bridges", "196-197", 3, 40),
+            r("Angled bridge", "Angled Bridges", "198-199", 3, 30),
+            r("Head bridge", "Head Bridges", "200-201", 2, 25),
+            r("Half bridge", "Half Bridges", "202-203", 2, 20),
+            r("Full bridge", "Full Bridges", "204-205", 2, 15),
+            r("Wall-walk bridge (down)", "Wall Walking Bridges (Down)", "206-207", 2, 10),
+            r("Wall-walk bridge (up)", "Wall Walking Bridges (Up)", "208-209", 2, 8),
+            r("Closing bridge", "Closing Bridges", "210-211", 2, 6),
+            r("Stand-to-stand bridge", "Stand-to-Stand Bridges", "212-213", 2, 30),
+        ]),
+        "HSP": ("Handstand push-up", [
+            hold("Wall headstand", "Wall Headstands", "230-231", 120),
+            hold("Crow stand", "Crow Stands", "232-233", 60),
+            hold("Wall handstand", "Wall Handstands", "234-235", 120),
+            r("Half handstand push-up", "Half Handstand Pushups", "236-237", 2, 20),
+            r("Handstand push-up", "Handstand Pushups", "238-239", 2, 15),
+            r("Close handstand push-up", "Close Handstand Pushups", "240-242", 2, 12),
+            r("Uneven handstand push-up", "Uneven Handstand Pushups", "242-243", 2, 10),
+            r("Half one-arm handstand push-up", "1/2 One-Arm Handstand Pushups", "244-245", 2, 8),
+            r("Lever handstand push-up", "Lever Handstand Pushups", "246-247", 2, 6),
+            r("One-arm handstand push-up", "One-Arm Handstand Pushups", "248-249", 2, 5),
+        ]),
+    ]
+
+    static func series(_ code: String, currentStep: Int) -> CCSeriesState? {
+        guard let ladder = ladders[code] else { return nil }
+        let steps = ladder.rows.enumerated().map { index, row in
+            CCLadderStep(
+                step: index + 1,
+                name: row.name,
+                targetReps: row.reps,
+                bookName: row.bookName,
+                pages: row.pages,
+                targetSets: row.sets,
+                targetHoldSec: row.holdSec,
+                targetLabel: nil
+            )
+        }
+        return CCSeriesState(series: code, label: ladder.label, currentStep: currentStep, inProgram: true, steps: steps)
+    }
+}
