@@ -1984,6 +1984,9 @@ extension VisualQASnapshotTests {
 
     private func build62Shot(_ name: String, heightMultiplier: CGFloat,
                              scenario: VisualQABuild62Fixture.Scenario) async throws {
+        // Tall build-62 renders reach ~21k px on the Pro simulator; the 2-minute default
+        // allowance timed out test74 there in run 37165562250. CI caps this at 240 s.
+        executionTimeAllowance = 240
         var fixture: VisualQABuild62Fixture?
         try await eachSize(name, heightMultiplier: heightMultiplier, sheet: {
             let seeded = VisualQABuild62Fixture(scenario: scenario)

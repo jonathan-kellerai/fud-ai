@@ -474,12 +474,15 @@ struct ProgramV2WorkoutLogView: View {
     }
 
     private func setRow(exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
-        LoggerSetRow(
+        let kind = SetEntryLogic.rowKind(at: setIndex, sets: workoutSets[exercise.name] ?? [],
+            editing: entry.editingStep == ExerciseStep(exerciseName: exercise.name, setIndex: setIndex))
+        return LoggerSetRow(
             setIndex: setIndex, set: set, startLoadLb: exercise.startLoadLb,
             isHold: ladderHint(for: exercise)?.isHold == true,
-            kind: SetEntryLogic.rowKind(at: setIndex, sets: workoutSets[exercise.name] ?? [],
-                editing: entry.editingStep == ExerciseStep(exerciseName: exercise.name, setIndex: setIndex)),
-            isPersonalRecord: SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise)),
+            kind: kind,
+            // PR marks only sets actually logged, never a prefilled target or the row being edited.
+            isPersonalRecord: kind == .logged
+                && SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise)),
             targetText: exercise.reps,
             targetChips: SetEntryLogic.targetChips(for: exercise, at: setIndex),
             loadStep: SetEntryLogic.loadStep(set.weight),
