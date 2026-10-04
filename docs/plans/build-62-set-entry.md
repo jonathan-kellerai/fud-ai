@@ -69,6 +69,7 @@ tall canvases expose complete headers and planned rows at both text sizes.
 | No build-62 shot | 71-rest-next-set | Paused rest, S2 prefill, reference and +5 reason |
 | No build-62 shot | 72-logger-reorder | Reorder mode, both move controls |
 | No build-62 shot | 73-pre-exhaustion-note | Day 2 press last, 87.5 × 12/12/9 @ 2/1/0, hold note |
+| No build-62 shot | 73b-pre-exhaustion-hold | Explicit Add Set after those three sets; paused rest card holds 87.5 and explains why |
 | No build-62 shot | 74-week3-day2 | October 13, overhead extension three sets and week note |
 | No build-62 shot | 75-week3-day3 | October 14, curl four sets and week note |
 | No build-62 shot | 76-reduction-week-day | October 20 Day 2, reduced rows, 3–4 RIR and note |

@@ -1944,7 +1944,7 @@ nonisolated final class VisualQAStubProtocol: URLProtocol, @unchecked Sendable {
 
 extension VisualQASnapshotTests {
     func test70LoggerSetRows() async throws {
-        try await build62Shot("70-logger-set-rows", heightMultiplier: 2.4, scenario: .rows)
+        try await build62Shot("70-logger-set-rows", heightMultiplier: 3.4, scenario: .rows)
     }
 
     func test71RestNextSet() async throws {
@@ -1957,6 +1957,9 @@ extension VisualQASnapshotTests {
 
     func test73PreExhaustionNote() async throws {
         try await build62Shot("73-pre-exhaustion-note", heightMultiplier: 6, scenario: .preExhaustion)
+        // An explicit Add Set after the three performed sets exposes the
+        // within-session HOLD decision on the real rest next-set card.
+        try await build62Shot("73b-pre-exhaustion-hold", heightMultiplier: 2.4, scenario: .preExhaustionNextSet)
     }
 
     func test74Week3Day2() async throws {
@@ -1991,7 +1994,7 @@ extension VisualQASnapshotTests {
                 restSession: seeded.rest, openedAt: seeded.date,
                 initiallyReordering: scenario == .reorder)
                 .environment(seeded.drafts)
-        }, secondSheet: scenario == .nextSet ? {
+        }, secondSheet: [.nextSet, .preExhaustionNextSet].contains(scenario) ? {
             // eachSize constructs the logger sheet first, then this sheet.
             // Both surfaces share the same real entry/rest owner objects.
             guard let seeded = fixture else {
@@ -2087,7 +2090,7 @@ extension VisualQAFixtures {
 @MainActor
 final class VisualQABuild62Fixture {
     enum Scenario: Equatable {
-        case rows, nextSet, reorder, preExhaustion, week3Day2, week3Day3, reduction, restBar
+        case rows, nextSet, reorder, preExhaustion, preExhaustionNextSet, week3Day2, week3Day3, reduction, restBar
 
         var date: Date {
             let civilDay: String
@@ -2095,7 +2098,7 @@ final class VisualQABuild62Fixture {
             case .week3Day2: civilDay = "2026-10-13"
             case .week3Day3: civilDay = "2026-10-14"
             case .reduction: civilDay = "2026-10-20"
-            case .preExhaustion: civilDay = "2026-09-29"
+            case .preExhaustion, .preExhaustionNextSet: civilDay = "2026-09-29"
             default: civilDay = "2026-10-05"
             }
             return SessionDateFormatting.date(from: civilDay, calendar: ProgramWeekRules.easternCalendar)!
@@ -2103,7 +2106,7 @@ final class VisualQABuild62Fixture {
 
         var dayIndex: Int {
             switch self {
-            case .preExhaustion, .week3Day2, .reduction: 2
+            case .preExhaustion, .preExhaustionNextSet, .week3Day2, .reduction: 2
             case .week3Day3: 3
             default: 1
             }
@@ -2138,7 +2141,7 @@ final class VisualQABuild62Fixture {
         switch scenario {
         case .rows, .nextSet, .restBar:
             let exercise = day.exercises[0]
-            let row = LoggedSet(weight: 145, reps: scenario == .rows ? 12 : 15,
+            let row = LoggedSet(weight: scenario == .rows ? 150 : 145, reps: scenario == .rows ? 12 : 15,
                                 rir: scenario == .rows ? 2 : 4, rpeText: "")
             drafts.update(day, startedAt: date) { draft in
                 draft.conditioningCompleted = true
@@ -2149,7 +2152,7 @@ final class VisualQABuild62Fixture {
                 entry.startRestAfterLogging(exercise, at: 0, in: drafts, rest: rest)
                 rest.pause()
             }
-        case .preExhaustion:
+        case .preExhaustion, .preExhaustionNextSet:
             let press = day.exercises.first { $0.name == "Chest press machine" }!
             // Use the real block-move API until the anchor is last.
             while let block = entry.order(in: drafts).blocks.first(where: { $0.exercises.contains { $0.name == press.name } }),
@@ -2169,6 +2172,11 @@ final class VisualQABuild62Fixture {
                     LoggedSet(weight: 87.5, reps: 9, rir: 0, rpeText: ""),
                 ]
             }
+            if scenario == .preExhaustionNextSet {
+                entry.add(press, in: drafts, startedAt: date)
+                entry.startRestAfterLogging(press, at: 2, in: drafts, rest: rest)
+                rest.pause()
+            }
         case .reorder, .week3Day2, .week3Day3, .reduction:
             break
         }
@@ -2183,6 +2191,8 @@ final class VisualQABuild62Fixture {
             XCTAssertEqual(SetEntryLogic.targetChips(for: exercise, at: 1), [2, 3])
             XCTAssertEqual(SetEntryLogic.plannedRowCount(exercise: exercise,
                 sets: drafts.draft?.sets[exercise.name] ?? []), 3)
+            XCTAssertTrue(SetEntryLogic.isPersonalRecord(set: drafts.draft!.sets[exercise.name]![0],
+                previous: entry.lastPerformance(for: exercise)))
         case .nextSet, .restBar:
             let next = entry.restDetails(in: drafts, isHold: false)
             XCTAssertEqual(next?.step.setIndex, 1)
@@ -2191,13 +2201,20 @@ final class VisualQABuild62Fixture {
             XCTAssertEqual(next?.reference, "Today S1 145 × 15 @ RIR 4 · Last time 145 × 12 @ 2")
             XCTAssertTrue(rest.isPaused)
             XCTAssertEqual(rest.formattedTime, "1:30")
-        case .preExhaustion:
+        case .preExhaustion, .preExhaustionNextSet:
             let press = day.exercises.first { $0.name == "Chest press machine" }!
             XCTAssertEqual(entry.order(in: drafts).exerciseOrder.last, press.name)
             XCTAssertEqual(entry.preExhaustionNote(for: press, in: drafts),
                 "Done later than planned · a miss holds the load")
             XCTAssertEqual(entry.prefill(for: press, at: 3, in: drafts).decision,
                 ProgressionDecision(load: 87.5, reason: .holdPreFatigued))
+            if scenario == .preExhaustionNextSet {
+                let next = entry.restDetails(in: drafts, isHold: false)
+                XCTAssertEqual(next?.step, ExerciseStep(exerciseName: press.name, setIndex: 3))
+                XCTAssertEqual(next?.value.weight, 87.5)
+                XCTAssertEqual(next?.reason, "Hold: done later than planned — not counted as a miss")
+                XCTAssertTrue(rest.isPaused)
+            }
         case .week3Day2:
             XCTAssertEqual(day.exercises.first { $0.name == "Overhead triceps extension (cable or DB)" }?.sets, 3)
             XCTAssertEqual(day.weekNote, "Week 3: +1 set on overhead extension (if elbows feel good)")
