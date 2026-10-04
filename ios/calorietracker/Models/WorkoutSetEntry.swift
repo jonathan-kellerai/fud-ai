@@ -6,7 +6,13 @@ import Observation
 final class WorkoutSetEntry {
     let day: ProgramV2Day
     var lastPerformances: [String: LastPerformance] = [:]
-    var editingStep: ExerciseStep?
+    var editingStep: ExerciseStep? {
+        didSet {
+            if oldValue != editingStep, let oldValue {
+                enteredDestinations[oldValue] = nil
+            }
+        }
+    }
     private var pending: [ExerciseStep: LoggedSet] = [:]
     /// A later ghost appends the next actual set; keep its editor bound to it.
     private var enteredDestinations: [ExerciseStep: Int] = [:]
@@ -109,7 +115,7 @@ final class WorkoutSetEntry {
         let target = prefill(for: exercise, at: index, in: store)
         if let pending = pending[step] { return SetEntryLogic.refreshedUnfinished(pending, target: target) }
         let rows = store.existingDraft(for: day)?.sets[exercise.name] ?? []
-        let destination = enteredDestinations[step] ?? index
+        let destination = (editingStep == step ? enteredDestinations[step] : nil) ?? index
         if rows.indices.contains(destination) {
             let value = rows[destination]
             return value.reps > 0 ? value : SetEntryLogic.refreshedUnfinished(value, target: target)
@@ -123,7 +129,7 @@ final class WorkoutSetEntry {
         // Reps still count as logged immediately, but a live editor must not
         // disappear after the first digit of a multi-digit entry.
         editingStep = step
-        let destination = enteredDestinations[step] ?? index
+        let destination = (editingStep == step ? enteredDestinations[step] : nil) ?? index
         if store.existingDraft(for: day)?.sets[exercise.name]?.indices.contains(destination) == true {
             var value = row(for: exercise, at: index, in: store)
             let previous = value
@@ -140,6 +146,7 @@ final class WorkoutSetEntry {
                 store.update(day, startedAt: startedAt) { $0.sets[exercise.name, default: []].append(value) }
                 enteredDestinations[step] = count
                 pending[step] = nil
+                pending[ExerciseStep(exerciseName: exercise.name, setIndex: count)] = nil
             } else {
                 pending[step] = value
             }
@@ -156,13 +163,16 @@ final class WorkoutSetEntry {
         let hasLoad = value.weight > 0 || exercise.startLoadLb == 0
         guard value.reps > 0, hasLoad else { editingStep = step; return nil }
         let count = store.existingDraft(for: day)?.sets[exercise.name]?.count ?? 0
-        let destination = enteredDestinations[step] ?? min(index, count)
+        let destination = (editingStep == step ? enteredDestinations[step] : nil) ?? min(index, count)
         guard destination >= 0 else { return nil }
         store.update(day, startedAt: startedAt) { draft in
             if destination < count { draft.sets[exercise.name]![destination] = value }
             else { draft.sets[exercise.name, default: []].append(value) }
         }
         pending[step] = nil
+        if destination == count {
+            pending[ExerciseStep(exerciseName: exercise.name, setIndex: destination)] = nil
+        }
         enteredDestinations[step] = nil
         editingStep = nil
         return destination

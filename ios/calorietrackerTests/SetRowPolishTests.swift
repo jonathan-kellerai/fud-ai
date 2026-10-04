@@ -47,6 +47,61 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
+    @Test func switchingGhostEditorsKeepsThreeIndependentSavedSets() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let day = ProgramV2Templates.day1LowerA
+        let exercise = day.exercises[0]
+        let now = Date(timeIntervalSince1970: 100)
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+
+        entry.edit(exercise, at: 2, in: store, startedAt: now, field: .reps) { $0.reps = 13 }
+        entry.edit(exercise, at: 1, in: store, startedAt: now, field: .reps) { $0.reps = 11 }
+        let third = entry.row(for: exercise, at: 2, in: store)
+        #expect(entry.log(exercise, at: 2, in: store, startedAt: now) == 2)
+        #expect(store.draft?.sets[exercise.name]?.map(\.reps) == [13, 11, third.reps])
+        #expect(WorkoutDraftStore(directory: directory).draft?.loggedSetCount == 3)
+        try await store.save { payload in
+            #expect(payload.sets.map(\.reps) == [13, 11, third.reps])
+            #expect(payload.sets.map(\.order) == [0, 1, 2])
+        }
+    }
+
+    @Test func changingEditorDirectlyReleasesTheGhostDestination() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let day = ProgramV2Templates.day1LowerA
+        let exercise = day.exercises[0]
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        entry.edit(exercise, at: 2, in: store, startedAt: Date(), field: .reps) { $0.reps = 13 }
+        entry.editingStep = nil
+        // Ghost targets may repeat the last set's reps, but are not that saved entry.
+        #expect(entry.row(for: exercise, at: 2, in: store).editedFields?.contains(.reps) != true)
+        entry.edit(exercise, at: 2, in: store, startedAt: Date(), field: .reps) { $0.reps = 11 }
+        #expect(store.draft?.sets[exercise.name]?.map(\.reps) == [13, 11])
+    }
+
+    @Test func appendingClearsPendingValuesAtTheCanonicalRow() {
+        for typedReps in [false, true] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let day = ProgramV2Templates.day1LowerA
+            let exercise = day.exercises[0]
+            let store = WorkoutDraftStore(directory: directory)
+            let entry = WorkoutSetEntry(day: day)
+            entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .load) { $0.weight = 999 }
+            if typedReps {
+                entry.edit(exercise, at: 2, in: store, startedAt: Date(), field: .reps) { $0.reps = 13 }
+            } else {
+                #expect(entry.log(exercise, at: 2, in: store, startedAt: Date()) == 0)
+            }
+            #expect(entry.row(for: exercise, at: 0, in: store) == store.draft?.sets[exercise.name]?.first)
+            #expect(entry.row(for: exercise, at: 0, in: store).weight != 999)
+        }
+    }
+
     @Test func typedGhostRepsReloadAndSaveWithoutCheckmark() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
