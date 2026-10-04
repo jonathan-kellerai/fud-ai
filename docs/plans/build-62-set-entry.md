@@ -179,3 +179,65 @@ suites in build-62 test files; no pre-build-62 tests were modified.
 No push, CI run on the fixed SHA, or reviewer sign-off. iOS compilation,
 Visual QA artifacts and final review remain external gates. This handoff
 records local implementation and verification, not certification of completion.
+
+## Review round 2: entry isolation, load validity and bridge key audit
+
+Jonathan assigned Codex the coder role in `/workspace/wt-b61`, starting at
+`a63e89a4d`, with exclusive writes, the separate coder index, and **no push**.
+Review2 findings 3 (bundled fallback) and 4 (extra VQA sizes) were explicitly
+skipped. No bundled templates, VQA stubs, screenshots, URLs or CI gates changed.
+
+- `5aded5a90` clears the previous editor's destination mapping when
+  `editingStep` changes, and uses mappings only for the active editor in
+  row/edit/log. Both append paths clear pending values at the canonical row.
+  Regression coverage saves three independent sets after S3-entry → S2-entry
+  → S3-✓, checks direct editor dismissal/reopening, and checks canonical
+  pending cleanup for typing and checkmark appends.
+- `f377aabb0` extracts the existing load-validity predicate without changing
+  behavior. The supplied Linux harness ran 113 tests successfully on this
+  refactor SHA before the automatic-persistence behavior changed.
+- `31049ab7e` uses that predicate for automatic ghost persistence. Reps must
+  be explicit and positive; a later valid load commits the already-entered
+  reps. Tests distinguish unspecified load from intentional bodyweight zero,
+  reject zero/negative unspecified load, and reject untyped/zero reps.
+- `e3480dc17` corrects three newly added fixtures to construct exercises
+  rather than assign to immutable `startLoadLb`. The first precheck of
+  `31049ab7e` reported those compile errors; they were fixed without rewriting
+  history or weakening assertions. The rerun completed 116 logger tests.
+- `cd16c58ee` adds `everyBridgeClientSendsTheConfiguredSecretStoreKey` to
+  existing CI-listed `BridgeKeyStorageTests`. Eleven recorded requests cover
+  Neon health, workout list/get/post, active program, steps post, CC ladders
+  and events, peptides today, and Progress list/get through its real config
+  loader. All must send the memory secret-store key in the Bearer header.
+  The recording URLProtocol is justified because transport headers must be
+  observed without production writes; it intercepts only a reserved `.invalid`
+  host. The request log is locked, and unchecked Sendable annotations carry
+  explicit threading justifications. No new production transport was added.
+
+Audit: `/workspace/r62/key-audit.md` lists each request builder and bridge
+entry point plus delegation from step/background sync, stores, views and
+Progress. All three existing builders already attach nonempty configured
+keys. App Intents/Shortcuts and widget/watch targets have no independent
+bridge HTTP path. No missing key path required a production code change.
+
+Local verification artifacts:
+
+- `/workspace/r62/harness/build.sh`: 116 tests in WorkoutDraftStoreTests and
+  WorkoutLoggerLogicTests. Logs: `/workspace/r62/harness/build.log` and
+  `/workspace/r62/harness/test.log`. This supplied precheck strips Observation
+  and uses Linux service stubs; it is not an iOS build.
+- `/workspace/r62/key-harness/build.sh`: 10 BridgeKeyStorageTests, including
+  the eleven-request recording regression, completed successfully. Log:
+  `/workspace/r62/key-harness/build-and-test.log`. This temporary Swift 6.2
+  package uses default MainActor isolation in the app's Swift 5 language mode,
+  real bridge clients/request builders, FoundationNetworking, and Linux-only
+  Keychain/UI support. It reports existing source warnings and a Linux
+  FoundationNetworking warning about URLProtocol's unavailable inherited
+  Sendable conformance; these are recorded, not suppressed. The iOS test
+  protocol follows the existing VisualQAStubProtocol inheritance pattern.
+- Swift 6.2 syntax parsing of the added bridge test and whitespace diff checks
+  completed successfully. Both extended suites are already in ios-build.yml.
+
+No push, CI dispatch, CI run URL on these SHAs, or reviewer sign-off exists.
+iOS compilation, native concurrency diagnostics and Visual QA remain pending
+on the final SHA. This session supplies code, tests and audit evidence only.
