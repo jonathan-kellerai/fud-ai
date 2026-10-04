@@ -1,5 +1,23 @@
 import SwiftUI
 
+/// Settings hub row that opens the picker. The subtitle follows the saved choice.
+struct OnDeviceModelHubRow: View {
+    @AppStorage(OnDeviceModelSettings.choiceKey) private var choiceRaw = OnDeviceModelChoice.off.rawValue
+
+    var body: some View {
+        NavigationLink {
+            OnDeviceModelPickerView()
+        } label: {
+            SettingsHubRowLabel(
+                title: "On-device model",
+                systemImage: "cpu",
+                subtitle: (OnDeviceModelChoice(rawValue: choiceRaw) ?? .off).shortTitle
+            )
+        }
+        .accessibilityIdentifier("settings.onDeviceModel.picker")
+    }
+}
+
 /// Settings → AI → On-device model. One choice for text food logging, workout parsing and
 /// Coach text chat. Photos and Coach images stay on the cloud provider.
 struct OnDeviceModelPickerView: View {
