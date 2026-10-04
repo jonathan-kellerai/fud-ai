@@ -5653,21 +5653,7 @@ struct ProfileView: View {
                 CloudBackupSettingsSection()
 
                 if let outcome = weeklyChallengeStore.autoDeleteOutcome {
-                    Section {
-                        Label {
-                            Text(WeeklyChallengeAutoDelete.statusLine(outcome))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: outcome.result == .failed ? "exclamationmark.triangle" : "checkmark.shield")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                        .accessibilityElement(children: .combine)
-                    } header: {
-                        IronSectionTitle(title: "Weekly Challenge")
-                    }
-                    .listRowBackground(AppColors.appCard)
+                    WeeklyChallengeAutoDeleteSection(outcome: outcome)
                 }
 
                 Section {
