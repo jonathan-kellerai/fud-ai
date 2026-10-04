@@ -880,6 +880,18 @@ final class VisualQASnapshotTests: XCTestCase {
 
     // MARK: - Rendering
 
+    /// The one capture entry point for harness files outside this one (the Challenges shots).
+    /// It forwards to the private renderer; nothing else here is widened.
+    func capture<Content: View>(
+        _ name: String,
+        heightMultiplier: CGFloat = 1,
+        afterAppear: ((UIWindow) -> Void)? = nil,
+        sheet: (() -> any View)? = nil,
+        @ViewBuilder content: @escaping (DynamicTypeSize) -> Content
+    ) async throws {
+        try await eachSize(name, heightMultiplier: heightMultiplier, afterAppear: afterAppear, sheet: sheet, content: content)
+    }
+
     private func eachSize<Content: View>(
         _ name: String,
         heightMultiplier: CGFloat = 1,
