@@ -10,6 +10,8 @@ enum IronTheme {
     static let floatingTabClearance: CGFloat = 88
     static let buttonRadius: CGFloat = 4
     static let ruleWidth: CGFloat = 3
+    /// Selected-segment underline.
+    static let underlineWidth: CGFloat = 2
     static let motionDuration: Double = 0.18
     static let grainOpacity: Double = 0.04
     /// Status pill fill: the tone color at this opacity.

@@ -19,7 +19,8 @@ enum TrainMode: String, CaseIterable, Identifiable {
 
 /// Two-segment switch in Iron & Blood colors. A system segmented Picker only
 /// takes theme colors through global UISegmentedControl appearance, which
-/// would leak into every other screen.
+/// would leak into every other screen. The selected segment is raised, bone
+/// text over a blood underline; each segment is at least 44 pt tall.
 struct TrainModeSwitch: View {
     @Binding var mode: TrainMode
 
@@ -38,15 +39,22 @@ struct TrainModeSwitch: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .foregroundStyle(selected ? IronTheme.textPrimary : IronTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(selected ? IronTheme.blood : Color.clear)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(selected ? IronTheme.surfaceRaised : Color.clear)
+                        .overlay(alignment: .bottom) {
+                            if selected {
+                                Rectangle()
+                                    .fill(IronTheme.blood)
+                                    .frame(height: IronTheme.underlineWidth)
+                            }
+                        }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
+        .sensoryFeedback(.selection, trigger: mode)
         .padding(2)
         .background(IronTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
