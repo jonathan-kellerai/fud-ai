@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Log an amount (chips or typed) or a YES/NO check-in for today or yesterday.
-/// A logged amount can be undone for 5 seconds. A reward unlocked by the log shows here.
+/// A logged amount can be undone for 5 seconds, also while a reward it unlocked is showing.
 struct ChallengeQuickAddSheet: View {
     let challengeID: UUID
     @Environment(\.dismiss) private var dismiss
@@ -35,6 +35,14 @@ struct ChallengeQuickAddSheet: View {
                     )
                 } else if let challenge = store.challenge(id: challengeID) {
                     form(challenge)
+                }
+            }
+            // Outside the reward/form switch so Undo stays reachable when the log unlocks a reward.
+            .safeAreaInset(edge: .bottom) {
+                if let undoEntry, let challenge = store.challenge(id: challengeID) {
+                    undoBanner(undoEntry, challenge: challenge)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
                 }
             }
             .background(IronTheme.canvas)
@@ -73,10 +81,6 @@ struct ChallengeQuickAddSheet: View {
                         .font(.footnote)
                         .foregroundStyle(IronTheme.bloodText)
                         .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if let undoEntry {
-                    undoBanner(undoEntry, challenge: challenge)
                 }
             }
             .padding(16)
