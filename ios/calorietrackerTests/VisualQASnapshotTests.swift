@@ -63,7 +63,7 @@ final class VisualQASnapshotTests: XCTestCase {
         try await eachSize("05-rest-timer", sheet: {
             ProgramV2WorkoutLogView(day: day)
         }, secondSheet: {
-            RestTimerSheet(defaultSeconds: 90)
+            RestTimerSheet(defaultSeconds: 90, now: { VisualQAFixtures.referenceNow })
         }) { _ in
             VisualQATabShell(selected: .train) {
                 JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
@@ -76,7 +76,7 @@ final class VisualQASnapshotTests: XCTestCase {
         try await eachSize("06-daily-steps") { _ in
             VisualQATabShell(selected: .train) {
                 VisualQAPushed(rootTitle: "Train") {
-                    StepsView(loadsHealthData: false)
+                    StepsView(loadsHealthData: false, referenceDate: VisualQAFixtures.referenceNow)
                 }
             }
         }
@@ -84,7 +84,7 @@ final class VisualQASnapshotTests: XCTestCase {
         try await eachSize("06b-daily-steps-full", heightMultiplier: 2.2) { _ in
             VisualQATabShell(selected: .train) {
                 VisualQAPushed(rootTitle: "Train") {
-                    StepsView(loadsHealthData: false)
+                    StepsView(loadsHealthData: false, referenceDate: VisualQAFixtures.referenceNow)
                 }
             }
         }
@@ -176,7 +176,7 @@ final class VisualQASnapshotTests: XCTestCase {
 
     func test16TextFoodEntry() async throws {
         try await eachSize("16-food-text-entry", sheet: {
-            TextFoodInputView(onCancel: {}, onSubmit: { _ in })
+            TextFoodInputView(onCancel: {}, onSubmit: { _ in }, rotatesPlaceholder: false)
                 .background(IronTheme.canvas)
         }) { _ in
             VisualQATabShell(selected: .home) {
@@ -320,10 +320,14 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test35SettingsDataSync() async throws {
-        try await settingsScreen("35-settings-data-sync") { ProfileView(settingsCategory: .dataSync) }
+        let backupAt = VisualQAFixtures.referenceNow.addingTimeInterval(-2 * 60 * 60)
+        try await settingsScreen("35-settings-data-sync", icloudBackupAt: backupAt) {
+            ProfileView(settingsCategory: .dataSync)
+        }
     }
 
     func test36SettingsNeonBridge() async throws {
+        StepsTrackingService.shared.lastSyncDate = VisualQAFixtures.referenceNow.addingTimeInterval(-600)
         try await settingsScreen("36-settings-neon-bridge") { BridgeSettingsView() }
     }
 
@@ -344,7 +348,7 @@ final class VisualQASnapshotTests: XCTestCase {
         try await eachSize("40-rest-timer-muted", sheet: {
             ProgramV2WorkoutLogView(day: day)
         }, secondSheet: {
-            RestTimerSheet(defaultSeconds: 90, initiallyMuted: true)
+            RestTimerSheet(defaultSeconds: 90, initiallyMuted: true, now: { VisualQAFixtures.referenceNow })
         }) { _ in
             VisualQATabShell(selected: .train) {
                 JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
@@ -534,9 +538,15 @@ final class VisualQASnapshotTests: XCTestCase {
     private func settingsScreen<Content: View>(
         _ name: String,
         heightMultiplier: CGFloat = 1,
+        icloudBackupAt: Date? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) async throws {
         seedSettingsSubtitles()
+        // The hub's "2 h ago" reads the live clock, so only screens that print the
+        // absolute backup time pin it to the reference time.
+        if let icloudBackupAt {
+            VisualQAFixtures.icloudLastBackupISO = ISO8601DateFormatter().string(from: icloudBackupAt)
+        }
         try await eachSize(name, heightMultiplier: heightMultiplier) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "More") { content() }
@@ -902,12 +912,22 @@ final class VisualQASnapshotTests: XCTestCase {
     ) async throws {
         VisualQAFixtures.install()
         IronTheme.applyChrome()
-        defer { VisualQAFixtures.uninstall() }
+        let animationsWereEnabled = UIView.areAnimationsEnabled
+        UIView.setAnimationsEnabled(false)
+        defer {
+            UIView.setAnimationsEnabled(animationsWereEnabled)
+            VisualQAFixtures.uninstall()
+        }
         for size in Self.sizes {
             let stores = VisualQAStores()
             let root = stores.inject(content(size.size), dynamicType: size.size)
-            let sheetView = sheet.map { AnyView(stores.inject(AnyView($0()), dynamicType: size.size)) }
-            let secondView = secondSheet.map { AnyView(stores.inject(AnyView($0()), dynamicType: size.size)) }
+                .transaction { $0.disablesAnimations = true }
+            let sheetView = sheet.map {
+                AnyView(stores.inject(AnyView($0()), dynamicType: size.size).transaction { $0.disablesAnimations = true })
+            }
+            let secondView = secondSheet.map {
+                AnyView(stores.inject(AnyView($0()), dynamicType: size.size).transaction { $0.disablesAnimations = true })
+            }
             VisualQAGraveyard.keep(stores, root, sheetView as Any, secondView as Any)
             try await render(
                 name: "\(name)",
@@ -1523,6 +1543,14 @@ enum VisualQAFixtures {
     nonisolated static let host = VisualQAStubStorage.host
     static let workoutID = "qa-workout-1"
     static var icloudLastBackupISO: String?
+
+    /// Fixed clock for the shots that print or count from "now": Wed 2026-10-07 09:00 New York.
+    /// Program V2 week 2, clear of the 10/19-10/25 reduction week.
+    static let referenceNow: Date = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        return calendar.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: 9)) ?? .now
+    }()
     private static var savedSettings: NeonBridgeSettings?
 
     static func install() {
@@ -1545,7 +1573,7 @@ enum VisualQAFixtures {
     static func trainingDate(rest: Bool) -> Date {
         let body = TrainingProgramBody.bundledV2()
         let calendar = Calendar.current
-        var date = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: .now) ?? .now
+        var date = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: referenceNow) ?? referenceNow
         for _ in 0..<90 {
             switch TrainingProgramSchedule.resolve(body, on: date) {
             case .session:
@@ -1557,19 +1585,19 @@ enum VisualQAFixtures {
             }
             date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
         }
-        return .now
+        return referenceNow
     }
 
     static func liftingDay() -> ProgramV2Day {
         TrainingProgramBody.bundledV2().days[0].asProgramV2Day()
     }
 
-    static func isoDay(offset: Int) -> String {
+    static func isoDay(offset: Int, from base: Date = .now) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
-        let date = Calendar.current.date(byAdding: .day, value: -offset, to: .now) ?? .now
+        let date = Calendar.current.date(byAdding: .day, value: -offset, to: base) ?? base
         return formatter.string(from: date)
     }
 
@@ -1579,7 +1607,7 @@ enum VisualQAFixtures {
         service.todaySteps = values[0] ?? 0
         service.last7Days = values.enumerated().map { index, steps in
             StepsDay(
-                date: isoDay(offset: index),
+                date: isoDay(offset: index, from: referenceNow),
                 steps: steps,
                 met: steps.map { $0 >= StepsView.dailyGoal },
                 logged: steps != nil,
@@ -1588,7 +1616,7 @@ enum VisualQAFixtures {
                 origin: nil
             )
         }
-        service.lastSyncDate = Date().addingTimeInterval(-600)
+        service.lastSyncDate = referenceNow.addingTimeInterval(-600)
         service.lastSyncError = nil
     }
 
