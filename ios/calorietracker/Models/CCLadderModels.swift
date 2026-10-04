@@ -754,6 +754,21 @@ enum CCLadderLogic {
         graduateTarget(series, rule: rule).map { "Graduate at \($0)" }
     }
 
+    /// "Book: Full push-ups · p. 54" when the bridge sends it. The book name is
+    /// skipped when it only repeats the step name.
+    static func bookText(_ step: CCLadderStep) -> String? {
+        let name = step.bookName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pages = step.pages?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var parts: [String] = []
+        if !name.isEmpty, name.caseInsensitiveCompare(step.name) != .orderedSame {
+            parts.append(name)
+        }
+        if !pages.isEmpty {
+            parts.append("p. \(pages)")
+        }
+        return parts.isEmpty ? nil : "Book: " + parts.joined(separator: " · ")
+    }
+
     /// improved == true counts as progress even when the series is not ready.
     static func isImproving(_ series: CCSeriesState) -> Bool {
         series.progress?.improved == true
@@ -824,12 +839,7 @@ enum CCLadderLogic {
         guard let response else { return nil }
         let key = normalized(exerciseKey)
         let name = normalized(exerciseName)
-        let match = response.series.first { series in
-            if series.programExercises.contains(where: { normalized($0.exercise ?? "") == name }) { return true }
-            guard !key.isEmpty else { return false }
-            return series.steps.contains { normalized($0.name) == key }
-        }
-        guard let series = match,
+        guard let series = loggerSeries(exerciseKey: exerciseKey, exerciseName: exerciseName, in: response),
               let current = currentStepInfo(series),
               let target = graduateTarget(series, rule: response.rule)
         else { return nil }
@@ -847,6 +857,18 @@ enum CCLadderLogic {
             isHold = isHoldSeries(series, rule: response.rule)
         }
         return CCLoggerLadderHint(text: text, isHold: isHold)
+    }
+
+    /// The series a logger exercise belongs to: by program exercise name, then
+    /// by a step name equal to the exercise key.
+    static func loggerSeries(exerciseKey: String, exerciseName: String, in response: CCLaddersResponse) -> CCSeriesState? {
+        let key = normalized(exerciseKey)
+        let name = normalized(exerciseName)
+        return response.series.first { series in
+            if series.programExercises.contains(where: { normalized($0.exercise ?? "") == name }) { return true }
+            guard !key.isEmpty else { return false }
+            return series.steps.contains { normalized($0.name) == key }
+        }
     }
 
     /// The step a logged exercise names: a step or book name equal to the key or name,

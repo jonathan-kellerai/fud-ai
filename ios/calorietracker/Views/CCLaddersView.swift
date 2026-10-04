@@ -515,7 +515,7 @@ private struct CCStepStatsPanel: View {
                 }
                 .accessibilityElement(children: .combine)
             }
-            if let book = bookText {
+            if let book = CCLadderLogic.bookText(step) {
                 Text(book)
                     .font(.caption)
                     .foregroundStyle(IronTheme.textSecondary)
@@ -564,20 +564,6 @@ private struct CCStepStatsPanel: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .ironCard(fill: IronTheme.surfaceRaised)
-    }
-
-    /// "Book: Full push-ups · p. 54" when the bridge sends it.
-    private var bookText: String? {
-        let name = step.bookName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let pages = step.pages?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        var parts: [String] = []
-        if !name.isEmpty, name.caseInsensitiveCompare(step.name) != .orderedSame {
-            parts.append(name)
-        }
-        if !pages.isEmpty {
-            parts.append("p. \(pages)")
-        }
-        return parts.isEmpty ? nil : "Book: " + parts.joined(separator: " · ")
     }
 
     /// Within-step progress. improved == true is a positive sign even before Ready.
