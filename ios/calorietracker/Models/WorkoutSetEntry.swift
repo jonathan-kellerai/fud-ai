@@ -141,7 +141,7 @@ final class WorkoutSetEntry {
             let previous = value
             change(&value)
             value.recordEdits(from: previous, field: field)
-            if value.reps > 0 && (field == .reps || value.reps != previous.reps) {
+            if value.reps > 0, value.editedFields?.contains(.reps) == true, hasLoad(value, for: exercise) {
                 let count = store.existingDraft(for: day)?.sets[exercise.name]?.count ?? 0
                 store.update(day, startedAt: startedAt) { $0.sets[exercise.name, default: []].append(value) }
                 enteredDestinations[step] = count

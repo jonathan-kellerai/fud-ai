@@ -182,6 +182,65 @@ extension WorkoutDraftStoreTests {
         #expect(entry.editingStep?.setIndex == 0)
     }
 
+    @Test func typedRepsWaitForAValidLoadAndThenPersistWithoutRetyping() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var day = ProgramV2Templates.day1LowerA
+        day.exercises[0].startLoadLb = nil
+        let exercise = day.exercises[0]
+        let now = Date(timeIntervalSince1970: 100)
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        entry.edit(exercise, at: 0, in: store, startedAt: now, field: .reps) { $0.reps = 12 }
+        #expect(store.draft == nil)
+        #expect(WorkoutDraftStore(directory: directory).draft == nil)
+        #expect(entry.row(for: exercise, at: 0, in: store).reps == 12)
+        #expect(entry.log(exercise, at: 0, in: store, startedAt: now) == nil)
+        for invalidLoad in [0.0, -5.0] {
+            entry.edit(exercise, at: 0, in: store, startedAt: now, field: .load) { $0.weight = invalidLoad }
+            #expect(store.draft == nil)
+        }
+        entry.edit(exercise, at: 0, in: store, startedAt: now, field: .load) { $0.weight = 40 }
+        let saved = try #require(WorkoutDraftStore(directory: directory).draft?.sets[exercise.name])
+        #expect(saved.count == 1)
+        #expect(saved.first?.reps == 12)
+        #expect(saved.first?.weight == 40)
+        #expect(saved.first?.editedFields == [.reps, .load])
+    }
+
+    @Test func intentionalBodyweightZeroAllowsTypedRepsToPersist() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var day = ProgramV2Templates.day1LowerA
+        day.exercises[0].startLoadLb = 0
+        let exercise = day.exercises[0]
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .reps) { $0.reps = 12 }
+        #expect(WorkoutDraftStore(directory: directory).draft?.sets[exercise.name]?.first?.weight == 0)
+        #expect(store.draft?.sets[exercise.name]?.first?.reps == 12)
+        #expect(entry.log(exercise, at: 0, in: store, startedAt: Date()) == 0)
+        #expect(store.draft?.loggedSetCount == 1)
+    }
+
+    @Test func validLoadDoesNotPersistUntypedOrZeroReps() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var day = ProgramV2Templates.day1LowerA
+        day.exercises[0].startLoadLb = nil
+        let exercise = day.exercises[0]
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .load) { $0.weight = 40 }
+        #expect(store.draft == nil)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .reps) { $0.reps = 0 }
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .load) { $0.weight = 45 }
+        #expect(store.draft == nil)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .reps) { $0.reps = 12 }
+        #expect(store.draft?.sets[exercise.name]?.first?.weight == 45)
+        #expect(store.draft?.sets[exercise.name]?.first?.reps == 12)
+    }
+
     @Test func typingRepsKeepsLegacyRowEditorUntilCheckmark() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
