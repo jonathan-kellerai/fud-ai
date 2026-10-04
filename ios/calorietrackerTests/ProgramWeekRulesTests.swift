@@ -80,6 +80,34 @@ extension WorkoutLoggerLogicTests {
         #expect(reductionInstead.exercises.first { $0.name == "Cable or DB curl" }?.sets == 2)
     }
 
+    @Test func bundledProgramReducesWeekFourOnly() {
+        let body = TrainingProgramBody.bundledV2()
+        #expect(body.reductionWeek == 4)
+        for day in body.days {
+            let baseSets = day.exercises.sorted { $0.order < $1.order }.map(\.sets)
+            for date in ["2026-10-19", "2026-10-22", "2026-10-25"] {
+                let reduced = body.programV2Day(for: day, on: weekRulesDate(date))
+                #expect(reduced.holdLoads)
+                #expect(reduced.weekNote?.hasPrefix("Reduction week:") == true)
+                for (base, exercise) in zip(baseSets, reduced.exercises.map(\.sets)) {
+                    #expect(exercise <= min(base, 2))
+                }
+                #expect(reduced.exercises.map(\.sets).reduce(0, +) < baseSets.reduce(0, +))
+            }
+            let after = body.programV2Day(for: day, on: weekRulesDate("2026-10-26"))
+            #expect(!after.holdLoads)
+            #expect(after.weekNote == nil)
+            #expect(after.exercises.map(\.sets) == baseSets)
+            // Week 3 may add an approved arm set, but never reduces or holds loads.
+            let before = body.programV2Day(for: day, on: weekRulesDate("2026-10-16"))
+            #expect(!before.holdLoads)
+            #expect(before.weekNote?.hasPrefix("Reduction week:") != true)
+            for (base, exercise) in zip(baseSets, before.exercises.map(\.sets)) {
+                #expect(exercise >= base)
+            }
+        }
+    }
+
     @Test func reductionRecognizesBareBridgeStepsAndAnchors() {
         var body = TrainingProgramBody.bundledV2()
         body.reductionWeek = 4

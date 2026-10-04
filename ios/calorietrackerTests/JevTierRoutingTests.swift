@@ -541,28 +541,42 @@ struct JevTierRoutingTests {
     }
 
     @Test func seamPickedEscalationSkipsDuplicateFallback() async {
-        let log = RouteLog()
-        let apple = Self.config(.appleIntelligence, "System Language Model")
-        let cloud = Self.config(.openai, "cloud-text")
-        let environment = routeEnvironment(
-            log,
-            base: apple,
-            plan: { _, _ in JevTierPlan(primary: apple, strong: cloud, tier: .appleIntelligence, pickedOnDevice: true) },
-            textFallback: cloud
-        ) { _ in throw StubError.failed }
-        do {
-            _ = try await withRoute(environment) {
-                try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+        let escalationError = GeminiService.AnalysisError.invalidResponse
+        let primaries: [(AIProviderSettings.RequestConfig, JevTier, String)] = [
+            // Apple keeps the remote behavior: the escalation's error stands in for the fallback's.
+            (Self.config(.appleIntelligence, "System Language Model"), .appleIntelligence, escalationError.localizedDescription),
+            // Gemma surfaces its own actionable on-device failure.
+            (Self.config(.gemma4Local, "gemma-local"), .onDevice, StubError.failed.localizedDescription)
+        ]
+        #expect(escalationError.localizedDescription != StubError.failed.localizedDescription)
+        for (onDevice, tier, expectedDetail) in primaries {
+            let log = RouteLog()
+            let cloud = Self.config(.openai, "cloud-text")
+            let environment = routeEnvironment(
+                log,
+                base: onDevice,
+                plan: { _, _ in JevTierPlan(primary: onDevice, strong: cloud, tier: tier, pickedOnDevice: true) },
+                textFallback: cloud
+            ) { config in
+                if config.provider == onDevice.provider { throw StubError.failed }
+                throw escalationError
             }
-            Issue.record("Expected both providers to fail")
-        } catch let error as AnalysisFallbackError {
-            #expect(error.fallbackName == AIProvider.openai.displayName)
-        } catch {
-            Issue.record("Unexpected error \(error)")
+            do {
+                _ = try await withRoute(environment) {
+                    try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+                }
+                Issue.record("Expected both providers to fail")
+            } catch let error as AnalysisFallbackError {
+                #expect(error.primaryName == onDevice.provider.displayName)
+                #expect(error.fallbackName == AIProvider.openai.displayName)
+                #expect(error.detail == expectedDetail)
+            } catch {
+                Issue.record("Unexpected error \(error)")
+            }
+            // The escalation already tried the configured fallback, so it isn't sent a second time.
+            #expect(log.sent == [onDevice.model, "cloud-text"])
+            #expect(log.notices.count == 1)
         }
-        // The escalation already tried the configured fallback, so it isn't sent a second time.
-        #expect(log.sent == ["System Language Model", "cloud-text"])
-        #expect(log.notices.count == 1)
     }
 
     @Test func fallbackDifferentFromStrongStillRuns() async {
@@ -885,26 +899,29 @@ struct JevTierRoutingTests {
     @Test func runWithFallbackSurfacesBothErrors() async {
         let fallback = Self.config(.openai, "text-fallback")
         var tried: [String] = []
-        var surfaced: (String, String)?
+        var surfaced: (String, String, String)?
         do {
             _ = try await JevTierRouter.runWithFallback(
                 JevTierPlan(primary: base, strong: base, tier: .strong),
                 fallback: { _ in fallback },
                 surface: { primaryError, config, fallbackError in
-                    surfaced = (config.model, fallbackError.localizedDescription)
+                    surfaced = (primaryError.localizedDescription, config.model, fallbackError.localizedDescription)
                     return primaryError
                 },
                 recordFallback: { _ in Issue.record("No notice for the strong tier") }
             ) { config -> String in
                 tried.append(config.model)
-                throw StubError.failed
+                if config.model == base.model { throw StubError.failed }
+                throw GeminiService.AnalysisError.invalidResponse
             }
             Issue.record("Expected the surfaced error")
         } catch {
             #expect(error is StubError)
         }
         #expect(tried == [base.model, "text-fallback"])
-        #expect(surfaced?.0 == "text-fallback")
+        #expect(surfaced?.0 == StubError.failed.localizedDescription)
+        #expect(surfaced?.1 == "text-fallback")
+        #expect(surfaced?.2 == GeminiService.AnalysisError.invalidResponse.localizedDescription)
     }
 
     /// What the seam asked the environment for, in order.
