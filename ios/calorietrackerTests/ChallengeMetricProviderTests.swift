@@ -103,6 +103,46 @@ struct ChallengeMetricProviderTests {
         #expect(steps.isEmpty)
     }
 
+    @Test func noReadableStepsMeansUnavailableNotZero() {
+        // Denied Health access returns no samples, never a zero.
+        #expect(ChallengeMetricProviders.stepDays([:], calendar: calendar) == nil)
+    }
+
+    @Test func readableStepDaysMapToChallengeDays() throws {
+        let byDate = [
+            calendar.startOfDay(for: noon(daysAgo: 2)): 8_400,
+            calendar.startOfDay(for: noon(daysAgo: 0)): 1_250,
+        ]
+        let values = try #require(ChallengeMetricProviders.stepDays(byDate, calendar: calendar))
+        #expect(values[ChallengeDay(noon(daysAgo: 2), calendar: calendar)] == 8_400)
+        #expect(values[ChallengeDay(noon(daysAgo: 0), calendar: calendar)] == 1_250)
+        #expect(values[ChallengeDay(noon(daysAgo: 1), calendar: calendar)] == nil)
+        #expect(values.count == 2)
+    }
+
+    @Test func unreadableStepsLeaveAtMostChallengesUnscored() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("challenge-providers-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("challenges.v1.json")
+        let store = ChallengeStore(fileURL: url)
+        let sitLess = challenge(.steps, kind: .dailyHabit(.atMost(20_000)))
+        try store.create(sitLess, now: now)
+
+        ChallengeMetricProviders.setSteps(
+            ChallengeMetricProviders.stepDays([:], calendar: calendar), for: sitLess.id, in: store, now: now
+        )
+        #expect(store.autoAvailability[sitLess.id] == .unavailable)
+        #expect(store.progress(for: sitLess.id)?.status == .noData)
+        #expect(store.rewards(for: sitLess.id).isEmpty)
+
+        let readable = [calendar.startOfDay(for: noon(daysAgo: 0)): 4_000]
+        ChallengeMetricProviders.setSteps(
+            ChallengeMetricProviders.stepDays(readable, calendar: calendar), for: sitLess.id, in: store, now: now
+        )
+        #expect(store.autoAvailability[sitLess.id] == .available)
+        #expect(store.dailyValues(for: sitLess)[ChallengeDay(now, calendar: calendar)] == 4_000)
+    }
+
     @Test func refreshLoggedFeedsTheStore() throws {
         let (food, water) = seededStores()
         let url = FileManager.default.temporaryDirectory

@@ -1312,6 +1312,14 @@ class HealthKitManager {
         return sums.mapValues { $0 ?? 0 }
     }
 
+    /// Step totals only for local days with readable samples. Health reports
+    /// denied read access as missing data, so a missing day means "unknown",
+    /// not zero. Nil when the query fails.
+    func fetchReadableStepsByDay(from startDate: Date, through endDate: Date) async -> [Date: Int]? {
+        guard let sums = await stepSumsByDay(from: startDate, through: endDate) else { return nil }
+        return sums.compactMapValues { $0 }
+    }
+
     /// Every local day in `start...through`, inclusive, with nil where Health
     /// returned no readable samples. Nil when the query fails.
     private func stepSumsByDay(from startDate: Date, through endDate: Date) async -> [Date: Int?]? {

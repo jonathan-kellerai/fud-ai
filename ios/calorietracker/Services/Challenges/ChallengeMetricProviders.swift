@@ -3,7 +3,7 @@ import Foundation
 /// MainActor adapters from the owning stores to plain per-day values for the
 /// challenge engine. No nutrition, water or step maths lives here: each value
 /// is the owner's own daily total (`FoodStore.calories(for:)`,
-/// `protein(for:)`, `WaterStore.total(on:)`, `HealthKitManager.fetchStepsByDay`).
+/// `protein(for:)`, `WaterStore.total(on:)`, `HealthKitManager.fetchReadableStepsByDay`).
 ///
 /// Time zones: days are bucketed in `Calendar.current` at evaluation time, the
 /// same as Progress and Home, so travelling re-buckets every source the same
@@ -51,14 +51,31 @@ enum ChallengeMetricProviders {
         guard let first = window.first, let last = window.last,
               let start = noon(of: first, calendar: calendar),
               let end = noon(of: last, calendar: calendar),
-              let byDate = await healthKit.fetchStepsByDay(from: start, through: end) else {
+              let byDate = await healthKit.fetchReadableStepsByDay(from: start, through: end) else {
             return nil
         }
+        return stepDays(byDate, calendar: calendar)
+    }
+
+    /// Readable daily steps keyed by challenge day. Nil when no day has samples:
+    /// denied access looks exactly like that, and must never score as zero steps.
+    static func stepDays(_ byDate: [Date: Int], calendar: Calendar = .current) -> [ChallengeDay: Double]? {
+        guard !byDate.isEmpty else { return nil }
         var values: [ChallengeDay: Double] = [:]
         for (date, steps) in byDate {
             values[ChallengeDay(date, calendar: calendar)] = Double(steps)
         }
         return values
+    }
+
+    /// Hands step values to the store; nil (unreadable) becomes `.unavailable`.
+    static func setSteps(_ values: [ChallengeDay: Double]?, for challengeID: UUID, in store: ChallengeStore, now: Date) {
+        store.setAutoValues(
+            values ?? [:],
+            availability: values == nil ? .unavailable : .available,
+            for: challengeID,
+            now: now
+        )
     }
 
     /// Food and water refresh for every logged-metric challenge. Synchronous so it
@@ -74,12 +91,7 @@ enum ChallengeMetricProviders {
     static func refreshSteps(_ store: ChallengeStore, healthKit: HealthKitManager, now: Date = Date()) async {
         for challenge in store.challenges where challenge.metric == .steps {
             let values = await stepValues(for: challenge, healthKit: healthKit, now: now)
-            store.setAutoValues(
-                values ?? [:],
-                availability: values == nil ? .unavailable : .available,
-                for: challenge.id,
-                now: now
-            )
+            setSteps(values, for: challenge.id, in: store, now: now)
         }
     }
 
