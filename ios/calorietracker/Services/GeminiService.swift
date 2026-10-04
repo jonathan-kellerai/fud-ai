@@ -209,10 +209,6 @@ struct GeminiService {
     {"name":"...","calories":0,"protein":0.0,"carbs":0.0,"fat":0.0,"serving_size_grams":0.0,"sugar":0.0,"added_sugar":0.0,"fiber":0.0,"saturated_fat":0.0,"monounsaturated_fat":0.0,"polyunsaturated_fat":0.0,"trans_fat":0.0,"cholesterol":0.0,"caffeine":0.0,"creatine":0.0,"beta_alanine":0.0,"l_citrulline":0.0,"l_carnitine":0.0,"l_arginine":0.0,"taurine":0.0,"betaine":0.0,"hmb":0.0,"sodium":0.0,"potassium":0.0,"calcium":0.0,"iron":0.0,"magnesium":0.0,"zinc":0.0,"vitamin_a":0.0,"vitamin_c":0.0,"vitamin_d":0.0,"vitamin_b12":0.0,"vitamin_e":0.0,"vitamin_k":0.0,"folate":0.0,"omega_3":0.0,"ingredients":[],"unit_options":[]}
     """
 
-    private static let nutritionLabelJSONShape = """
-    {"name":"Product Name","calories_per_100g":0.0,"protein_per_100g":0.0,"carbs_per_100g":0.0,"fat_per_100g":0.0,"serving_size_grams":0.0,"sugar_per_100g":0.0,"added_sugar_per_100g":0.0,"fiber_per_100g":0.0,"saturated_fat_per_100g":0.0,"monounsaturated_fat_per_100g":0.0,"polyunsaturated_fat_per_100g":0.0,"trans_fat_per_100g":0.0,"cholesterol_per_100g":0.0,"caffeine_per_100g":0.0,"creatine_per_100g":0.0,"beta_alanine_per_100g":0.0,"l_citrulline_per_100g":0.0,"l_carnitine_per_100g":0.0,"l_arginine_per_100g":0.0,"taurine_per_100g":0.0,"betaine_per_100g":0.0,"hmb_per_100g":0.0,"sodium_per_100g":0.0,"potassium_per_100g":0.0,"calcium_per_100g":0.0,"iron_per_100g":0.0,"magnesium_per_100g":0.0,"zinc_per_100g":0.0,"vitamin_a_per_100g":0.0,"vitamin_c_per_100g":0.0,"vitamin_d_per_100g":0.0,"vitamin_b12_per_100g":0.0,"vitamin_e_per_100g":0.0,"vitamin_k_per_100g":0.0,"folate_per_100g":0.0,"omega_3_per_100g":0.0,"unit_options":[]}
-    """
-
     private static let nutrientUnitsInstruction = "Calories are integers. Protein/carbs/fat are decimal gram values when needed. serving_size_grams is the estimated weight in grams. Nutrients are numbers: sugar/fiber/fats/omega_3/creatine/beta_alanine/l_citrulline/l_carnitine/l_arginine/taurine/betaine/hmb in grams; cholesterol/caffeine/sodium/potassium/calcium/iron/magnesium/zinc/vitamin_c/vitamin_e in milligrams; vitamin_a/vitamin_d/vitamin_b12/vitamin_k/folate in micrograms. Only report sports-nutrition compounds when explicitly present in a label or description; otherwise use 0."
 
     private static let servingUnitOptionsInstruction = """
@@ -518,33 +514,8 @@ struct GeminiService {
         }
     }
 
-    static func analyzeNutritionLabel(image: UIImage) async throws -> NutritionLabelAnalysis {
-        let prompt = """
-        Read this nutrition label image. Extract the nutritional values per 100g (or per 100ml).
-        If the label shows per-serving values, convert them to per-100g using the serving size.
-
-        For the name, identify the product or brand name visible on the packaging or label.
-        If no name is visible, describe the food type (e.g. "Protein Bar", "Yogurt", "Cereal").
-
-        Respond ONLY with JSON:
-        \(Self.nutritionLabelJSONShape)
-
-        \(Self.servingUnitOptionsInstruction)
-        All nutrient and serving-size values should be numbers. If serving size or any nutrient is not available, use null. Only include a label serving unit such as slice, piece, tbsp, cup, ml, fl oz, can, or packet when its quantity is actually printed or otherwise visible on the label.
-        """
-        return try await runWithHostedQuota(.photoFood) {
-            let text = try await callAI(prompt: prompt, image: image)
-            let analysis = try parseNutritionLabel(from: text)
-            return await addingFallbackServingUnits(to: analysis, image: image)
-        }
-    }
-
-    /// Extracts clearly positive/elevated sensitizations from an ISAC/ALEX-style allergy lab report image.
+    /// Extracts clearly positive/elevated sensitizations from ISAC/ALEX-style allergy lab report images.
     /// Returns plain common food/allergen names (not component codes). Empty if none found.
-    static func extractAllergensFromLabReport(image: UIImage) async throws -> [String] {
-        try await extractAllergensFromLabReport(images: [image])
-    }
-
     static func extractAllergensFromLabReport(images: [UIImage]) async throws -> [String] {
         guard !images.isEmpty else { throw AnalysisError.imageConversionFailed }
         let prompt = """
@@ -741,75 +712,6 @@ struct GeminiService {
             }
         }
         return try await compute()
-    }
-
-    // MARK: - Weight Forecast Insight
-
-    /// Asks the user's selected LLM to summarize their weight trend and suggest 2–3 adjustments
-    /// in plain English. Caller provides an already-computed WeightForecast so the LLM gets hard
-    /// numbers instead of guessing.
-    static func analyzeWeightTrend(
-        profile: UserProfile,
-        forecast: WeightForecast,
-        recentAvgMacros: (protein: Int, carbs: Int, fat: Int)?,
-        heightMetric: Bool,
-        weightMetric: Bool
-    ) async throws -> String {
-        let unit = weightMetric ? "kg" : "lbs"
-        let wUnit: (Double) -> String = { kg in
-            weightMetric ? String(format: "%.1f kg", kg) : String(format: "%.1f lbs", kg * 2.20462)
-        }
-        let weekly: (Double) -> String = { kg in
-            weightMetric ? String(format: "%+.2f kg/week", kg) : String(format: "%+.2f lbs/week", kg * 2.20462)
-        }
-
-        var lines: [String] = []
-        lines.append("User profile:")
-        lines.append("- Gender: \(profile.gender.rawValue)")
-        lines.append("- Age: \(profile.age)")
-        lines.append("- Height: \(heightMetric ? String(format: "%.0f cm", profile.heightCm) : String(format: "%.1f in", profile.heightCm / 2.54))")
-        lines.append("- Current weight: \(wUnit(forecast.currentWeightKg))")
-        lines.append("- Activity level: \(profile.activityLevel.displayName)")
-        lines.append("- Goal: \(profile.goal.displayName)")
-        if let goal = profile.goalWeightKg {
-            lines.append("- Goal weight: \(wUnit(goal))")
-        }
-        if let bf = profile.bodyFatPercentage {
-            lines.append("- Body fat: \(Int(bf * 100))%")
-        }
-        lines.append("")
-        lines.append("Energy balance (from \(forecast.daysOfFoodData) days of logged food):")
-        lines.append("- Avg daily intake: \(forecast.avgDailyCalories) kcal")
-        lines.append("- TDEE estimate: \(forecast.tdee) kcal")
-        lines.append("- Daily balance: \(forecast.dailyEnergyBalance >= 0 ? "+" : "")\(forecast.dailyEnergyBalance) kcal")
-        if let macros = recentAvgMacros {
-            lines.append("- Avg macros: \(macros.protein)g protein, \(macros.carbs)g carbs, \(macros.fat)g fat")
-        }
-        lines.append("")
-        lines.append("Projection:")
-        lines.append("- Predicted (from diet): \(weekly(forecast.predictedWeeklyChangeKg))")
-        if let observed = forecast.observedWeeklyChangeKg {
-            lines.append("- Observed (from \(forecast.weightEntriesUsed) weight entries): \(weekly(observed))")
-        }
-        lines.append("- Expected weight in 30 days: \(wUnit(forecast.predictedWeight30dKg))")
-        lines.append("- Expected weight in 90 days: \(wUnit(forecast.predictedWeight90dKg))")
-        if let days = forecast.daysToGoal {
-            lines.append("- At current pace, reach goal in ~\(days) days")
-        }
-        if forecast.trendsDisagree {
-            lines.append("- NOTE: predicted and observed trends differ by >0.3 kg/week (possibly under-logging food).")
-        }
-
-        let prompt = """
-        You are a nutrition coach analyzing a user's weight trend. Write 3–4 short sentences (plain English, no bullets, no markdown, no bold) that:
-        1. State the predicted weight in \(unit) 30 days out and whether they're on track for their goal.
-        2. Give one or two specific, actionable suggestions (e.g. calorie target, protein amount, activity change) grounded in the numbers below.
-        3. If predicted and observed trends disagree, mention possible under-logging briefly.
-        Be direct, factual, and encouraging. Do not exceed 100 words.
-
-        \(lines.joined(separator: "\n"))
-        """
-        return try await callAI(prompt: prompt, image: nil, jsonResponse: false)
     }
 
     private static func macroTotals(for entries: [FoodEntry]) -> MacroTotals {
@@ -1744,27 +1646,6 @@ struct GeminiService {
         updated.servingUnitOptions = options
         updated.selectedServingUnit = options.first?.unit
         updated.selectedServingQuantity = options.first?.quantity(for: analysis.servingSizeGrams)
-        return updated
-    }
-
-    private static func addingFallbackServingUnits(
-        to analysis: NutritionLabelAnalysis,
-        image: UIImage
-    ) async -> NutritionLabelAnalysis {
-        var updated = analysis
-        updated.requiresServingUnitFallback = false
-        guard ServingUnitRepairPolicy.shouldRepair(analysis) else { return updated }
-        guard let servingSizeGrams = analysis.servingSizeGrams,
-              let options = try? await inferServingUnitOptions(
-                name: analysis.name,
-                servingSizeGrams: servingSizeGrams,
-                image: image,
-                description: nil
-              ), !options.isEmpty else {
-            return updated
-        }
-
-        updated.servingUnitOptions = options
         return updated
     }
 
