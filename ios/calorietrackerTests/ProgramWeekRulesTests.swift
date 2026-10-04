@@ -94,6 +94,37 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
+    @Test func datedArmGhostsLogAndResumeWithAdjustedCounts() throws {
+        var body = weekRulesV4Body()
+        body.reductionWeek = 4
+        for (dayIndex, date, name, count) in [
+            (2, "2026-10-13", "Overhead triceps extension (cable or DB)", 3),
+            (3, "2026-10-14", "Cable or DB curl", 4),
+        ] {
+            let startedAt = weekRulesDate(date)
+            let day = body.programV2Day(for: body.days[dayIndex - 1], on: startedAt)
+            let exercise = try #require(day.exercises.first { $0.name == name })
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("dated-arm-entry-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = WorkoutDraftStore(directory: directory)
+            let entry = WorkoutSetEntry(day: day)
+            // Real bridge history supplies a load even for Select-load curls.
+            entry.lastPerformances[LastPerformanceBuilder.key(for: name)] =
+                LastPerformance(sessionDate: "2026-10-07", sets: [WorkingSetSummary(load: 25, reps: 12, rir: 2)])
+            #expect(SetEntryLogic.plannedRowCount(exercise: exercise, sets: []) == count)
+            #expect(store.draft == nil)
+            for index in 0..<count {
+                #expect(entry.log(exercise, at: index, in: store, startedAt: startedAt) == index)
+            }
+            let restored = try #require(WorkoutDraftStore(directory: directory).draft)
+            #expect(restored.sets[name]?.count == count)
+            #expect(restored.programV2Day.exercises.first { $0.name == name }?.sets == count)
+            #expect(restored.programV2Day.weekNote == day.weekNote)
+            #expect(SetEntryLogic.plannedRowCount(exercise: exercise, sets: restored.sets[name] ?? []) == count)
+        }
+    }
+
     @Test func weekRulesSurviveDraftResumeWithoutAddingLegacyKeys() throws {
         var body = TrainingProgramBody.bundledV2()
         body.reductionWeek = 4

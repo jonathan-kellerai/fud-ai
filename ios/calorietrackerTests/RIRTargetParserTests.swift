@@ -42,6 +42,38 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
+    @Test func notesBasedRIRDefaultsSurviveOneTapLoggingAndReload() throws {
+        let startedAt = ISO8601DateFormatter().date(from: "2026-10-05T16:00:00Z")!
+        let cases: [(String, [Int?])] = [
+            ("sets 1-2: 2-3 RIR; last set 1-2 RIR", [2, 2, 1]),
+            ("0 RIR", [1, 1, 1]),
+            ("unknown", [nil, nil, nil]),
+        ]
+        for (target, expected) in cases {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("rir-entry-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let exercise = ProgramV2Exercise(key: "press", name: "Press", sets: 3, reps: "10-15",
+                restSeconds: 90...120, rirTarget: "", startLoadLb: 145,
+                notes: "Rest: 90-120 s. RIR target: \(target).")
+            let day = ProgramV2Day(id: "Day", title: "Day", conditioning: "", conditioningMinimum: "",
+                exercises: [exercise])
+            let store = WorkoutDraftStore(directory: directory)
+            let entry = WorkoutSetEntry(day: day)
+            #expect(store.draft == nil)
+            for index in expected.indices {
+                let ghost = entry.row(for: exercise, at: index, in: store)
+                #expect(ghost.rir == expected[index])
+                #expect(ghost.weight == 145)
+                #expect(entry.log(exercise, at: index, in: store, startedAt: startedAt) == index)
+            }
+            let restored = try #require(WorkoutDraftStore(directory: directory).draft)
+            #expect(restored.sets[exercise.name]?.map(\.rir) == expected)
+            #expect(restored.payload().sets.map(\.rir) == expected)
+            #expect(restored.sets[exercise.name]?.map(\.weight) == [145, 145, 145])
+        }
+    }
+
     @Test func build61DraftDecodesIntegerRIR() throws {
         let json = #"{"programDay":"Day1_LowerA","title":"Lower A","conditioning":"Walk","conditioningMinimum":"","exercises":[{"key":"leg press","name":"Leg press","sets":3,"reps":"10-15","restLowerSeconds":90,"restUpperSeconds":120,"rirTarget":"2","startLoadLb":145,"notes":"","loadNote":""}],"sets":{"Leg press":[{"weight":145,"reps":12,"rir":0,"rpeText":"8"}]},"conditioningCompleted":false,"sessionDate":"2026-10-02","startedAt":812678400,"updatedAt":812678400}"#
         let draft = try JSONDecoder().decode(WorkoutDraft.self, from: Data(json.utf8))
