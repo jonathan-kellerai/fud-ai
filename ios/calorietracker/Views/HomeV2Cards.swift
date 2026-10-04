@@ -492,7 +492,7 @@ struct HomeV2Cards: View {
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                 Button {
-                    loggingDay = datedDay
+                    loggingDay = workoutDraftStore.dayToOpen(day, in: programBody, on: selectedDate)
                 } label: {
                     Label("Start", systemImage: "play.fill")
                 }

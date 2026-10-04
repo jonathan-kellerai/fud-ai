@@ -134,7 +134,7 @@ struct JLPhysicalTabView: View {
             ?? programBody.days.first { $0.dayIndex == dayIndex }
         guard let day else { return }
         switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft,
-            today: programBody.programV2Day(for: day, on: referenceDate ?? Date())) {
+            today: workoutDraftStore.dayToOpen(day, in: programBody, on: referenceDate ?? Date())) {
         case .openToday(let today):
             loggingDay = today
         case .offerResume(let draft, let today):
@@ -252,7 +252,7 @@ struct JLPhysicalTabView: View {
     
     private func startButton(_ day: TrainingProgramDay, fullWidth: Bool) -> some View {
         Button {
-            loggingDay = programBody.programV2Day(for: day, on: referenceDate ?? Date())
+            loggingDay = workoutDraftStore.dayToOpen(day, in: programBody, on: referenceDate ?? Date())
         } label: {
             Label("Start", systemImage: "play.fill")
                 .font(.headline)

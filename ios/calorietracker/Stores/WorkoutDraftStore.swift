@@ -245,6 +245,11 @@ final class WorkoutDraftStore {
         return draft
     }
 
+    /// One resolution boundary for Coach, Train Start and Home Start.
+    func dayToOpen(_ day: TrainingProgramDay, in body: TrainingProgramBody, on date: Date) -> ProgramV2Day {
+        body.programV2Day(for: day, on: date)
+    }
+
     /// True when an unsaved session for a different program day is on disk.
     func hasDraft(otherThan day: ProgramV2Day) -> Bool {
         guard let draft else { return false }
