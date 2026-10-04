@@ -75,6 +75,47 @@ struct ChallengeStoreTests {
         }
     }
 
+    @Test func clearAllForgetsEverythingAndDeletesTheFiles() throws {
+        let url = tempFile()
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{not json".utf8).write(to: url)
+        let challenges = store(url)
+        let now = F.at(2026, 10, 14)
+        try challenges.create(swings, now: now)
+        try challenges.add(value: 2_600, day: F.start, to: swings.id, now: now)
+        challenges.markStakePaid(swings.id, now: now)
+        #expect(!challenges.rewardLog.isEmpty)
+        let unrelated = directory.appendingPathComponent("other.json")
+        try Data("keep".utf8).write(to: unrelated)
+
+        var replanned: [PlannedNotification]?
+        challenges.onRemindersPlanned = { replanned = $0 }
+        challenges.clearAll(now: now)
+
+        #expect(challenges.challenges.isEmpty)
+        #expect(challenges.entries.isEmpty)
+        #expect(challenges.checkIns.isEmpty)
+        #expect(challenges.rewardLog.isEmpty)
+        #expect(challenges.stakePaidAt.isEmpty)
+        #expect(challenges.pendingUnlocks.isEmpty)
+        #expect(challenges.progressByID.isEmpty)
+        #expect(challenges.lastSaveError == nil)
+        #expect(replanned?.isEmpty == true)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(leftovers == ["other.json"])
+        #expect(store(url).challenges.isEmpty)
+    }
+
+    @Test func clearAllOnAnEmptyStoreIsHarmless() {
+        let url = tempFile()
+        let challenges = store(url)
+        challenges.clearAll(now: F.at(2026, 10, 14))
+        #expect(challenges.challenges.isEmpty)
+        #expect(challenges.lastSaveError == nil)
+    }
+
     @Test func writeFailureKeepsMemoryAndReportsTheError() throws {
         // The parent "directory" is a regular file, so every write fails.
         let blocker = FileManager.default.temporaryDirectory.appendingPathComponent("challenge-blocker-\(UUID().uuidString)")

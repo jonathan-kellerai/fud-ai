@@ -191,6 +191,35 @@ final class ChallengeStore {
         pendingUnlocks.remove(at: index)
     }
 
+    /// Full reset ("Delete Everything"): forgets every challenge, entry, check-in,
+    /// reward and stake, deletes the archive and any kept-aside corrupt copies,
+    /// and replans so no challenge reminder survives.
+    func clearAll(now: Date = Date()) {
+        challenges = []
+        entries = []
+        checkIns = [:]
+        rewardLog = []
+        stakePaidAt = [:]
+        autoValues = [:]
+        autoAvailability = [:]
+        progressByID = [:]
+        pendingUnlocks = []
+        lastSaveError = nil
+        let fileManager = FileManager.default
+        let directory = fileURL.deletingLastPathComponent()
+        let corruptCopies = ((try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? [])
+            .filter { $0.hasPrefix(Self.corruptPrefix) && $0.hasSuffix(".json") }
+            .map { directory.appendingPathComponent($0) }
+        for url in [fileURL] + corruptCopies where fileManager.fileExists(atPath: url.path) {
+            do {
+                try fileManager.removeItem(at: url)
+            } catch {
+                lastSaveError = "Couldn't delete \(url.lastPathComponent): \(error.localizedDescription)"
+            }
+        }
+        reconcile(now: now)
+    }
+
     // MARK: - Reconcile
 
     /// Recomputes every challenge, persists new unlocks once, queues them for
@@ -288,10 +317,12 @@ final class ChallengeStore {
         }
     }
 
+    private static let corruptPrefix = "challenges.corrupt-"
+
     /// Keeps an unreadable file as challenges.corrupt-<timestamp>.json and starts empty.
     private func preserveCorruptFile(_ data: Data) {
         let stamp = Int(Date().timeIntervalSince1970)
-        let copy = fileURL.deletingLastPathComponent().appendingPathComponent("challenges.corrupt-\(stamp).json")
+        let copy = fileURL.deletingLastPathComponent().appendingPathComponent("\(Self.corruptPrefix)\(stamp).json")
         do {
             try data.write(to: copy, options: .atomic)
             Self.excludeFromBackup(copy)

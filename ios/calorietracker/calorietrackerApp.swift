@@ -228,6 +228,9 @@ struct calorietrackerApp: App {
                     }
                 }
                 refreshWidgetSnapshot()
+            } else {
+                // Only "Delete Everything" turns onboarding back off; challenges go with it.
+                challengeStore.clearAll()
             }
         }
     }
