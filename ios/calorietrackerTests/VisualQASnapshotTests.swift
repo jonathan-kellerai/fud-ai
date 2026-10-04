@@ -926,7 +926,8 @@ final class VisualQASnapshotTests: XCTestCase {
         )
         let screen = scene.screen.bounds
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: screen.width, height: (screen.height * heightMultiplier).rounded())
+        let canvasMultiplier = VisualQACanvas.cappedMultiplier(heightMultiplier)
+        window.frame = CGRect(x: 0, y: 0, width: screen.width, height: (screen.height * canvasMultiplier).rounded())
         window.windowLevel = .alert + 1
         window.overrideUserInterfaceStyle = .dark
         window.backgroundColor = UIColor(IronTheme.canvas)
@@ -2001,9 +2002,8 @@ extension VisualQASnapshotTests {
         // Tall build-62 renders reach ~21k px on the Pro simulator; the 2-minute default
         // allowance timed out test74 there in run 37165562250. CI caps this at 240 s.
         executionTimeAllowance = 240
-        let cappedMultiplier = VisualQACanvas.cappedMultiplier(heightMultiplier)
         var fixture: VisualQABuild62Fixture?
-        try await eachSize(name, heightMultiplier: cappedMultiplier, sheet: {
+        try await eachSize(name, heightMultiplier: heightMultiplier, sheet: {
             let seeded = VisualQABuild62Fixture(scenario: scenario)
             fixture = seeded
             seeded.assertScenario()

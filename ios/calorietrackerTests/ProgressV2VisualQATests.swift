@@ -124,7 +124,8 @@ final class ProgressV2VisualQATests: XCTestCase {
         )
         let screen = scene.screen.bounds
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: screen.width, height: (screen.height * heightMultiplier).rounded())
+        let canvasMultiplier = VisualQACanvas.cappedMultiplier(heightMultiplier)
+        window.frame = CGRect(x: 0, y: 0, width: screen.width, height: (screen.height * canvasMultiplier).rounded())
         window.windowLevel = .alert + 1
         window.overrideUserInterfaceStyle = .dark
         window.backgroundColor = UIColor(IronTheme.canvas)
