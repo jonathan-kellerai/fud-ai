@@ -1933,13 +1933,6 @@ enum AISettingsInfoTopic {
     }
 }
 
-enum NotificationsHubSubtitle {
-    static func text(masterEnabled: Bool, reminderCount: Int) -> String {
-        guard masterEnabled else { return "Off" }
-        return reminderCount == 1 ? "1 reminder on" : "\(reminderCount) reminders on"
-    }
-}
-
 struct IronInfoSectionHeader: View {
     let title: String
     let infoTopic: AISettingsInfoTopic
@@ -2268,60 +2261,13 @@ struct ProfileView: View {
     }
 
     private var settingsHub: some View {
-        List {
-            Section {
-                // One row for the whole peptide area so the hub keeps seven rows on iPhone SE.
-                // Recon Bench opens from the Peptides screen.
-                NavigationLink {
-                    PeptidesView()
-                } label: {
-                    SettingsHubRowLabel(
-                        title: "Peptides",
-                        systemImage: "cross.vial.fill",
-                        subtitle: "Log, vials, Recon Bench"
-                    )
-                }
-                .accessibilityIdentifier("settings.category.peptides")
-                .overlay {
-                    SettingsHubRowAnchor(identifier: "settings.category.peptides")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false)
-                }
+        MoreHubView(inputs: hubInputs)
+            .sheet(isPresented: $showExerciseLibrary) {
+                WorkoutsView(presentedAsSheet: true, libraryOnly: true)
             }
-            .listRowBackground(AppColors.appCard)
-
-            Section {
-                ForEach(ProfileSettingsCategory.preferenceCases) { category in
-                    ProfileSettingsCategoryRow(category: category, subtitle: hubSubtitle(for: category))
-                }
-            } header: {
-                IronSectionTitle(title: "Settings")
+            .sheet(isPresented: $showLegacyLogger) {
+                WorkoutsView(presentedAsSheet: true, forcedMode: .log)
             }
-            .listRowBackground(AppColors.appCard)
-
-            Section {
-                ForEach(ProfileSettingsCategory.appInfoCases) { category in
-                    ProfileSettingsCategoryRow(category: category, subtitle: hubSubtitle(for: category))
-                }
-            } header: {
-                IronSectionTitle(title: "App")
-            }
-            .listRowBackground(AppColors.appCard)
-
-        }
-        .listSectionSpacing(4)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 12))
-        .contentMargins(.top, 0, for: .scrollContent)
-        .scrollContentBackground(.hidden)
-        .background(AppColors.appBackground)
-        .settingsFloatingTabClearance()
-        .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showExerciseLibrary) {
-            WorkoutsView(presentedAsSheet: true, libraryOnly: true)
-        }
-        .sheet(isPresented: $showLegacyLogger) {
-            WorkoutsView(presentedAsSheet: true, forcedMode: .log)
-        }
     }
 
     private var reconHubSubtitle: String {
@@ -2332,30 +2278,23 @@ struct ProfileView: View {
         return count == 1 ? "1 dose today" : "\(count) doses today"
     }
 
-    private func hubSubtitle(for category: ProfileSettingsCategory) -> String {
-        switch category {
-        case .training:
-            let name = ActiveProgramCache.load()?.name ?? "Program V2"
-            return "\(name) · rest \(RestTimerSettings.defaultRestLabel)"
-        case .foodAI:
-            let model = AIProvider.friendlyModelName(AIProviderSettings.selectedModel)
-            return "\(model) · \(gemmaStatusLabel)"
-        case .bodyHealth:
-            let health = healthKitEnabled ? "Apple Health on" : "Apple Health off"
-            let unit = weightUnitRaw == "kg" ? "kg" : "lb"
-            return "\(health) · \(unit)"
-        case .dataSync:
-            return "\(bridgeStatusLabel) · \(iCloudStatusLabel)"
-        case .notifications:
-            return NotificationsHubSubtitle.text(
-                masterEnabled: UserDefaults.standard.bool(forKey: "notificationsEnabled"),
-                reminderCount: enabledReminderCount
-            )
-        case .about:
-            return "\(JLAppVersion.shortAndBuild) · based on Fud AI"
-        default:
-            return ""
-        }
+    private var hubInputs: MoreHubInputs {
+        MoreHubInputs(
+            programName: ActiveProgramCache.load()?.name,
+            defaultRestLabel: RestTimerSettings.defaultRestLabel,
+            foodModelName: AIProvider.friendlyModelName(AIProviderSettings.selectedModel),
+            gemmaStatus: gemmaStatusLabel,
+            healthKitEnabled: healthKitEnabled,
+            weightUnitRaw: weightUnitRaw,
+            bridgePendingCount: WorkoutSyncService.shared.syncQueue.count,
+            bridgeConfigured: !NeonBridgeSettings.load().baseURL.isEmpty,
+            iCloudEnabled: cloudBackup.enabled,
+            iCloudLastBackupISO: cloudBackup.lastAt,
+            notificationsMasterEnabled: UserDefaults.standard.bool(forKey: "notificationsEnabled"),
+            enabledReminderCount: enabledReminderCount,
+            appVersion: JLAppVersion.shortAndBuild,
+            now: Date()
+        )
     }
 
     private var gemmaStatusLabel: String {
@@ -2363,20 +2302,10 @@ struct ProfileView: View {
     }
 
     private var bridgeStatusLabel: String {
-        let pending = WorkoutSyncService.shared.syncQueue.count
-        if pending > 0 { return "Bridge \(pending) pending" }
-        let settings = NeonBridgeSettings.load()
-        return settings.baseURL.isEmpty ? "Bridge off" : "Bridge OK"
-    }
-
-    private var iCloudStatusLabel: String {
-        guard let raw = cloudBackup.lastAt, let date = ISO8601DateFormatter().date(from: raw) else {
-            return cloudBackup.enabled ? "iCloud on" : "iCloud off"
-        }
-        let hours = Int(Date().timeIntervalSince(date) / 3600)
-        if hours < 1 { return "iCloud just now" }
-        if hours < 48 { return "iCloud \(hours) h ago" }
-        return "iCloud \(hours / 24) d ago"
+        MoreHubSubtitles.bridgeStatus(
+            pendingCount: WorkoutSyncService.shared.syncQueue.count,
+            configured: !NeonBridgeSettings.load().baseURL.isEmpty
+        )
     }
 
     private var profileHubSubtitle: String {
