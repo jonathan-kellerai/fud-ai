@@ -647,18 +647,73 @@ Sends the request text only (typed meal or chat message). Never images: image re
 7. `planNeverChangesProviderOrKey` (the cheap plan keeps provider/baseURL/apiKey and only the model differs).
 8. `imageRequestAlwaysCloudTier`, `workoutParseEligibleForOnDevice`, `disabledRouterReturnsBase`.
 9. Picker: `selectorTable`, `pickedAppleBypassesComplexityScore`, `pickedButUnavailableFallsBackToCloudWithNotice`, `pickedOnDeviceFailureEscalatesToCloudAndNotes`.
+10. Build 63: the GeminiService seam (`seam*`), one `route*` test per path, policies (`pickerOnly*`, `goalCalculationNeverOnDevice`, `baseOnlyImagePathsKeepBase`) and the double-fallback rule (`seamPickedEscalationSkipsDuplicateFallback`, `fallbackDifferentFromStrongStillRuns`, `cheapTierSkipsFallbackEqualToBase`, `strongPlanFallbackUnchanged`, `skippedFallbackKeepsWorkoutTerminalError`, `alreadyTriedTable`).
 
 Test `JevTierRouter` with injected `base: RequestConfig` and eligibility closures (no `AIProviderSettings` / Keychain reads).
 
-### Update: every cloud-mode AI path goes through `JevTierRouter.plan`
-Request kinds: `textFood` (`food_text`), `coachChat` (`coach_chat`), `workoutParse` (`workout_parse`), `foodPhoto(caption:)` (`food_photo`), `coachPhoto` (`coach_photo`). Hosted mode still branches off first.
+### Update: every BYOK AI text and image path goes through `JevTierRouter.plan` (build 63)
+Request kinds (`JevTierRequest` → `requestType`, `onDevicePolicy`):
+
+| Kind | `requestType` | Policy |
+|---|---|---|
+| `textFood` | `food_text` | `.scored` |
+| `coachChat` | `coach_chat` | `.scored` |
+| `workoutParse` | `workout_parse` | `.scored` |
+| `foodPhoto(caption:)` | `food_photo` | `.baseOnly` |
+| `coachPhoto` | `coach_photo` | `.baseOnly` |
+| `allergenReport` | `allergen_report` | `.baseOnly` |
+| `servingUnitsPhoto(name)` | `serving_units_photo` | `.baseOnly` |
+| `servingUnits(name)` | `serving_units` | `.pickerOnly` |
+| `mealWhatIf(name)` | `meal_what_if` | `.pickerOnly` |
+| `nutrientGoals` | `nutrient_goals` | `.pickerOnly` |
+| `goalCalculation` | `goal_calculation` | `.baseOnly` |
+
+Policies (D8):
+- **`.scored`**: the picker, then the Jev complexity score (below), may move the request to a cheaper or on-device tier.
+- **`.pickerOnly`**: only a picked on-device model moves it; the Jev classifier is never asked. With the picker Off it returns `base`, recorded as the local shortcut "fixed → your model" only when Model tiers is on.
+- **`.baseOnly`**: neither the picker nor the classifier changes the config. The request uses the user's configured base exactly as before (the vision base for images). This respects the user's own provider choice: if the user's text provider is Apple Intelligence or Gemma, goal calculation runs there, as it did before build 63. Nothing escalates (`strong = base`). Recorded as "image → cloud" (images) or "fixed → your model" (goal calculation) only when the picker is set or Model tiers is on.
+- Goal calculation is `.baseOnly` because it writes saved targets, its prompt can exceed the 4,096-token Apple Foundation Models context, and it runs unattended at launch, where a picked-model failure would set the picker's fallback notice on every launch.
+- `text` carries only a food name or nothing; the telemetry preview falls back to `requestType`, so no profile data reaches the classifier or local telemetry.
+- Router Off and picker Off: zero Jev calls, zero records, and every request is byte-identical to before.
 
 Order inside `plan`:
-1. **Image requests** (`foodPhoto`, `coachPhoto`) return `base` with tier `strong`: on-device image input isn't available on iOS 26, so photos stay on the user's cloud vision provider. Zero Jev calls. When Model tiers or the picker is on, the decision is recorded as a `tierRouting` local shortcut ("image → cloud") so Router stats counts it.
-2. **Settings → AI → On-device model** (`ai.onDeviceModel.choice`: `off` (default) | `appleFoundationModels` | `gemma4`). When set, the three text kinds use that model directly (no complexity score, no `needs_user_data` gate), with `strong = base`. If the model can't run now (Apple Intelligence off / model not ready, Gemma not downloaded and prepared), `base` answers and a one-line notice is stored (`ai.onDeviceModel.lastFallback`) for the picker screen. Recorded as `tierRouting` local shortcut "… (picked)" or `fellBack(skipped)`.
-3. **Picker Off:** the Jev complexity score, exactly as above. Disabled tier routing returns `base`.
+1. **`.baseOnly`** returns `base` with tier `strong`. Zero Jev calls.
+2. **Settings → AI → On-device model** (`ai.onDeviceModel.choice`: `off` (default) | `appleFoundationModels` | `gemma4`). When set, `.scored` and `.pickerOnly` kinds use that model directly (no complexity score, no `needs_user_data` gate). `strong` is `base`, or the configured cloud text fallback when `base` is itself on-device. If the model can't run now (Apple Intelligence off / model not ready, Gemma not downloaded and prepared), the cloud config answers and a one-line notice is stored (`ai.onDeviceModel.lastFallback`) for the picker screen. Recorded as `tierRouting` local shortcut "… (picked)" or `fellBack(skipped)`.
+3. **Picker Off:** `.pickerOnly` returns `base`; `.scored` uses the Jev complexity score, exactly as above. Disabled tier routing returns `base`.
 
-`JevTierRouter.run(plan)` is the shared escalation: try `primary`; if a cheaper or picked on-device tier throws, note the fallback (picked only), retry once on `strong`; if that fails, rethrow the primary error into each call site's existing text/image fallback chain. Workout clarifying questions are answers, not failures, so they never escalate.
+`JevTierRouter.run(plan)` is the shared escalation: try `primary`; if a cheaper or picked on-device tier throws, note the fallback (picked only), retry once on `strong`; if that fails, rethrow the primary error. Workout clarifying questions are answers, not failures, so they never escalate.
+
+`JevTierRouter.runWithFallback` adds the user's configured fallback (Settings → AI) once, for both GeminiService and Coach:
+- A path's terminal errors surface as is, from either attempt, without the fallback (workout `WorkoutTextError`, local `imageConversionFailed`).
+- **No double fallback.** If the escalation already tried the fallback's target (`JevTierPlan.alreadyTried`: same provider, model and base URL), the fallback is not sent again. The escalation's error stands in for it: first the path's terminal policy (so an unreadable workout draft still surfaces directly), then the same surfacing as a real fallback failure (`AnalysisFallbackError` in GeminiService, `AIRequestErrorPolicy.errorToSurface` in Coach). `.strong` plans try only the primary, so their fallback always runs, unchanged.
+
+**The seam.** Every GeminiService AI request runs through `GeminiService.routed(_ route: JevTierRequest, …)`: hosted → plan → key check → JPEG encoding → `runWithFallback`. `route` is non-optional, which is the compile-time gate: no GeminiService request can reach a provider without the router seeing it. Config, plan, fallbacks and transport come from `AIRouteEnvironment.current` (`.live` in the app; tests swap it, because CI can't reach providers, Keychain keys or on-device models). Coach keeps its own tool loop and hosted Gemini path and calls `runWithFallback` directly.
+
+**Hosted mode (D7) is excluded from the router, explicitly.** The hosted Worker picks the model and meters every call on the server, so the router has no client-side lever. A recorded "hosted" decision would inflate Router stats with non-decisions, and letting the picker take hosted traffic would change quota semantics (a product call). The seam's hosted branch runs before `plan` and is the only hosted dispatch in GeminiService (`seamHostedNeverPlans`). Known limitation: the picker is ignored in hosted mode.
+
+### AI call path audit (build 63)
+Every AI path in the iOS app. "Yes" means it goes through `JevTierRouter.plan` and has a `JevTierRoutingTests` case.
+
+| Path | Entry point | Request | Through router | Test |
+|---|---|---|---|---|
+| Text food | `GeminiService.analyzeTextInput` | `textFood` | Yes | `routeTextFood`, `seamTextFoodPlansFoodText` |
+| Text food serving-unit repair | `analyzeTextInput` → `inferServingUnitOptions` | `servingUnits` | Yes | `routeTextFoodServingRepair` |
+| Photo food | `analyzeFood(image:)`, `analyzeFood(images:)`, `autoAnalyze` | `foodPhoto` | Yes | `routePhotoFood`, `seamImageFallbackForImages` |
+| Photo serving-unit repair | photo paths → `inferServingUnitOptions` | `servingUnitsPhoto` | Yes | `routePhotoServingRepair` |
+| Workout parse (after the local fast path) | `GeminiService.analyzeWorkout` | `workoutParse` | Yes | `routeWorkoutParse`, `seamWorkoutClarificationNeverFallsBack` |
+| Meal what-if | `GeminiService.suggestMealWhatIf` | `mealWhatIf` | Yes | `routeMealWhatIf` |
+| Optional nutrient goals | `GeminiService.suggestOptionalNutrientGoals` | `nutrientGoals` | Yes | `seamNutrientGoalsSendsBase`, `pickerOnly*` |
+| Goal calculation (manual and at launch) | `GeminiService.calculateGoals` | `goalCalculation` | Yes | `routeGoalCalculation`, `goalCalculationNeverOnDevice` |
+| Allergen lab report | `GeminiService.extractAllergensFromLabReport(images:)` | `allergenReport` | Yes | `routeAllergenReport`, `baseOnlyImagePathsKeepBase` |
+| Coach text | `ChatService.sendMessage` | `coachChat` | Yes | plan level: `chatNeedingDataNeverOnDevice`, `disabledRouterReturnsBase` (see note) |
+| Coach photo | `ChatService.sendMessage` with an image | `coachPhoto` | Yes | plan level: `imageRequestAlwaysCloudTier` (see note) |
+| Hosted mode, every path above | `AIModeSettings.isHosted` branch | none | excluded (D7) | `seamHostedNeverPlans` |
+| Speech transcription | `SpeechService.transcribe` | none | excluded (STT, separate provider policy) | none |
+| Jev classifier calls | `JevRouter.ask` (TypeSafe) | none | excluded (the router's own calls) | `JevRouterCoreTests` |
+
+Note on Coach: `ChatService.sendMessage` is not driven end to end in tests. Its tool loop, history and hosted Gemini path need a chat-specific transport seam, a larger ChatService refactor than build 63 takes on. Its routing is covered at plan level, and the fallback chain it shares with GeminiService (`runWithFallback`, including the double-fallback rule) is covered through the GeminiService seam and `runWithFallbackSurfacesBothErrors`.
+
+Removed in build 63 (no callers): `analyzeNutritionLabel`, `analyzeWeightTrend`, `extractAllergensFromLabReport(image:)`.
 
 ---
 
