@@ -49,10 +49,12 @@ final class WorkoutSetEntry {
         nextDecision = target.decision
         let index = cursor.storageIndex(for: restStep)
         let existing = sets[exercise.name].flatMap { $0.indices.contains(index) ? $0[index] : nil }
-        // Old Add Set placeholders carry a stale load. Rest entry always uses
-        // the current within-session decision, while preserving optional RPE.
-        nextValue = LoggedSet(weight: target.load ?? existing?.weight ?? 0,
-                              reps: target.reps, rir: target.rir, rpeText: existing?.rpeText ?? "")
+        let step = ExerciseStep(exerciseName: exercise.name, setIndex: index)
+        let value = pending[step] ?? existing ?? LoggedSet(weight: target.load ?? 0,
+            reps: target.reps, rir: target.rir, rpeText: "")
+        var refreshed = SetEntryLogic.refreshedUnfinished(value, target: target)
+        if value.editedFields?.contains(.reps) != true { refreshed.reps = target.reps }
+        nextValue = refreshed
     }
 
     func refreshRestEntry(in store: WorkoutDraftStore, rest: RestSession) {
@@ -104,11 +106,14 @@ final class WorkoutSetEntry {
 
     func row(for exercise: ProgramV2Exercise, at index: Int, in store: WorkoutDraftStore) -> LoggedSet {
         let step = ExerciseStep(exerciseName: exercise.name, setIndex: index)
-        if let pending = pending[step] { return pending }
+        let target = prefill(for: exercise, at: index, in: store)
+        if let pending = pending[step] { return SetEntryLogic.refreshedUnfinished(pending, target: target) }
         let rows = store.existingDraft(for: day)?.sets[exercise.name] ?? []
         let destination = enteredDestinations[step] ?? index
-        if rows.indices.contains(destination) { return rows[destination] }
-        let target = prefill(for: exercise, at: index, in: store)
+        if rows.indices.contains(destination) {
+            let value = rows[destination]
+            return value.reps > 0 ? value : SetEntryLogic.refreshedUnfinished(value, target: target)
+        }
         return LoggedSet(weight: target.load ?? 0, reps: target.reps, rir: target.rir, rpeText: "")
     }
 
@@ -120,12 +125,17 @@ final class WorkoutSetEntry {
         editingStep = step
         let destination = enteredDestinations[step] ?? index
         if store.existingDraft(for: day)?.sets[exercise.name]?.indices.contains(destination) == true {
-            update(exercise, at: destination, in: store, startedAt: startedAt, change)
+            var value = row(for: exercise, at: index, in: store)
+            let previous = value
+            change(&value)
+            value.recordEdits(from: previous, field: field)
+            update(exercise, at: destination, in: store, startedAt: startedAt) { $0 = value }
         } else {
             var value = row(for: exercise, at: index, in: store)
-            let previousReps = value.reps
+            let previous = value
             change(&value)
-            if value.reps > 0 && (field == .reps || value.reps != previousReps) {
+            value.recordEdits(from: previous, field: field)
+            if value.reps > 0 && (field == .reps || value.reps != previous.reps) {
                 let count = store.existingDraft(for: day)?.sets[exercise.name]?.count ?? 0
                 store.update(day, startedAt: startedAt) { $0.sets[exercise.name, default: []].append(value) }
                 enteredDestinations[step] = count
@@ -256,11 +266,14 @@ final class WorkoutSetEntry {
 
     func refreshPrefilledLoads(in store: WorkoutDraftStore, startedAt: Date) {
         guard !Task.isCancelled, let draft = store.existingDraft(for: day) else { return }
-        var suggestions: [String: Double] = [:]
-        for exercise in day.exercises where suggestions[exercise.name] == nil {
-            if let suggestion = suggestedLoad(for: exercise, in: store) { suggestions[exercise.name] = suggestion }
+        var refreshed: [String: [LoggedSet]] = [:]
+        for exercise in day.exercises where refreshed[exercise.name] == nil {
+            guard var rows = draft.sets[exercise.name] else { continue }
+            for index in rows.indices where rows[index].reps == 0 {
+                rows[index] = row(for: exercise, at: index, in: store)
+            }
+            if rows != draft.sets[exercise.name] { refreshed[exercise.name] = rows }
         }
-        let refreshed = PrefillRefresh.refreshedSets(exercises: day.exercises, sets: draft.sets, suggestions: suggestions)
         guard !refreshed.isEmpty else { return }
         store.update(day, startedAt: startedAt) { draft in
             for (name, sets) in refreshed { draft.sets[name] = sets }

@@ -34,6 +34,13 @@ enum SetEntryLogic {
         var load: Double? { decision.load }
     }
 
+    static func refreshedUnfinished(_ value: LoggedSet, target: Prefill) -> LoggedSet {
+        var result = value
+        if value.editedFields?.contains(.load) != true { result.weight = target.load ?? value.weight }
+        if value.editedFields?.contains(.rir) != true { result.rir = target.rir }
+        return result
+    }
+
     static func nextSetPrefill(exercise: ProgramV2Exercise, setIndex: Int, sets: [LoggedSet],
                                last: LastPerformance?, doneLaterThanPlanned: Bool = false,
                                holdLoads: Bool = false) -> Prefill {
