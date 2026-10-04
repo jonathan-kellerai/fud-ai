@@ -458,7 +458,7 @@ struct TrainingProgramBody: Codable, Equatable, Hashable {
             startDate: "2026-09-28",
             dailyStepsTarget: 10_000,
             weeks: 6,
-            reductionWeek: nil,
+            reductionWeek: 4,
             restWeekdays: [ProgramWeekday.sat.rawValue, ProgramWeekday.sun.rawValue],
             notes: "Bundled Program V2",
             days: days
