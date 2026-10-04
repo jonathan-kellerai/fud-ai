@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import calorietracker
 
 @Suite(.serialized)
@@ -410,6 +411,241 @@ struct JevTierRoutingTests {
         #expect(OnDeviceModelSettings.choice == .off)
         OnDeviceModelSettings.choice = .gemma4
         #expect(OnDeviceModelSettings.choice == .gemma4)
+    }
+
+    // MARK: - GeminiService seam (AIRouteEnvironment)
+
+    @Test func seamHostedNeverPlans() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log, hosted: true, plan: { _, _ in
+            Issue.record("Hosted mode never asks the router")
+            return nil
+        }) { _ in Self.foodJSON }
+        try await withRoute(environment) {
+            let text = try await GeminiService.analyzeTextInput(description: "oatmeal", skipHostedMetering: true)
+            #expect(text.name == "Oatmeal")
+            let images = (0..<4).map { _ in Self.image() }
+            _ = try await GeminiService.analyzeFood(images: images, skipHostedMetering: true)
+        }
+        #expect(log.planned.isEmpty)
+        #expect(log.sent.isEmpty)
+        // Hosted caps photos before encoding, exactly as before.
+        #expect(log.hostedImageCounts == [0, HostedAIConstants.maxHostedImages])
+    }
+
+    @Test func seamNutrientGoalsSendsBase() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in #"{"fiber":31}"# }
+        let goals = try await withRoute(environment) {
+            try await GeminiService.suggestOptionalNutrientGoals(
+                profile: Self.profile(),
+                currentGoals: .defaults,
+                heightMetric: true,
+                weightMetric: true
+            )
+        }
+        #expect(goals.goal(for: .fiber) == 31)
+        #expect(log.planned.isEmpty)
+        #expect(log.sent == [base.model])
+    }
+
+    @Test func seamTextFoodPlansFoodText() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in Self.foodJSON }
+        let food = try await withRoute(environment) {
+            try await GeminiService.analyzeTextInput(description: "two eggs", skipHostedMetering: true)
+        }
+        #expect(food.calories == 150)
+        #expect(log.planned == ["food_text"])
+        #expect(log.sent == [base.model])
+        #expect(log.sentImageCounts == [0])
+    }
+
+    @Test func seamImageFallbackForImages() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(
+            log,
+            textFallback: Self.config(.openai, "text-fallback"),
+            imageFallback: Self.config(.anthropic, "vision-fallback")
+        ) { config in
+            if config.model == "gemini-strong" { throw StubError.failed }
+            return Self.foodJSON
+        }
+        _ = try await withRoute(environment) {
+            try await GeminiService.analyzeFood(image: Self.image(), skipHostedMetering: true)
+        }
+        #expect(log.planned == ["food_photo"])
+        #expect(log.plannedHasImage == [true])
+        #expect(log.sent == ["gemini-strong", "vision-fallback"])
+        #expect(log.sentImageCounts == [1, 1])
+    }
+
+    @Test func seamTerminalErrorSkipsFallback() async {
+        let log = RouteLog()
+        let environment = routeEnvironment(log, imageFallback: Self.config(.anthropic, "vision-fallback")) { _ in
+            throw GeminiService.AnalysisError.imageConversionFailed
+        }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeFood(image: Self.image(), skipHostedMetering: true)
+            }
+            Issue.record("Expected imageConversionFailed")
+        } catch GeminiService.AnalysisError.imageConversionFailed {
+        } catch {
+            Issue.record("Unexpected error \(error)")
+        }
+        #expect(log.sent == ["gemini-strong"])
+    }
+
+    @Test func seamWorkoutClarificationNeverFallsBack() async {
+        for (reply, isClarification) in [(#"{"question":"Which day?"}"#, true), ("not a workout", false)] {
+            let log = RouteLog()
+            let environment = routeEnvironment(log, textFallback: Self.config(.openai, "text-fallback")) { _ in reply }
+            do {
+                _ = try await withRoute(environment) {
+                    try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+                }
+                Issue.record("Expected the draft error")
+            } catch {
+                #expect((error is WorkoutClarification) == isClarification)
+                #expect((error is WorkoutTextError) == !isClarification)
+            }
+            #expect(log.planned == ["workout_parse"])
+            // Search prompt, then draft prompt, both on the primary. The fallback never runs.
+            #expect(log.sent == ["gemini-strong", "gemini-strong"])
+        }
+    }
+
+    @Test func seamPickedEscalationThenFallback_currentBehavior() async {
+        let log = RouteLog()
+        let apple = Self.config(.appleIntelligence, "System Language Model")
+        let cloud = Self.config(.openai, "cloud-text")
+        let environment = routeEnvironment(
+            log,
+            base: apple,
+            plan: { _, _ in JevTierPlan(primary: apple, strong: cloud, tier: .appleIntelligence, pickedOnDevice: true) },
+            textFallback: cloud
+        ) { _ in throw StubError.failed }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+            }
+            Issue.record("Expected both providers to fail")
+        } catch {
+            #expect(error is AnalysisFallbackError)
+        }
+        // Today the escalation target runs a second time as the configured fallback.
+        #expect(log.sent == ["System Language Model", "cloud-text", "cloud-text"])
+        #expect(log.notices.count == 1)
+    }
+
+    @Test func runWithFallbackSurfacesBothErrors() async {
+        let fallback = Self.config(.openai, "text-fallback")
+        var tried: [String] = []
+        var surfaced: (String, String)?
+        do {
+            _ = try await JevTierRouter.runWithFallback(
+                JevTierPlan(primary: base, strong: base, tier: .strong),
+                fallback: { _ in fallback },
+                surface: { primaryError, config, fallbackError in
+                    surfaced = (config.model, fallbackError.localizedDescription)
+                    return primaryError
+                },
+                recordFallback: { _ in Issue.record("No notice for the strong tier") }
+            ) { config -> String in
+                tried.append(config.model)
+                throw StubError.failed
+            }
+            Issue.record("Expected the surfaced error")
+        } catch {
+            #expect(error is StubError)
+        }
+        #expect(tried == [base.model, "text-fallback"])
+        #expect(surfaced?.0 == "text-fallback")
+    }
+
+    /// What the seam asked the environment for, in order.
+    private final class RouteLog {
+        var planned: [String] = []
+        var plannedHasImage: [Bool] = []
+        var sent: [String] = []
+        var sentImageCounts: [Int] = []
+        var hostedImageCounts: [Int] = []
+        var notices: [OnDeviceFallbackNotice?] = []
+    }
+
+    /// `plan` returning nil keeps `base`, like a disabled router.
+    private func routeEnvironment(
+        _ log: RouteLog,
+        hosted: Bool = false,
+        base baseOverride: AIProviderSettings.RequestConfig? = nil,
+        plan: ((JevTierRequest, AIProviderSettings.RequestConfig) -> JevTierPlan?)? = nil,
+        textFallback: AIProviderSettings.RequestConfig? = nil,
+        imageFallback: AIProviderSettings.RequestConfig? = nil,
+        reply: @escaping (AIProviderSettings.RequestConfig) throws -> String
+    ) -> AIRouteEnvironment {
+        let baseConfig = baseOverride ?? base
+        return AIRouteEnvironment(
+            isHosted: { hosted },
+            base: { _ in baseConfig },
+            plan: { request, requestBase in
+                log.planned.append(request.requestType)
+                log.plannedHasImage.append(request.hasImage)
+                return plan?(request, requestBase) ?? JevTierPlan(primary: requestBase, strong: requestBase, tier: .strong)
+            },
+            textFallback: { _ in textFallback },
+            imageFallback: { _ in imageFallback },
+            recordFallback: { log.notices.append($0) },
+            dispatch: { config, _, imageDataList, _ in
+                log.sent.append(config.model)
+                log.sentImageCounts.append(imageDataList.count)
+                return try reply(config)
+            },
+            hosted: { _, imageDataList in
+                log.hostedImageCounts.append(imageDataList.count)
+                return try reply(Self.config(.gemini, "hosted"))
+            }
+        )
+    }
+
+    private func withRoute<T>(_ environment: AIRouteEnvironment, _ body: () async throws -> T) async rethrows -> T {
+        let saved = AIRouteEnvironment.current
+        AIRouteEnvironment.current = environment
+        defer { AIRouteEnvironment.current = saved }
+        return try await body()
+    }
+
+    private static func config(_ provider: AIProvider, _ model: String) -> AIProviderSettings.RequestConfig {
+        AIProviderSettings.RequestConfig(
+            provider: provider,
+            model: model,
+            baseURL: "https://\(model).test",
+            apiKey: provider.requiresAPIKey ? "key" : nil
+        )
+    }
+
+    private static let foodJSON = #"{"name":"Oatmeal","calories":150,"protein":5,"carbs":27,"fat":3,"serving_size_grams":40,"ingredients":[],"unit_options":[]}"#
+
+    /// Starts with "{" so the on-device fast path steps aside and the AI path runs.
+    private static let workoutText = #"{"answer":"bench 3x10 at 60kg"}"#
+
+    private static func image() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
+    private static func profile() -> UserProfile {
+        UserProfile(
+            name: "Router",
+            gender: .male,
+            birthday: Date(timeIntervalSince1970: 0),
+            heightCm: 180,
+            weightKg: 80,
+            activityLevel: .moderate,
+            goal: .maintain
+        )
     }
 
     private enum StubError: LocalizedError {

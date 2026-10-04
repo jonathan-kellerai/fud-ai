@@ -920,6 +920,10 @@ struct AIProviderSettings {
         let model: String
         let baseURL: String
         let apiKey: String?
+
+        var requestConfig: AIProviderSettings.RequestConfig {
+            AIProviderSettings.RequestConfig(provider: provider, model: model, baseURL: baseURL, apiKey: apiKey)
+        }
     }
 
     /// Returns the resolved fallback config when (a) fallback is enabled, (b) the fallback

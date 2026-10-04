@@ -310,7 +310,6 @@ struct GeminiService {
     }
 
     /// Same prompts and parser for every provider, including Apple Foundation Models and Gemma.
-    /// Cloud mode routes through JevTierRouter like text food.
     private static func callWorkoutAnalysis(description: String, date: Date, unit: WeightUnit,
                                             library: [ExerciseLibraryItem]) async throws -> WorkoutTextDraft {
         /// A clarifying question is a valid answer: it ends routing instead of escalating.
@@ -326,66 +325,10 @@ struct GeminiService {
             }
         }
 
-        if AIModeSettings.isHosted {
-            let hosted = try await analyze { prompt in
-                try await callAI(prompt: prompt, image: nil)
-            }
-            return try hosted.get()
-        }
-        let base = AIProviderSettings.currentConfig(requiresVision: false)
-        let plan = await JevTierRouter.plan(.workoutParse(description), base: base)
-        let primary = plan.primary
-        if primary.provider.requiresAPIKey, primary.apiKey == nil {
-            throw AnalysisError.noAPIKey
-        }
-
-        let result: Result<WorkoutTextDraft, WorkoutClarification>
-        do {
-            // A cheaper or on-device tier that fails, including unreadable JSON, retries once on the strong config.
-            result = try await JevTierRouter.run(plan) { config in
-                try await analyze { prompt in
-                    try await dispatch(
-                        provider: config.provider,
-                        model: config.model,
-                        baseURL: config.baseURL,
-                        apiKey: config.apiKey,
-                        prompt: prompt,
-                        imageDataList: []
-                    )
-                }
-            }
-        } catch {
-            if error is CancellationError { throw error }
-            // Unreadable drafts surface as before; only request failures use the text fallback.
-            if error is WorkoutTextError { throw error }
-            guard let fallback = AIProviderSettings.currentTextFallbackConfig(
-                excludingPrimary: primary.provider,
-                model: primary.model
-            ) else {
-                throw error
-            }
-            do {
-                result = try await analyze { prompt in
-                    try await dispatch(
-                        provider: fallback.provider,
-                        model: fallback.model,
-                        baseURL: fallback.baseURL,
-                        apiKey: fallback.apiKey,
-                        prompt: prompt,
-                        imageDataList: []
-                    )
-                }
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
-                if fallbackError is WorkoutTextError { throw fallbackError }
-                let chosenError = AIRequestErrorPolicy.errorToSurface(
-                    primaryProvider: primary.provider, primaryError: error, fallbackError: fallbackError
-                )
-                let detail = (chosenError as? AnalysisError)?.localizedDescription
-                    ?? (primary.provider == .gemma4Local ? chosenError.localizedDescription : AIErrorKind.generic.message)
-                throw AnalysisFallbackError(primaryName: primary.provider.displayName,
-                    fallbackName: fallback.provider.displayName, detail: detail)
-            }
+        // Unreadable drafts surface as before; only request failures use the text fallback.
+        // A cheaper or on-device tier that fails, including unreadable JSON, retries once on the strong config.
+        let result = try await routed(.workoutParse(description), terminal: { $0 is WorkoutTextError }) { attempt in
+            try await analyze { prompt in try await attempt.send(prompt, true) }
         }
         return try result.get()
     }
@@ -754,90 +697,20 @@ struct GeminiService {
         try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse, route: route)
     }
 
+    /// Apple Foundation Models answers text food with its own structured on-device generation.
     private static func callTextFoodAnalysis(prompt: String, description: String) async throws -> FoodAnalysis {
-        if AIModeSettings.isHosted {
-            let text = try await HostedAIService.generate(
-                prompt: prompt,
-                imageDataList: [],
-                systemInstruction: AIProviderSettings.currentUserContext
-            )
+        try await routed(.textFood(description)) { attempt -> FoodAnalysis in
+            if attempt.provider == .appleIntelligence {
+                #if canImport(FoundationModels)
+                if #available(iOS 26.0, *) {
+                    return try await OnDeviceFoodService.analyzeTextInput(description: description)
+                }
+                #endif
+                throw AnalysisError.requestFailed(.unsupportedDevice)
+            }
+            let text = try await attempt.send(prompt, true)
             return try parseFoodAnalysis(from: text)
         }
-        let base = AIProviderSettings.currentConfig(requiresVision: false)
-        let plan = await JevTierRouter.plan(.textFood(description), base: base)
-        let primary = plan.primary
-        if primary.provider.requiresAPIKey, primary.apiKey == nil {
-            throw AnalysisError.noAPIKey
-        }
-
-        do {
-            // A cheaper or on-device tier that fails retries once on the strong config.
-            return try await JevTierRouter.run(plan) { config in
-                try await dispatchFoodAnalysis(
-                    provider: config.provider,
-                    model: config.model,
-                    baseURL: config.baseURL,
-                    apiKey: config.apiKey,
-                    prompt: prompt,
-                    description: description
-                )
-            }
-        } catch {
-            if error is CancellationError { throw error }
-            guard let fallback = AIProviderSettings.currentTextFallbackConfig(
-                excludingPrimary: primary.provider,
-                model: primary.model
-            ) else {
-                throw error
-            }
-            do {
-                return try await dispatchFoodAnalysis(
-                    provider: fallback.provider,
-                    model: fallback.model,
-                    baseURL: fallback.baseURL,
-                    apiKey: fallback.apiKey,
-                    prompt: prompt,
-                    description: description
-                )
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
-                let chosenError = AIRequestErrorPolicy.errorToSurface(
-                    primaryProvider: primary.provider, primaryError: error, fallbackError: fallbackError
-                )
-                let detail = (chosenError as? AnalysisError)?.localizedDescription
-                    ?? (primary.provider == .gemma4Local ? chosenError.localizedDescription : AIErrorKind.generic.message)
-                throw AnalysisFallbackError(primaryName: primary.provider.displayName,
-                    fallbackName: fallback.provider.displayName, detail: detail)
-            }
-        }
-    }
-
-    private static func dispatchFoodAnalysis(
-        provider: AIProvider,
-        model: String,
-        baseURL: String,
-        apiKey: String?,
-        prompt: String,
-        description: String
-    ) async throws -> FoodAnalysis {
-        if provider == .appleIntelligence {
-            #if canImport(FoundationModels)
-            if #available(iOS 26.0, *) {
-                return try await OnDeviceFoodService.analyzeTextInput(description: description)
-            }
-            #endif
-            throw AnalysisError.requestFailed(.unsupportedDevice)
-        }
-
-        let text = try await dispatch(
-            provider: provider,
-            model: model,
-            baseURL: baseURL,
-            apiKey: apiKey,
-            prompt: prompt,
-            imageDataList: []
-        )
-        return try parseFoodAnalysis(from: text)
     }
 
     private static func runWithHostedQuota<T>(
@@ -859,20 +732,50 @@ struct GeminiService {
         jsonResponse: Bool = true,
         route: JevTierRequest? = nil
     ) async throws -> String {
-        if AIModeSettings.isHosted {
+        // imageConversionFailed is local — fallback won't help, rethrow.
+        // For everything else (network / 5xx / 4xx / parser failure) try fallback.
+        let isLocalImageFailure: (Error) -> Bool = { error in
+            if case AnalysisError.imageConversionFailed = error { return true }
+            return false
+        }
+        return try await routed(route, images: images, terminal: isLocalImageFailure) { attempt in
+            try await attempt.send(prompt, jsonResponse)
+        }
+    }
+
+    /// One provider attempt. `provider` is nil for hosted mode, where the Worker picks the model.
+    private struct AIAttempt {
+        let provider: AIProvider?
+        let send: (_ prompt: String, _ jsonResponse: Bool) async throws -> String
+    }
+
+    /// The one pipeline every GeminiService AI request runs through:
+    /// hosted → plan → key check → JPEG encoding → JevTierRouter.run → configured fallback → error.
+    /// Hosted mode skips the router (D7): the Worker picks the model and meters the call.
+    /// A nil route keeps `base` without asking the router.
+    /// `terminal` errors surface as is, from either attempt, without trying the fallback.
+    private static func routed<T>(
+        _ route: JevTierRequest?,
+        images: [UIImage] = [],
+        terminal: (Error) -> Bool = { _ in false },
+        _ perform: (AIAttempt) async throws -> T
+    ) async throws -> T {
+        let environment = AIRouteEnvironment.current
+        if environment.isHosted() {
             let capped = Array(images.prefix(HostedAIConstants.maxHostedImages))
             let imageDataList = try capped.map { try encodedJPEGData(for: $0) }
-            return try await HostedAIService.generate(
-                prompt: prompt,
-                imageDataList: imageDataList,
-                systemInstruction: AIProviderSettings.currentUserContext
-            )
+            return try await perform(AIAttempt(provider: nil) { prompt, _ in
+                try await environment.hosted(prompt, imageDataList)
+            })
         }
-        let base = AIProviderSettings.currentConfig(requiresVision: !images.isEmpty)
-        var primary = base
+        let base = environment.base(!images.isEmpty)
+        let plan: JevTierPlan
         if let route {
-            primary = await JevTierRouter.plan(route, base: base).primary
+            plan = await environment.plan(route, base)
+        } else {
+            plan = JevTierPlan(primary: base, strong: base, tier: .strong)
         }
+        let primary = plan.primary
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
             throw AnalysisError.noAPIKey
         }
@@ -881,53 +784,24 @@ struct GeminiService {
             try encodedJPEGData(for: $0)
         }
 
-        do {
-            return try await dispatch(
-                provider: primary.provider,
-                model: primary.model,
-                baseURL: primary.baseURL,
-                apiKey: primary.apiKey,
-                prompt: prompt,
-                imageDataList: imageDataList,
-                jsonResponse: jsonResponse
-            )
-        } catch {
-            if error is CancellationError { throw error }
-            // imageConversionFailed is local — fallback won't help, rethrow.
-            // For everything else (network / 5xx / 4xx / parser failure) try fallback.
-            if case AnalysisError.imageConversionFailed = error { throw error }
-            let fallback = images.isEmpty
-                ? AIProviderSettings.currentTextFallbackConfig(
-                    excludingPrimary: primary.provider,
-                    model: primary.model
-                )
-                : AIProviderSettings.currentImageFallbackConfig(
-                    excludingPrimary: primary.provider,
-                    model: primary.model
-                )
-            guard let fallback else {
-                throw error
-            }
-            do {
-                return try await dispatch(
-                    provider: fallback.provider,
-                    model: fallback.model,
-                    baseURL: fallback.baseURL,
-                    apiKey: fallback.apiKey,
-                    prompt: prompt,
-                    imageDataList: imageDataList,
-                    jsonResponse: jsonResponse
-                )
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
+        return try await JevTierRouter.runWithFallback(
+            plan,
+            fallback: { images.isEmpty ? environment.textFallback($0) : environment.imageFallback($0) },
+            terminal: terminal,
+            surface: { primaryError, fallback, fallbackError in
                 let chosenError = AIRequestErrorPolicy.errorToSurface(
-                    primaryProvider: primary.provider, primaryError: error, fallbackError: fallbackError
+                    primaryProvider: primary.provider, primaryError: primaryError, fallbackError: fallbackError
                 )
                 let detail = (chosenError as? AnalysisError)?.localizedDescription
                     ?? (primary.provider == .gemma4Local ? chosenError.localizedDescription : AIErrorKind.generic.message)
-                throw AnalysisFallbackError(primaryName: primary.provider.displayName,
+                return AnalysisFallbackError(primaryName: primary.provider.displayName,
                     fallbackName: fallback.provider.displayName, detail: detail)
-            }
+            },
+            recordFallback: environment.recordFallback
+        ) { config in
+            try await perform(AIAttempt(provider: config.provider) { prompt, jsonResponse in
+                try await environment.dispatch(config, prompt, imageDataList, jsonResponse)
+            })
         }
     }
 
@@ -957,7 +831,7 @@ struct GeminiService {
         return data
     }
 
-    private static func dispatch(provider: AIProvider, model: String, baseURL: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool = true) async throws -> String {
+    fileprivate static func dispatch(provider: AIProvider, model: String, baseURL: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool = true) async throws -> String {
         switch provider.apiFormat {
         case .onDevice:
             guard imageDataList.isEmpty else {
@@ -1771,5 +1645,57 @@ struct GeminiService {
             servingSizeGrams: servingSizeGrams
         )
         return parsed.requiresFallback ? [] : parsed.options
+    }
+}
+
+/// Where GeminiService's AI requests get their config, plan, fallbacks and transport. `live` reads
+/// Settings and calls the providers. Tests swap `current` (their suite is serialized): CI can't reach
+/// providers, Keychain keys or on-device models, while prompts and parsers still run for real.
+struct AIRouteEnvironment {
+    typealias Config = AIProviderSettings.RequestConfig
+
+    var isHosted: () -> Bool
+    var base: (_ requiresVision: Bool) -> Config
+    var plan: (JevTierRequest, Config) async -> JevTierPlan
+    /// Settings → AI fallback for the given primary, or nil when there is none.
+    var textFallback: (_ primary: Config) -> Config?
+    var imageFallback: (_ primary: Config) -> Config?
+    var recordFallback: (OnDeviceFallbackNotice?) -> Void
+    var dispatch: (Config, _ prompt: String, _ imageDataList: [Data], _ jsonResponse: Bool) async throws -> String
+    var hosted: (_ prompt: String, _ imageDataList: [Data]) async throws -> String
+
+    static var current = AIRouteEnvironment.live
+
+    static var live: AIRouteEnvironment {
+        AIRouteEnvironment(
+            isHosted: { AIModeSettings.isHosted },
+            base: { requiresVision in AIProviderSettings.currentConfig(requiresVision: requiresVision) },
+            plan: { request, base in await JevTierRouter.plan(request, base: base) },
+            textFallback: { primary in
+                AIProviderSettings.currentTextFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+            },
+            imageFallback: { primary in
+                AIProviderSettings.currentImageFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+            },
+            recordFallback: { notice in OnDeviceModelSettings.lastFallback = notice },
+            dispatch: { config, prompt, imageDataList, jsonResponse in
+                try await GeminiService.dispatch(
+                    provider: config.provider,
+                    model: config.model,
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    prompt: prompt,
+                    imageDataList: imageDataList,
+                    jsonResponse: jsonResponse
+                )
+            },
+            hosted: { prompt, imageDataList in
+                try await HostedAIService.generate(
+                    prompt: prompt,
+                    imageDataList: imageDataList,
+                    systemInstruction: AIProviderSettings.currentUserContext
+                )
+            }
+        )
     }
 }

@@ -153,43 +153,28 @@ struct ChatService {
             }
         }
 
-        do {
-            // A cheaper or on-device tier that fails retries once on the strong config.
-            return try await JevTierRouter.run(tierPlan) { tier in
-                try await request(
-                    provider: tier.provider,
-                    model: tier.model,
-                    baseURL: tier.baseURL,
-                    apiKey: tier.apiKey
-                )
-            }
-        } catch {
-            if error is CancellationError { throw error }
-            let fallback = imageData == nil
-                ? AIProviderSettings.currentTextFallbackConfig(
-                    excludingPrimary: config.provider,
-                    model: config.model
-                )
-                : AIProviderSettings.currentImageFallbackConfig(
-                    excludingPrimary: config.provider,
-                    model: config.model
-                )
-            guard let fallback else { throw error }
-            do {
-                return try await request(
-                    provider: fallback.provider,
-                    model: fallback.model,
-                    baseURL: fallback.baseURL,
-                    apiKey: fallback.apiKey
-                )
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
-                throw AIRequestErrorPolicy.errorToSurface(
+        // A cheaper or on-device tier that fails retries once on the strong config.
+        return try await JevTierRouter.runWithFallback(
+            tierPlan,
+            fallback: { primary in
+                imageData == nil
+                    ? AIProviderSettings.currentTextFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+                    : AIProviderSettings.currentImageFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+            },
+            surface: { primaryError, _, fallbackError in
+                AIRequestErrorPolicy.errorToSurface(
                     primaryProvider: config.provider,
-                    primaryError: error,
+                    primaryError: primaryError,
                     fallbackError: fallbackError
                 )
             }
+        ) { tier in
+            try await request(
+                provider: tier.provider,
+                model: tier.model,
+                baseURL: tier.baseURL,
+                apiKey: tier.apiKey
+            )
         }
     }
 

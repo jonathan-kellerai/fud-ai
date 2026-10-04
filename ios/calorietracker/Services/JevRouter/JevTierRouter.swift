@@ -237,6 +237,34 @@ enum JevTierRouter {
         }
     }
 
+    /// `run`, then the user's configured fallback (Settings → AI) once. `fallback` gets
+    /// `plan.primary` and returns the fallback config, or nil when there is none.
+    /// A `terminal` error surfaces as is, from either attempt, without trying the fallback.
+    /// When both fail, `surface` turns the two errors into the one the caller throws.
+    static func runWithFallback<T>(
+        _ plan: JevTierPlan,
+        fallback: (AIProviderSettings.RequestConfig) -> AIProviderSettings.RequestConfig?,
+        terminal: (Error) -> Bool = { _ in false },
+        surface: (_ primaryError: Error, _ fallback: AIProviderSettings.RequestConfig, _ fallbackError: Error) -> Error,
+        recordFallback: ((OnDeviceFallbackNotice?) -> Void)? = nil,
+        _ perform: (AIProviderSettings.RequestConfig) async throws -> T
+    ) async throws -> T {
+        do {
+            return try await run(plan, recordFallback: recordFallback, perform)
+        } catch {
+            if error is CancellationError { throw error }
+            if terminal(error) { throw error }
+            guard let fallbackConfig = fallback(plan.primary) else { throw error }
+            do {
+                return try await perform(fallbackConfig)
+            } catch let fallbackError {
+                if fallbackError is CancellationError { throw fallbackError }
+                if terminal(fallbackError) { throw fallbackError }
+                throw surface(error, fallbackConfig, fallbackError)
+            }
+        }
+    }
+
     static let noCloudProviderReason = "no cloud provider configured"
 
     static func isOnDeviceProvider(_ provider: AIProvider) -> Bool {
@@ -256,15 +284,7 @@ enum JevTierRouter {
 
     /// Settings → AI → Text fallback, resolved the same way the text request paths resolve it.
     private static func configuredTextFallback(for base: AIProviderSettings.RequestConfig) -> AIProviderSettings.RequestConfig? {
-        guard let fallback = AIProviderSettings.currentTextFallbackConfig(excludingPrimary: base.provider, model: base.model) else {
-            return nil
-        }
-        return AIProviderSettings.RequestConfig(
-            provider: fallback.provider,
-            model: fallback.model,
-            baseURL: fallback.baseURL,
-            apiKey: fallback.apiKey
-        )
+        AIProviderSettings.currentTextFallbackConfig(excludingPrimary: base.provider, model: base.model)?.requestConfig
     }
 
     private static func tierLabel(_ tier: JevTier) -> String {
