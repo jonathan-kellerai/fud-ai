@@ -290,7 +290,7 @@ struct GeminiService {
         \(existingMeals)
         """
 
-        let text = try await callAI(prompt: prompt, image: nil, jsonResponse: false)
+        let text = try await callAI(prompt: prompt, image: nil, jsonResponse: false, route: .mealWhatIf(entry.name))
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
@@ -471,7 +471,7 @@ struct GeminiService {
         {"allergens":["milk","peanut"]}
         """
         return try await runWithHostedQuota(.allergensLab) {
-            let text = try await callAI(prompt: prompt, images: images)
+            let text = try await callAI(prompt: prompt, images: images, route: .allergenReport)
             return try parseAllergensFromLabReport(from: text)
         }
     }
@@ -532,7 +532,7 @@ struct GeminiService {
         \(currentGoalLines)
         """
 
-        let text = try await callAI(prompt: prompt, image: nil)
+        let text = try await callAI(prompt: prompt, image: nil, route: .nutrientGoals)
         return try parseOptionalNutrientGoals(from: text, fallback: currentGoals)
     }
 
@@ -645,7 +645,7 @@ struct GeminiService {
         \(evidenceSection)
         """
 
-        let text = try await callAI(prompt: prompt, image: nil)
+        let text = try await callAI(prompt: prompt, image: nil, route: .goalCalculation)
         return try parseGoalCalculation(from: text, profile: profile)
         }
 
@@ -692,7 +692,7 @@ struct GeminiService {
         prompt: String,
         image: UIImage?,
         jsonResponse: Bool = true,
-        route: JevTierRequest? = nil
+        route: JevTierRequest
     ) async throws -> String {
         try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse, route: route)
     }
@@ -724,13 +724,12 @@ struct GeminiService {
         return try await AIGate.runWithHostedQuota(action, work)
     }
 
-    /// - Parameter route: photo food logging passes `.foodPhoto`. JevTierRouter keeps image
-    ///   requests on the configured cloud provider and records the decision.
+    /// - Parameter route: what the request is, so JevTierRouter can apply its policy and record it.
     private static func callAI(
         prompt: String,
         images: [UIImage],
         jsonResponse: Bool = true,
-        route: JevTierRequest? = nil
+        route: JevTierRequest
     ) async throws -> String {
         // imageConversionFailed is local — fallback won't help, rethrow.
         // For everything else (network / 5xx / 4xx / parser failure) try fallback.
@@ -752,10 +751,10 @@ struct GeminiService {
     /// The one pipeline every GeminiService AI request runs through:
     /// hosted → plan → key check → JPEG encoding → JevTierRouter.run → configured fallback → error.
     /// Hosted mode skips the router (D7): the Worker picks the model and meters the call.
-    /// A nil route keeps `base` without asking the router.
+    /// `route` is required, so no request can reach a provider without the router seeing it.
     /// `terminal` errors surface as is, from either attempt, without trying the fallback.
     private static func routed<T>(
-        _ route: JevTierRequest?,
+        _ route: JevTierRequest,
         images: [UIImage] = [],
         terminal: (Error) -> Bool = { _ in false },
         _ perform: (AIAttempt) async throws -> T
@@ -769,12 +768,7 @@ struct GeminiService {
             })
         }
         let base = environment.base(!images.isEmpty)
-        let plan: JevTierPlan
-        if let route {
-            plan = await environment.plan(route, base)
-        } else {
-            plan = JevTierPlan(primary: base, strong: base, tier: .strong)
-        }
+        let plan = await environment.plan(route, base)
         let primary = plan.primary
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
             throw AnalysisError.noAPIKey
@@ -1552,7 +1546,8 @@ struct GeminiService {
         - Return [] when the evidence does not support a reliable non-gram option.
         """
 
-        let text = try await callAI(prompt: prompt, image: image)
+        let route = image == nil ? JevTierRequest.servingUnits(name) : JevTierRequest.servingUnitsPhoto(name)
+        let text = try await callAI(prompt: prompt, image: image, route: route)
         return try parseServingUnitOptions(from: text, servingSizeGrams: servingSizeGrams)
     }
 

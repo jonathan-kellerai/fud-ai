@@ -116,6 +116,26 @@ struct JevTierRoutingTests {
         #expect(!JevTierRequest.workoutParse("x").hasImage)
         #expect(!JevTierRequest.workoutParse("x").isChat)
         #expect(JevTierRequest.coachPhoto("x").isChat)
+        #expect(JevTierRequest.allergenReport.requestType == "allergen_report")
+        #expect(JevTierRequest.servingUnitsPhoto("x").requestType == "serving_units_photo")
+        #expect(JevTierRequest.servingUnits("x").requestType == "serving_units")
+        #expect(JevTierRequest.mealWhatIf("x").requestType == "meal_what_if")
+        #expect(JevTierRequest.nutrientGoals.requestType == "nutrient_goals")
+        #expect(JevTierRequest.goalCalculation.requestType == "goal_calculation")
+        #expect(JevTierRequest.allergenReport.hasImage)
+        #expect(JevTierRequest.servingUnitsPhoto("x").hasImage)
+        #expect(!JevTierRequest.servingUnits("x").hasImage)
+        #expect(!JevTierRequest.goalCalculation.hasImage)
+        // Only names or nothing reach the classifier and telemetry, never profile data.
+        #expect(JevTierRequest.nutrientGoals.text.isEmpty)
+        #expect(JevTierRequest.goalCalculation.preview == "goal_calculation")
+        #expect(JevTierRequest.mealWhatIf("Pizza").preview == "Pizza")
+        let policies = [
+            JevTierRequest.textFood("x"), .coachChat("x"), .workoutParse("x"), .foodPhoto(caption: ""), .coachPhoto("x"),
+            .allergenReport, .servingUnitsPhoto("x"), .servingUnits("x"), .mealWhatIf("x"), .nutrientGoals, .goalCalculation
+        ].map(\.onDevicePolicy)
+        #expect(policies == [.scored, .scored, .scored, .baseOnly, .baseOnly,
+                             .baseOnly, .baseOnly, .pickerOnly, .pickerOnly, .pickerOnly, .baseOnly])
     }
 
     @Test func imageRequestAlwaysCloudTier() async {
@@ -218,9 +238,13 @@ struct JevTierRoutingTests {
             request: text
         ) == .onDevice(.onDevice))
         for choice in OnDeviceModelChoice.allCases {
-            #expect(OnDeviceModelSelector.select(Self.state(choice), request: .foodPhoto(caption: "")) == .cloudForImage)
-            #expect(OnDeviceModelSelector.select(Self.state(choice), request: .coachPhoto("x")) == .cloudForImage)
+            #expect(OnDeviceModelSelector.select(Self.state(choice), request: .foodPhoto(caption: "")) == .baseOnly)
+            #expect(OnDeviceModelSelector.select(Self.state(choice), request: .coachPhoto("x")) == .baseOnly)
+            #expect(OnDeviceModelSelector.select(Self.state(choice), request: .allergenReport) == .baseOnly)
+            #expect(OnDeviceModelSelector.select(Self.state(choice), request: .goalCalculation) == .baseOnly)
         }
+        #expect(OnDeviceModelSelector.select(Self.state(.off), request: .mealWhatIf("x")) == .router)
+        #expect(OnDeviceModelSelector.select(Self.state(.gemma4), request: .nutrientGoals) == .onDevice(.onDevice))
     }
 
     @Test func pickedAppleBypassesComplexityScore() async {
@@ -445,7 +469,7 @@ struct JevTierRoutingTests {
             )
         }
         #expect(goals.goal(for: .fiber) == 31)
-        #expect(log.planned.isEmpty)
+        #expect(log.planned == ["nutrient_goals"])
         #expect(log.sent == [base.model])
     }
 
@@ -640,6 +664,224 @@ struct JevTierRoutingTests {
         #expect(strong.alreadyTried(provider: base.provider, model: base.model, baseURL: base.baseURL))
     }
 
+    // MARK: - Every GeminiService path asks the router
+
+    @Test func routeMealWhatIf() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in "  Fits well.  " }
+        let entry = FoodEntry(name: "Pizza", calories: 800, protein: 30, carbs: 90, fat: 35, timestamp: Date(), source: .manual, mealType: .dinner)
+        let advice = try await withRoute(environment) {
+            try await GeminiService.suggestMealWhatIf(entry: entry, dayEntries: [], profile: Self.profile(), weightMetric: true)
+        }
+        #expect(advice == "Fits well.")
+        #expect(log.planned == ["meal_what_if"])
+        #expect(log.plannedHasImage == [false])
+    }
+
+    @Test func routeGoalCalculation() async {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in throw StubError.failed }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.calculateGoals(profile: Self.profile(), heightMetric: true, weightMetric: true, countTowardHostedQuota: false)
+            }
+            Issue.record("Expected the provider error")
+        } catch {
+            #expect(error is StubError)
+        }
+        #expect(log.planned == ["goal_calculation"])
+        #expect(log.sent == [base.model])
+    }
+
+    @Test func routeAllergenReport() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in #"{"allergens":["milk"]}"# }
+        let allergens = try await withRoute(environment) {
+            try await GeminiService.extractAllergensFromLabReport(images: [Self.image()])
+        }
+        #expect(allergens == ["milk"])
+        #expect(log.planned == ["allergen_report"])
+        #expect(log.plannedHasImage == [true])
+        #expect(log.sentImageCounts == [1])
+    }
+
+    @Test func routeTextFood() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in Self.foodJSON }
+        _ = try await withRoute(environment) {
+            try await GeminiService.analyzeTextInput(description: "oatmeal", skipHostedMetering: true)
+        }
+        #expect(log.planned == ["food_text"])
+        #expect(log.plannedHasImage == [false])
+    }
+
+    @Test func routeTextFoodServingRepair() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in
+            log.sent.count == 1 ? Self.zeroMacroJSON : #"{"unit_options":[]}"#
+        }
+        _ = try await withRoute(environment) {
+            try await GeminiService.analyzeTextInput(description: "glass of water", skipHostedMetering: true)
+        }
+        #expect(log.planned == ["food_text", "serving_units"])
+        #expect(log.plannedHasImage == [false, false])
+    }
+
+    @Test func routePhotoFood() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in Self.foodJSON }
+        try await withRoute(environment) {
+            _ = try await GeminiService.analyzeFood(image: Self.image(), description: "lunch", skipHostedMetering: true)
+            _ = try await GeminiService.autoAnalyze(image: Self.image())
+            _ = try await GeminiService.analyzeFood(images: [Self.image(), Self.image()], skipHostedMetering: true)
+        }
+        #expect(log.planned == ["food_photo", "food_photo", "food_photo"])
+        #expect(log.plannedHasImage == [true, true, true])
+        #expect(log.sentImageCounts == [1, 1, 2])
+    }
+
+    @Test func routePhotoServingRepair() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in
+            log.sent.count == 1 ? Self.zeroMacroJSON : #"{"unit_options":[]}"#
+        }
+        _ = try await withRoute(environment) {
+            try await GeminiService.analyzeFood(image: Self.image(), skipHostedMetering: true)
+        }
+        #expect(log.planned == ["food_photo", "serving_units_photo"])
+        #expect(log.plannedHasImage == [true, true])
+    }
+
+    @Test func routeWorkoutParse() async {
+        let log = RouteLog()
+        let environment = routeEnvironment(log) { _ in throw StubError.failed }
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeWorkout(description: Self.workoutText, date: Date(), unit: .kg, library: [])
+            }
+            Issue.record("Expected the provider error")
+        } catch {
+            #expect(error is StubError)
+        }
+        #expect(log.planned == ["workout_parse"])
+    }
+
+    // MARK: - Tier policies
+
+    @Test func pickerOnlySkipsClassifier() async {
+        TypeSafeStub.handler = { _, _ in (200, [:], Self.scoreJSON(0.1, confidence: 0.95)) }
+        let telemetry = JevRouterTelemetry(defaults: suite(UUID().uuidString))
+        let router = makeRouter(telemetry: telemetry)
+        for request in [JevTierRequest.mealWhatIf("pizza"), .nutrientGoals, .servingUnits("toast")] {
+            let plan = await JevTierRouter.plan(
+                request,
+                base: base,
+                router: router,
+                eligibility: { JevTierEligibility(gemma: true, appleIntelligence: true, cheapModel: "gemini-cheap") },
+                isEnabled: { true },
+                onDevice: { Self.state(.off) },
+                recordFallback: { _ in Issue.record("Picker Off never notes a fallback") }
+            )
+            #expect(plan.tier == .strong)
+            #expect(!plan.pickedOnDevice)
+            #expect(plan.primary.model == base.model)
+        }
+        #expect(TypeSafeStub.requests.isEmpty)
+        #expect(telemetry.decisions.count == 3)
+        #expect(telemetry.decisions.last?.result == "fixed → your model")
+    }
+
+    @Test func pickerOnlyHonorsPickedApple() async {
+        for request in [JevTierRequest.mealWhatIf("pizza"), .nutrientGoals, .servingUnits("toast")] {
+            let plan = await JevTierRouter.plan(
+                request,
+                base: base,
+                router: makeRouter(),
+                eligibility: { JevTierEligibility() },
+                isEnabled: { false },
+                onDevice: { Self.state(.appleFoundationModels) },
+                recordFallback: { _ in Issue.record("Available model never notes a fallback") }
+            )
+            #expect(plan.tier == .appleIntelligence)
+            #expect(plan.pickedOnDevice)
+            #expect(plan.primary.provider == .appleIntelligence)
+            #expect(plan.strong.model == base.model)
+        }
+        #expect(TypeSafeStub.requests.isEmpty)
+    }
+
+    @Test func pickerOnlyRouterOffPickerOffRecordsNothing() async {
+        let telemetry = JevRouterTelemetry(defaults: suite(UUID().uuidString))
+        for request in [JevTierRequest.mealWhatIf("pizza"), .nutrientGoals, .servingUnits("toast")] {
+            let plan = await JevTierRouter.plan(
+                request,
+                base: base,
+                router: makeRouter(telemetry: telemetry),
+                eligibility: { JevTierEligibility(gemma: true, appleIntelligence: true, cheapModel: "gemini-cheap") },
+                isEnabled: { false },
+                onDevice: { Self.state(.off) },
+                cloudFallback: {
+                    Issue.record("Picker Off needs no cloud lookup")
+                    return nil
+                },
+                recordFallback: { _ in Issue.record("Picker Off never notes a fallback") }
+            )
+            // Byte-identical to before: the same provider, model, server and key.
+            #expect(plan.tier == .strong)
+            #expect(plan.primary.provider == base.provider)
+            #expect(plan.primary.model == base.model)
+            #expect(plan.primary.baseURL == base.baseURL)
+            #expect(plan.primary.apiKey == base.apiKey)
+        }
+        #expect(TypeSafeStub.requests.isEmpty)
+        #expect(telemetry.decisions.isEmpty)
+    }
+
+    @Test func goalCalculationNeverOnDevice() async {
+        await expectBaseOnly(.goalCalculation)
+    }
+
+    @Test func baseOnlyImagePathsKeepBase() async {
+        await expectBaseOnly(.allergenReport)
+        await expectBaseOnly(.servingUnitsPhoto("toast"))
+    }
+
+    /// `.baseOnly`: the user's own base comes back unchanged for cloud, Apple and Gemma bases,
+    /// whatever the picker says, with no classifier call, no cloud lookup and no escalation.
+    private func expectBaseOnly(_ request: JevTierRequest) async {
+        TypeSafeStub.handler = { _, _ in (200, [:], Self.scoreJSON(0.1, confidence: 0.95)) }
+        let bases = [
+            base,
+            Self.config(.appleIntelligence, "System Language Model"),
+            Self.config(.gemma4Local, "gemma-local")
+        ]
+        for userBase in bases {
+            for choice in OnDeviceModelChoice.allCases {
+                let plan = await JevTierRouter.plan(
+                    request,
+                    base: userBase,
+                    router: makeRouter(),
+                    eligibility: { JevTierEligibility(gemma: true, appleIntelligence: true, cheapModel: "gemini-cheap") },
+                    isEnabled: { true },
+                    onDevice: { Self.state(choice) },
+                    cloudFallback: {
+                        Issue.record("A base-only request never looks up a cloud config")
+                        return nil
+                    },
+                    recordFallback: { _ in Issue.record("A base-only request never notes a fallback") }
+                )
+                #expect(plan.tier == .strong)
+                #expect(!plan.pickedOnDevice)
+                #expect(plan.primary.provider == userBase.provider)
+                #expect(plan.primary.model == userBase.model)
+                #expect(plan.primary.baseURL == userBase.baseURL)
+                #expect(plan.strong.provider == userBase.provider)
+                #expect(plan.strong.model == userBase.model)
+            }
+        }
+        #expect(TypeSafeStub.requests.isEmpty)
+    }
+
     @Test func runWithFallbackSurfacesBothErrors() async {
         let fallback = Self.config(.openai, "text-fallback")
         var tried: [String] = []
@@ -724,6 +966,9 @@ struct JevTierRoutingTests {
             apiKey: provider.requiresAPIKey ? "key" : nil
         )
     }
+
+    /// Zero macros and malformed unit_options: the one shape that triggers the serving-unit repair.
+    private static let zeroMacroJSON = #"{"name":"Water","calories":0,"protein":0,"carbs":0,"fat":0,"serving_size_grams":250,"ingredients":[],"unit_options":"cup"}"#
 
     private static let foodJSON = #"{"name":"Oatmeal","calories":150,"protein":5,"carbs":27,"fat":3,"serving_size_grams":40,"ingredients":[],"unit_options":[]}"#
 

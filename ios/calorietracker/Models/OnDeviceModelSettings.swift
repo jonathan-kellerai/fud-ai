@@ -99,8 +99,8 @@ struct OnDeviceFallbackNotice: Codable, Equatable, Sendable {
 enum OnDeviceModelSelection: Equatable, Sendable {
     /// Picker is Off: the normal Jev tier routing decides.
     case router
-    /// Image request: on-device image input isn't available on iOS 26, so the cloud config runs.
-    case cloudForImage
+    /// `.baseOnly` request (images, goal calculation): the user's configured base runs unchanged.
+    case baseOnly
     /// The picked on-device model answers, with the cloud config as the escalation.
     case onDevice(JevTier)
     /// The picked model can't run now. The cloud config answers and the user sees why.
@@ -109,7 +109,7 @@ enum OnDeviceModelSelection: Equatable, Sendable {
 
 enum OnDeviceModelSelector {
     static func select(_ state: OnDeviceModelState, request: JevTierRequest) -> OnDeviceModelSelection {
-        if request.hasImage { return .cloudForImage }
+        if request.onDevicePolicy == .baseOnly { return .baseOnly }
         guard let tier = state.choice.tier else { return .router }
         switch state.availability(of: state.choice) {
         case .available:

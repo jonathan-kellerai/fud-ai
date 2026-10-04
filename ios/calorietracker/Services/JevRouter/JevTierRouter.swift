@@ -32,6 +32,17 @@ struct JevTierPlan: Sendable {
     }
 }
 
+/// How much a request lets the router change its config.
+enum JevTierOnDevicePolicy: Sendable {
+    /// The picker, then the Jev complexity score, may move it to a cheaper or on-device tier.
+    case scored
+    /// Only a picked on-device model moves it. The Jev classifier is never asked.
+    case pickerOnly
+    /// Neither the picker nor the classifier changes the config: the request uses the user's
+    /// configured base exactly as before (the vision base for images), whatever that provider is.
+    case baseOnly
+}
+
 enum JevTierRequest: Sendable {
     case textFood(String)
     case coachChat(String)
@@ -40,26 +51,55 @@ enum JevTierRequest: Sendable {
     case foodPhoto(caption: String)
     /// Coach message with an attached image.
     case coachPhoto(String)
+    /// Allergy lab report photos.
+    case allergenReport
+    /// Serving-unit repair after a photo. Carries the food name.
+    case servingUnitsPhoto(String)
+    /// Serving-unit repair after text food. Carries the food name.
+    case servingUnits(String)
+    /// "What if I log this meal?" Carries the food name.
+    case mealWhatIf(String)
+    /// Optional nutrient goal suggestions.
+    case nutrientGoals
+    /// AI daily target calculation. It writes saved targets and also runs unattended at launch.
+    case goalCalculation
 
+    /// What the classifier and local telemetry see. Never profile data.
     var text: String {
         switch self {
         case .textFood(let text), .coachChat(let text), .workoutParse(let text), .coachPhoto(let text): text
         case .foodPhoto(let caption): caption
+        case .servingUnitsPhoto(let name), .servingUnits(let name), .mealWhatIf(let name): name
+        case .allergenReport, .nutrientGoals, .goalCalculation: ""
         }
+    }
+
+    /// Telemetry preview: the text, or the request type when there is none.
+    var preview: String {
+        text.isEmpty ? requestType : text
     }
 
     var isChat: Bool {
         switch self {
         case .coachChat, .coachPhoto: true
-        case .textFood, .workoutParse, .foodPhoto: false
+        case .textFood, .workoutParse, .foodPhoto, .allergenReport, .servingUnitsPhoto, .servingUnits,
+             .mealWhatIf, .nutrientGoals, .goalCalculation: false
         }
     }
 
-    /// On-device image input isn't available on iOS 26. These always stay on the cloud config.
+    /// On-device image input isn't available on iOS 26. These always stay on the base config.
     var hasImage: Bool {
         switch self {
-        case .foodPhoto, .coachPhoto: true
-        case .textFood, .coachChat, .workoutParse: false
+        case .foodPhoto, .coachPhoto, .allergenReport, .servingUnitsPhoto: true
+        case .textFood, .coachChat, .workoutParse, .servingUnits, .mealWhatIf, .nutrientGoals, .goalCalculation: false
+        }
+    }
+
+    var onDevicePolicy: JevTierOnDevicePolicy {
+        switch self {
+        case .textFood, .coachChat, .workoutParse: .scored
+        case .servingUnits, .mealWhatIf, .nutrientGoals: .pickerOnly
+        case .foodPhoto, .coachPhoto, .allergenReport, .servingUnitsPhoto, .goalCalculation: .baseOnly
         }
     }
 
@@ -70,6 +110,12 @@ enum JevTierRequest: Sendable {
         case .workoutParse: "workout_parse"
         case .foodPhoto: "food_photo"
         case .coachPhoto: "coach_photo"
+        case .allergenReport: "allergen_report"
+        case .servingUnitsPhoto: "serving_units_photo"
+        case .servingUnits: "serving_units"
+        case .mealWhatIf: "meal_what_if"
+        case .nutrientGoals: "nutrient_goals"
+        case .goalCalculation: "goal_calculation"
         }
     }
 
@@ -121,15 +167,15 @@ enum JevTierRouter {
         return false
     }
 
-    /// Every cloud-mode AI request that can change model goes through here: text food, workout
-    /// parse, Coach (text and image) and photo food. Hosted mode branches off before this.
+    /// Every BYOK AI text and image request goes through here (see `JevTierRequest`). Hosted
+    /// mode branches off before this: the Worker picks the model.
     ///
-    /// Order: images always keep `base` (cloud). A picked on-device model answers the text
-    /// requests directly, without the complexity score; when it can't run, the cloud config
-    /// answers and the picker screen shows why. The cloud config is `base`, or the configured
-    /// text fallback when `base` is itself on-device (Apple Intelligence or Gemma). With the
-    /// picker Off, Jev tier routing decides as before, and returns `base` when tier routing
-    /// is disabled.
+    /// Order: `.baseOnly` requests (images, goal calculation) always keep `base`. A picked
+    /// on-device model answers the other requests directly, without the complexity score; when
+    /// it can't run, the cloud config answers and the picker screen shows why. The cloud config
+    /// is `base`, or the configured text fallback when `base` is itself on-device (Apple
+    /// Intelligence or Gemma). With the picker Off, `.pickerOnly` requests keep `base`, and Jev
+    /// tier routing decides `.scored` ones as before, returning `base` when it is disabled.
     static func plan(
         _ request: JevTierRequest,
         base: AIProviderSettings.RequestConfig,
@@ -147,16 +193,16 @@ enum JevTierRouter {
         let basePlan = JevTierPlan(primary: base, strong: base, tier: .strong)
 
         switch OnDeviceModelSelector.select(onDeviceState, request: request) {
-        case .cloudForImage:
+        case .baseOnly:
             if onDeviceState.choice != .off || isEnabled() {
-                let preview = request.text.isEmpty ? request.requestType : request.text
-                await router.report(.tierRouting, .localShortcut(label: "image → cloud", llmCallsAvoided: 0), preview: preview)
+                let label = request.hasImage ? "image → cloud" : "fixed → your model"
+                await router.report(.tierRouting, .localShortcut(label: label, llmCallsAvoided: 0), preview: request.preview)
             }
             return basePlan
         case .onDevice(let tier):
             let primary = config(for: tier, base: base, cheapModel: "")
             let strong = cloudConfig(base: base, cloudFallback: cloudFallback)
-            await router.report(.tierRouting, .localShortcut(label: "\(tierLabel(tier)) (picked)", llmCallsAvoided: 0), preview: request.text)
+            await router.report(.tierRouting, .localShortcut(label: "\(tierLabel(tier)) (picked)", llmCallsAvoided: 0), preview: request.preview)
             // No cloud config and base on the same on-device provider: nothing to escalate to.
             let routedTier: JevTier = primary.provider == strong.provider ? .strong : tier
             return JevTierPlan(primary: primary, strong: strong, tier: routedTier, pickedOnDevice: true)
@@ -164,10 +210,15 @@ enum JevTierRouter {
             let strong = cloudConfig(base: base, cloudFallback: cloudFallback)
             let noted = isOnDeviceProvider(strong.provider) ? "\(reason); \(noCloudProviderReason)" : reason
             recordFallback(OnDeviceFallbackNotice(provider: strong.provider.displayName, reason: noted, date: Date()))
-            await router.report(.tierRouting, .fellBack(.skipped), preview: request.text)
+            await router.report(.tierRouting, .fellBack(.skipped), preview: request.preview)
             return JevTierPlan(primary: strong, strong: strong, tier: .strong)
         case .router:
-            break
+            if request.onDevicePolicy == .pickerOnly {
+                if isEnabled() {
+                    await router.report(.tierRouting, .localShortcut(label: "fixed → your model", llmCallsAvoided: 0), preview: request.preview)
+                }
+                return basePlan
+            }
         }
 
         let eligibility = eligibility ?? {
