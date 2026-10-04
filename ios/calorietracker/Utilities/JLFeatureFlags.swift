@@ -13,4 +13,17 @@ enum JLFeatureFlags {
     static let legacyWorkoutLogger = true
     /// Theme color picker and alternate app icons.
     static let themeColorPicker = false
+
+    /// UserDefaults key for the runtime Challenges switch (D64-1). Absent means on.
+    nonisolated static let challengesKey = "jl.flags.challenges"
+
+    /// Challenges list, Home card, More row and reminders. Runtime, not compile-time:
+    /// writing `false` to `jl.flags.challenges` hides the surface without a new build.
+    nonisolated static var challengesEnabled: Bool {
+        challengesEnabled(in: .standard)
+    }
+
+    nonisolated static func challengesEnabled(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: challengesKey) as? Bool ?? true
+    }
 }
