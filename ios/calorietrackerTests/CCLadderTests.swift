@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import calorietracker
 
 /// Convict Conditioning ladders. The fixture is a trimmed copy of a live
@@ -442,6 +443,119 @@ struct CCLadderTests {
         #expect(CCLadderLogic.loggerHint(exerciseKey: "lat pulldown", exerciseName: "Lat pulldown", in: response) == nil)
         #expect(CCLadderLogic.isLadderExerciseName("CC bridge ladder - step 1 Short bridge"))
         #expect(CCLadderLogic.isLadderExerciseName("Short bridge") == false)
+    }
+
+    // MARK: Form sheet
+
+    /// Every series the bundled art and cues cover.
+    static let formSeries = ["PSH", "SQT", "PLL", "LGR", "BRG", "HSP"]
+
+    @Test func stepArtNamesArePaddedAndNamespaced() {
+        #expect(CCStepArt.name(series: "SQT", step: 3, phase: .start) == "CCLadderArt/SQT-03-start")
+        #expect(CCStepArt.name(series: "hsp", step: 10, phase: .end) == "CCLadderArt/HSP-10-end")
+        #expect(CCFormCues.key(series: "psh", step: 1) == "PSH-01")
+        #expect(CCFormSelection(series: "LGR", step: 6).id == "LGR-06")
+    }
+
+    /// Missing art fails CI: every series × step × phase resolves to an image.
+    @Test func everyStepHasStartAndEndArt() {
+        for series in Self.formSeries {
+            for step in 1...10 {
+                for phase in CCStepArt.Phase.allCases {
+                    let name = CCStepArt.name(series: series, step: step, phase: phase)
+                    #expect(UIImage(named: name) != nil, "Missing asset \(name)")
+                }
+            }
+        }
+    }
+
+    @Test func everyStepHasBundledCues() {
+        #expect(CCFormCues.load(from: .main).isEmpty == false, "CCFormCues.json is not bundled or does not decode")
+        for series in Self.formSeries {
+            for step in 1...10 {
+                let key = CCFormCues.key(series: series, step: step)
+                guard let cue = CCFormCues.cue(series: series, step: step) else {
+                    Issue.record("Missing cues for \(key)")
+                    continue
+                }
+                for phase in CCStepArt.Phase.allCases {
+                    let cues = cue.cues(for: phase)
+                    #expect(!cues.isEmpty, "\(key) has no \(phase.rawValue) cues")
+                    #expect(cues.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "\(key) has a blank \(phase.rawValue) cue")
+                    #expect(!cue.altText(for: phase).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(key) has no \(phase.rawValue) alt text")
+                }
+            }
+        }
+    }
+
+    @Test func formCuesDecodeTheBundledSchema() throws {
+        let json = #"""
+        {"SQT-03": {"start": ["Stand tall"], "end": ["Full depth", "Heels flat"],
+                    "altStart": "Supported squat, start position: standing.",
+                    "altEnd": "Supported squat, end position: squatting."},
+         "SQT-04": {"start": ["Stand tall"], "end": ["Half depth"]}}
+        """#
+        // One entry missing a key fails the whole file, as a malformed bundle would.
+        #expect(CCFormCues.decode(Data(json.utf8)).isEmpty)
+
+        let valid = json.replacingOccurrences(
+            of: #""SQT-04": {"start": ["Stand tall"], "end": ["Half depth"]}"#,
+            with: #""SQT-04": {"start": ["Stand tall"], "end": ["Half depth"], "altStart": "a", "altEnd": "b"}"#
+        )
+        #expect(valid != json)
+        let cues = CCFormCues.decode(Data(valid.utf8))
+        let squat = try #require(cues["SQT-03"])
+        #expect(squat.cues(for: .start) == ["Stand tall"])
+        #expect(squat.cues(for: .end) == ["Full depth", "Heels flat"])
+        #expect(squat.altText(for: .end) == "Supported squat, end position: squatting.")
+        #expect(cues["PSH-01"] == nil)
+        #expect(CCFormCues.decode(Data("not json".utf8)).isEmpty)
+    }
+
+    @Test func bookTextSkipsANameThatRepeatsTheStep() {
+        let step = CCLadderStep(step: 5, name: "Full push-up", bookName: "Full Pushups", pages: " 54-55 ")
+        #expect(CCLadderLogic.bookText(step) == "Book: Full Pushups · p. 54-55")
+        let same = CCLadderStep(step: 1, name: "Short bridge", bookName: "short bridge", pages: nil)
+        #expect(CCLadderLogic.bookText(same) == nil)
+        let pagesOnly = CCLadderStep(step: 1, name: "Short bridge", bookName: "  ", pages: "194-195")
+        #expect(CCLadderLogic.bookText(pagesOnly) == "Book: p. 194-195")
+    }
+
+    @Test func stepInfoFindsBridgeStepsOnly() throws {
+        let response = try decodeTargets()
+        let squat = try series("SQT", in: response)
+        #expect(CCLadderLogic.stepInfo(3, in: squat)?.name == "Supported squat")
+        #expect(CCLadderLogic.stepInfo(0, in: squat) == nil)
+        #expect(CCLadderLogic.stepInfo(11, in: squat) == nil)
+        #expect(CCLadderLogic.stepInfo(1, in: CCSeriesState(series: "PLL")) == nil)
+    }
+
+    @Test func loggerExerciseMapsToItsFormSelection() throws {
+        let response = try decodeTargets()
+        // By program exercise name.
+        #expect(CCLadderLogic.formSelection(
+            exerciseKey: "cc squat ladder - step 2 jackknife squat",
+            exerciseName: "CC squat ladder - step 2 Jackknife squat",
+            in: response
+        ) == CCFormSelection(series: "SQT", step: 2))
+        // By a step name equal to the key; opens the current step, not the logged one.
+        #expect(CCLadderLogic.formSelection(
+            exerciseKey: "Half handstand push-up",
+            exerciseName: "CC handstand ladder - step 4 Half handstand push-up",
+            in: response
+        ) == CCFormSelection(series: "HSP", step: 1))
+        // Not started: falls back to the logged step.
+        var notStarted = response
+        let index = try #require(notStarted.series.firstIndex { $0.series == "BRG" })
+        notStarted.series[index].currentStep = nil
+        #expect(CCLadderLogic.formSelection(
+            exerciseKey: "Straight bridge",
+            exerciseName: "CC bridge ladder - step 2 Straight bridge",
+            in: notStarted
+        ) == CCFormSelection(series: "BRG", step: 2))
+
+        #expect(CCLadderLogic.formSelection(exerciseKey: "lat pulldown", exerciseName: "Lat pulldown", in: response) == nil)
+        #expect(CCLadderLogic.formSelection(exerciseKey: "Knee tuck", exerciseName: "Knee tuck", in: nil) == nil)
     }
 
     /// The new /api/cc/ladders shape: book graduate-at targets for all six

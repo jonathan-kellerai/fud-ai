@@ -11,7 +11,7 @@ The Ladders screen (`Views/CCLaddersView.swift`) names each Convict Conditioning
   - `CCStepArt.name(series:step:phase:)` gives `"CCLadderArt/SQT-03-start"`.
   - `CCFormCues` decodes the cues once from `Bundle.main`, and a lookup returns nil when an entry is missing.
   - `CCFormSelection` holds the series and step.
-  - `CCLadderLogic` gains `bookText`, `adjacentStep` and `formSelection(exerciseKey:exerciseName:in:)`.
+  - `CCLadderLogic` gains `stepInfo(_:in:)` and `formSelection(exerciseKey:exerciseName:in:)`.
 - **View:** `Views/CCStepFormSheet.swift`, with `.presentationDetents([.medium, .large])` and IronTheme styling.
 - **Entry points:**
   - On the Ladders screen, every `CCStepRow` becomes a button (same look) with the hint "Shows start and end positions".
@@ -45,7 +45,7 @@ Existing tests and goldens must stay identical after both steps.
 - `UIImage(named: CCStepArt.name(...))` is non-nil for every series × step 1…10 × start/end. This test fails until all 120 images land. That's intended: it's the "missing art fails CI" gate.
 - `CCFormCues` has an entry for every series × step, with non-empty `start`, `end`, `altStart` and `altEnd`. It fails until all 60 entries land.
 - Name formatting (zero padding, upper-casing), the cue key, and decoding of the schema, including a missing key.
-- `bookText`, `adjacentStep` at the ends, and `formSelection` for a program exercise name, a step-name key, an unknown exercise and a nil response.
+- `bookText`, `stepInfo` past either end, and `formSelection` for a program exercise name, a step-name key, an unknown exercise and a nil response.
 
 ## Screenshots expected (`VisualQASnapshotTests`, new shots 85–94, default + axL, Pro + SE)
 SQT-03, PSH-01, PSH-10, PLL-03, LGR-02, LGR-06, BRG-01, BRG-10, HSP-01, HSP-10. Each shot shows the sheet over the Ladders screen and is built from stub `CCSeriesState` data matching `lib/cc.ts` `CC_LADDERS` (no network). The new goldens need the `goldens-update` label and a reviewer-approved table. Existing shots must not change, apart from 51 and 53 if the new Form button on the stats panel shows in them (expected: one extra button row).
