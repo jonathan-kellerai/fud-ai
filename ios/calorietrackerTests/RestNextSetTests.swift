@@ -174,3 +174,48 @@ extension WorkoutDraftStoreTests {
         #expect(store.draft == nil)
     }
 }
+
+extension WorkoutDraftStoreTests {
+    @Test func reductionRestEntryKeepsLastUsedLoadAndDefaultsToThreeRIR() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var body = TrainingProgramBody.bundledV2()
+        body.reductionWeek = 4
+        let date = try #require(SessionDateFormatting.date(from: "2026-10-20",
+            calendar: ProgramWeekRules.easternCalendar))
+        let day = body.programV2Day(for: body.days[1], on: date)
+        let press = try #require(day.exercises.first { $0.name == "Chest press machine" })
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        let rest = RestSession(now: { date })
+        entry.lastPerformances[LastPerformanceBuilder.key(for: press.name)] = LastPerformance(
+            sessionDate: "2026-10-13", sets: [
+                WorkingSetSummary(load: 87.5, reps: 15, rir: 4),
+                WorkingSetSummary(load: 92.5, reps: 9, rir: 0),
+            ])
+        entry.prepareNext(after: nil, in: store)
+        let first = try #require(entry.restDetails(in: store, isHold: false))
+        #expect(first.value.weight == 92.5)
+        #expect(first.value.rir == 3)
+        #expect(first.targetChips == [3, 4])
+        #expect(store.draft == nil)
+        #expect(first.reason == "Hold: reduction week")
+
+        // Neither an easy top-range hit nor a miss changes load this week.
+        entry.editNext { $0.reps = 15; $0.rir = 4 }
+        entry.logNext(in: store, startedAt: date, rest: rest)
+        let second = try #require(entry.restDetails(in: store, isHold: false))
+        #expect(second.step == ExerciseStep(exerciseName: press.name, setIndex: 1))
+        #expect(second.value.weight == 92.5)
+        #expect(second.value.rir == 3)
+        #expect(second.reason == first.reason)
+        #expect(rest.duration == 120)
+        entry.editNext { $0.reps = 9; $0.rir = 0 }
+        entry.logNext(in: store, startedAt: date, rest: rest)
+        #expect(entry.restStep?.exerciseName != press.name)
+        let reopened = WorkoutDraftStore(directory: directory)
+        #expect(reopened.draft?.sets[press.name]?.map(\.weight) == [92.5, 92.5])
+        #expect(reopened.draft?.sets[press.name]?.map(\.rir) == [4, 0])
+        #expect(reopened.draft?.programV2Day.holdLoads == true)
+    }
+}

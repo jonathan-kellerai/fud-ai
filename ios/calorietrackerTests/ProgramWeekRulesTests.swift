@@ -111,3 +111,36 @@ extension WorkoutDraftStoreTests {
         #expect(rows.allSatisfy { $0["setsLabel"] == nil })
     }
 }
+
+extension WorkoutLoggerLogicTests {
+    @Test func calendarSelectedDaysApplyWeekRulesOnTheirActualSessionDates() throws {
+        var body = weekRulesV4Body()
+        body.reductionWeek = 4
+        let cases: [(String, Int, String, Int)] = [
+            ("2026-10-13", 2, "Overhead triceps extension (cable or DB)", 3),
+            ("2026-10-14", 3, "Cable or DB curl", 4),
+            ("2026-10-20", 2, "Overhead triceps extension (cable or DB)", 2),
+            ("2026-10-21", 3, "Cable or DB curl", 2),
+            ("2026-10-27", 2, "Overhead triceps extension (cable or DB)", 2),
+            ("2026-10-28", 3, "Cable or DB curl", 3),
+        ]
+        for (civilDate, dayIndex, name, count) in cases {
+            let date = weekRulesDate(civilDate)
+            let resolved = TrainingProgramSchedule.resolve(body, on: date,
+                calendar: ProgramWeekRules.easternCalendar)
+            let selected = try #require(TrainingProgramSchedule.programDay(in: body, matching: resolved))
+            #expect(selected.dayIndex == dayIndex)
+            let loggerDay = body.programV2Day(for: selected, on: date)
+            let exercise = try #require(loggerDay.exercises.first { $0.name == name })
+            #expect(exercise.sets == count)
+            #expect(SetEntryLogic.plannedRowCount(exercise: exercise, sets: []) == count)
+            let isReduction = civilDate == "2026-10-20" || civilDate == "2026-10-21"
+            #expect(loggerDay.holdLoads == isReduction)
+            if civilDate == "2026-10-13" || civilDate == "2026-10-14" {
+                #expect(loggerDay.weekNote?.hasPrefix("Week 3:") == true)
+            } else if civilDate == "2026-10-27" || civilDate == "2026-10-28" {
+                #expect(loggerDay.weekNote == nil)
+            }
+        }
+    }
+}
