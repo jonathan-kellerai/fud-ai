@@ -701,7 +701,12 @@ enum CCLadderLogic {
     static func isHoldSeries(_ series: CCSeriesState, rule: CCLadderRule? = nil) -> Bool {
         if (series.targetHoldSec ?? 0) > 0 { return true }
         guard let step = currentStepInfo(series) else { return false }
-        return (target(for: step, series: series.series, rule: rule).holdSec ?? 0) > 0
+        return isHoldStep(step, series: series.series, rule: rule)
+    }
+
+    /// True when this step's graduate-at target (step fields, then the rule table) is a timed hold.
+    static func isHoldStep(_ step: CCLadderStep, series: String, rule: CCLadderRule?) -> Bool {
+        (target(for: step, series: series, rule: rule).holdSec ?? 0) > 0
     }
 
     /// Step fields first, then rule.targets_by_series for anything missing.
@@ -852,7 +857,7 @@ enum CCLadderLogic {
         let isHold: Bool
         if let logged = loggedStep(series, exerciseKey: exerciseKey, exerciseName: exerciseName),
            logged.step != current.step {
-            isHold = (Self.target(for: logged, series: series.series, rule: response.rule).holdSec ?? 0) > 0
+            isHold = isHoldStep(logged, series: series.series, rule: response.rule)
         } else {
             isHold = isHoldSeries(series, rule: response.rule)
         }
