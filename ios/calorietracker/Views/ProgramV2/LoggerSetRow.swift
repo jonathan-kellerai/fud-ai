@@ -12,7 +12,7 @@ struct LoggerSetRow: View {
     let targetChips: Set<Int>
     let loadStep: Double
     let onEdit: () -> Void
-    let onChange: ((inout LoggedSet) -> Void) -> Void
+    let onChange: (LoggedSet.Field, (inout LoggedSet) -> Void) -> Void
     let onStep: (Bool, Int) -> Void
     let onLog: () -> Void
     let onRemove: () -> Void
@@ -109,13 +109,13 @@ struct LoggerSetRow: View {
                 }
             }
             HStack(spacing: 0) {
-                RIRChips(value: set.rir, targets: targetChips) { value in onChange { $0.rir = value } }
+                RIRChips(value: set.rir, targets: targetChips) { value in onChange(.rir) { $0.rir = value } }
                 Button { focus = nil; onLog() } label: {
                     Image(systemName: "checkmark").frame(width: 52, height: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(IronTheme.bloodText).accessibilityLabel("Log set")
             }
             if showsRPE {
-                TextField("RPE", text: Binding(get: { set.rpeText }, set: { value in onChange { $0.rpeText = value } }))
+                TextField("RPE", text: Binding(get: { set.rpeText }, set: { value in onChange(.rpe) { $0.rpeText = value } }))
                     .keyboardType(.decimalPad).focused($focus, equals: .rpe)
                     .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                     .accessibilityLabel("RPE, rate of perceived exertion")
@@ -133,7 +133,7 @@ struct LoggerSetRow: View {
     private var loadControl: some View {
         HStack(spacing: 0) {
             stepButton("minus", label: "Decrease load") { onStep(true, -1) }
-            TextField("Load", value: Binding<Double?>(get: { set.weight == 0 && startLoadLb != 0 ? nil : set.weight }, set: { value in onChange { $0.weight = value ?? 0 } }), format: .number)
+            TextField("Load", value: Binding<Double?>(get: { set.weight == 0 && startLoadLb != 0 ? nil : set.weight }, set: { value in onChange(.load) { $0.weight = value ?? 0 } }), format: .number)
                 .keyboardType(.decimalPad).focused($focus, equals: .load)
                 .multilineTextAlignment(.center).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 .accessibilityLabel("Load, pounds")
@@ -144,7 +144,7 @@ struct LoggerSetRow: View {
     private var repsControl: some View {
         HStack(spacing: 0) {
             stepButton("minus", label: isHold ? "Decrease hold seconds" : "Decrease reps") { onStep(false, -1) }
-            TextField(isHold ? "Sec" : "Reps", value: Binding<Int?>(get: { set.reps == 0 ? nil : set.reps }, set: { value in onChange { $0.reps = value ?? 0 } }), format: .number)
+            TextField(isHold ? "Sec" : "Reps", value: Binding<Int?>(get: { set.reps == 0 ? nil : set.reps }, set: { value in onChange(.reps) { $0.reps = value ?? 0 } }), format: .number)
                 .keyboardType(.numberPad).focused($focus, equals: .reps)
                 .multilineTextAlignment(.center).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 .accessibilityLabel(isHold ? "Hold seconds" : "Reps")

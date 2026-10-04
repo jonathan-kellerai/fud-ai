@@ -484,9 +484,9 @@ struct ProgramV2WorkoutLogView: View {
             targetChips: SetEntryLogic.targetChips(for: exercise, at: setIndex),
             loadStep: SetEntryLogic.loadStep(set.weight),
             onEdit: { entry.editingStep = ExerciseStep(exerciseName: exercise.name, setIndex: setIndex) },
-            onChange: { edit in entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt, edit) },
+            onChange: { field, edit in entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt, field: field, edit) },
             onStep: { load, direction in
-                entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt) {
+                entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt, field: load ? .load : .reps) {
                     $0 = SetEntryLogic.stepped($0, load: load, direction: direction, isHold: ladderHint(for: exercise)?.isHold == true)
                 }
             },
