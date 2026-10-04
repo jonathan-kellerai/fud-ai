@@ -17,6 +17,12 @@ nonisolated enum ChallengePresentation {
         metric == .waterAppLog ? "L" : metric.unit
     }
 
+    /// An amount with its unit, once: "3.0 L", "10,000 reps".
+    static func quantity(_ value: Double, metric: ChallengeMetric, locale: Locale = .current) -> String {
+        let text = amount(value, metric: metric, locale: locale)
+        return metric == .waterAppLog ? text : "\(text) \(unit(metric))"
+    }
+
     static func signedAmount(_ value: Double, metric: ChallengeMetric, locale: Locale = .current) -> String {
         let magnitude = amount(abs(value), metric: metric, locale: locale)
         if value > 0.5 { return "+\(magnitude)" }
@@ -55,17 +61,17 @@ nonisolated enum ChallengePresentation {
         let days = challenge.durationDays
         switch challenge.kind {
         case .total(let target):
-            return "\(amount(target, metric: metric, locale: locale)) \(unit(metric)) in \(days) days"
+            return "\(quantity(target, metric: metric, locale: locale)) in \(days) days"
         case .dailyAverage(let target):
-            return "Average \(amount(target, metric: metric, locale: locale)) \(unit(metric)) a day for \(days) days"
+            return "Average \(quantity(target, metric: metric, locale: locale)) a day for \(days) days"
         case .dailyHabit(let rule):
             let needed = days - challenge.graceDays
             let rulePart: String
             switch rule {
             case .atLeast(let threshold):
-                rulePart = "At least \(amount(threshold, metric: metric, locale: locale)) \(unit(metric)) a day"
+                rulePart = "At least \(quantity(threshold, metric: metric, locale: locale)) a day"
             case .atMost(let threshold):
-                rulePart = "At most \(amount(threshold, metric: metric, locale: locale)) \(unit(metric)) a day"
+                rulePart = "At most \(quantity(threshold, metric: metric, locale: locale)) a day"
             case .checkIn:
                 rulePart = "Check in daily"
             }

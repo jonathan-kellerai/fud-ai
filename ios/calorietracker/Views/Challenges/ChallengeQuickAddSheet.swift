@@ -124,7 +124,7 @@ struct ChallengeQuickAddSheet: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Add \(ChallengePresentation.amount(amount, metric: challenge.metric)) \(ChallengePresentation.unit(challenge.metric))")
+                .accessibilityLabel("Add \(ChallengePresentation.quantity(amount, metric: challenge.metric))")
                 .accessibilityIdentifier("challenge.quickAdd.chip.\(index)")
                 .challengeHitAnchor("challenge.quickAdd.chip.\(index)")
             }
@@ -152,7 +152,7 @@ struct ChallengeQuickAddSheet: View {
 
     private func undoBanner(_ entry: ChallengeEntry, challenge: Challenge) -> some View {
         HStack(spacing: 12) {
-            Text("Logged \(ChallengePresentation.amount(entry.value, metric: challenge.metric)) \(ChallengePresentation.unit(challenge.metric))")
+            Text("Logged \(ChallengePresentation.quantity(entry.value, metric: challenge.metric))")
                 .foregroundStyle(IronTheme.textPrimary)
             Spacer(minLength: 8)
             Button("Undo") {
