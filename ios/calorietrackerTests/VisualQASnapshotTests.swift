@@ -1956,7 +1956,7 @@ extension VisualQASnapshotTests {
     }
 
     func test73PreExhaustionNote() async throws {
-        try await build62Shot("73-pre-exhaustion-note", heightMultiplier: 6, scenario: .preExhaustion)
+        try await build62Shot("73-pre-exhaustion-note", heightMultiplier: 8, scenario: .preExhaustion)
         // An explicit Add Set after the three performed sets exposes the
         // within-session HOLD decision on the real rest next-set card.
         try await build62Shot("73b-pre-exhaustion-hold", heightMultiplier: 2.4, scenario: .preExhaustionNextSet)
@@ -1975,7 +1975,7 @@ extension VisualQASnapshotTests {
     }
 
     func test77RestBar() async throws {
-        try await build62Shot("77-rest-bar", heightMultiplier: 2.4, scenario: .restBar)
+        try await build62Shot("77-rest-bar", heightMultiplier: 3.4, scenario: .restBar)
     }
 
     // 78-undo-toast is intentionally not added: the five-second wall-clock Undo toast

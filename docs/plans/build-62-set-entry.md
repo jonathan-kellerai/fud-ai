@@ -61,7 +61,8 @@ stub and TrainingProgramBody.programV2Day(for:on:). A Debug-only initializer
 seeds the logger's existing state; the shipping initializer stays unchanged.
 The fixture models live V4's added overhead extension, three base curl sets,
 notes-based RIR, September 28 start and reduction week 4. Fixed ET dates and
-tall canvases expose complete headers and planned rows at both text sizes.
+tall canvases are intended to expose complete headers and planned rows at
+both text sizes; CI images must confirm their visibility.
 
 | Before | New review image | Acceptance |
 | --- | --- | --- |
@@ -84,3 +85,38 @@ Check existing coverage before adding unit tests; add only missing cases in
 the existing CI-listed suite extensions. Run the requested Linux harness.
 iOS compilation and image generation require CI; Jonathan must approve the
 new images and their before/after table. No local iOS certification.
+
+### Additive coverage handoff — 70–77
+
+VQA commits: 2ce8d044e (initial fixtures and eight tests), cfa6e5c1d
+(natural PR and companion 73b HOLD card). Undo shot 78 remains omitted
+because wall-clock expiry can race capture. Each render gets a fresh draft,
+entry and driverless paused rest session retained in VisualQAGraveyard.
+The pinned-bar fixture represents the returned-to-list state with that
+same session; it does not automate dismissal or certify timer lifecycle.
+
+Unit commits: 5deb50985 (calendar selection and reduction rest defaults)
+and 41340fd9e (notes-based defaults through one-tap logging/reload, plus
+week-3 arm ghost counts through logging/reload). Existing within-session
+progression, pre-exhaustion and atomic reorder persistence tests cover
+the remaining requested policies.
+
+Requested Linux harness: **101 tests in two suites passed**, including
+both unit commits. Swift 6.2 parsing with DEBUG enabled passed for the
+logger and VQA suite; extracted fixture checks satisfied all nine
+scenario assertion sets. These checks do not type-check SwiftUI, generate
+images, or establish an iOS CI pass. The initial harness attempt failed
+while its generated directory was being changed; the final complete run
+succeeded. Logs: /workspace/r62/harness/build.log and test.log.
+
+A concurrent stale session introduced duplicate 62a–62h aliases in
+16d379ada; 11faacab9 reverts only those new aliases and stale notes to
+honor Jonathan's current 70–78 numbering. No history was rewritten.
+Every VQA byte present at starting SHA 9a5f7f314 is preserved. Changes
+against that SHA are additive; no existing tests, shots, assertions,
+workflow entries or goldens were changed.
+
+Nothing pushed. No CI URLs or reviewer sign-off exist for this work.
+Jonathan's approval of the new images remains pending under the
+human-owned goldens-update review. Current handoff:
+/workspace/r62/VQA-70-78-HANDOFF.md.
