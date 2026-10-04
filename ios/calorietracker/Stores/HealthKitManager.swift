@@ -1308,6 +1308,13 @@ class HealthKitManager {
 
     /// Step totals for each local day in `start...through`, inclusive. Nil when the query fails.
     func fetchStepsByDay(from startDate: Date, through endDate: Date) async -> [Date: Int]? {
+        guard let sums = await stepSumsByDay(from: startDate, through: endDate) else { return nil }
+        return sums.mapValues { $0 ?? 0 }
+    }
+
+    /// Every local day in `start...through`, inclusive, with nil where Health
+    /// returned no readable samples. Nil when the query fails.
+    private func stepSumsByDay(from startDate: Date, through endDate: Date) async -> [Date: Int?]? {
         guard await ensureFullAuthorization() else { return nil }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: startDate)
@@ -1330,10 +1337,11 @@ class HealthKitManager {
                     continuation.resume(returning: nil)
                     return
                 }
-                var values: [Date: Int] = [:]
+                var values: [Date: Int?] = [:]
                 collection.enumerateStatistics(from: start, to: end) { statistics, _ in
-                    let count = statistics.sumQuantity()?.doubleValue(for: .count()) ?? 0
-                    values[calendar.startOfDay(for: statistics.startDate)] = Int(count.rounded())
+                    let count = statistics.sumQuantity()?.doubleValue(for: .count())
+                    // updateValue keeps a nil sum as a key; subscript assignment would drop it.
+                    values.updateValue(count.map { Int($0.rounded()) }, forKey: calendar.startOfDay(for: statistics.startDate))
                 }
                 continuation.resume(returning: values)
             }
