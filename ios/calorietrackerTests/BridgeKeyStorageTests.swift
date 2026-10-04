@@ -96,6 +96,68 @@ struct BridgeKeyStorageTests {
         }
     }
 
+    @Test func everyBridgeClientSendsTheConfiguredSecretStoreKey() async throws {
+        // Load through the real settings/secret-store contract, restoring defaults
+        // before awaiting network calls so other settings tests cannot see test state.
+        var configuredSettings: NeonBridgeSettings?
+        try withStore(MemoryBridgeKeyStore()) {
+            #expect(NeonBridgeSettings(baseURL: Self.testURL, apiKey: Self.testKey).save())
+            configuredSettings = NeonBridgeSettings.load()
+            #expect(configuredSettings?.apiKey == Self.testKey)
+            let json = try storedJSON()
+            #expect(json["apiKey"] == nil)
+        }
+
+        let bridge = NeonBridgeService.shared
+        let savedSettings = bridge.settings
+        bridge.settings = try #require(configuredSettings)
+        BridgeAuthorizationURLProtocol.requestLog.reset()
+        #expect(URLProtocol.registerClass(BridgeAuthorizationURLProtocol.self))
+        defer {
+            URLProtocol.unregisterClass(BridgeAuthorizationURLProtocol.self)
+            BridgeAuthorizationURLProtocol.requestLog.reset()
+            bridge.settings = savedSettings
+        }
+
+        _ = try await bridge.checkHealth()
+        _ = try await bridge.listWorkouts(limit: 1)
+        _ = try await bridge.getWorkout(id: "auth-test-workout")
+        var draft = WorkoutDraft(day: ProgramV2Templates.day1LowerA, now: Date(timeIntervalSince1970: 100))
+        draft.sets[draft.exercises[0].name] = [LoggedSet(weight: 145, reps: 12, rir: 2, rpeText: "")]
+        _ = try await bridge.postWorkout(draft.payload(now: Date(timeIntervalSince1970: 200)))
+        _ = try await bridge.activeProgram()
+        // Foreground, HealthKit observer, and BGAppRefresh step sync all use this call.
+        _ = try await bridge.postSteps(StepsPayload(date: "2026-10-03", steps: 1234,
+                                                   device: "Apple Health", source: "jl-fud-native-healthkit"))
+        _ = try await CCLadderClient.fetchLadders(settings: bridge.settings)
+        try await CCLadderClient.postEvent(CCLadderEventRequest(series: "pushup", eventType: "manual_step",
+            fromStep: 1, toStep: 2, reason: "auth test", createdBy: "app"), settings: bridge.settings)
+        _ = try await bridge.peptidesToday(date: "2026-10-03")
+        let progressConfig = ProgressTrainingLoader.currentConfig()
+        #expect(progressConfig.apiKey == Self.testKey)
+        _ = try await ProgressTrainingAPI.fetchWorkouts(config: progressConfig, limit: 1)
+        _ = try await ProgressTrainingAPI.fetchWorkoutTotals(config: progressConfig, id: "auth-test-workout")
+
+        let requests = BridgeAuthorizationURLProtocol.requestLog.snapshot()
+        #expect(requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } == [
+            "GET /api/bridge/health",
+            "GET /api/workouts",
+            "GET /api/workouts/auth-test-workout",
+            "POST /api/workouts",
+            "GET /api/programs/active",
+            "POST /api/steps",
+            "GET /api/cc/ladders",
+            "POST /api/cc/events",
+            "GET /api/peptides/today",
+            "GET /api/workouts",
+            "GET /api/workouts/auth-test-workout",
+        ])
+        for request in requests {
+            #expect(request.url?.host == "bridge-key-tests.invalid")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer \(Self.testKey)")
+        }
+    }
+
     @Test func legacyJSONKeyMigratesToSecretStore() throws {
         let store = MemoryBridgeKeyStore()
         try withStore(store) {
@@ -182,4 +244,82 @@ struct BridgeKeyStorageTests {
             #expect(loaded.apiKey == nil)
         }
     }
+}
+
+/// URLProtocol callbacks run on loading threads; every access to the mutable
+/// request log is protected by this lock, including reset and snapshot.
+nonisolated private final class BridgeAuthorizationRequestLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: [URLRequest] = []
+
+    func record(_ request: URLRequest) {
+        lock.lock()
+        defer { lock.unlock() }
+        requests.append(request)
+    }
+
+    func snapshot() -> [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests
+    }
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        requests = []
+    }
+}
+
+/// Recording transport is necessary to prove what URLSession sends without
+/// production writes. It only intercepts the reserved .invalid test host.
+/// URLProtocol requires restating inherited unchecked Sendable: this subclass
+/// adds no mutable instance state, and its shared log is lock-protected above.
+nonisolated private final class BridgeAuthorizationURLProtocol: URLProtocol, @unchecked Sendable {
+    static let requestLog = BridgeAuthorizationRequestLog()
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "bridge-key-tests.invalid"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.requestLog.record(request)
+        let json: String
+        switch (request.httpMethod, request.url?.path) {
+        case ("GET", "/api/bridge/health"):
+            json = #"{"ok":true,"service":"test","program":"v2","program_version":"v2","workouts":"ok","steps":"ok","steps_target":10000}"#
+        case ("GET", "/api/workouts"):
+            json = #"{"workouts":[]}"#
+        case ("GET", "/api/workouts/auth-test-workout"):
+            json = #"{"workout":{"id":"auth-test-workout","kind":"COMPLETED","program_version":"v2","program_day":"Day1_LowerA","title":"Lower A","units":"lb","session_date":"2026-10-03","notes":[]},"sets":[]}"#
+        case ("POST", "/api/workouts"):
+            json = #"{"id":"auth-test-workout","ok":true}"#
+        case ("GET", "/api/programs/active"):
+            json = #"{"id":"auth-test-program","lineage_id":"auth-test-lineage","version":1,"name":"Test","status":"active"}"#
+        case ("POST", "/api/steps"):
+            json = #"{"ok":true,"date":"2026-10-03","steps":1234}"#
+        case ("GET", "/api/cc/ladders"):
+            json = #"{"series":[]}"#
+        case ("POST", "/api/cc/events"):
+            json = #"{"ok":true}"#
+        case ("GET", "/api/peptides/today"):
+            json = #"{"date":"2026-10-03","timezone":"America/New_York","has_active_schedules":false,"planned":[],"completed":[]}"#
+        default:
+            client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
+            return
+        }
+        guard let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                                             headerFields: ["Content-Type": "application/json"]) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(json.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
