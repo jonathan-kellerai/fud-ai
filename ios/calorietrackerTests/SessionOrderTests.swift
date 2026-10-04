@@ -2,6 +2,30 @@ import Foundation
 import Testing
 @testable import calorietracker
 
+extension WorkoutLoggerLogicTests {
+    @Test func titleOnlyHistoryEditPreservesOptionalEffortAndBothPositions() throws {
+        let json = #"[{"id":"unknown","set_order":3,"exercise":"Press","load_lb":145,"reps":12,"rir":null,"rpe":7.5,"exercise_position":4,"planned_position":1},{"id":"zero","set_order":4,"exercise":"Press","load_lb":145,"reps":9,"rir":0,"rpe":null,"exercise_position":4,"planned_position":1},{"id":"legacy","set_order":8,"exercise":"Row","load_lb":100,"reps":12,"rir":2}]"#
+        let remote = try JSONDecoder().decode([RemoteWorkoutSet].self, from: Data(json.utf8))
+        let edited = remote.sorted { $0.setOrder < $1.setOrder }.map { EditableBridgeSet($0) }
+        // Session-title edits never mutate these rows; use the editor's actual save conversion.
+        let saved = edited.map(\.payload)
+        let expected = remote.map { set in
+            WorkoutSet(exercise: set.exercise, load: set.loadLb, reps: set.reps,
+                rir: set.rir, rpe: set.rpe, order: set.setOrder,
+                exercisePosition: set.exercisePosition, plannedPosition: set.plannedPosition)
+        }
+        #expect(saved == expected)
+        #expect(try JSONDecoder().decode([WorkoutSet].self, from: JSONEncoder().encode(saved)) == expected)
+        let objects = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [[String: Any]])
+        #expect(objects[0]["rir"] == nil)
+        #expect(objects[0]["exercise_position"] as? Int == 4)
+        #expect(objects[0]["planned_position"] as? Int == 1)
+        #expect(objects[1]["rir"] as? Int == 0)
+        #expect(objects[2]["exercise_position"] == nil)
+        #expect(objects[2]["planned_position"] == nil)
+    }
+}
+
 private func orderTestExercise(_ name: String, group: String? = nil) -> ProgramV2Exercise {
     ProgramV2Exercise(key: name.lowercased(), name: name, sets: 3, reps: "10-15",
         restSeconds: 60...60, rirTarget: "2-3 RIR", startLoadLb: 145, notes: "", supersetGroup: group)

@@ -86,21 +86,28 @@ struct EditableBridgeSet: Identifiable {
     var exercise: String
     var load: Double
     var reps: Int
-    var rir: Int
+    var rir: Int?
     var rpeText: String
+    let order: Int
+    let exercisePosition: Int?
+    let plannedPosition: Int?
 
     init(_ set: RemoteWorkoutSet) {
         id = set.id
         exercise = set.exercise
         load = set.loadLb
         reps = set.reps
-        rir = set.rir ?? 0
+        rir = set.rir
         rpeText = set.rpe.map { String($0) } ?? ""
+        order = set.setOrder
+        exercisePosition = set.exercisePosition
+        plannedPosition = set.plannedPosition
     }
 
-    func payload(order: Int) -> WorkoutSet {
+    var payload: WorkoutSet {
         WorkoutSet(exercise: exercise, load: load, reps: reps, rir: rir,
-                   rpe: Double(rpeText.replacingOccurrences(of: ",", with: ".")), order: order)
+                   rpe: Double(rpeText.replacingOccurrences(of: ",", with: ".")), order: order,
+                   exercisePosition: exercisePosition, plannedPosition: plannedPosition)
     }
 }
 

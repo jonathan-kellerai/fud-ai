@@ -138,9 +138,7 @@ struct WorkoutHistoryEditView: View {
         defer { isSaving = false }
 
         let now = ISO8601DateFormatter().string(from: Date())
-        let payloadSets = sets.enumerated().map { index, set in
-            set.payload(order: index)
-        }
+        let payloadSets = sets.map(\.payload)
         let noteLines = notes
             .split(separator: "\n")
             .map { String($0).trimmingCharacters(in: .whitespaces) }
