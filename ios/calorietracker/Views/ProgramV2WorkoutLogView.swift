@@ -358,7 +358,7 @@ struct ProgramV2WorkoutLogView: View {
                         .background(IronTheme.blood, in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius))
                 }
                 Text(exercise.name)
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(IronTheme.heavyHeadline)
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .tracking(0.6)

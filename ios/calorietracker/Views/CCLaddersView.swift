@@ -337,7 +337,7 @@ private struct CCSeriesCard: View {
                 .textCase(.uppercase)
                 .foregroundStyle(IronTheme.bloodText)
             Text(series.label)
-                .font(.system(size: 17, weight: .heavy))
+                .font(IronTheme.heavyHeadline)
                 .fontWidth(.condensed)
                 .textCase(.uppercase)
                 .foregroundStyle(IronTheme.textPrimary)
@@ -363,7 +363,7 @@ private struct CCSeriesCard: View {
 
     private var masterBanner: some View {
         Text("Master level")
-            .font(.system(size: 17, weight: .heavy))
+            .font(IronTheme.heavyHeadline)
             .fontWidth(.condensed)
             .tracking(1.2)
             .textCase(.uppercase)
@@ -616,7 +616,7 @@ private struct CCStepStatsPanel: View {
     private var readiness: some View {
         if series.ready {
             Text("Ready")
-                .font(.system(size: 17, weight: .heavy))
+                .font(IronTheme.heavyHeadline)
                 .fontWidth(.condensed)
                 .tracking(1.2)
                 .textCase(.uppercase)
@@ -624,7 +624,7 @@ private struct CCStepStatsPanel: View {
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Not ready")
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(IronTheme.heavyHeadline)
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .foregroundStyle(IronTheme.textSecondary)

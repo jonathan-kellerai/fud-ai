@@ -289,7 +289,7 @@ struct PeptideMonthCalendar: View {
                 .accessibilityLabel("Previous month")
                 Spacer()
                 Text(month.label)
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(IronTheme.heavyHeadline)
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .foregroundStyle(IronTheme.textPrimary)

@@ -1508,12 +1508,14 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(selectedDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                        .font(.system(size: 17, weight: .heavy))
+                        .font(IronTheme.heavyHeadline)
                         .fontWidth(.condensed)
                         .tracking(1.1)
                         .textCase(.uppercase)
                         .foregroundStyle(IronTheme.textPrimary)
                         .monospacedDigit()
+                        // Capped at AX2 so a scaled principal title cannot crowd the bar buttons.
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 }
             }
     }

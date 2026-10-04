@@ -136,7 +136,7 @@ struct PeptidesView: View {
             .accessibilityLabel("Previous day")
             VStack(spacing: 2) {
                 Text(day == today ? "Today" : ReconMath.formatDateShort(day))
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(IronTheme.heavyHeadline)
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .foregroundStyle(IronTheme.textPrimary)
