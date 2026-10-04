@@ -29,6 +29,7 @@ struct calorietrackerApp: App {
     @State private var workoutDraftStore = WorkoutDraftStore()
     @State private var cloudBackupService = CloudBackupService()
     @State private var peptideLogStore = PeptideLogStore()
+    @State private var challengeStore = ChallengeStore()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
@@ -82,6 +83,7 @@ struct calorietrackerApp: App {
                         .environment(workoutDraftStore)
                         .environment(cloudBackupService)
                         .environment(peptideLogStore)
+                        .environment(challengeStore)
                 } else {
                     OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
                         .environment(notificationManager)
@@ -95,6 +97,7 @@ struct calorietrackerApp: App {
                         .environment(waterStore)
                         .environment(fastingStore)
                         .environment(workoutDraftStore)
+                        .environment(challengeStore)
                 }
             }
             .tint(IronTheme.bloodText)
@@ -181,6 +184,7 @@ struct calorietrackerApp: App {
                     // only fires on the false→true transition, never on cold launch).
                     wireUpFoodStoreCallback()
                     refreshAdaptiveGoalsIfNeeded()
+                    refreshChallenges()
                 }
                 // Refresh on scene-active so widgets roll over at midnight even
                 // without an explicit food change.
@@ -386,7 +390,8 @@ struct calorietrackerApp: App {
     }
 
     private func wireUpFoodStoreCallback() {
-        foodStore.onEntriesChanged = { [notificationManager, foodStore, weightStore, bodyFatStore] in
+        foodStore.onEntriesChanged = { [notificationManager, foodStore, weightStore, bodyFatStore, waterStore, challengeStore] in
+            ChallengeMetricProviders.refreshLogged(challengeStore, foodStore: foodStore, waterStore: waterStore)
             if UserDefaults.standard.bool(forKey: "notificationsEnabled"),
                let profile = UserProfile.load() {
                 notificationManager.rescheduleDataDependentNotifications(
@@ -397,9 +402,13 @@ struct calorietrackerApp: App {
                 WidgetSnapshotWriter.publish(foods: foodStore.entries, profile: profile)
             }
         }
-        waterStore.onEntriesChanged = { [foodStore] in
+        waterStore.onEntriesChanged = { [foodStore, waterStore, challengeStore] in
+            ChallengeMetricProviders.refreshLogged(challengeStore, foodStore: foodStore, waterStore: waterStore)
             guard let profile = UserProfile.load() else { return }
             WidgetSnapshotWriter.publish(foods: foodStore.entries, profile: profile)
+        }
+        challengeStore.onRemindersPlanned = { [notificationManager] planned in
+            notificationManager.scheduleChallengeReminders(planned)
         }
         fastingStore.onSessionsChanged = { [notificationManager, fastingStore] in
             let enabled = UserDefaults.standard.bool(forKey: "notificationsEnabled")
@@ -429,6 +438,23 @@ struct calorietrackerApp: App {
         }
         strengthWorkoutStore.onWorkoutBurnDeleted = { [healthKitManager] sessionID in
             healthKitManager.deleteWorkoutBurn(sessionID: sessionID)
+        }
+    }
+
+    /// Scene-active refresh: logged metrics, then steps, then one reconcile.
+    /// With the flag off, clears any challenge reminders still pending.
+    private func refreshChallenges() {
+        guard JLFeatureFlags.challengesEnabled else {
+            notificationManager.scheduleChallengeReminders([])
+            return
+        }
+        Task {
+            await ChallengeMetricProviders.refreshAll(
+                challengeStore,
+                foodStore: foodStore,
+                waterStore: waterStore,
+                healthKit: healthKitManager
+            )
         }
     }
 

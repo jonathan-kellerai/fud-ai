@@ -430,6 +430,44 @@ class NotificationManager {
         }
     }
 
+    // MARK: - Challenge reminders (one-shot, today only)
+
+    /// The latest replacement; the next call cancels and awaits it so two
+    /// replacements never interleave.
+    @ObservationIgnored private var challengeReminderTask: Task<Void, Never>?
+
+    /// Replaces every pending `challenge.` request with `planned`. Honors the
+    /// master switch and the Challenges flag; never asks for permission.
+    func scheduleChallengeReminders(_ planned: [PlannedNotification]) {
+        let previous = challengeReminderTask
+        previous?.cancel()
+        let allowed = UserDefaults.standard.bool(forKey: "notificationsEnabled") && JLFeatureFlags.challengesEnabled
+        challengeReminderTask = Task {
+            await previous?.value
+            let center = UNUserNotificationCenter.current()
+            let pending = await center.pendingNotificationRequests()
+            let stale = pending.map(\.identifier).filter { $0.hasPrefix(ChallengeReminderPlanner.idPrefix) }
+            center.removePendingNotificationRequests(withIdentifiers: stale)
+            guard allowed else { return }
+            for note in planned {
+                guard !Task.isCancelled else { return }
+                let interval = note.fireDate.timeIntervalSinceNow
+                guard interval > 1 else { continue }
+                let content = UNMutableNotificationContent()
+                content.title = note.title
+                content.body = note.body
+                content.sound = .default
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+                let request = UNNotificationRequest(identifier: note.id, content: content, trigger: trigger)
+                do {
+                    try await center.add(request)
+                } catch {
+                    // Best-effort; the next reconcile replans.
+                }
+            }
+        }
+    }
+
     // MARK: - Cancel All
 
     func cancelAllNotifications() {
