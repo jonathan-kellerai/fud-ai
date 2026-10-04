@@ -47,6 +47,50 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
+    @Test func typedGhostRepsReloadAndSaveWithoutCheckmark() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let day = ProgramV2Templates.day1LowerA
+        let exercise = day.exercises[0]
+        let now = Date(timeIntervalSince1970: 100)
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        _ = entry.row(for: exercise, at: 0, in: store)
+        entry.edit(exercise, at: 2, in: store, startedAt: now, field: .load) { $0.weight = 155 }
+        entry.edit(exercise, at: 2, in: store, startedAt: now, field: .rir) { $0.rir = nil }
+        #expect(store.draft == nil)
+        entry.edit(exercise, at: 2, in: store, startedAt: now, field: .reps) { $0.reps = 1 }
+        #expect(WorkoutDraftStore(directory: directory).draft?.sets[exercise.name]?.map(\.reps) == [1])
+        #expect(entry.editingStep == ExerciseStep(exerciseName: exercise.name, setIndex: 2))
+        entry.edit(exercise, at: 2, in: store, startedAt: now, field: .reps) { $0.reps = 13 }
+        let reopened = WorkoutDraftStore(directory: directory)
+        #expect(reopened.draft?.loggedSetCount == 1)
+        try await confirmation("save includes only explicitly entered reps") { posted in
+            try await reopened.save { payload in
+                posted()
+                #expect(payload.sets.count == 1)
+                #expect(payload.sets.first?.reps == 13)
+                #expect(payload.sets.first?.load == 155)
+                #expect(payload.sets.first?.rir == nil)
+            }
+        }
+        #expect(reopened.draft == nil)
+    }
+
+    @Test func enteringThePrefilledRepValueStillPersistsButZeroDoesNot() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let day = ProgramV2Templates.day1LowerA
+        let exercise = day.exercises[0]
+        let store = WorkoutDraftStore(directory: directory)
+        let entry = WorkoutSetEntry(day: day)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .reps) { $0.reps = 0 }
+        #expect(store.draft == nil)
+        entry.edit(exercise, at: 0, in: store, startedAt: Date(), field: .reps) { $0.reps = 10 }
+        #expect(store.draft?.sets[exercise.name]?.map(\.reps) == [10])
+        #expect(entry.editingStep?.setIndex == 0)
+    }
+
     @Test func ghostEditsLogRepeatAndUndoPersistOnlyEnteredSets() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -56,7 +100,7 @@ extension WorkoutDraftStoreTests {
         let entry = WorkoutSetEntry(day: day)
         let now = Date(timeIntervalSince1970: 100)
         entry.edit(exercise, at: 0, in: store, startedAt: now) { $0.reps = 13 }
-        #expect(store.draft == nil)
+        #expect(store.draft?.sets[exercise.name]?.first?.reps == 13)
         #expect(entry.log(exercise, at: 0, in: store, startedAt: now) == 0)
         let original = try #require(store.draft?.sets[exercise.name]?.first)
         #expect(original.reps == 13)

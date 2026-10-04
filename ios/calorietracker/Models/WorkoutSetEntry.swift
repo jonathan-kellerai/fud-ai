@@ -8,6 +8,8 @@ final class WorkoutSetEntry {
     var lastPerformances: [String: LastPerformance] = [:]
     var editingStep: ExerciseStep?
     private var pending: [ExerciseStep: LoggedSet] = [:]
+    /// A later ghost appends the next actual set; keep its editor bound to it.
+    private var enteredDestinations: [ExerciseStep: Int] = [:]
     private(set) var deletion: SetDeletionUndo?
     private var cursor = SessionStepCursor()
     private(set) var restStep: ExerciseStep?
@@ -104,7 +106,8 @@ final class WorkoutSetEntry {
         let step = ExerciseStep(exerciseName: exercise.name, setIndex: index)
         if let pending = pending[step] { return pending }
         let rows = store.existingDraft(for: day)?.sets[exercise.name] ?? []
-        if rows.indices.contains(index) { return rows[index] }
+        let destination = enteredDestinations[step] ?? index
+        if rows.indices.contains(destination) { return rows[destination] }
         let target = prefill(for: exercise, at: index, in: store)
         return LoggedSet(weight: target.load ?? 0, reps: target.reps, rir: target.rir, rpeText: "")
     }
@@ -115,12 +118,21 @@ final class WorkoutSetEntry {
         // Reps still count as logged immediately, but a live editor must not
         // disappear after the first digit of a multi-digit entry.
         editingStep = step
-        if store.existingDraft(for: day)?.sets[exercise.name]?.indices.contains(index) == true {
-            update(exercise, at: index, in: store, startedAt: startedAt, change)
+        let destination = enteredDestinations[step] ?? index
+        if store.existingDraft(for: day)?.sets[exercise.name]?.indices.contains(destination) == true {
+            update(exercise, at: destination, in: store, startedAt: startedAt, change)
         } else {
             var value = row(for: exercise, at: index, in: store)
+            let previousReps = value.reps
             change(&value)
-            pending[step] = value
+            if value.reps > 0 && (field == .reps || value.reps != previousReps) {
+                let count = store.existingDraft(for: day)?.sets[exercise.name]?.count ?? 0
+                store.update(day, startedAt: startedAt) { $0.sets[exercise.name, default: []].append(value) }
+                enteredDestinations[step] = count
+                pending[step] = nil
+            } else {
+                pending[step] = value
+            }
         }
     }
 
@@ -134,13 +146,14 @@ final class WorkoutSetEntry {
         let hasLoad = value.weight > 0 || exercise.startLoadLb == 0
         guard value.reps > 0, hasLoad else { editingStep = step; return nil }
         let count = store.existingDraft(for: day)?.sets[exercise.name]?.count ?? 0
-        let destination = min(index, count)
+        let destination = enteredDestinations[step] ?? min(index, count)
         guard destination >= 0 else { return nil }
         store.update(day, startedAt: startedAt) { draft in
             if destination < count { draft.sets[exercise.name]![destination] = value }
             else { draft.sets[exercise.name, default: []].append(value) }
         }
         pending[step] = nil
+        enteredDestinations[step] = nil
         editingStep = nil
         return destination
     }
@@ -164,6 +177,7 @@ final class WorkoutSetEntry {
                                   set: rows[index], expiresAt: now.addingTimeInterval(5))
         store.update(day, startedAt: startedAt) { $0.sets[exercise.name]?.remove(at: index) }
         pending = [:]
+        enteredDestinations = [:]
         editingStep = nil
     }
 
@@ -172,6 +186,7 @@ final class WorkoutSetEntry {
         store.update(day, startedAt: startedAt) { _ = deletion.restore(in: &$0.sets, at: now) }
         self.deletion = nil
         pending = [:]
+        enteredDestinations = [:]
         editingStep = nil
     }
 
