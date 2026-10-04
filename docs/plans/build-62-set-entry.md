@@ -84,3 +84,21 @@ Check existing coverage before adding unit tests; add only missing cases in
 the existing CI-listed suite extensions. Run the requested Linux harness.
 iOS compilation and image generation require CI; Jonathan must approve the
 new images and their before/after table. No local iOS certification.
+
+### Original 62a–62h naming and local checks
+
+A concurrent process committed the initial additions as 2ce8d044e and
+renamed them 70–77, then added the HOLD card in cfa6e5c1d. Preserve those
+commits and tests. The original session request's 62a–62h entry points are
+added separately using the same fixture/render helper, with an additional
+62d-pre-exhaustion-hold image for the explicit HOLD reason. No existing
+test or shot is replaced. 62i-undo-toast is omitted for the expiry reason above.
+
+Unit commit 5deb50985 covers actual calendar selection before the dated
+week builder and reduction load/RIR defaults through rest-entry logging.
+The requested Linux harness completed with 99 tests in two suites after an
+initial run aborted when generated build files disappeared. An extracted
+fixture executable satisfied all nine fixture assertions and encoded all
+seven new bridge response paths. Swift syntax parsing passed; iOS type
+checking and rendered images remain pending CI and human approval. This
+session did not push. See /workspace/r62/ios3-verification.md for the handoff.

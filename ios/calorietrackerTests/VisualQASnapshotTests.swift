@@ -2234,3 +2234,40 @@ final class VisualQABuild62Fixture {
         }
     }
 }
+
+// The original request names these build-62 images 62a–62h. Preserve the
+// independently committed 70–77 review images and share their real fixtures.
+extension VisualQASnapshotTests {
+    func test62aLoggerSetRows() async throws {
+        try await build62Shot("62a-logger-set-rows", heightMultiplier: 3.4, scenario: .rows)
+    }
+
+    func test62bRestNextSet() async throws {
+        try await build62Shot("62b-rest-next-set", heightMultiplier: 2.4, scenario: .nextSet)
+    }
+
+    func test62cLoggerReorder() async throws {
+        try await build62Shot("62c-logger-reorder", heightMultiplier: 5, scenario: .reorder)
+    }
+
+    func test62dPreExhaustionNote() async throws {
+        try await build62Shot("62d-pre-exhaustion-note", heightMultiplier: 6, scenario: .preExhaustion)
+        try await build62Shot("62d-pre-exhaustion-hold", heightMultiplier: 2.4, scenario: .preExhaustionNextSet)
+    }
+
+    func test62eWeek3Day2() async throws {
+        try await build62Shot("62e-week3-day2", heightMultiplier: 8, scenario: .week3Day2)
+    }
+
+    func test62fWeek3Day3() async throws {
+        try await build62Shot("62f-week3-day3", heightMultiplier: 6, scenario: .week3Day3)
+    }
+
+    func test62gReductionWeekDay() async throws {
+        try await build62Shot("62g-reduction-week-day", heightMultiplier: 8, scenario: .reduction)
+    }
+
+    func test62hRestBar() async throws {
+        try await build62Shot("62h-rest-bar", heightMultiplier: 2.4, scenario: .restBar)
+    }
+}
