@@ -1,0 +1,138 @@
+{
+  "SQT-01": {
+    "start": [
+      "Upper back, shoulders and head on the floor",
+      "Hips stacked over shoulders, hands brace the lower back",
+      "Legs straight, together and vertical, toes pointed"
+    ],
+    "end": [
+      "Bend hips and knees together",
+      "Knees come down toward the forehead, heels toward the glutes",
+      "Shoulders stay down; straighten back to vertical"
+    ],
+    "altStart": "Shoulderstand squat, start position: lying on the upper back with hips stacked over the shoulders, hands bracing the lower back and straight legs pointing at the ceiling.",
+    "altEnd": "Shoulderstand squat, end position: hips and knees bent so the knees come down toward the forehead, heels near the glutes, shoulders still on the floor."
+  },
+  "SQT-02": {
+    "start": [
+      "Feet shoulder-width, legs straight",
+      "Hinge into a table: torso about parallel to the floor",
+      "Hands on a knee-high support, weight shared"
+    ],
+    "end": [
+      "Bend knees and hips until hamstrings touch calves",
+      "Heels flat, keep pressure through the hands",
+      "Push back up through legs and hands"
+    ],
+    "altStart": "Jackknife squat, start position: standing with straight legs, hinged at the hips so the torso is level with the floor, hands on a knee-high support.",
+    "altEnd": "Jackknife squat, end position: squatting down until the hamstrings rest on the calves, heels flat, torso leaning forward and hands still on the support."
+  },
+  "SQT-03": {
+    "start": [
+      "Stand tall, feet shoulder-width",
+      "Hands rest on a sturdy hip-high support"
+    ],
+    "end": [
+      "Squat to full depth, hamstrings on calves",
+      "Torso fairly upright, heels flat, knees over toes",
+      "Hands help only out of the bottom third"
+    ],
+    "altStart": "Supported squat, start position: standing tall with feet shoulder-width apart and hands resting on a hip-high support in front.",
+    "altEnd": "Supported squat, end position: squatting all the way down, hamstrings on calves, heels flat, hands resting on a hip-high support."
+  },
+  "SQT-04": {
+    "start": [
+      "Stand tall, feet shoulder-width",
+      "Arms straight out at shoulder height",
+      "Spine neutral"
+    ],
+    "end": [
+      "Hips back and down until knees reach about 90°",
+      "Heels flat, knees track the toes",
+      "Torso leans forward in line with the shins"
+    ],
+    "altStart": "Half squat, start position: standing tall with feet shoulder-width apart and arms held straight out in front at shoulder height.",
+    "altEnd": "Half squat, end position: hips back and down until the knees are bent to about 90 degrees, thighs above parallel, heels flat and arms forward."
+  },
+  "SQT-05": {
+    "start": [
+      "Feet shoulder-width",
+      "Arms straight out in front"
+    ],
+    "end": [
+      "Full depth: hamstrings rest on calves, hips below knees",
+      "Heels flat, chest up, back flat",
+      "Drive up through the whole foot"
+    ],
+    "altStart": "Full squat, start position: standing tall with feet shoulder-width apart and arms held straight out in front.",
+    "altEnd": "Full squat, end position: squatting all the way down with hamstrings on calves and hips below the knees, heels flat, chest up and arms forward."
+  },
+  "SQT-06": {
+    "start": [
+      "Feet together, heels and toes touching",
+      "Arms straight out in front"
+    ],
+    "end": [
+      "Full depth with feet still together",
+      "Knees travel further forward, slight extra lean",
+      "Heels stay down"
+    ],
+    "altStart": "Close squat, start position: standing tall with feet together, heels and toes touching, and arms held straight out in front.",
+    "altEnd": "Close squat, end position: squatting all the way down with feet still together, knees well forward, heels flat and arms forward."
+  },
+  "SQT-07": {
+    "start": [
+      "Working foot flat on the floor",
+      "Other foot rests on a ball in front, knee soft"
+    ],
+    "end": [
+      "Working leg squats to full depth, heel flat",
+      "Ball rolls forward; that leg gives light support only",
+      "Swap legs"
+    ],
+    "altStart": "Uneven squat, start position: standing on the working leg with the other foot resting on top of a ball placed in front.",
+    "altEnd": "Uneven squat, end position: the working leg squatted to full depth with the heel flat while the other leg stretches forward on the rolling ball."
+  },
+  "SQT-08": {
+    "start": [
+      "Balance on the working leg",
+      "Free leg straight, held forward just off the floor",
+      "Arms straight out in front"
+    ],
+    "end": [
+      "Working knee bends to about 90°, heel flat",
+      "Knee tracks the toes",
+      "Free leg stays straight; lean forward to balance"
+    ],
+    "altStart": "Half one-leg squat, start position: balancing on one leg with the other leg straight and held forward just off the floor, arms forward.",
+    "altEnd": "Half one-leg squat, end position: the working knee bent to about 90 degrees with the heel flat, the free leg straight and off the floor."
+  },
+  "SQT-09": {
+    "start": [
+      "Balance on the working leg, free leg forward",
+      "One hand lightly grips a sturdy upright beside you",
+      "Other arm points forward"
+    ],
+    "end": [
+      "Full one-leg depth, hamstring on calf, heel flat",
+      "Free leg straight and level with the floor",
+      "Hand slides down; help only out of the bottom"
+    ],
+    "altStart": "Assisted one-leg squat, start position: balancing on one leg with the free leg forward and one hand lightly gripping an upright beside the body.",
+    "altEnd": "Assisted one-leg squat, end position: one-leg squat at full depth with the free leg straight and level, the hand low on the upright for light help."
+  },
+  "SQT-10": {
+    "start": [
+      "Balance on the working leg",
+      "Free leg straight forward, off the floor",
+      "Arms extended forward"
+    ],
+    "end": [
+      "Rock bottom: hamstring on calf, free leg level",
+      "Heel, big toe and little toe stay planted",
+      "No hands; pause, then stand"
+    ],
+    "altStart": "One-leg squat (pistol), start position: balancing on one leg with the free leg straight out in front off the floor and arms extended forward.",
+    "altEnd": "One-leg squat (pistol), end position: rock-bottom one-leg squat with the hamstring on the calf, the free leg straight and parallel to the floor, arms forward."
+  }
+}
