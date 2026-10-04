@@ -186,7 +186,8 @@ extension WorkoutDraftStoreTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         var day = ProgramV2Templates.day1LowerA
-        day.exercises[0].startLoadLb = nil
+        day.exercises[0] = ProgramV2Exercise(key: "select", name: "Select", sets: 3, reps: "10-15",
+            restSeconds: 60...60, rirTarget: "2", startLoadLb: nil, notes: "")
         let exercise = day.exercises[0]
         let now = Date(timeIntervalSince1970: 100)
         let store = WorkoutDraftStore(directory: directory)
@@ -212,7 +213,8 @@ extension WorkoutDraftStoreTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         var day = ProgramV2Templates.day1LowerA
-        day.exercises[0].startLoadLb = 0
+        day.exercises[0] = ProgramV2Exercise(key: "bodyweight", name: "Bodyweight", sets: 3, reps: "10-15",
+            restSeconds: 60...60, rirTarget: "2", startLoadLb: 0, notes: "")
         let exercise = day.exercises[0]
         let store = WorkoutDraftStore(directory: directory)
         let entry = WorkoutSetEntry(day: day)
@@ -227,7 +229,8 @@ extension WorkoutDraftStoreTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         var day = ProgramV2Templates.day1LowerA
-        day.exercises[0].startLoadLb = nil
+        day.exercises[0] = ProgramV2Exercise(key: "select", name: "Select", sets: 3, reps: "10-15",
+            restSeconds: 60...60, rirTarget: "2", startLoadLb: nil, notes: "")
         let exercise = day.exercises[0]
         let store = WorkoutDraftStore(directory: directory)
         let entry = WorkoutSetEntry(day: day)
