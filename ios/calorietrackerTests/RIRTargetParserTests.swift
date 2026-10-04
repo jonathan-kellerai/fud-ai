@@ -47,10 +47,11 @@ extension WorkoutDraftStoreTests {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: directory) }
             var day = ProgramV2Templates.day1LowerA
-            day.exercises = [day.exercises[0]]
-            day.exercises[0].rirTarget = ""
-            day.exercises[0].notes = "RIR target: sets 1-2: 2-3 RIR; last set 1-2 RIR."
-            let exercise = day.exercises[0]
+            let base = day.exercises[0]
+            let exercise = ProgramV2Exercise(key: base.key, name: base.name, sets: base.sets,
+                reps: base.reps, restSeconds: base.restSeconds, rirTarget: "", startLoadLb: base.startLoadLb,
+                notes: "RIR target: sets 1-2: 2-3 RIR; last set 1-2 RIR.")
+            day.exercises = [exercise]
             let store = WorkoutDraftStore(directory: directory)
             let entry = WorkoutSetEntry(day: day)
             entry.add(exercise, in: store, startedAt: Date())
