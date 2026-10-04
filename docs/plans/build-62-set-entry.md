@@ -120,3 +120,62 @@ Nothing pushed. No CI URLs or reviewer sign-off exist for this work.
 Jonathan's approval of the new images remains pending under the
 human-owned goldens-update review. Current handoff:
 /workspace/r62/VQA-70-78-HANDOFF.md.
+
+## Reviewer-finding fixes — 2026-10-03
+
+Source: `/workspace/r62/review-last.md`. The supplied CI failure report says
+build and unit tests passed on 9a5f7f314; it contains no compile failures
+and no run URL. Jonathan explicitly assigned Codex the coder role, supplied
+writable Git metadata, prohibited pushing, and required one concern per
+commit. Those instructions govern this session.
+
+Implemented findings 1–6:
+
+- a430152ba separates field intent from row presentation without changing
+  entry behavior; 60d6e6f9f persists positive typed ghost reps immediately,
+  retains the editor for multi-digit input, and tests reload/save without ✓.
+  The build-62 ghost-edit test now asserts immediate persistence instead
+  of the behavior the reviewer identified as incorrect.
+- 6b121ee13 moves history-set conversion into the bridge model without
+  changing its behavior; 9cc1bf867 preserves optional RIR, original set
+  order, exercise_position and planned_position through history edits.
+  The round-trip test includes unknown and zero RIR, missing positions,
+  and noncontiguous set orders.
+- 866a55a8b records explicit field edits in optional draft metadata and
+  refreshes untouched unfinished load/RIR from the current decision.
+  Tests cover list/rest agreement at +5 and −5, legacy RIR 0 placeholders,
+  and manual load, nil RIR and explicit zero RIR surviving refresh/reload.
+- 54e72d6c7 rejects swaps when either participating block has logged sets,
+  including any member of a superset; canMove and move share the guard.
+  Tests preserve recorded positions while allowing unstarted blocks to move.
+- 900ae3244 changes reduction Day 3 to 12 minutes steady, including its
+  minimum prescription. Tests cover dated selection, display values, draft
+  round-trip and conditioning payload; other weeks retain their prescription.
+- d02385840 centralizes the three session-opening callers without changing
+  behavior; 498fd764c resolves matching drafts to their saved programV2Day.
+  Tests resume an October 13 draft on October 20 without rewriting week
+  counts, RIR targets, load policy, session date or recorded sets, and cover
+  new sessions plus different-day handoffs.
+- 9635ad85b fixes the new regression fixture's attempted assignment to
+  immutable exercise notes, found by the first Linux harness run.
+
+Finding 7 is deliberately skipped under Jonathan's condition. Pre-build-62
+SHA 423fc3e5e already contains VisualQASnapshotTests.test49SupersetPair
+using bundledV2().days[3], test04WorkoutLogging using a bundled lifting day,
+and bundled program responses in VisualQAFixtures.buildResponses().
+Changing fallback counts or reductionWeek would affect existing VQA renders.
+Neither the fallback nor those tests were changed.
+
+Verification: `/workspace/r62/harness/build.sh` passed **110 tests in two
+CI-listed suites** on implementation SHA 9635ad85b. Logs are
+`/workspace/r62/harness/build.log` and `/workspace/r62/harness/test.log`.
+The harness strips Observation and substitutes Linux service stubs; it
+does not type-check SwiftUI or establish an iOS build. Swift 6.2 syntax
+parsing with DEBUG enabled passed for all five changed views. Diff checks
+found no whitespace errors and no changes to workflows, existing VQA
+tests, or either original CI-listed test file. New cases extend existing
+suites in build-62 test files; no pre-build-62 tests were modified.
+
+No push, CI run on the fixed SHA, or reviewer sign-off. iOS compilation,
+Visual QA artifacts and final review remain external gates. This handoff
+records local implementation and verification, not certification of completion.
