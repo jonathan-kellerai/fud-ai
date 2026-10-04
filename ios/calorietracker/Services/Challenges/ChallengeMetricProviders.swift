@@ -78,6 +78,20 @@ enum ChallengeMetricProviders {
         )
     }
 
+    /// Creates a challenge and fills food and water values at once, so a new
+    /// challenge never shows "No data" over logs that already exist. Steps
+    /// follow through `refreshSteps`.
+    static func create(
+        _ challenge: Challenge,
+        in store: ChallengeStore,
+        foodStore: FoodStore,
+        waterStore: WaterStore,
+        now: Date = Date()
+    ) throws {
+        try store.create(challenge, now: now)
+        refreshLogged(store, foodStore: foodStore, waterStore: waterStore, now: now)
+    }
+
     /// Food and water refresh for every logged-metric challenge. Synchronous so it
     /// can run inside the stores' existing change callbacks.
     static func refreshLogged(_ store: ChallengeStore, foodStore: FoodStore, waterStore: WaterStore, now: Date = Date()) {

@@ -103,6 +103,40 @@ struct ChallengeMetricProviderTests {
         #expect(steps.isEmpty)
     }
 
+    @Test func creatingOverExistingLogsScoresThemAtOnce() throws {
+        let (food, water) = seededStores()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("challenge-providers-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("challenges.v1.json")
+        let store = ChallengeStore(fileURL: url)
+        let hydrate = challenge(.waterAppLog, kind: .dailyHabit(.atLeast(2_000)))
+        let eat = challenge(.calories, kind: .total(50_000))
+
+        try ChallengeMetricProviders.create(hydrate, in: store, foodStore: food, waterStore: water, now: now)
+        try ChallengeMetricProviders.create(eat, in: store, foodStore: food, waterStore: water, now: now)
+
+        let hydrateProgress = try #require(store.progress(for: hydrate.id))
+        #expect(hydrateProgress.status != .noData)
+        #expect(hydrateProgress.hitDays == 1)
+        #expect(store.autoAvailability[eat.id] == .available)
+        #expect(store.dailyValues(for: eat).values.reduce(0, +) == 2_110)
+    }
+
+    @Test func creatingAnInvalidChallengeStillThrows() {
+        let (food, water) = seededStores()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("challenge-providers-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("challenges.v1.json")
+        let store = ChallengeStore(fileURL: url)
+        var blank = challenge(.waterAppLog, kind: .dailyHabit(.atLeast(2_000)))
+        blank.title = "   "
+        let at = now
+        #expect(throws: ChallengeStoreError.invalidChallenge) {
+            try ChallengeMetricProviders.create(blank, in: store, foodStore: food, waterStore: water, now: at)
+        }
+        #expect(store.challenges.isEmpty)
+    }
+
     @Test func noReadableStepsMeansUnavailableNotZero() {
         // Denied Health access returns no samples, never a zero.
         #expect(ChallengeMetricProviders.stepDays([:], calendar: calendar) == nil)

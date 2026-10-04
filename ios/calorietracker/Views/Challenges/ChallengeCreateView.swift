@@ -4,6 +4,9 @@ import SwiftUI
 struct ChallengeCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ChallengeStore.self) private var store
+    @Environment(FoodStore.self) private var foodStore
+    @Environment(WaterStore.self) private var waterStore
+    @Environment(HealthKitManager.self) private var healthKit
     @State private var draft: ChallengeDraft
     @State private var errorText: String?
 
@@ -140,7 +143,10 @@ struct ChallengeCreateView: View {
     private func save() {
         guard let challenge = candidate else { return }
         do {
-            try store.create(challenge)
+            try ChallengeMetricProviders.create(challenge, in: store, foodStore: foodStore, waterStore: waterStore)
+            if challenge.metric == .steps {
+                Task { await ChallengeMetricProviders.refreshSteps(store, healthKit: healthKit) }
+            }
             dismiss()
         } catch {
             errorText = "Couldn't save this challenge. Check the target and length."
