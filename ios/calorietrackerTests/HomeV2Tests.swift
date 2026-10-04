@@ -179,6 +179,27 @@ struct HomeV2Tests {
         #expect(today.completed.isEmpty)
     }
 
+    @MainActor
+    @Test func legacySavedLayoutGetsChallengesAppendedAtTheEnd() throws {
+        let suite = "home-layout-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // A build-63 layout: no "challenges" key, peptides moved first, recovery hidden.
+        let legacy = #"{"order":["peptides","weekStrip","today","dailyTargets","bodyTrend","recovery","weekSoFar"],"hidden":["recovery"]}"#
+        defaults.set(Data(legacy.utf8), forKey: HomeCardLayout.storageKey)
+        let layout = HomeCardLayout.load(from: defaults)
+        #expect(layout.order == [.peptides, .weekStrip, .today, .dailyTargets, .bodyTrend, .recovery, .weekSoFar, .challenges])
+        #expect(layout.hidden == [.recovery])
+    }
+
+    @MainActor
+    @Test func challengesCardIsFilteredWhileTheFlagIsOff() {
+        let order = HomeCardID.allCases
+        #expect(HomeCardLayout.available(order, challengesEnabled: true).contains(.challenges))
+        #expect(!HomeCardLayout.available(order, challengesEnabled: false).contains(.challenges))
+        #expect(HomeCardLayout.available(order, challengesEnabled: false).count == order.count - 1)
+    }
+
     private func newYorkCalendar() -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!

@@ -50,6 +50,8 @@ final class ChallengeStore {
     private(set) var pendingUnlocks: [RewardUnlock] = []
     private(set) var lastSaveError: String?
     private(set) var lastPlannedNotifications: [PlannedNotification] = []
+    /// The `now` of the latest reconcile, so screens label days from the same clock.
+    private(set) var evaluatedAt: Date?
 
     /// Called with today's planned reminders after every reconcile.
     @ObservationIgnored var onRemindersPlanned: (([PlannedNotification]) -> Void)?
@@ -183,10 +185,10 @@ final class ChallengeStore {
         reconcile(now: now)
     }
 
-    /// Removes the oldest pending unlock once the reward screen has shown it.
-    func acknowledgeFirstUnlock() {
-        guard !pendingUnlocks.isEmpty else { return }
-        pendingUnlocks.removeFirst()
+    /// Removes a pending unlock once the reward screen has shown it.
+    func acknowledge(_ unlock: RewardUnlock) {
+        guard let index = pendingUnlocks.firstIndex(of: unlock) else { return }
+        pendingUnlocks.remove(at: index)
     }
 
     // MARK: - Reconcile
@@ -196,6 +198,7 @@ final class ChallengeStore {
     @discardableResult
     func reconcile(now: Date = Date()) -> [PlannedNotification] {
         let calendar = self.calendar
+        evaluatedAt = now
         var unlocked: [RewardUnlock] = []
         var items: [(challenge: Challenge, progress: ChallengeProgress)] = []
         for challenge in challenges {
@@ -245,14 +248,9 @@ final class ChallengeStore {
     }
 
     private func availability(for challenge: Challenge) -> ChallengeAvailability {
-        guard challenge.metric.isAutomatic, !isCheckIn(challenge) else { return .available }
+        guard challenge.metric.isAutomatic, !challenge.isCheckIn else { return .available }
         // Never score an automatic metric before its first successful read.
         return autoAvailability[challenge.id] ?? .unavailable
-    }
-
-    private func isCheckIn(_ challenge: Challenge) -> Bool {
-        if case .dailyHabit(.checkIn) = challenge.kind { return true }
-        return false
     }
 
     private func requireLoggable(_ day: ChallengeDay, in challenge: Challenge, now: Date) throws {

@@ -40,6 +40,24 @@ struct MoreHubView: View {
                 ForEach(ProfileSettingsCategory.appInfoCases) { category in
                     ProfileSettingsCategoryRow(category: category, subtitle: MoreHubSubtitles.text(for: category, inputs))
                 }
+                // Last row, after About, so the seven SE-gated rows keep their place.
+                if JLFeatureFlags.challengesEnabled {
+                    NavigationLink {
+                        ChallengeListView()
+                    } label: {
+                        SettingsHubRowLabel(
+                            title: "Challenges",
+                            systemImage: "flag.checkered",
+                            subtitle: "Goals, pace and rewards"
+                        )
+                    }
+                    .accessibilityIdentifier("settings.category.challenges")
+                    .overlay {
+                        SettingsHubRowAnchor(identifier: "settings.category.challenges")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .allowsHitTesting(false)
+                    }
+                }
             } header: {
                 IronSectionTitle(title: "App")
             }

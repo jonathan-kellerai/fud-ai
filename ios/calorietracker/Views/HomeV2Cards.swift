@@ -17,6 +17,7 @@ enum HomeCardID: String, CaseIterable, Identifiable, Codable {
     case recovery
     case peptides
     case weekSoFar
+    case challenges
 
     var id: String { rawValue }
 
@@ -29,6 +30,7 @@ enum HomeCardID: String, CaseIterable, Identifiable, Codable {
         case .recovery: "Recovery"
         case .peptides: "Peptides"
         case .weekSoFar: "Week so far"
+        case .challenges: "Challenges"
         }
     }
 }
@@ -36,8 +38,8 @@ enum HomeCardID: String, CaseIterable, Identifiable, Codable {
 enum HomeCardLayout {
     static let storageKey = "jl.physical.homeCards.v1"
 
-    static func load() -> (order: [HomeCardID], hidden: Set<HomeCardID>) {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+    static func load(from defaults: UserDefaults = .standard) -> (order: [HomeCardID], hidden: Set<HomeCardID>) {
+        guard let data = defaults.data(forKey: storageKey),
               let stored = try? JSONDecoder().decode(Stored.self, from: data) else {
             return (HomeCardID.allCases, [])
         }
@@ -47,6 +49,12 @@ enum HomeCardLayout {
         }
         let hidden = Set(stored.hidden.compactMap(HomeCardID.init(rawValue:)))
         return (order, hidden)
+    }
+
+    /// Cards that can appear at all. The Challenges card is gone while its flag is off;
+    /// a saved layout keeps its slot because `load` re-appends missing cards.
+    static func available(_ order: [HomeCardID], challengesEnabled: Bool) -> [HomeCardID] {
+        challengesEnabled ? order : order.filter { $0 != .challenges }
     }
 
     static func save(order: [HomeCardID], hidden: Set<HomeCardID>) {
@@ -72,6 +80,8 @@ struct HomeV2Cards: View {
     @Environment(ProfileStore.self) private var profileStore
     @Environment(WorkoutDraftStore.self) private var workoutDraftStore
     @Environment(PeptideLogStore.self) private var peptideStore
+    /// Optional so hosts without Challenges (previews, older harness roots) render without it.
+    @Environment(ChallengeStore.self) private var challengeStore: ChallengeStore?
     @AppStorage("healthKitEnabled") private var healthKitEnabled = false
     @AppStorage("weekStartsOnMonday") private var weekStartsOnMonday = true
     @AppStorage(WaterSettings.enabledKey) private var waterTrackingEnabled = false
@@ -125,7 +135,7 @@ struct HomeV2Cards: View {
     }
 
     var body: some View {
-        ForEach(order.filter { !hidden.contains($0) }) { card in
+        ForEach(availableCards.filter { !hidden.contains($0) }) { card in
             cardSection(card)
         }
         .task(id: loadKey) {
@@ -138,7 +148,7 @@ struct HomeV2Cards: View {
             }
         }
         .sheet(isPresented: $showingCustomize, onDismiss: reloadLayout) {
-            CustomizeHomeSheet(order: order, hidden: hidden) { newOrder, newHidden in
+            CustomizeHomeSheet(order: availableCards, hidden: hidden) { newOrder, newHidden in
                 order = newOrder
                 hidden = newHidden
                 HomeCardLayout.save(order: newOrder, hidden: newHidden)
@@ -163,6 +173,10 @@ struct HomeV2Cards: View {
                 }
             }
         }
+    }
+
+    private var availableCards: [HomeCardID] {
+        HomeCardLayout.available(order, challengesEnabled: JLFeatureFlags.challengesEnabled)
     }
 
     private var loadKey: String {
@@ -266,6 +280,15 @@ struct HomeV2Cards: View {
                 weekSoFarCard.listRowBackground(IronTheme.surface)
             } header: {
                 IronSectionTitle(title: "Week so far")
+            }
+        case .challenges:
+            // Hidden until a challenge is running.
+            if let challengeStore, !challengeStore.activeChallenges.isEmpty {
+                Section {
+                    ChallengeHomeCard(store: challengeStore)
+                } header: {
+                    IronSectionTitle(title: "Challenges")
+                }
             }
         }
     }

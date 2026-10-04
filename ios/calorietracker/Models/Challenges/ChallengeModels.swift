@@ -121,6 +121,11 @@ nonisolated struct Challenge: Codable, Hashable, Identifiable, Sendable {
     func contains(_ day: ChallengeDay) -> Bool {
         day >= startDay && day <= endDay
     }
+
+    var isCheckIn: Bool {
+        if case .dailyHabit(.checkIn) = kind { return true }
+        return false
+    }
 }
 
 /// One hand-logged amount for a `.custom` metric. Amounts on the same day add up.
