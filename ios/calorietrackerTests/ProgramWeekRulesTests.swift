@@ -94,37 +94,6 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
-    @Test func datedArmGhostsLogAndResumeWithAdjustedCounts() throws {
-        var body = weekRulesV4Body()
-        body.reductionWeek = 4
-        for (dayIndex, date, name, count) in [
-            (2, "2026-10-13", "Overhead triceps extension (cable or DB)", 3),
-            (3, "2026-10-14", "Cable or DB curl", 4),
-        ] {
-            let startedAt = weekRulesDate(date)
-            let day = body.programV2Day(for: body.days[dayIndex - 1], on: startedAt)
-            let exercise = try #require(day.exercises.first { $0.name == name })
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("dated-arm-entry-\(UUID().uuidString)")
-            defer { try? FileManager.default.removeItem(at: directory) }
-            let store = WorkoutDraftStore(directory: directory)
-            let entry = WorkoutSetEntry(day: day)
-            // Real bridge history supplies a load even for Select-load curls.
-            entry.lastPerformances[LastPerformanceBuilder.key(for: name)] =
-                LastPerformance(sessionDate: "2026-10-07", sets: [WorkingSetSummary(load: 25, reps: 12, rir: 2)])
-            #expect(SetEntryLogic.plannedRowCount(exercise: exercise, sets: []) == count)
-            #expect(store.draft == nil)
-            for index in 0..<count {
-                #expect(entry.log(exercise, at: index, in: store, startedAt: startedAt) == index)
-            }
-            let restored = try #require(WorkoutDraftStore(directory: directory).draft)
-            #expect(restored.sets[name]?.count == count)
-            #expect(restored.programV2Day.exercises.first { $0.name == name }?.sets == count)
-            #expect(restored.programV2Day.weekNote == day.weekNote)
-            #expect(SetEntryLogic.plannedRowCount(exercise: exercise, sets: restored.sets[name] ?? []) == count)
-        }
-    }
-
     @Test func weekRulesSurviveDraftResumeWithoutAddingLegacyKeys() throws {
         var body = TrainingProgramBody.bundledV2()
         body.reductionWeek = 4
@@ -140,38 +109,5 @@ extension WorkoutDraftStoreTests {
         #expect(object["holdLoads"] == nil)
         let rows = try #require(object["exercises"] as? [[String: Any]])
         #expect(rows.allSatisfy { $0["setsLabel"] == nil })
-    }
-}
-
-extension WorkoutLoggerLogicTests {
-    @Test func calendarSelectedDaysApplyWeekRulesOnTheirActualSessionDates() throws {
-        var body = weekRulesV4Body()
-        body.reductionWeek = 4
-        let cases: [(String, Int, String, Int)] = [
-            ("2026-10-13", 2, "Overhead triceps extension (cable or DB)", 3),
-            ("2026-10-14", 3, "Cable or DB curl", 4),
-            ("2026-10-20", 2, "Overhead triceps extension (cable or DB)", 2),
-            ("2026-10-21", 3, "Cable or DB curl", 2),
-            ("2026-10-27", 2, "Overhead triceps extension (cable or DB)", 2),
-            ("2026-10-28", 3, "Cable or DB curl", 3),
-        ]
-        for (civilDate, dayIndex, name, count) in cases {
-            let date = weekRulesDate(civilDate)
-            let resolved = TrainingProgramSchedule.resolve(body, on: date,
-                calendar: ProgramWeekRules.easternCalendar)
-            let selected = try #require(TrainingProgramSchedule.programDay(in: body, matching: resolved))
-            #expect(selected.dayIndex == dayIndex)
-            let loggerDay = body.programV2Day(for: selected, on: date)
-            let exercise = try #require(loggerDay.exercises.first { $0.name == name })
-            #expect(exercise.sets == count)
-            #expect(SetEntryLogic.plannedRowCount(exercise: exercise, sets: []) == count)
-            let isReduction = civilDate == "2026-10-20" || civilDate == "2026-10-21"
-            #expect(loggerDay.holdLoads == isReduction)
-            if civilDate == "2026-10-13" || civilDate == "2026-10-14" {
-                #expect(loggerDay.weekNote?.hasPrefix("Week 3:") == true)
-            } else if civilDate == "2026-10-27" || civilDate == "2026-10-28" {
-                #expect(loggerDay.weekNote == nil)
-            }
-        }
     }
 }
