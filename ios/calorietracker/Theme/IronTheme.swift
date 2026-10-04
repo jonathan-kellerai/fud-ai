@@ -47,6 +47,9 @@ enum IronTheme {
 
     static var motion: Animation { .easeOut(duration: motionDuration) }
 
+    /// Heavy headline for CTAs and heavy labels: 17 pt at the default size, scaling with Dynamic Type.
+    static let heavyHeadline: Font = .headline.weight(.heavy)
+
     enum Hex {
         static let canvas: UInt = 0x0B0A09
         static let surface: UInt = 0x171513
@@ -341,8 +344,7 @@ struct IronPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            // .headline is 17 pt at the default size and scales with Dynamic Type.
-            .font(.headline.weight(.heavy))
+            .font(IronTheme.heavyHeadline)
             .fontWidth(.condensed)
             .tracking(1.0)
             .textCase(.uppercase)
