@@ -316,3 +316,45 @@ Home shots do not gain the card, because the fixtures have no active challenge. 
   - a reward unlocks once, including from steps alone;
   - a reminder fires only when the challenge is behind.
 - TestFlight goes out only with Jonathan's explicit approval.
+
+## Implementation status (coder, 2026-10-04, local commits on `integ/build-64`, not pushed)
+All plan commits T0 → CI are in, in plan order. **Nothing has compiled on Xcode yet**: CI on the head SHA is the first build. Nothing is "done" until that run is green.
+
+**Linux harness** (Swift 6.2, Swift 5 mode, MainActor default isolation, strict concurrency; throwaway package in `/tmp/r64-harness`, not committed): engine, evaluator, planner, presentation, flag and store files with their suites. Result: 61 tests in 6 suites, 0 compiler warnings, 59 pass. The 2 failures are the `isExcludedFromBackup` reads in `ChallengeStoreTests`: corelibs-foundation doesn't implement that Apple-only resource key. They stay as gates and must pass on iOS CI. (Commit `d7ee1581d`'s message says "45/45"; the real count at that point was 40/40.)
+
+### Deviations from this plan
+| Item | What changed | Why |
+|---|---|---|
+| T0 | The plan was committed as `build-64-challenges-polish.md`, not copied to `-c1.md`. | No duplicate files. |
+| R4 | No `ProfileView` `hubNow` seam. `RestTimerSheet.now` is `() -> Date` and `StepsView.referenceDate` is `Date?` (nil means the live clock). | Shot 35 is Data & Sync, which shows an absolute "Last backup" time, not the hub. The hub shot (10) renders through `ContentView`, and its "2 h ago" is already stable. Optional/closure defaults keep production identical. |
+| H1 | `capture(...)` is an internal forwarder on the test class instead of a `VisualQACapture` type, and it has no `referenceNow` parameter. | Narrowest change. Callers inject time explicitly. |
+| H2 | Shot 40 (muted rest timer) is pinned too. Animations are disabled inside `eachSize`, not in `setUp`/`tearDown`. | 40 is the same volatility as 05. This also avoids overriding isolation on the `@MainActor` XCTestCase. |
+| C1a | `ChallengeDay.adding(days:)` and `days(from:to:)` take no calendar. | They use day-number arithmetic. Gregorian fields come from the caller's zone. |
+| C1a | `ChallengeEntry` has a `challengeID`. | One store holds every challenge's entries. |
+| C1c | An automatic metric is `.unavailable` until its first successful read. | An unknown value is never scored as 0. |
+| P0 | No `IronSectionLabel`. | `IronSectionTitle` already exists (DRY). |
+| C1e | `ChallengePresentation` (strings, tiles, pace series, `acceptsLogs`, `ChallengeDraft`) and `ChallengePresentationTests` were added. `HomeCardLayout.load(from:)` gained a defaults seam. `HomeV2Cards` reads `ChallengeStore` as an optional environment. | Views only place values. Existing VQA roots render unchanged without the store. |
+| C1f | The 44 pt gate is `test84ChallengeHitTargets` at the axL size on **both** devices. | Sheets have no capture hook after presentation. This is stricter than SE-only. |
+| CI | `ChallengePresentationTests` was added to the list. | It is a new suite. |
+
+### Expected screenshot changes (replaces the table above for review)
+| Commit | Shots |
+|---|---|
+| R1–R5, H1, C0–C1d, P0 | none |
+| H2 | `05`, `40`, `16`, `35`, `36`, `06`, `06b`. Also the `trainingDate` shots `02*`, `03`, `04*`, `24-train-resume-workout`, `49–51`, `73*`, `77` |
+| C1e | `10b-more-settings-scrolled`. Also `10-more-settings` on Pro if the CHALLENGES row fits at rest. |
+| C1f | new `79`–`83` × {default, axL} × {Pro, SE}. `test84` writes no PNG. |
+| P1 | every shot showing the Train switch: `02*`, `03`, `24-train-resume-workout`, CC Ladders shots |
+| P2 | Peptides shots in `60–69` that show the Due card |
+| still volatile | `p2-bodyfat`, `01`, `52`, the remaining Peptides content, weight seeds |
+
+### Riskiest compile spots (check first on red)
+- `Stores/NotificationManager.swift`, `scheduleChallengeReminders`: `await center.pendingNotificationRequests()` crosses a non-Sendable result inside the MainActor Task.
+- `Views/HomeV2Cards.swift`: the optional `@Environment(ChallengeStore.self) … : ChallengeStore?`.
+- `Views/Challenges/ChallengeDetailView.swift`: `content(_:progress:)` uses `let tiles` inside the ViewBuilder, plus nested `if`s.
+- `Views/Challenges/RewardViews.swift`: `.sensoryFeedback(.success, trigger:)`. `Views/CCLaddersView.swift`: `.sensoryFeedback(.selection, trigger:)`.
+- `calorietrackerTests/VisualQASnapshotTests+Challenges.swift`: `capture(..., sheet: { … })` closures convert to `() -> any View`.
+- `Models/Challenges/ChallengeDay.swift`: `nonisolated extension … : CodingKeyRepresentable` (fine on Linux 6.2).
+
+### Deferred from this session
+All deferrals listed above still apply. No item from C1 core was dropped.
