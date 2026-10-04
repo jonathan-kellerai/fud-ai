@@ -127,16 +127,7 @@ struct WorkoutHistoryEditView: View {
             notes = detail.workout.notes.joined(separator: "\n")
             sets = detail.sets
                 .sorted { $0.setOrder < $1.setOrder }
-                .map { set in
-                    EditableBridgeSet(
-                        id: set.id,
-                        exercise: set.exercise,
-                        load: set.loadLb,
-                        reps: set.reps,
-                        rir: set.rir ?? 0,
-                        rpeText: set.rpe.map { String($0) } ?? ""
-                    )
-                }
+                .map { EditableBridgeSet($0) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -148,14 +139,7 @@ struct WorkoutHistoryEditView: View {
 
         let now = ISO8601DateFormatter().string(from: Date())
         let payloadSets = sets.enumerated().map { index, set in
-            WorkoutSet(
-                exercise: set.exercise,
-                load: set.load,
-                reps: set.reps,
-                rir: set.rir,
-                rpe: Double(set.rpeText.replacingOccurrences(of: ",", with: ".")),
-                order: index
-            )
+            set.payload(order: index)
         }
         let noteLines = notes
             .split(separator: "\n")
@@ -194,13 +178,4 @@ struct WorkoutHistoryEditView: View {
             errorMessage = error.localizedDescription
         }
     }
-}
-
-struct EditableBridgeSet: Identifiable {
-    let id: String
-    var exercise: String
-    var load: Double
-    var reps: Int
-    var rir: Int
-    var rpeText: String
 }

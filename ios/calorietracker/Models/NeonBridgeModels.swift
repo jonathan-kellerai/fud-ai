@@ -80,6 +80,30 @@ struct WorkoutPayload: Codable {
 
 // MARK: - Workout Response
 
+/// The history editor's plain values and bridge conversion live together.
+struct EditableBridgeSet: Identifiable {
+    let id: String
+    var exercise: String
+    var load: Double
+    var reps: Int
+    var rir: Int
+    var rpeText: String
+
+    init(_ set: RemoteWorkoutSet) {
+        id = set.id
+        exercise = set.exercise
+        load = set.loadLb
+        reps = set.reps
+        rir = set.rir ?? 0
+        rpeText = set.rpe.map { String($0) } ?? ""
+    }
+
+    func payload(order: Int) -> WorkoutSet {
+        WorkoutSet(exercise: exercise, load: load, reps: reps, rir: rir,
+                   rpe: Double(rpeText.replacingOccurrences(of: ",", with: ".")), order: order)
+    }
+}
+
 struct WorkoutResponse: Codable {
     let id: String?
     let ok: Bool?
