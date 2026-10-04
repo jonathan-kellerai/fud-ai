@@ -50,4 +50,21 @@ struct IronThemeTests {
         #expect(IronTheme.Hex.brass == 0xC9A227)
         #expect(IronTheme.Hex.blood == 0xB3121B)
     }
+
+    @Test func pillAndBorderTintTokens() {
+        #expect(IronTheme.pillFillOpacity == 0.10)
+        #expect(IronTheme.borderTintOpacity == 0.35)
+    }
+
+    @Test func statusPillReadsAsASentence() {
+        #expect(IronStatusPill.accessibilityText(for: "BEHIND") == "Status: behind.")
+        #expect(IronStatusPill.accessibilityText(for: "LOGGED") == "Status: logged.")
+    }
+
+    @Test func statTileReadsLabelValueAndDetail() {
+        #expect(IronStatTile.accessibilityText(label: "EXPECTED", value: "4,000", detail: nil) == "Expected: 4,000.")
+        #expect(IronStatTile.accessibilityText(label: "NEED / DAY", value: "339", detail: "18 days left")
+            == "Need / Day: 339. 18 days left.")
+        #expect(IronStatTile.accessibilityText(label: "pace", value: "-100", detail: "") == "Pace: -100.")
+    }
 }

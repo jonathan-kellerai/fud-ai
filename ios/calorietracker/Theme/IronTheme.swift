@@ -12,6 +12,10 @@ enum IronTheme {
     static let ruleWidth: CGFloat = 3
     static let motionDuration: Double = 0.18
     static let grainOpacity: Double = 0.04
+    /// Status pill fill: the tone color at this opacity.
+    nonisolated static let pillFillOpacity: Double = 0.10
+    /// Tinted 1 px borders (pills, selected tiles): the tone color at this opacity.
+    nonisolated static let borderTintOpacity: Double = 0.35
 
     /// Warm iron black. Spec #0B0A09.
     static let canvas = Color(hex: Hex.canvas)
