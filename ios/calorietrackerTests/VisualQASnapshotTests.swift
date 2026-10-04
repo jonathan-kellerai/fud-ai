@@ -1939,3 +1939,281 @@ nonisolated final class VisualQAStubProtocol: URLProtocol, @unchecked Sendable {
 
     override func stopLoading() {}
 }
+
+// MARK: - Build 62 (additive, human-owned goldens-update)
+
+extension VisualQASnapshotTests {
+    func test70LoggerSetRows() async throws {
+        try await build62Shot("70-logger-set-rows", heightMultiplier: 2.4, scenario: .rows)
+    }
+
+    func test71RestNextSet() async throws {
+        try await build62Shot("71-rest-next-set", heightMultiplier: 2.4, scenario: .nextSet)
+    }
+
+    func test72LoggerReorder() async throws {
+        try await build62Shot("72-logger-reorder", heightMultiplier: 5, scenario: .reorder)
+    }
+
+    func test73PreExhaustionNote() async throws {
+        try await build62Shot("73-pre-exhaustion-note", heightMultiplier: 6, scenario: .preExhaustion)
+    }
+
+    func test74Week3Day2() async throws {
+        try await build62Shot("74-week3-day2", heightMultiplier: 8, scenario: .week3Day2)
+    }
+
+    func test75Week3Day3() async throws {
+        try await build62Shot("75-week3-day3", heightMultiplier: 6, scenario: .week3Day3)
+    }
+
+    func test76ReductionWeekDay() async throws {
+        try await build62Shot("76-reduction-week-day", heightMultiplier: 8, scenario: .reduction)
+    }
+
+    func test77RestBar() async throws {
+        try await build62Shot("77-rest-bar", heightMultiplier: 2.4, scenario: .restBar)
+    }
+
+    // 78-undo-toast is intentionally not added: the five-second wall-clock Undo toast
+    // can expire while the existing snapshot renderer waits for presentation
+    // and loaders. Do not extend its expiry to manufacture a stable image.
+
+    private func build62Shot(_ name: String, heightMultiplier: CGFloat,
+                             scenario: VisualQABuild62Fixture.Scenario) async throws {
+        var fixture: VisualQABuild62Fixture?
+        try await eachSize(name, heightMultiplier: heightMultiplier, sheet: {
+            let seeded = VisualQABuild62Fixture(scenario: scenario)
+            fixture = seeded
+            seeded.assertScenario()
+            VisualQAGraveyard.keep(seeded, seeded.drafts, seeded.entry, seeded.rest)
+            return ProgramV2WorkoutLogView(visualQAEntry: seeded.entry,
+                restSession: seeded.rest, openedAt: seeded.date,
+                initiallyReordering: scenario == .reorder)
+                .environment(seeded.drafts)
+        }, secondSheet: scenario == .nextSet ? {
+            // eachSize constructs the logger sheet first, then this sheet.
+            // Both surfaces share the same real entry/rest owner objects.
+            guard let seeded = fixture else {
+                XCTFail("Missing build-62 logger fixture")
+                return AnyView(EmptyView())
+            }
+            return AnyView(NavigationStack {
+                RestTimerSheet(session: seeded.rest,
+                    next: seeded.entry.restDetails(in: seeded.drafts, isHold: false),
+                    onChange: { seeded.entry.editNext($0) },
+                    onStep: { seeded.entry.stepNext(load: $0, direction: $1, isHold: false) },
+                    onLog: { seeded.entry.logNext(in: seeded.drafts, startedAt: seeded.date, rest: seeded.rest) },
+                    onSkip: { seeded.entry.skipNext(in: seeded.drafts, rest: seeded.rest) })
+            })
+        } : nil) { _ in
+            // install() has already registered the existing read-only protocol.
+            // Override only this new scenario's responses, independently per size.
+            VisualQAStubStorage.setResponses(VisualQAFixtures.build62Responses())
+            return VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: scenario.date)
+            }
+        }
+    }
+}
+
+@MainActor
+extension VisualQAFixtures {
+    /// Bundled V3 plus the documented live V4 arm prescriptions. Bridge RIR
+    /// lives in notes, so these images exercise the real notes fallback too.
+    static func build62Body() -> TrainingProgramBody {
+        var body = TrainingProgramBody.bundledV2()
+        body.startDate = "2026-09-28"
+        body.reductionWeek = 4
+        body.days[1].exercises[4].order = 5
+        body.days[1].exercises.append(TrainingProgramExercise(order: 4,
+            name: "Overhead triceps extension (cable or DB)", sets: 2,
+            reps: "10-15", restSec: 60, loadNote: "Start 25 lb",
+            notes: "Rest: 60-75 s. RIR target: 1-2 RIR."))
+        if let index = body.days[2].exercises.firstIndex(where: { $0.name == "Cable or DB curl" }) {
+            body.days[2].exercises[index].sets = 3
+        }
+        for dayIndex in body.days.indices {
+            for exerciseIndex in body.days[dayIndex].exercises.indices {
+                let target = body.days[dayIndex].exercises[exerciseIndex].rir
+                if !target.isEmpty {
+                    let notes = body.days[dayIndex].exercises[exerciseIndex].notes ?? ""
+                    body.days[dayIndex].exercises[exerciseIndex].notes = "\(notes) RIR target: \(target)."
+                    body.days[dayIndex].exercises[exerciseIndex].rir = ""
+                }
+            }
+        }
+        return body
+    }
+
+    static func build62History() -> [WorkoutDetailResponse] {
+        let body = build62Body()
+        return body.days.prefix(3).map { day in
+            let workout = RemoteWorkout(id: "qa-build62-day\(day.dayIndex)", kind: "COMPLETED",
+                programVersion: "program-v2", programDay: day.asProgramV2Day().id,
+                title: day.name, units: "lb", sessionDate: "2026-09-29",
+                conditioning: nil, notes: [], contentHash: nil, synthetic: false, recordedAt: nil)
+            let sets = day.exercises.sorted { $0.order < $1.order }.enumerated().map { index, exercise in
+                RemoteWorkoutSet(id: "qa-build62-\(day.dayIndex)-\(index)", workoutId: workout.id,
+                    setOrder: index + 1, exercise: exercise.name,
+                    loadLb: exercise.name == "Chest press machine" ? 87.5 : exercise.parsedStartLoadLb ?? 25,
+                    reps: 12, rir: 2, rpe: nil)
+            }
+            return WorkoutDetailResponse(workout: workout, sets: sets)
+        }
+    }
+
+    static func build62Responses() -> [String: (Int, Data)] {
+        var responses = buildResponses()
+        let encoder = JSONEncoder()
+        func json<T: Encodable>(_ value: T) -> (Int, Data) {
+            do { return (200, try encoder.encode(value)) }
+            catch { XCTFail("Could not encode build-62 bridge fixture: \(error)"); return (500, Data()) }
+        }
+        var program = TrainingProgramRecord.bundledV2()
+        program.body = build62Body()
+        let history = build62History()
+        responses["/api/programs"] = json(TrainingProgramListResponse(programs: [program]))
+        responses["/api/programs/active"] = json(program)
+        responses["/api/programs/\(program.id)"] = json(program)
+        responses["/api/workouts"] = json(ListWorkoutsResponse(workouts: history.map(\.workout)))
+        for detail in history { responses["/api/workouts/\(detail.workout.id)"] = json(detail) }
+        return responses
+    }
+}
+
+/// Per-render fixtures use the existing models and persistence, with no mock
+/// timer driver. Pausing a driverless RestSession freezes both visible clocks.
+@MainActor
+final class VisualQABuild62Fixture {
+    enum Scenario: Equatable {
+        case rows, nextSet, reorder, preExhaustion, week3Day2, week3Day3, reduction, restBar
+
+        var date: Date {
+            let civilDay: String
+            switch self {
+            case .week3Day2: civilDay = "2026-10-13"
+            case .week3Day3: civilDay = "2026-10-14"
+            case .reduction: civilDay = "2026-10-20"
+            case .preExhaustion: civilDay = "2026-09-29"
+            default: civilDay = "2026-10-05"
+            }
+            return SessionDateFormatting.date(from: civilDay, calendar: ProgramWeekRules.easternCalendar)!
+        }
+
+        var dayIndex: Int {
+            switch self {
+            case .preExhaustion, .week3Day2, .reduction: 2
+            case .week3Day3: 3
+            default: 1
+            }
+        }
+    }
+
+    let scenario: Scenario
+    let date: Date
+    let day: ProgramV2Day
+    let drafts: WorkoutDraftStore
+    let entry: WorkoutSetEntry
+    let rest: RestSession
+
+    init(scenario: Scenario) {
+        self.scenario = scenario
+        date = scenario.date
+        let body = VisualQAFixtures.build62Body()
+        // This is the same dated builder used by Train's Start Workout path.
+        var day = body.programV2Day(for: body.days[scenario.dayIndex - 1], on: scenario.date)
+        if [.rows, .nextSet, .restBar].contains(scenario) {
+            day.exercises = Array(day.exercises.prefix(1))
+        }
+        self.day = day
+        drafts = WorkoutDraftStore(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("visual-qa-build62-\(UUID().uuidString)", isDirectory: true))
+        entry = WorkoutSetEntry(day: day)
+        entry.lastPerformances = LastPerformanceBuilder.build(from: VisualQAFixtures.build62History(),
+            preferredProgramDay: day.id)
+        let fixedDate = scenario.date
+        rest = RestSession(initiallyMuted: true, now: { fixedDate })
+
+        switch scenario {
+        case .rows, .nextSet, .restBar:
+            let exercise = day.exercises[0]
+            let row = LoggedSet(weight: 145, reps: scenario == .rows ? 12 : 15,
+                                rir: scenario == .rows ? 2 : 4, rpeText: "")
+            drafts.update(day, startedAt: date) { draft in
+                draft.conditioningCompleted = true
+                draft.sets[exercise.name] = [row]
+            }
+            entry.editingStep = ExerciseStep(exerciseName: exercise.name, setIndex: 1)
+            if scenario != .rows {
+                entry.startRestAfterLogging(exercise, at: 0, in: drafts, rest: rest)
+                rest.pause()
+            }
+        case .preExhaustion:
+            let press = day.exercises.first { $0.name == "Chest press machine" }!
+            // Use the real block-move API until the anchor is last.
+            while let block = entry.order(in: drafts).blocks.first(where: { $0.exercises.contains { $0.name == press.name } }),
+                  entry.canMove(block, direction: .down, in: drafts) {
+                entry.move(block, direction: .down, in: drafts, startedAt: date, rest: rest)
+            }
+            drafts.update(day, startedAt: date) { draft in
+                draft.conditioningCompleted = true
+                for exercise in day.exercises where exercise.name != press.name {
+                    draft.sets[exercise.name] = (0..<exercise.sets).map { _ in
+                        LoggedSet(weight: exercise.startLoadLb ?? 25, reps: 12, rir: 2, rpeText: "")
+                    }
+                }
+                draft.sets[press.name] = [
+                    LoggedSet(weight: 87.5, reps: 12, rir: 2, rpeText: ""),
+                    LoggedSet(weight: 87.5, reps: 12, rir: 1, rpeText: ""),
+                    LoggedSet(weight: 87.5, reps: 9, rir: 0, rpeText: ""),
+                ]
+            }
+        case .reorder, .week3Day2, .week3Day3, .reduction:
+            break
+        }
+    }
+
+    func assertScenario() {
+        switch scenario {
+        case .rows:
+            let exercise = day.exercises[0]
+            XCTAssertEqual(drafts.draft?.loggedSetCount, 1)
+            XCTAssertEqual(entry.editingStep?.setIndex, 1)
+            XCTAssertEqual(SetEntryLogic.targetChips(for: exercise, at: 1), [2, 3])
+            XCTAssertEqual(SetEntryLogic.plannedRowCount(exercise: exercise,
+                sets: drafts.draft?.sets[exercise.name] ?? []), 3)
+        case .nextSet, .restBar:
+            let next = entry.restDetails(in: drafts, isHold: false)
+            XCTAssertEqual(next?.step.setIndex, 1)
+            XCTAssertEqual(next?.value.weight, 150)
+            XCTAssertEqual(next?.reason, "+5: hit 15 @ RIR 4")
+            XCTAssertEqual(next?.reference, "Today S1 145 × 15 @ RIR 4 · Last time 145 × 12 @ 2")
+            XCTAssertTrue(rest.isPaused)
+            XCTAssertEqual(rest.formattedTime, "1:30")
+        case .preExhaustion:
+            let press = day.exercises.first { $0.name == "Chest press machine" }!
+            XCTAssertEqual(entry.order(in: drafts).exerciseOrder.last, press.name)
+            XCTAssertEqual(entry.preExhaustionNote(for: press, in: drafts),
+                "Done later than planned · a miss holds the load")
+            XCTAssertEqual(entry.prefill(for: press, at: 3, in: drafts).decision,
+                ProgressionDecision(load: 87.5, reason: .holdPreFatigued))
+        case .week3Day2:
+            XCTAssertEqual(day.exercises.first { $0.name == "Overhead triceps extension (cable or DB)" }?.sets, 3)
+            XCTAssertEqual(day.weekNote, "Week 3: +1 set on overhead extension (if elbows feel good)")
+        case .week3Day3:
+            XCTAssertEqual(day.exercises.first { $0.name == "Cable or DB curl" }?.sets, 4)
+            XCTAssertEqual(day.weekNote, "Week 3: +1 set on curl (if elbows feel good)")
+        case .reduction:
+            XCTAssertTrue(day.holdLoads)
+            XCTAssertEqual(day.exercises.first { $0.name == "Chest press machine" }?.sets, 2)
+            XCTAssertEqual(day.exercises.first { $0.name == "Overhead triceps extension (cable or DB)" }?.setsLabel, "1–2")
+            XCTAssertEqual(day.exercises.first { CCLadderLogic.isLadderExerciseName($0.name) }?.sets, 1)
+            XCTAssertTrue(day.exercises.allSatisfy { $0.rirTarget == "3-4 RIR" })
+        case .reorder:
+            let middle = entry.order(in: drafts).blocks[1]
+            XCTAssertTrue(entry.canMove(middle, direction: .up, in: drafts))
+            XCTAssertTrue(entry.canMove(middle, direction: .down, in: drafts))
+        }
+    }
+}

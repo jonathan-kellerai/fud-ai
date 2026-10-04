@@ -48,3 +48,38 @@ sheet lifetime, cue timing and SE/AX screenshots remain CI work.
 
 No push, PR, release, golden regeneration or iOS CI run. There are no CI
 run URLs or reviewer sign-off; this work is not certified complete.
+
+## Additive Visual QA coverage — Jonathan's request, 2026-10-03
+
+Jonathan authorizes new build-62 shots and fixtures as a human-owned
+`goldens-update` change. Existing tests, shot names and expectations stay
+unchanged. This supersedes the earlier statement that no new goldens are
+authorized. No push is authorized in this session.
+
+Use the real logger, WorkoutSetEntry, paused RestSession, read-only bridge
+stub and TrainingProgramBody.programV2Day(for:on:). A Debug-only initializer
+seeds the logger's existing state; the shipping initializer stays unchanged.
+The fixture models live V4's added overhead extension, three base curl sets,
+notes-based RIR, September 28 start and reduction week 4. Fixed ET dates and
+tall canvases expose complete headers and planned rows at both text sizes.
+
+| Before | New review image | Acceptance |
+| --- | --- | --- |
+| No build-62 shot | 70-logger-set-rows | Logged/current/ghost rows, brass target chips, natural PR |
+| No build-62 shot | 71-rest-next-set | Paused rest, S2 prefill, reference and +5 reason |
+| No build-62 shot | 72-logger-reorder | Reorder mode, both move controls |
+| No build-62 shot | 73-pre-exhaustion-note | Day 2 press last, 87.5 × 12/12/9 @ 2/1/0, hold note |
+| No build-62 shot | 74-week3-day2 | October 13, overhead extension three sets and week note |
+| No build-62 shot | 75-week3-day3 | October 14, curl four sets and week note |
+| No build-62 shot | 76-reduction-week-day | October 20 Day 2, reduced rows, 3–4 RIR and note |
+| No build-62 shot | 77-rest-bar | Paused shared rest session pinned under logger |
+
+78 Undo is conditional on deterministic presentation. Its live five-second
+TimelineView uses wall time; the existing capture waits and variable simulator
+latency cannot guarantee the toast stays visible. Skip it without changing
+the app's expiry policy. Existing unit tests cover exact indexed Undo.
+
+Check existing coverage before adding unit tests; add only missing cases in
+the existing CI-listed suite extensions. Run the requested Linux harness.
+iOS compilation and image generation require CI; Jonathan must approve the
+new images and their before/after table. No local iOS certification.
