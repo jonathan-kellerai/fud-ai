@@ -253,9 +253,7 @@ struct PeptidesView: View {
                     .foregroundStyle(IronTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                if item.taken {
-                    PeptideTag(text: "Logged", tone: IronTheme.olive)
-                }
+                PeptideDueStatus(taken: item.taken).pill
             }
             Text("Your schedule: " + PeptideMath.scheduleText(item.schedule))
                 .font(.system(.footnote, design: .rounded))
@@ -284,7 +282,7 @@ struct PeptidesView: View {
                     .foregroundStyle(IronTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                PeptideTag(text: entry.completedID == nil ? "Planned" : "Taken", tone: entry.completedID == nil ? IronTheme.brass : IronTheme.olive)
+                PeptideDueStatus(plannedCompleted: entry.completedID != nil).pill
             }
             Text("From the peptide assistant · " + PeptideMath.amountText(entry.dose, entry.units))
                 .font(.system(.footnote, design: .rounded))

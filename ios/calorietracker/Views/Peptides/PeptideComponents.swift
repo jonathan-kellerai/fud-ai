@@ -183,6 +183,31 @@ struct PeptideChoiceChip: View {
 }
 
 /// Small status tag. Text tone is a theme color on the raised surface.
+/// Where one due or planned dose stands today. The Due list shows it as a status pill.
+enum PeptideDueStatus: Hashable {
+    case logged
+    case planned
+    case pending
+
+    /// A scheduled dose: logged once taken, otherwise still pending.
+    init(taken: Bool) {
+        self = taken ? .logged : .pending
+    }
+
+    /// A dose planned by the peptide assistant: logged once completed.
+    init(plannedCompleted: Bool) {
+        self = plannedCompleted ? .logged : .planned
+    }
+
+    var pill: IronStatusPill {
+        switch self {
+        case .logged: IronStatusPill(text: "Logged", tone: .olive)
+        case .planned: IronStatusPill(text: "Planned", tone: .brass)
+        case .pending: IronStatusPill(text: "Pending", tone: .rust)
+        }
+    }
+}
+
 struct PeptideTag: View {
     let text: String
     let tone: Color
