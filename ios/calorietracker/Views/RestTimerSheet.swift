@@ -14,9 +14,10 @@ struct RestTimerSheet: View {
     private let onLog: () -> Void
     private let onSkip: () -> Void
 
-    init(defaultSeconds: Int = 90, initiallyMuted: Bool = false) {
+    /// `now` is the session clock. Visual QA passes a fixed time; the app uses the live clock.
+    init(defaultSeconds: Int = 90, initiallyMuted: Bool = false, now: @escaping () -> Date = { Date() }) {
         self.defaultSeconds = defaultSeconds
-        _session = State(initialValue: RestSession(driver: RestTimerService(), initiallyMuted: initiallyMuted))
+        _session = State(initialValue: RestSession(driver: RestTimerService(), initiallyMuted: initiallyMuted, now: now))
         ownsSession = true
         next = nil
         onChange = { _ in }

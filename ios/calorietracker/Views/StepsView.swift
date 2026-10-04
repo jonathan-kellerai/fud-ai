@@ -21,9 +21,13 @@ struct StepsView: View {
     /// When false the view shows whatever `StepsTrackingService.shared` already holds
     /// and never asks HealthKit. Only the visual QA snapshot tests pass false.
     private let loadsHealthData: Bool
+    /// "Today", "Yesterday" and "Last synced" are measured from this time. Nil means the
+    /// live clock; only the visual QA snapshot tests pass a fixed time.
+    private let referenceDate: Date?
 
-    init(loadsHealthData: Bool = true) {
+    init(loadsHealthData: Bool = true, referenceDate: Date? = nil) {
         self.loadsHealthData = loadsHealthData
+        self.referenceDate = referenceDate
     }
 
     var body: some View {
@@ -189,6 +193,10 @@ struct StepsView: View {
                         Text("Syncing...")
                             .font(.caption)
                             .foregroundStyle(IronTheme.textSecondary)
+                    } else if let lastSync = stepsService.lastSyncDate, let referenceDate {
+                        Text("Last synced: \(RelativeDateTimeFormatter().localizedString(for: lastSync, relativeTo: referenceDate))")
+                            .font(.caption)
+                            .foregroundStyle(IronTheme.textSecondary)
                     } else if let lastSync = stepsService.lastSyncDate {
                         Text("Last synced: \(lastSync, style: .relative) ago")
                             .font(.caption)
@@ -273,14 +281,17 @@ struct StepsView: View {
         guard let date = formatter.date(from: dateString) else { return dateString }
         
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
+        if let referenceDate {
+            if calendar.isDate(date, inSameDayAs: referenceDate) { return "Today" }
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: referenceDate),
+               calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
+        } else if calendar.isDateInToday(date) {
             return "Today"
         } else if calendar.isDateInYesterday(date) {
             return "Yesterday"
-        } else {
-            formatter.dateFormat = "EEE M/d"
-            return formatter.string(from: date)
         }
+        formatter.dateFormat = "EEE M/d"
+        return formatter.string(from: date)
     }
 }
 
