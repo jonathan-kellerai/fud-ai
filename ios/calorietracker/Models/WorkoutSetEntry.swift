@@ -160,8 +160,7 @@ final class WorkoutSetEntry {
              startedAt: Date, value: LoggedSet? = nil) -> Int? {
         let step = ExerciseStep(exerciseName: exercise.name, setIndex: index)
         let value = value ?? row(for: exercise, at: index, in: store)
-        let hasLoad = value.weight > 0 || exercise.startLoadLb == 0
-        guard value.reps > 0, hasLoad else { editingStep = step; return nil }
+        guard value.reps > 0, hasLoad(value, for: exercise) else { editingStep = step; return nil }
         let count = store.existingDraft(for: day)?.sets[exercise.name]?.count ?? 0
         let destination = (editingStep == step ? enteredDestinations[step] : nil) ?? min(index, count)
         guard destination >= 0 else { return nil }
@@ -176,6 +175,10 @@ final class WorkoutSetEntry {
         enteredDestinations[step] = nil
         editingStep = nil
         return destination
+    }
+
+    private func hasLoad(_ value: LoggedSet, for exercise: ProgramV2Exercise) -> Bool {
+        value.weight > 0 || exercise.startLoadLb == 0
     }
 
     func repeatSource(for exercise: ProgramV2Exercise, in store: WorkoutDraftStore) -> Int? {
