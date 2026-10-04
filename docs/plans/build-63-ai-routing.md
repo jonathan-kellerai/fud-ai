@@ -246,5 +246,43 @@ No golden is regenerated without a `goldens-update` PR and a before/after table.
 
 ## Status
 
-Implementation in progress on `integ/build-63`; nothing pushed, no CI run yet. Commits are listed in the handoff.
-"Done" requires a green `iOS Build CI` run on the exact SHA plus Codex sign-off (AGENTS.md Rule 0.5).
+Implemented on `integ/build-63` (local commits; not pushed, so **no CI run exists yet**). Nothing here is "done" until
+`iOS Build CI` is green on the exact SHA and Codex signs off (AGENTS.md Rule 0.5). Syntax was checked with
+`swiftc -parse` (Linux Swift 6.2) only; no type checking was possible on the agent box.
+
+| Task | Commit | Kind |
+|---|---|---|
+| T1 delete dead AI entry points | `28237e98b` | refactor |
+| T2 one `routed` seam + `runWithFallback` (ChatService shares it) | `637f34737` | refactor |
+| T3 On-device model hub row out of ContentView | `9fadb410c` | refactor |
+| T3b Weekly Challenge auto-delete section out of ContentView | `a05225974` | refactor |
+| T4 no second try on an already-tried config | `233830318` | behavior |
+| T5 route the last five paths; `.scored` / `.pickerOnly` / `.baseOnly` | `8d77eaa99` | behavior |
+| T6 ROUTER_SPEC audit table and policies | `ee7659dd5` | docs |
+| T7 `IronTheme.heavyHeadline` token | `cc27f8441` | refactor |
+| T8 scale the fixed 17 pt heavy labels (AX2 cap on the toolbar date only) | `656bf6645` | behavior, goldens-update |
+| T9a `VisualQACanvas.cappedMultiplier` extraction | `0a0ea16e0` | test-harness |
+| T9b cap every VQA render | `c1e998dc2` | test-harness, goldens-update |
+| T10 bundled `reductionWeek: 4` | `3ca02bca4` | behavior, goldens-update |
+
+Deviations from the task text, all within R1-R9:
+- T2: ChatService now calls `JevTierRouter.runWithFallback` instead of keeping its own fallback chain, so the T4
+  rule lives in one place (R4). Its plan call, tool loop and hosted path are unchanged.
+- T2: the test seam is a MainActor `static var AIRouteEnvironment.current` that tests set and restore (the plan's
+  stated fallback), not `@TaskLocal`, which has no precedent in this target.
+- T2's nil-route test became `seamNutrientGoalsSendsBase`; T5 flips its `planned` expectation from empty to
+  `nutrient_goals`. T2's pinned `[apple, X, X]` test is flipped by T4 to `seamPickedEscalationSkipsDuplicateFallback`.
+- T5: no CI grep gate (R5). `.cloudForImage` is renamed `.baseOnly` (selectorTable updated).
+- The On-device model picker's copy still says it covers text food, workouts and Coach text. It now also covers
+  meal what-if, nutrient goals and text serving units. Changing the copy would change the 55-picker shot, so it is
+  left for a UI-copy follow-up.
+
+ContentView.swift: 324,917 bytes at 5fa786358 → 323,770 bytes.
+
+Expected screenshot changes (each needs a `goldens-update` before/after table):
+- T1-T7, T9a: none. T3/T3b must be pixel-identical (settings hub, 55-picker).
+- T8: AX variants showing those labels (51/53 ladders, logger shots, 60/67/68 peptides, food diary toolbar date).
+  Default-size shots are expected identical.
+- T9b: on the 17 Pro, 43 and the p2-* AX shots go from black to real ×3.0 renders; nothing else.
+- T10: `12-program-editor` at all sizes. VQA dates are not pinned (R8), so `trainingDate` shots will show the
+  reduction week if CI runs 2026-10-19..25.
