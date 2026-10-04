@@ -36,6 +36,8 @@ struct ProgramV2WorkoutLogView: View {
     /// CC ladder state for graduate-at hints on ladder finishers. Starts from
     /// the Ladders screen's memory cache and refreshes once per open.
     @State private var ccLadders: CCLaddersResponse? = CCLadderMemoryCache.last
+    /// The ladder step whose form sheet is open.
+    @State private var ladderForm: CCFormSelection?
 
     /// Logged sets live in the app-level draft store so they survive tab
     /// switches, dismissal and relaunch until the bridge confirms the save.
@@ -137,6 +139,11 @@ struct ProgramV2WorkoutLogView: View {
                         onStep: { entry.stepNext(load: $0, direction: $1, isHold: nextIsHold) },
                         onLog: { entry.logNext(in: draftStore, startedAt: openedAt, rest: restSession) },
                         onSkip: { entry.skipNext(in: draftStore, rest: restSession) })
+                }
+            }
+            .sheet(item: $ladderForm) { selection in
+                if let series = ccLadders?.series.first(where: { $0.series == selection.series }) {
+                    CCStepFormSheet(series: series, rule: ccLadders?.rule, step: selection.step)
                 }
             }
             .task {
@@ -377,6 +384,10 @@ struct ProgramV2WorkoutLogView: View {
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(IronTheme.brass)
                     .fixedSize(horizontal: false, vertical: true)
+                if let selection = ladderFormSelection(for: exercise) {
+                    CCFormButton { ladderForm = selection }
+                        .disabled(isSaving)
+                }
             }
 
             HStack(spacing: 16) {
@@ -507,6 +518,11 @@ struct ProgramV2WorkoutLogView: View {
     private func ladderHint(for exercise: ProgramV2Exercise) -> CCLoggerLadderHint? {
         guard CCLadderLogic.isLadderExerciseName(exercise.name) else { return nil }
         return CCLadderLogic.loggerHint(exerciseKey: exercise.key, exerciseName: exercise.name, in: ccLadders)
+    }
+
+    private func ladderFormSelection(for exercise: ProgramV2Exercise) -> CCFormSelection? {
+        guard CCLadderLogic.isLadderExerciseName(exercise.name) else { return nil }
+        return CCLadderLogic.formSelection(exerciseKey: exercise.key, exerciseName: exercise.name, in: ccLadders)
     }
 
     /// Best effort: without the bridge the logger simply shows no ladder hint.

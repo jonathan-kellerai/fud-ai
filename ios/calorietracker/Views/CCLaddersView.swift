@@ -294,6 +294,8 @@ private struct CCSeriesCard: View {
     let onChange: (CCStepChangeDirection) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The step whose start/end form sheet is open.
+    @State private var formStep: CCFormSelection?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -314,7 +316,8 @@ private struct CCSeriesCard: View {
                         rule: rule,
                         step: step,
                         isSaving: isSaving,
-                        onChange: onChange
+                        onChange: onChange,
+                        onShowForm: { formStep = CCFormSelection(series: series.series, step: step.step) }
                     )
                 }
             } else {
@@ -332,6 +335,9 @@ private struct CCSeriesCard: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .ironCard()
+        .sheet(item: $formStep) { selection in
+            CCStepFormSheet(series: series, rule: rule, step: selection.step)
+        }
     }
 
     private var header: some View {
@@ -384,11 +390,20 @@ private struct CCSeriesCard: View {
     private var rail: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(series.steps.sorted { $0.step < $1.step }) { step in
-                CCStepRow(
-                    step: step,
-                    status: CCLadderLogic.stepStatus(step: step.step, current: series.currentStep),
-                    targetLabel: CCLadderLogic.stepTargetLabel(step, series: series.series, rule: rule)
-                )
+                Button {
+                    formStep = CCFormSelection(series: series.series, step: step.step)
+                } label: {
+                    CCStepRow(
+                        step: step,
+                        status: CCLadderLogic.stepStatus(step: step.step, current: series.currentStep),
+                        targetLabel: CCLadderLogic.stepTargetLabel(step, series: series.series, rule: rule)
+                    )
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows start and end positions")
+                .accessibilityIdentifier("ccStepRow.\(CCFormCues.key(series: series.series, step: step.step))")
             }
         }
         .background(alignment: .leading) {
@@ -490,6 +505,7 @@ private struct CCStepStatsPanel: View {
     let step: CCLadderStep
     let isSaving: Bool
     let onChange: (CCStepChangeDirection) -> Void
+    let onShowForm: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -521,6 +537,7 @@ private struct CCStepStatsPanel: View {
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            CCFormButton(action: onShowForm)
             if let workingReps = step.workingReps, !workingReps.isEmpty {
                 statRow("Working range", "\(workingReps) reps")
             }

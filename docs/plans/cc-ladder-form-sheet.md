@@ -48,7 +48,9 @@ Existing tests and goldens must stay identical after both steps.
 - `bookText`, `stepInfo` past either end, and `formSelection` for a program exercise name, a step-name key, an unknown exercise and a nil response.
 
 ## Screenshots expected (`VisualQASnapshotTests`, new shots 85–94, default + axL, Pro + SE)
-SQT-03, PSH-01, PSH-10, PLL-03, LGR-02, LGR-06, BRG-01, BRG-10, HSP-01, HSP-10. Each shot shows the sheet over the Ladders screen and is built from stub `CCSeriesState` data matching `lib/cc.ts` `CC_LADDERS` (no network). The new goldens need the `goldens-update` label and a reviewer-approved table. Existing shots must not change, apart from 51 and 53 if the new Form button on the stats panel shows in them (expected: one extra button row).
+SQT-03, PSH-01, PSH-10, PLL-03, LGR-02, LGR-06, BRG-01, BRG-10, HSP-01, HSP-10. Each shot shows the sheet over the Ladders screen and is built from stub `CCSeriesState` data matching `lib/cc.ts` `CC_LADDERS` (no network). The new goldens need the `goldens-update` label and a reviewer-approved table. Existing shots change only where the new controls appear. Each change must be listed in the before/after table:
+- 51 and 53 (Ladders): a Form button on each stats panel, and step rows at least 44 pt tall.
+- 54 and any 70–77 logger shot that shows a ladder hint: a Form button under the hint.
 
 ## Risks
 - **App size:** watch the compiled `.car` delta for 120 SVGs. If it exceeds about 1.5 MB, fall back to 64-colour PNGs (APP_PLAN).
