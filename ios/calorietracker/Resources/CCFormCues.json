@@ -100,7 +100,7 @@
   "PSH-08": {
     "start": [
       "One hand under the outer chest, arm straight",
-      "Free hand on the small of the back, feet wide",
+      "Free hand on the small of the back, feet together",
       "Basketball under the hips"
     ],
     "end": [
@@ -108,14 +108,14 @@
       "Don't twist; keep the hips square",
       "Press back up; swap arms"
     ],
-    "altStart": "Half one-arm push-up, start position: one-arm push-up position with feet wide, free hand on the lower back and a basketball under the hips.",
+    "altStart": "Half one-arm push-up, start position: one-arm push-up position with feet together, free hand on the lower back and a basketball under the hips.",
     "altEnd": "Half one-arm push-up, end position: lowered on the working arm until the hips touch the basketball, body square and straight."
   },
   "PSH-09": {
     "start": [
       "Working hand on the floor under the chest",
       "Other arm straight out to the side, palm on a basketball",
-      "Feet wide, body straight"
+      "Feet together, body straight"
     ],
     "end": [
       "Bend only the working arm; the ball arm stays straight",
@@ -129,14 +129,14 @@
     "start": [
       "One hand under the chest, arm straight",
       "Free hand on the small of the back",
-      "Feet wide for balance"
+      "Feet together, body square"
     ],
     "end": [
       "Lower until the chest is a fist from the floor",
       "Body square, no twist",
       "Press back to a locked arm; swap sides"
     ],
-    "altStart": "One-arm push-up, start position: one-arm push-up position, feet wide, free hand on the lower back, working arm straight.",
+    "altStart": "One-arm push-up, start position: one-arm push-up position, feet together, free hand on the lower back, working arm straight.",
     "altEnd": "One-arm push-up, end position: chest lowered to about a fist above the floor on one bent arm, body straight and square."
   },
   "SQT-01": {
@@ -320,7 +320,7 @@
   "PLL-04": {
     "start": [
       "Hang from the bar, elbows bent about 90°",
-      "Bar at chest height",
+      "Head below the bar",
       "Shoulders down, body still"
     ],
     "end": [
@@ -328,7 +328,7 @@
       "No kipping or swinging",
       "Lower back to 90° only"
     ],
-    "altStart": "Half pull-up, start position: hanging from an overhead bar with elbows bent about 90 degrees, the bar at chest height.",
+    "altStart": "Half pull-up, start position: hanging from an overhead bar with elbows bent about 90 degrees and the head below the bar.",
     "altEnd": "Half pull-up, end position: chin pulled over the bar with elbows fully bent."
   },
   "PLL-05": {
@@ -361,17 +361,17 @@
   },
   "PLL-07": {
     "start": [
-      "One hand on the bar",
-      "Other hand holds a towel draped over the bar, lower down",
-      "Arms straight"
+      "One hand on the bar, close grip",
+      "Other hand clasps the working wrist",
+      "Dead hang, arms straight"
     ],
     "end": [
       "Pull until the chin is over the bar",
-      "The bar arm does most of the work",
+      "The bar arm does the work; the wrist hand only helps",
       "Lower; swap sides each set"
     ],
-    "altStart": "Uneven pull-up, start position: dead hang with one hand on the bar and the other gripping a towel hanging lower from it.",
-    "altEnd": "Uneven pull-up, end position: chin pulled over the bar, one hand on the bar and the other still on the towel."
+    "altStart": "Uneven pull-up, start position: dead hang with one hand on the bar and the other hand clasping that wrist.",
+    "altEnd": "Uneven pull-up, end position: chin pulled over the bar, the free hand still clasping the working wrist."
   },
   "PLL-08": {
     "start": [
@@ -502,29 +502,29 @@
   "LGR-07": {
     "start": [
       "Dead hang from a bar",
-      "Legs together",
+      "Knees bent about 45°, legs together",
       "Body still"
     ],
     "end": [
-      "Raise the legs with a slight knee bend",
-      "Thighs come up past level",
+      "Keep the knee bend fixed and raise the legs",
+      "Stop when the feet reach hip height",
       "Lower under control"
     ],
-    "altStart": "Hanging bent-leg raise, start position: dead hang from an overhead bar with legs together.",
-    "altEnd": "Hanging bent-leg raise, end position: hanging with thighs raised level with the floor and knees slightly bent."
+    "altStart": "Hanging bent-leg raise, start position: dead hang from an overhead bar with the knees bent about 45 degrees.",
+    "altEnd": "Hanging bent-leg raise, end position: hanging with the legs raised until the feet are at hip height, knees still bent about 45 degrees."
   },
   "LGR-08": {
     "start": [
-      "Hang with the knees tucked up",
-      "Thighs level with the floor",
-      "Shoulders set"
+      "Hang with the knees bent, feet below the hips",
+      "Shoulders set",
+      "Legs together"
     ],
     "end": [
-      "Straighten the legs out level with the floor",
+      "Raise the knees, then straighten the legs level with the floor",
       "Lower with straight legs",
-      "Tuck again on the way up"
+      "Bend the knees again at the bottom"
     ],
-    "altStart": "Hanging frog raise, start position: hanging from a bar with the knees tucked up and thighs level with the floor.",
+    "altStart": "Hanging frog raise, start position: hanging from a bar with the knees bent and the feet below the hips.",
     "altEnd": "Hanging frog raise, end position: hanging with straight legs held out level with the floor."
   },
   "LGR-09": {
@@ -688,9 +688,9 @@
       "Brace before arching"
     ],
     "end": [
-      "Arch back into a full bridge",
-      "Rock forward and push back up",
-      "Finish standing again"
+      "Arch back into a full bridge: the bottom of the rep",
+      "Rock the weight toward the feet",
+      "Push back up to standing"
     ],
     "altStart": "Stand-to-stand bridge, start position: standing with arms overhead and hips forward, ready to arch back.",
     "altEnd": "Stand-to-stand bridge, end position: full bridge on the floor, the bottom of a stand-to-stand rep before pushing back up to standing."
