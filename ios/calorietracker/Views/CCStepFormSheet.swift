@@ -16,7 +16,7 @@ struct CCStepFormSheet: View {
     let rule: CCLadderRule?
 
     @State private var stepNumber: Int
-    @State private var phase: CCStepArt.Phase = .start
+    @State private var phase: CCStepArt.Phase
     @State private var width: CGFloat = 0
 
     @Environment(\.dismiss) private var dismiss
@@ -26,10 +26,12 @@ struct CCStepFormSheet: View {
     /// Below this sheet width two squares are too small to read, so one shows at a time.
     private static let sideBySideMinWidth: CGFloat = 340
 
-    init(series: CCSeriesState, rule: CCLadderRule?, step: Int) {
+    /// `initialPhase` picks the position shown first in the one-image layout.
+    init(series: CCSeriesState, rule: CCLadderRule?, step: Int, initialPhase: CCStepArt.Phase = .start) {
         self.series = series
         self.rule = rule
         _stepNumber = State(initialValue: step)
+        _phase = State(initialValue: initialPhase)
     }
 
     private var step: CCLadderStep? {
