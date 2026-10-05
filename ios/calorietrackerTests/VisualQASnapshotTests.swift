@@ -2295,7 +2295,7 @@ final class VisualQABuild62Fixture {
 
 // MARK: - Build 65: CC ladder form sheet (additive, human-owned goldens-update)
 
-/// Shots 85-94: the step form sheet over a plain canvas, default + axL. Steps
+/// Shots 85-95: the step form sheet over a plain canvas, default + axL. Steps
 /// are stub bridge data copied from lib/cc.ts CC_LADDERS, so nothing hits the
 /// network. Ladders without bundled art yet show the SF Symbol placeholder.
 extension VisualQASnapshotTests {
@@ -2339,11 +2339,22 @@ extension VisualQASnapshotTests {
         try await ccFormShot("94-ccform-hsp10", series: "HSP", step: 10)
     }
 
-    private func ccFormShot(_ name: String, series code: String, step: Int) async throws {
+    /// The End position in the one-image layout: the axL pass forces that layout,
+    /// the default pass shows both squares side by side.
+    func test95CCForm_SQT03End() async throws {
+        try await ccFormShot("95-ccform-sqt03-end", series: "SQT", step: 3, phase: .end)
+    }
+
+    private func ccFormShot(
+        _ name: String,
+        series code: String,
+        step: Int,
+        phase: CCStepArt.Phase = .start
+    ) async throws {
         let series = try XCTUnwrap(VisualQACCFormFixtures.series(code, currentStep: step), "No stub ladder \(code)")
         XCTAssertNotNil(CCLadderLogic.stepInfo(step, in: series))
         try await eachSize(name, heightMultiplier: 1.5, sheet: {
-            CCStepFormSheet(series: series, rule: nil, step: step)
+            CCStepFormSheet(series: series, rule: nil, step: step, initialPhase: phase)
         }) { _ in
             IronTheme.canvas.ignoresSafeArea()
         }

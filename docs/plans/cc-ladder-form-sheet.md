@@ -47,8 +47,8 @@ Existing tests and goldens must stay identical after both steps.
 - Name formatting (zero padding, upper-casing), the cue key, and decoding of the schema, including a missing key.
 - `bookText`, `stepInfo` past either end, and `formSelection` for a program exercise name, a step-name key, an unknown exercise and a nil response.
 
-## Screenshots expected (`VisualQASnapshotTests`, new shots 85–94, default + axL, Pro + SE)
-SQT-03, PSH-01, PSH-10, PLL-03, LGR-02, LGR-06, BRG-01, BRG-10, HSP-01, HSP-10. Each shot shows the sheet over the Ladders screen and is built from stub `CCSeriesState` data matching `lib/cc.ts` `CC_LADDERS` (no network). The new goldens need the `goldens-update` label and a reviewer-approved table. Existing shots change only where the new controls appear. Each change must be listed in the before/after table:
+## Screenshots expected (`VisualQASnapshotTests`, new shots 85–95, default + axL, Pro + SE)
+SQT-03, PSH-01, PSH-10, PLL-03, LGR-02, LGR-06, BRG-01, BRG-10, HSP-01, HSP-10, plus 95: SQT-03 opened on the End position (`initialPhase: .end`), which the axL pass shows in the one-image layout. AX5 is not captured: the `VisualQASnapshotTests` helper only renders its fixed default and axL sizes. Each shot shows the sheet over the Ladders screen and is built from stub `CCSeriesState` data matching `lib/cc.ts` `CC_LADDERS` (no network). The new goldens need the `goldens-update` label and a reviewer-approved table. Existing shots change only where the new controls appear. Each change must be listed in the before/after table:
 - 51 and 53 (Ladders): a Form button on each stats panel, and step rows at least 44 pt tall.
 - 54 and any 70–77 logger shot that shows a ladder hint: a Form button under the hint.
 
