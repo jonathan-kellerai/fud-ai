@@ -384,10 +384,11 @@ struct ProgramV2WorkoutLogView: View {
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(IronTheme.brass)
                     .fixedSize(horizontal: false, vertical: true)
-                if let selection = ladderFormSelection(for: exercise) {
-                    CCFormButton { ladderForm = selection }
-                        .disabled(isSaving)
-                }
+            }
+            // Independent of the hint: an unstarted ladder has no hint but still opens the logged step's form.
+            if let selection = ladderFormSelection(for: exercise) {
+                CCFormButton { ladderForm = selection }
+                    .disabled(isSaving)
             }
 
             HStack(spacing: 16) {
