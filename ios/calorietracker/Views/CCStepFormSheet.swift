@@ -137,7 +137,7 @@ struct CCStepFormSheet: View {
                     VStack(spacing: 6) {
                         stepImage(option)
                         Text(phaseTitle(option))
-                            .font(.system(size: 13, weight: .heavy))
+                            .font(.footnote.weight(.heavy))
                             .fontWidth(.condensed)
                             .tracking(1.2)
                             .textCase(.uppercase)
@@ -245,12 +245,15 @@ struct CCFormButton: View {
 
     var body: some View {
         Button(action: action) {
+            // Set inside the label so it wins over the style's fixed 15pt and scales with
+            // Dynamic Type; the 44pt frame lives here too so the hit area is the label itself.
             Label("Form", systemImage: "figure.strengthtraining.traditional")
+                .font(.subheadline.weight(.heavy))
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(IronCompactButtonStyle())
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
         .accessibilityLabel("Form")
         .accessibilityHint("Shows start and end positions")
     }
