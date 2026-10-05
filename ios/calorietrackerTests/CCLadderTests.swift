@@ -488,6 +488,28 @@ struct CCLadderTests {
         }
     }
 
+    /// Cue acceptance criteria as a gate: 2...3 cues per phase, and alt text
+    /// that opens with the app-facing step name (stub ladders = lib/cc.ts).
+    @Test func bundledCuesMeetTheAcceptanceCriteria() throws {
+        for series in Self.formSeries {
+            let ladder = try #require(VisualQACCFormFixtures.series(series, currentStep: 1), "No stub ladder \(series)")
+            for step in 1...10 {
+                let key = CCFormCues.key(series: series, step: step)
+                let name = try #require(CCLadderLogic.stepInfo(step, in: ladder)?.name, "No stub step \(key)")
+                guard let cue = CCFormCues.cue(series: series, step: step) else {
+                    Issue.record("Missing cues for \(key)")
+                    continue
+                }
+                for phase in CCStepArt.Phase.allCases {
+                    let count = cue.cues(for: phase).count
+                    #expect((2...3).contains(count), "\(key) has \(count) \(phase.rawValue) cues, expected 2...3")
+                    let prefix = "\(name), \(phase.rawValue) position: "
+                    #expect(cue.altText(for: phase).hasPrefix(prefix), "\(key) alt\(phase.rawValue) must start with \"\(prefix)\"")
+                }
+            }
+        }
+    }
+
     @Test func formCuesDecodeTheBundledSchema() throws {
         let json = #"""
         {"SQT-03": {"start": ["Stand tall"], "end": ["Full depth", "Heels flat"],
