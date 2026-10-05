@@ -1,4 +1,144 @@
 {
+  "PSH-01": {
+    "start": [
+      "Stand facing a wall, feet together, about arm's length away",
+      "Palms on the wall at shoulder height, arms straight",
+      "Body straight from heels to head"
+    ],
+    "end": [
+      "Bend the elbows until the forehead nearly touches the wall",
+      "Keep hips in line, heels down",
+      "Press back to straight arms"
+    ],
+    "altStart": "Wall push-up, start position: standing about arm's length from a wall, leaning slightly forward with straight arms and palms on the wall at shoulder height.",
+    "altEnd": "Wall push-up, end position: elbows bent and body leaning toward the wall until the face is close to it, body still straight and heels down."
+  },
+  "PSH-02": {
+    "start": [
+      "Hands on a hip-high surface, shoulder-width",
+      "Walk the feet back until the body is straight",
+      "Arms straight under the shoulders"
+    ],
+    "end": [
+      "Lower until the chest touches the edge",
+      "Body stays rigid, elbows track back",
+      "Press back up to straight arms"
+    ],
+    "altStart": "Incline push-up, start position: body straight and inclined, hands on a hip-high surface with straight arms, balls of the feet on the floor.",
+    "altEnd": "Incline push-up, end position: chest lowered to the edge of the surface with elbows bent, body still in a straight line."
+  },
+  "PSH-03": {
+    "start": [
+      "Knees on the floor, hands under the shoulders",
+      "Straight line from knees through hips to head",
+      "Arms locked"
+    ],
+    "end": [
+      "Lower until the chest is a fist from the floor",
+      "Don't let the hips sag or pike",
+      "Press back to locked arms"
+    ],
+    "altStart": "Kneeling push-up, start position: kneeling with hands on the floor under the shoulders, arms straight and body straight from knees to head.",
+    "altEnd": "Kneeling push-up, end position: chest lowered close to the floor with elbows bent, knees still down and hips in line."
+  },
+  "PSH-04": {
+    "start": [
+      "Full push-up position, arms straight, body rigid",
+      "A basketball sits under the hips",
+      "Hands shoulder-width"
+    ],
+    "end": [
+      "Lower until the hips just touch the ball",
+      "That is about halfway: elbows near 90°",
+      "Press back up"
+    ],
+    "altStart": "Half push-up, start position: straight-arm push-up position on hands and toes with a basketball on the floor under the hips.",
+    "altEnd": "Half push-up, end position: lowered halfway with elbows bent about 90 degrees until the hips touch the basketball."
+  },
+  "PSH-05": {
+    "start": [
+      "Hands shoulder-width, arms straight",
+      "Body straight from heels to head, toes tucked",
+      "Brace the trunk and glutes"
+    ],
+    "end": [
+      "Lower until the chest is a fist from the floor",
+      "Elbows go back, not flared wide",
+      "Press up to locked arms"
+    ],
+    "altStart": "Full push-up, start position: straight-arm push-up position on hands and toes, body in a straight line.",
+    "altEnd": "Full push-up, end position: chest lowered to about a fist above the floor, elbows bent back along the body, body still straight."
+  },
+  "PSH-06": {
+    "start": [
+      "Hands touching under the chest",
+      "Arms straight, body rigid",
+      "Feet together"
+    ],
+    "end": [
+      "Lower until the chest touches the backs of the hands",
+      "Elbows stay close to the ribs",
+      "Press back up"
+    ],
+    "altStart": "Close push-up, start position: push-up position with arms straight and the hands touching under the chest.",
+    "altEnd": "Close push-up, end position: chest lowered to the hands with elbows bent close to the sides, body straight."
+  },
+  "PSH-07": {
+    "start": [
+      "One hand on the floor, the other on a basketball",
+      "Body straight, arms straight",
+      "Ball hand about level with the shoulder"
+    ],
+    "end": [
+      "Lower until the chest is near the floor hand",
+      "Most of the work goes through the floor arm",
+      "Press up; swap sides each set"
+    ],
+    "altStart": "Uneven push-up, start position: push-up position with one hand on the floor and the other on a basketball, arms straight and body straight.",
+    "altEnd": "Uneven push-up, end position: chest lowered toward the floor hand with both elbows bent, the other hand still on the basketball."
+  },
+  "PSH-08": {
+    "start": [
+      "One hand under the outer chest, arm straight",
+      "Free hand on the small of the back, feet wide",
+      "Basketball under the hips"
+    ],
+    "end": [
+      "Lower on one arm until the hips touch the ball",
+      "Don't twist; keep the hips square",
+      "Press back up; swap arms"
+    ],
+    "altStart": "Half one-arm push-up, start position: one-arm push-up position with feet wide, free hand on the lower back and a basketball under the hips.",
+    "altEnd": "Half one-arm push-up, end position: lowered on the working arm until the hips touch the basketball, body square and straight."
+  },
+  "PSH-09": {
+    "start": [
+      "Working hand on the floor under the chest",
+      "Other arm straight out to the side, palm on a basketball",
+      "Feet wide, body straight"
+    ],
+    "end": [
+      "Bend only the working arm; the ball arm stays straight",
+      "Lower until the chest is a fist from the floor",
+      "Press up; swap sides"
+    ],
+    "altStart": "Lever push-up, start position: push-up position with one hand on the floor and the other arm straight out to the side with the palm on a basketball.",
+    "altEnd": "Lever push-up, end position: chest lowered close to the floor on the bent working arm, the other arm still straight on the basketball."
+  },
+  "PSH-10": {
+    "start": [
+      "One hand under the chest, arm straight",
+      "Free hand on the small of the back",
+      "Feet wide for balance"
+    ],
+    "end": [
+      "Lower until the chest is a fist from the floor",
+      "Body square, no twist",
+      "Press back to a locked arm; swap sides"
+    ],
+    "altStart": "One-arm push-up, start position: one-arm push-up position, feet wide, free hand on the lower back, working arm straight.",
+    "altEnd": "One-arm push-up, end position: chest lowered to about a fist above the floor on one bent arm, body straight and square."
+  },
   "SQT-01": {
     "start": [
       "Upper back, shoulders and head on the floor",
@@ -134,5 +274,565 @@
     ],
     "altStart": "One-leg squat (pistol), start position: balancing on one leg with the free leg straight out in front off the floor and arms extended forward.",
     "altEnd": "One-leg squat (pistol), end position: rock-bottom one-leg squat with the hamstring on the calf, the free leg straight and parallel to the floor, arms forward."
+  },
+  "PLL-01": {
+    "start": [
+      "Feet close to the base of a sturdy upright",
+      "Grip it at chest height and lean back",
+      "Arms straight, body straight"
+    ],
+    "end": [
+      "Pull the chest in to the upright",
+      "Squeeze the shoulder blades together",
+      "Lower back to straight arms"
+    ],
+    "altStart": "Vertical pull, start position: standing close to a sturdy upright, gripping it at chest height and leaning back on straight arms.",
+    "altEnd": "Vertical pull, end position: pulled in until the chest is next to the upright, elbows bent back."
+  },
+  "PLL-02": {
+    "start": [
+      "Lie under a hip-high bar or table edge",
+      "Hands shoulder-width, arms straight",
+      "Heels on the floor, body straight"
+    ],
+    "end": [
+      "Pull the chest up to the bar",
+      "Body stays rigid from heels to head",
+      "Lower under control"
+    ],
+    "altStart": "Horizontal pull, start position: lying face up under a hip-high bar, holding it with straight arms, heels on the floor and body straight.",
+    "altEnd": "Horizontal pull, end position: chest pulled up to the bar with elbows bent, body still straight and heels on the floor."
+  },
+  "PLL-03": {
+    "start": [
+      "Hips under a chest-high bar, arms straight",
+      "Legs straight out, heels on a support in front",
+      "Body bent in an L"
+    ],
+    "end": [
+      "Pull until the chin clears the bar",
+      "Push lightly through the heels to help",
+      "Lower to straight arms"
+    ],
+    "altStart": "Jackknife pull, start position: hanging from a bar with straight arms, legs out in front and heels resting on a support, body in an L shape.",
+    "altEnd": "Jackknife pull, end position: chin pulled over the bar, elbows bent, heels still on the support."
+  },
+  "PLL-04": {
+    "start": [
+      "Hang from the bar, elbows bent about 90°",
+      "Bar at chest height",
+      "Shoulders down, body still"
+    ],
+    "end": [
+      "Pull until the chin is over the bar",
+      "No kipping or swinging",
+      "Lower back to 90° only"
+    ],
+    "altStart": "Half pull-up, start position: hanging from an overhead bar with elbows bent about 90 degrees, the bar at chest height.",
+    "altEnd": "Half pull-up, end position: chin pulled over the bar with elbows fully bent."
+  },
+  "PLL-05": {
+    "start": [
+      "Dead hang, arms straight",
+      "Hands shoulder-width, palms forward",
+      "Shoulders set, legs still"
+    ],
+    "end": [
+      "Pull until the chin is over the bar",
+      "Elbows drive down and back",
+      "Lower all the way to straight arms"
+    ],
+    "altStart": "Full pull-up, start position: dead hang from an overhead bar with straight arms and hands shoulder-width.",
+    "altEnd": "Full pull-up, end position: chin pulled over the bar with elbows bent and pulled down."
+  },
+  "PLL-06": {
+    "start": [
+      "Dead hang with the hands touching",
+      "Arms straight",
+      "Legs together, no swing"
+    ],
+    "end": [
+      "Pull until the chin is over the bar",
+      "Keep the hands together",
+      "Lower to straight arms"
+    ],
+    "altStart": "Close pull-up, start position: dead hang from an overhead bar with straight arms and hands touching.",
+    "altEnd": "Close pull-up, end position: chin pulled over the bar with the hands still together."
+  },
+  "PLL-07": {
+    "start": [
+      "One hand on the bar",
+      "Other hand holds a towel draped over the bar, lower down",
+      "Arms straight"
+    ],
+    "end": [
+      "Pull until the chin is over the bar",
+      "The bar arm does most of the work",
+      "Lower; swap sides each set"
+    ],
+    "altStart": "Uneven pull-up, start position: dead hang with one hand on the bar and the other gripping a towel hanging lower from it.",
+    "altEnd": "Uneven pull-up, end position: chin pulled over the bar, one hand on the bar and the other still on the towel."
+  },
+  "PLL-08": {
+    "start": [
+      "Hang from one arm, elbow bent about 90°",
+      "Free arm relaxed at the side",
+      "Body still"
+    ],
+    "end": [
+      "Pull until the chin is over the bar",
+      "Don't twist or kick",
+      "Lower to 90° only; swap arms"
+    ],
+    "altStart": "Half one-arm pull-up, start position: hanging from one hand with the elbow bent about 90 degrees, the free arm at the side.",
+    "altEnd": "Half one-arm pull-up, end position: chin pulled over the bar on one arm."
+  },
+  "PLL-09": {
+    "start": [
+      "One hand on the bar, arm straight",
+      "Other hand on a towel lower down",
+      "Dead hang"
+    ],
+    "end": [
+      "Pull hard with the bar arm, helped by the towel",
+      "Let go of the towel halfway up",
+      "Finish chin over the bar on one arm"
+    ],
+    "altStart": "Assisted one-arm pull-up, start position: dead hang with one hand on the bar and the other gripping a towel lower down.",
+    "altEnd": "Assisted one-arm pull-up, end position: chin over the bar on one arm, the towel hand released."
+  },
+  "PLL-10": {
+    "start": [
+      "Dead hang from one arm",
+      "Free arm by the side",
+      "Shoulder set, no swing"
+    ],
+    "end": [
+      "Pull until the chin is over the bar",
+      "Stay square to the bar",
+      "Lower all the way; swap arms"
+    ],
+    "altStart": "One-arm pull-up, start position: dead hang from an overhead bar on one straight arm.",
+    "altEnd": "One-arm pull-up, end position: chin pulled over the bar on one bent arm."
+  },
+  "LGR-01": {
+    "start": [
+      "Sit on the edge of a bench, hands gripping beside the hips",
+      "Lean back slightly",
+      "Legs straight, feet a few inches off the floor"
+    ],
+    "end": [
+      "Draw the knees up to the chest",
+      "Exhale as the knees come in",
+      "Extend the legs back out without touching the floor"
+    ],
+    "altStart": "Knee tuck, start position: sitting on the edge of a bench, leaning back with hands on the edge and straight legs held just off the floor.",
+    "altEnd": "Knee tuck, end position: knees drawn up toward the chest, feet off the floor, still leaning back slightly."
+  },
+  "LGR-02": {
+    "start": [
+      "Lie on the back, hands by the hips",
+      "Knees bent 90°, heels just off the floor",
+      "Lower back pressed down"
+    ],
+    "end": [
+      "Raise the knees until the thighs are vertical",
+      "Keep the knee angle fixed",
+      "Lower until the heels nearly touch"
+    ],
+    "altStart": "Flat knee raise, start position: lying face up with knees bent at a right angle and heels just off the floor.",
+    "altEnd": "Flat knee raise, end position: thighs raised to vertical with knees still bent 90 degrees, lower back on the floor."
+  },
+  "LGR-03": {
+    "start": [
+      "Lie on the back, hands by the hips",
+      "Knees only slightly bent",
+      "Feet just off the floor"
+    ],
+    "end": [
+      "Raise the legs until the thighs are vertical",
+      "Keep the knees at the same bend",
+      "Lower slowly, feet off the floor"
+    ],
+    "altStart": "Flat bent-leg raise, start position: lying face up with legs slightly bent and the feet held just off the floor.",
+    "altEnd": "Flat bent-leg raise, end position: thighs raised to vertical with the knees still slightly bent."
+  },
+  "LGR-04": {
+    "start": [
+      "Lie on the back, knees bent and drawn in",
+      "Heels just off the floor",
+      "Lower back pressed down"
+    ],
+    "end": [
+      "Raise the knees, then straighten the legs to vertical",
+      "Lower with straight legs",
+      "Bend again near the bottom"
+    ],
+    "altStart": "Flat frog raise, start position: lying face up with knees bent and heels just off the floor.",
+    "altEnd": "Flat frog raise, end position: legs straightened and pointing straight up, lower back on the floor."
+  },
+  "LGR-05": {
+    "start": [
+      "Lie on the back, hands by the hips",
+      "Legs straight, heels a couple of inches up",
+      "Lower back pressed down"
+    ],
+    "end": [
+      "Raise straight legs to vertical",
+      "No arching the lower back",
+      "Lower slowly; don't rest the heels"
+    ],
+    "altStart": "Flat straight-leg raise, start position: lying face up with straight legs held a couple of inches off the floor.",
+    "altEnd": "Flat straight-leg raise, end position: straight legs raised to point at the ceiling, lower back flat."
+  },
+  "LGR-06": {
+    "start": [
+      "Dead hang from a bar",
+      "Legs straight and together",
+      "Shoulders set, no swing"
+    ],
+    "end": [
+      "Raise the knees to chest height",
+      "Tilt the pelvis up at the top",
+      "Lower to a dead hang without swinging"
+    ],
+    "altStart": "Hanging knee raise, start position: dead hang from an overhead bar with straight legs.",
+    "altEnd": "Hanging knee raise, end position: hanging with knees raised to chest height and bent."
+  },
+  "LGR-07": {
+    "start": [
+      "Dead hang from a bar",
+      "Legs together",
+      "Body still"
+    ],
+    "end": [
+      "Raise the legs with a slight knee bend",
+      "Thighs come up past level",
+      "Lower under control"
+    ],
+    "altStart": "Hanging bent-leg raise, start position: dead hang from an overhead bar with legs together.",
+    "altEnd": "Hanging bent-leg raise, end position: hanging with thighs raised level with the floor and knees slightly bent."
+  },
+  "LGR-08": {
+    "start": [
+      "Hang with the knees tucked up",
+      "Thighs level with the floor",
+      "Shoulders set"
+    ],
+    "end": [
+      "Straighten the legs out level with the floor",
+      "Lower with straight legs",
+      "Tuck again on the way up"
+    ],
+    "altStart": "Hanging frog raise, start position: hanging from a bar with the knees tucked up and thighs level with the floor.",
+    "altEnd": "Hanging frog raise, end position: hanging with straight legs held out level with the floor."
+  },
+  "LGR-09": {
+    "start": [
+      "Dead hang from a bar",
+      "Legs straight and together",
+      "Tuck the pelvis slightly"
+    ],
+    "end": [
+      "Raise straight legs halfway, about 45°",
+      "Pause, no momentum",
+      "Lower to a dead hang"
+    ],
+    "altStart": "Partial hanging straight-leg raise, start position: dead hang from an overhead bar with straight legs together.",
+    "altEnd": "Partial hanging straight-leg raise, end position: hanging with straight legs raised halfway, about 45 degrees."
+  },
+  "LGR-10": {
+    "start": [
+      "Dead hang from a bar",
+      "Legs straight and together",
+      "Shoulders set"
+    ],
+    "end": [
+      "Raise straight legs until level with the floor",
+      "Body forms an L; pause",
+      "Lower slowly without swinging"
+    ],
+    "altStart": "Hanging straight-leg raise, start position: dead hang from an overhead bar with straight legs together.",
+    "altEnd": "Hanging straight-leg raise, end position: hanging in an L with straight legs held level with the floor."
+  },
+  "BRG-01": {
+    "start": [
+      "Lie on the back, knees bent, feet flat",
+      "Arms by the sides, palms down",
+      "Feet hip-width, near the hips"
+    ],
+    "end": [
+      "Push through the heels to lift the hips",
+      "Stop at a straight line from shoulders to knees",
+      "Shoulders stay on the floor"
+    ],
+    "altStart": "Short bridge, start position: lying face up with knees bent, feet flat near the hips and arms by the sides.",
+    "altEnd": "Short bridge, end position: hips lifted so the shoulders, hips and knees form a straight line, shoulders on the floor."
+  },
+  "BRG-02": {
+    "start": [
+      "Sit with legs straight out",
+      "Hands on the floor beside the hips, fingers toward the feet",
+      "Chest up"
+    ],
+    "end": [
+      "Drive the hips up until the body is straight",
+      "Arms straight, head relaxed back",
+      "Lower back to sitting"
+    ],
+    "altStart": "Straight bridge, start position: sitting with straight legs out in front and hands on the floor beside the hips.",
+    "altEnd": "Straight bridge, end position: hips pushed up into a straight line from heels to shoulders on straight arms, head tilted back."
+  },
+  "BRG-03": {
+    "start": [
+      "Upper back on a knee-high bench",
+      "Hands beside the head on the bench, fingers toward the feet",
+      "Knees bent, feet flat"
+    ],
+    "end": [
+      "Press through palms and heels",
+      "Lift shoulders and hips into an angled bridge",
+      "Lower the upper back to the bench"
+    ],
+    "altStart": "Angled bridge, start position: upper back resting on a knee-high bench, hands beside the head on it, knees bent and feet on the floor.",
+    "altEnd": "Angled bridge, end position: pressed up on straight arms from the bench into an angled bridge, hips raised."
+  },
+  "BRG-04": {
+    "start": [
+      "Full bridge, arms and legs pushing",
+      "Hands beside the head, fingers toward the feet",
+      "Hips high"
+    ],
+    "end": [
+      "Lower until the top of the head lightly touches",
+      "Keep the hips up",
+      "Press back to straight arms"
+    ],
+    "altStart": "Head bridge, start position: full bridge on straight arms with the hips high.",
+    "altEnd": "Head bridge, end position: bridge lowered until the top of the head touches the floor, elbows bent, hips still raised."
+  },
+  "BRG-05": {
+    "start": [
+      "Lower back over a basketball",
+      "Hands beside the head on the floor",
+      "Feet flat, knees bent"
+    ],
+    "end": [
+      "Press up into a bridge over the ball",
+      "Straighten the arms, lift the hips",
+      "Lower back onto the ball"
+    ],
+    "altStart": "Half bridge, start position: lying back over a basketball with hands beside the head and feet flat on the floor.",
+    "altEnd": "Half bridge, end position: pressed up into a bridge on straight arms above the basketball."
+  },
+  "BRG-06": {
+    "start": [
+      "Lie on the back, knees bent, feet flat",
+      "Palms beside the head, fingers toward the feet",
+      "Elbows pointing up"
+    ],
+    "end": [
+      "Press up until the arms are straight",
+      "Hips are the highest point",
+      "Lower under control"
+    ],
+    "altStart": "Full bridge, start position: lying face up with knees bent and palms on the floor beside the head.",
+    "altEnd": "Full bridge, end position: full bridge with straight arms, hips high and the back arched."
+  },
+  "BRG-07": {
+    "start": [
+      "Stand two to three feet from a wall, back to it",
+      "Arch back and place the palms on the wall",
+      "Fingers point down"
+    ],
+    "end": [
+      "Walk the hands down the wall",
+      "Finish in a full bridge on the floor",
+      "Look for the floor as you go"
+    ],
+    "altStart": "Wall-walk bridge (down), start position: standing with the back to a wall, arched backward with the palms on the wall overhead.",
+    "altEnd": "Wall-walk bridge (down), end position: full bridge on the floor near the wall after walking the hands down it."
+  },
+  "BRG-08": {
+    "start": [
+      "Full bridge, hands near the base of the wall",
+      "Hips high, arms straight",
+      "Feet flat"
+    ],
+    "end": [
+      "Walk the hands up the wall",
+      "Push the hips forward as you rise",
+      "Finish standing"
+    ],
+    "altStart": "Wall-walk bridge (up), start position: full bridge on the floor with the hands near the base of a wall.",
+    "altEnd": "Wall-walk bridge (up), end position: standing with the back to the wall after walking the hands up it, still lightly arched."
+  },
+  "BRG-09": {
+    "start": [
+      "Stand tall, feet shoulder-width",
+      "Arms overhead, hips pushed forward",
+      "Look back"
+    ],
+    "end": [
+      "Arch back and lower under control",
+      "Hands land beside the head",
+      "Finish in a full bridge"
+    ],
+    "altStart": "Closing bridge, start position: standing with arms overhead, hips forward and the upper back arching backward.",
+    "altEnd": "Closing bridge, end position: full bridge on the floor after arching back from standing."
+  },
+  "BRG-10": {
+    "start": [
+      "Stand tall, feet shoulder-width",
+      "Arms overhead, hips forward",
+      "Brace before arching"
+    ],
+    "end": [
+      "Arch back into a full bridge",
+      "Rock forward and push back up",
+      "Finish standing again"
+    ],
+    "altStart": "Stand-to-stand bridge, start position: standing with arms overhead and hips forward, ready to arch back.",
+    "altEnd": "Stand-to-stand bridge, end position: full bridge on the floor, the bottom of a stand-to-stand rep before pushing back up to standing."
+  },
+  "HSP-01": {
+    "start": [
+      "Head and hands on the floor in a triangle near a wall",
+      "Hips over the head, knees bent",
+      "Weight on the hands as well as the head"
+    ],
+    "end": [
+      "Lift the legs up the wall",
+      "Heels rest on the wall, legs straight",
+      "Hold, breathing steadily"
+    ],
+    "altStart": "Wall headstand, start position: head and hands on the floor in a triangle near a wall, hips raised over the head, feet still on the floor.",
+    "altEnd": "Wall headstand, end position: headstand against the wall with straight legs and heels resting on it."
+  },
+  "HSP-02": {
+    "start": [
+      "Squat with hands flat on the floor",
+      "Knees resting on the backs of the upper arms",
+      "Elbows bent"
+    ],
+    "end": [
+      "Lean forward until the feet leave the floor",
+      "Balance on the hands",
+      "Hold, then step back down"
+    ],
+    "altStart": "Crow stand, start position: deep squat with hands flat on the floor and knees resting on the bent upper arms.",
+    "altEnd": "Crow stand, end position: balancing on the hands with knees on the upper arms and feet off the floor."
+  },
+  "HSP-03": {
+    "start": [
+      "Hands on the floor a short way from a wall",
+      "Hips high, one leg ready to kick",
+      "Arms straight"
+    ],
+    "end": [
+      "Kick up to a handstand",
+      "Heels rest on the wall, arms locked",
+      "Hold, then come down one leg at a time"
+    ],
+    "altStart": "Wall handstand, start position: bent over with hands on the floor near a wall, one leg ready to kick up.",
+    "altEnd": "Wall handstand, end position: handstand against the wall with arms locked and heels on the wall."
+  },
+  "HSP-04": {
+    "start": [
+      "Wall handstand, arms locked",
+      "Hands shoulder-width",
+      "Heels on the wall"
+    ],
+    "end": [
+      "Lower halfway, elbows about 90°",
+      "Head stays clear of the floor",
+      "Press back to locked arms"
+    ],
+    "altStart": "Half handstand push-up, start position: wall handstand with arms locked and heels on the wall.",
+    "altEnd": "Half handstand push-up, end position: lowered halfway with elbows bent about 90 degrees, still upside down against the wall."
+  },
+  "HSP-05": {
+    "start": [
+      "Wall handstand, arms locked",
+      "Hands shoulder-width",
+      "Body straight"
+    ],
+    "end": [
+      "Lower until the top of the head lightly touches",
+      "Head and hands form a triangle",
+      "Press back to locked arms"
+    ],
+    "altStart": "Handstand push-up, start position: wall handstand with arms locked.",
+    "altEnd": "Handstand push-up, end position: lowered until the top of the head lightly touches the floor, elbows bent."
+  },
+  "HSP-06": {
+    "start": [
+      "Wall handstand with the hands touching",
+      "Arms locked",
+      "Heels on the wall"
+    ],
+    "end": [
+      "Lower until the head lightly touches",
+      "Elbows track forward",
+      "Press back up"
+    ],
+    "altStart": "Close handstand push-up, start position: wall handstand with arms locked and hands touching.",
+    "altEnd": "Close handstand push-up, end position: lowered until the head touches the floor, hands still together."
+  },
+  "HSP-07": {
+    "start": [
+      "Wall handstand, one hand on a basketball",
+      "Other hand flat on the floor",
+      "Arms straight"
+    ],
+    "end": [
+      "Lower until the head nears the floor",
+      "Floor arm does most of the work",
+      "Press up; swap sides"
+    ],
+    "altStart": "Uneven handstand push-up, start position: wall handstand with one hand on the floor and the other on a basketball.",
+    "altEnd": "Uneven handstand push-up, end position: lowered toward the floor with both elbows bent, one hand still on the basketball."
+  },
+  "HSP-08": {
+    "start": [
+      "Wall handstand on one arm",
+      "Free arm along the body",
+      "Heels on the wall"
+    ],
+    "end": [
+      "Lower halfway on one arm",
+      "Stay square to the wall",
+      "Press back up; swap arms"
+    ],
+    "altStart": "Half one-arm handstand push-up, start position: one-arm handstand against the wall with the working arm locked.",
+    "altEnd": "Half one-arm handstand push-up, end position: lowered halfway on one bent arm, heels still on the wall."
+  },
+  "HSP-09": {
+    "start": [
+      "Wall handstand, working hand under the shoulder",
+      "Other arm straight out to the side on a basketball",
+      "Body straight"
+    ],
+    "end": [
+      "Bend the working arm only",
+      "Lower until the head nears the floor",
+      "Press up; swap sides"
+    ],
+    "altStart": "Lever handstand push-up, start position: wall handstand with one hand on the floor and the other arm straight out to the side on a basketball.",
+    "altEnd": "Lever handstand push-up, end position: lowered on the bent working arm, the other arm still straight on the basketball."
+  },
+  "HSP-10": {
+    "start": [
+      "Wall handstand on one locked arm",
+      "Free arm along the body",
+      "Heels on the wall"
+    ],
+    "end": [
+      "Lower until the head lightly touches",
+      "Keep the body square",
+      "Press back to a locked arm; swap"
+    ],
+    "altStart": "One-arm handstand push-up, start position: one-arm handstand against the wall with the working arm locked.",
+    "altEnd": "One-arm handstand push-up, end position: lowered on one bent arm until the head nears the floor, heels on the wall."
   }
 }
