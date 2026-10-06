@@ -177,6 +177,37 @@ struct ProgramCycleTests {
         #expect(resolution("2026-10-05", context).plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
     }
 
+    @Test func loggedLowerATodayNamesUpperPushWednesdayNext() throws {
+        // Jonathan logged Day 1 (bridge "1-mon") on Tue 10/6 at 07:40 ET.
+        let history = programCycleRealHistory() + [session(1, "2026-10-06", recordedAt: "2026-10-06T11:40:00.000Z")]
+        let context = TrainingDayContext(history: history)
+        let tuesday = resolution("2026-10-06", context)
+        #expect(tuesday.plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
+        #expect(tuesday.reason == .loggedToday)
+        #expect(tuesday.subtitle == "Week 2 · Day 1 · Logged today")
+        let next = try #require(tuesday.next)
+        #expect(next.name == "Upper Push")
+        #expect(next.weekday == "Wednesday")
+        #expect(tuesday.nextLabel == "Next: Upper Push Wednesday")
+        // Change does not re-offer Day 1 once it is logged today.
+        #expect(!tuesday.canChange)
+
+        let wednesday = resolution("2026-10-07", context)
+        #expect(wednesday.plan == .session(dayIndex: 2, name: "Upper Push", stepsTarget: 10_000))
+        #expect(wednesday.reason == .cycle)
+        #expect(wednesday.week == 2)
+        #expect(wednesday.next == nil)
+        #expect(wednesday.nextLabel == nil)
+    }
+
+    @Test func onlyALoggedTodayCardCarriesTheNextSession() {
+        #expect(resolution("2026-10-06", TrainingDayContext(history: programCycleRealHistory())).next == nil)
+        let saturday = resolution("2026-10-10", TrainingDayContext(history: [session(1, "2026-10-05")]))
+        #expect(saturday.next == nil)
+        #expect(saturday.plan.nextLabel == "Next: Lower A Monday")
+        #expect(resolution("2026-09-27", .empty).next == nil)
+    }
+
     @Test func aCompletedWeekRestsUntilDayOneNextMonday() {
         let context = TrainingDayContext(history: [session(4, "2026-10-01"), session(5, "2026-10-01")])
         let friday = resolution("2026-10-02", context)

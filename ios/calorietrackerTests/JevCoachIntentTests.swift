@@ -81,6 +81,33 @@ struct JevCoachIntentTests {
         #expect(content.contains("Row"))
     }
 
+    @Test func programNextAfterLoggingTodayNamesTomorrowsSession() async throws {
+        TypeSafeStub.handler = { _, _ in
+            (200, [:], Self.answers(
+                intent: "program_question",
+                intentP: 0.94,
+                program: "next_session",
+                programP: 0.88
+            ))
+        }
+        let calendar = ProgramWeekRules.easternCalendar
+        let date = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 10, day: 6, hour: 16))!
+        let history = programCycleRealHistory()
+            + [CompletedProgramSession(dayIndex: 1, sessionDate: "2026-10-06", recordedAt: "2026-10-06T11:40:00.000Z")]
+        let router = makeRouter()
+        let message = await CoachIntentRouter.route(
+            "what's my next session?",
+            router: router,
+            isEnabled: { true },
+            program: { TrainingProgramBody.bundledV2() },
+            trainingContext: { TrainingDayContext(history: history) },
+            now: { date },
+            calendar: calendar
+        )
+        #expect(message?.content == "Lower A is logged today. Next: Upper Push on Wed.")
+        #expect(message?.routerAction == .localAnswer)
+    }
+
     @Test func logFoodProducesActionNotEntry() async throws {
         TypeSafeStub.handler = { _, _ in (200, [:], Self.answers(intent: "log_food", intentP: 0.95)) }
         let router = makeRouter()

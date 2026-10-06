@@ -677,10 +677,21 @@ enum ResolvedTrainingDay: Equatable {
     var nextLabel: String? {
         switch self {
         case .rest(_, let nextName, let nextWeekday):
-            return "Next: \(nextName) \(nextWeekday)"
+            return TrainingNextSession(name: nextName, weekday: nextWeekday).label
         case .session, .upcoming:
             return nil
         }
+    }
+}
+
+/// The program session on the next non-rest date, with the cycle applied.
+struct TrainingNextSession: Equatable {
+    var name: String
+    var weekday: String
+
+    /// "Next: Upper Push Wednesday".
+    var label: String {
+        "Next: \(name) \(weekday)"
     }
 }
 
@@ -700,6 +711,14 @@ struct TrainingDayResolution: Equatable {
     var reason: Reason
     /// Program week of the date; nil before the start or without a start date.
     var week: Int?
+    /// What comes after today's session once it is logged; nil otherwise
+    /// (rest cards carry their next session in `plan`).
+    var next: TrainingNextSession?
+
+    /// "Next: Upper Push Wednesday" under a session logged today.
+    var nextLabel: String? {
+        next?.label
+    }
 
     /// "Week 2 · Day 1 · Next in cycle". Nil where the card has nothing to add.
     var subtitle: String? {
@@ -795,7 +814,8 @@ enum TrainingProgramSchedule {
                 return TrainingDayResolution(
                     plan: .upcoming(name: upcoming.day.name, weekday: upcoming.weekday.displayName, stepsTarget: steps),
                     reason: .upcoming,
-                    week: nil
+                    week: nil,
+                    next: nil
                 )
             }
         }
@@ -806,7 +826,8 @@ enum TrainingProgramSchedule {
             return TrainingDayResolution(
                 plan: .session(dayIndex: day.dayIndex, name: day.name, stepsTarget: steps),
                 reason: reason,
-                week: week
+                week: week,
+                next: nil
             )
         }
         func rest(_ reason: TrainingDayResolution.Reason) -> TrainingDayResolution {
@@ -816,11 +837,14 @@ enum TrainingProgramSchedule {
             } else {
                 plan = .rest(stepsTarget: steps, nextName: "Workout", nextWeekday: "")
             }
-            return TrainingDayResolution(plan: plan, reason: reason, week: week)
+            return TrainingDayResolution(plan: plan, reason: reason, week: week, next: nil)
         }
 
         if let done = ProgramCycle.completed(on: todayKey, in: context.history),
-           let logged = session(done.dayIndex, .loggedToday) {
+           var logged = session(done.dayIndex, .loggedToday) {
+            if let next = nextSession(in: body, after: date, history: context.history, calendar: calendar) {
+                logged.next = TrainingNextSession(name: next.day.name, weekday: next.weekday.displayName)
+            }
             return logged
         }
         if let override = context.override, override.date == todayKey,

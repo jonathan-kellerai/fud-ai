@@ -92,6 +92,12 @@ struct TodaysWorkoutCard: View {
                     .foregroundStyle(resolution.isChanged ? IronTheme.brass : IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let nextLabel = resolution.nextLabel {
+                Text(nextLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         // At accessibility sizes the Start button no longer fits beside the
         // session name on small phones, so stack it full-width underneath

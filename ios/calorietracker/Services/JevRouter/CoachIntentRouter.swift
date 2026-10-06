@@ -192,7 +192,8 @@ enum CoachIntentRouter {
         calendar: Calendar
     ) -> ChatMessage? {
         guard let body else { return nil }
-        let resolved = TrainingProgramSchedule.resolve(body, on: now, context: context, calendar: calendar)
+        let resolution = TrainingProgramSchedule.resolution(body, on: now, context: context, calendar: calendar)
+        let resolved = resolution.plan
         let content: String
         switch detail {
         case "today_session":
@@ -212,9 +213,12 @@ enum CoachIntentRouter {
             }
         case "next_session":
             switch resolved {
-            case .session(let dayIndex, let name, _):
-                content = "Today: \(name)."
-                _ = dayIndex
+            case .session(_, let name, _):
+                if let next = resolution.next {
+                    content = loggedLine(todayName: name, nextName: next.name, nextWeekday: next.weekday)
+                } else {
+                    content = "Today: \(name)."
+                }
             case .rest(_, let nextName, let nextWeekday):
                 content = restLine(nextName: nextName, nextWeekday: nextWeekday)
             case .upcoming(let name, let weekday, _):
@@ -230,6 +234,11 @@ enum CoachIntentRouter {
         let day = shortWeekday(nextWeekday)
         if nextName.isEmpty || day.isEmpty { return "Rest day." }
         return "Rest day. Next: \(nextName) on \(day)."
+    }
+
+    /// Today's session is already logged, so the next one is the answer.
+    private static func loggedLine(todayName: String, nextName: String, nextWeekday: String) -> String {
+        "\(todayName) is logged today. Next: \(nextName) on \(shortWeekday(nextWeekday))."
     }
 
     private static func shortWeekday(_ value: String) -> String {
