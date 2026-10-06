@@ -171,7 +171,9 @@ extension WorkoutDraftStoreTests {
         var body = weekRulesV4Body()
         body.reductionWeek = 4
         let date = weekRulesDate("2026-10-21")
-        let schedule = TrainingProgramSchedule.resolve(body, on: date, calendar: ProgramWeekRules.easternCalendar)
+        // Day 1 and Day 2 done Mon–Tue of reduction week, so Wednesday is Day 3.
+        let schedule = TrainingProgramSchedule.resolve(body, on: date,
+            context: programCycleContext(reaching: 3, on: "2026-10-21"), calendar: ProgramWeekRules.easternCalendar)
         let selected = try #require(TrainingProgramSchedule.programDay(in: body, matching: schedule))
         #expect(selected.dayIndex == 3)
         let day = body.programV2Day(for: selected, on: date)
@@ -258,7 +260,9 @@ extension WorkoutLoggerLogicTests {
         ]
         for (civilDate, dayIndex, name, count) in cases {
             let date = weekRulesDate(civilDate)
+            // History from Monday of the same week puts the cycle on this day.
             let resolved = TrainingProgramSchedule.resolve(body, on: date,
+                context: programCycleContext(reaching: dayIndex, on: civilDate),
                 calendar: ProgramWeekRules.easternCalendar)
             let selected = try #require(TrainingProgramSchedule.programDay(in: body, matching: resolved))
             #expect(selected.dayIndex == dayIndex)

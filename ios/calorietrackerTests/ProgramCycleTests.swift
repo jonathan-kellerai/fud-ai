@@ -3,7 +3,6 @@ import Testing
 @testable import calorietracker
 
 /// Program V2 history as Neon has it on 10/6: Day 1–4 on Mon 9/28 – Thu 10/1, Day 5 skipped.
-@MainActor
 func programCycleRealHistory() -> [CompletedProgramSession] {
     [
         CompletedProgramSession(dayIndex: 1, sessionDate: "2026-09-28"),
@@ -15,7 +14,6 @@ func programCycleRealHistory() -> [CompletedProgramSession] {
 
 /// History that makes the cycle land on `dayIndex` on `civilDay`: Day 1 … Day
 /// (dayIndex − 1) on the consecutive days before it, all in the same week.
-@MainActor
 func programCycleContext(reaching dayIndex: Int, on civilDay: String) -> TrainingDayContext {
     let calendar = ProgramWeekRules.easternCalendar
     let anchor = SessionDateFormatting.date(from: civilDay, calendar: calendar)!
@@ -153,6 +151,156 @@ struct ProgramCycleTests {
         ]
         #expect(ProgramCycle.completed(on: "2026-10-06", in: history)?.dayIndex == 3)
         #expect(ProgramCycle.completed(on: "2026-10-07", in: history) == nil)
+    }
+
+    // MARK: Today's resolution
+
+    private var eastern: Calendar { ProgramWeekRules.easternCalendar }
+
+    private func day(_ civil: String) -> Date {
+        SessionDateFormatting.date(from: civil, calendar: eastern)!
+    }
+
+    private func resolution(_ civil: String, _ context: TrainingDayContext) -> TrainingDayResolution {
+        TrainingProgramSchedule.resolution(body, on: day(civil), context: context, calendar: eastern)
+    }
+
+    @Test func todayIsDayOneLowerAOfWeekTwo() {
+        let context = TrainingDayContext(history: programCycleRealHistory())
+        let tuesday = resolution("2026-10-06", context)
+        #expect(tuesday.plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
+        #expect(tuesday.reason == .cycle)
+        #expect(tuesday.subtitle == "Week 2 · Day 1 · Next in cycle")
+        #expect(tuesday.canChange)
+        #expect(!tuesday.isChanged)
+        #expect(resolution("2026-10-05", context).plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
+    }
+
+    @Test func aCompletedWeekRestsUntilDayOneNextMonday() {
+        let context = TrainingDayContext(history: [session(4, "2026-10-01"), session(5, "2026-10-01")])
+        let friday = resolution("2026-10-02", context)
+        #expect(friday.plan == .rest(stepsTarget: 10_000, nextName: "Lower A", nextWeekday: "Monday"))
+        #expect(friday.reason == .weekComplete)
+        #expect(friday.subtitle == "Week 1 complete")
+        #expect(friday.canChange)
+    }
+
+    @Test func saturdayRestNamesTheCyclesNextSession() {
+        let context = TrainingDayContext(history: [session(1, "2026-10-05"), session(2, "2026-10-06")])
+        let saturday = resolution("2026-10-10", context)
+        #expect(saturday.plan == .rest(stepsTarget: 10_000, nextName: "Lower A", nextWeekday: "Monday"))
+        #expect(saturday.reason == .rest)
+        #expect(saturday.subtitle == nil)
+        #expect(saturday.canChange)
+        // Mid-week the rest label names the cycle's day, not the weekday's.
+        var wednesdayOff = body
+        wednesdayOff.restWeekdays = ["wed", "sat", "sun"]
+        let wednesday = TrainingProgramSchedule.resolve(wednesdayOff, on: day("2026-10-07"),
+            context: TrainingDayContext(history: [session(1, "2026-10-05"), session(2, "2026-10-06")]), calendar: eastern)
+        #expect(wednesday == .rest(stepsTarget: 10_000, nextName: "Pull / Hinge", nextWeekday: "Thursday"))
+    }
+
+    @Test func todaysOverrideWinsAndAStaleOneIsIgnored() {
+        let changed = TrainingDayContext(
+            history: programCycleRealHistory(), override: TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3))
+        let today = resolution("2026-10-06", changed)
+        #expect(today.plan == .session(dayIndex: 3, name: "Pull / Hinge", stepsTarget: 10_000))
+        #expect(today.subtitle == "Week 2 · Day 3 · Changed for today")
+        #expect(today.isChanged)
+        #expect(today.canChange)
+        #expect(resolution("2026-10-07", changed).plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
+    }
+
+    @Test func aSaturdayOverrideIsAMakeupSession() {
+        let context = TrainingDayContext(
+            history: [session(1, "2026-10-05")], override: TodayWorkoutOverride(date: "2026-10-10", dayIndex: 5))
+        #expect(resolution("2026-10-10", context).plan == .session(dayIndex: 5, name: "Lower B + Cond", stepsTarget: 10_000))
+    }
+
+    @Test func aSessionLoggedTodayBeatsTheOverride() {
+        let override = TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3)
+        let sameDay = TrainingDayContext(history: programCycleRealHistory() + [session(3, "2026-10-06")], override: override)
+        let logged = resolution("2026-10-06", sameDay)
+        #expect(logged.plan == .session(dayIndex: 3, name: "Pull / Hinge", stepsTarget: 10_000))
+        #expect(logged.reason == .loggedToday)
+        #expect(logged.subtitle == "Week 2 · Day 3 · Logged today")
+        #expect(!logged.canChange)
+        let otherDay = TrainingDayContext(history: programCycleRealHistory() + [session(1, "2026-10-06")], override: override)
+        #expect(resolution("2026-10-06", otherDay).plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
+        #expect(resolution("2026-10-06", otherDay).reason == .loggedToday)
+    }
+
+    @Test func aDraftStartedTodayResumesAndYesterdaysDoesNot() {
+        let today = TrainingDayContext(
+            history: programCycleRealHistory(), inProgress: TrainingDayContext.Draft(dayIndex: 2, sessionDate: "2026-10-06"))
+        let resumed = resolution("2026-10-06", today)
+        #expect(resumed.plan == .session(dayIndex: 2, name: "Upper Push", stepsTarget: 10_000))
+        #expect(resumed.subtitle == "Week 2 · Day 2 · In progress")
+        let yesterday = TrainingDayContext(
+            history: programCycleRealHistory(), inProgress: TrainingDayContext.Draft(dayIndex: 2, sessionDate: "2026-10-05"))
+        #expect(resolution("2026-10-06", yesterday).plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
+        var overridden = today
+        overridden.override = TodayWorkoutOverride(date: "2026-10-06", dayIndex: 4)
+        #expect(resolution("2026-10-06", overridden).reason == .changed)
+    }
+
+    @Test func afterAnOverriddenDayThreeTomorrowIsDayFour() {
+        let context = TrainingDayContext(history: programCycleRealHistory() + [session(3, "2026-10-06")])
+        #expect(resolution("2026-10-07", context).plan == .session(dayIndex: 4, name: "Upper Physique", stepsTarget: 10_000))
+    }
+
+    @Test func reductionWeekDayTwoKeepsTheReductionPrescription() throws {
+        let context = TrainingDayContext(history: [session(1, "2026-10-19")])
+        let tuesday = resolution("2026-10-20", context)
+        #expect(tuesday.plan == .session(dayIndex: 2, name: "Upper Push", stepsTarget: 10_000))
+        #expect(tuesday.subtitle == "Week 4 · Day 2 · Next in cycle")
+        let selected = try #require(TrainingProgramSchedule.programDay(in: body, matching: tuesday.plan))
+        let dated = body.programV2Day(for: selected, on: day("2026-10-20"))
+        #expect(dated.holdLoads)
+        #expect(dated.weekNote?.hasPrefix("Reduction week") == true)
+    }
+
+    @Test func beforeTheStartDayOneIsUpcoming() {
+        let sunday = resolution("2026-09-27", .empty)
+        #expect(sunday.plan == .upcoming(name: "Lower A", weekday: "Monday", stepsTarget: 10_000))
+        #expect(!sunday.canChange)
+        #expect(sunday.subtitle == nil)
+    }
+
+    @Test func workoutOptionsListEveryDayDatedForTheWeek() {
+        let options = TrainingProgramSchedule.workoutOptions(body, on: day("2026-10-06"))
+        #expect(options.map(\.dayIndex) == [1, 2, 3, 4, 5])
+        #expect(options.map(\.name) == ["Lower A", "Upper Push", "Pull / Hinge", "Upper Physique", "Lower B + Cond"])
+        #expect(options.map(\.exerciseCount) == body.days.map(\.exercises.count))
+        #expect(options[0].title == "Day 1 · Lower A")
+        #expect(options[0].detail == "\(body.days[0].exercises.count) exercises · \(body.days[0].conditioningSummary)")
+        #expect(options[2].accessibilityLabel(suggested: true, selected: false)
+                == "Day 3, Pull / Hinge, \(body.days[2].exercises.count) exercises, conditioning \(body.days[2].conditioningSummary), suggested")
+        var reduction = body
+        reduction.reductionWeek = 4
+        let reduced = TrainingProgramSchedule.workoutOptions(reduction, on: day("2026-10-21"))
+        #expect(reduced[2].conditioning == "12 min bike steady, RPE 5-6/10")
+    }
+
+    @Test func suggestedDayIgnoresTheOverride() {
+        let changed = TrainingDayContext(
+            history: programCycleRealHistory(), override: TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3))
+        #expect(TrainingProgramSchedule.suggestedDayIndex(body, on: day("2026-10-06"), context: changed, calendar: eastern) == 1)
+        let saturday = TrainingDayContext(history: [session(1, "2026-10-05"), session(2, "2026-10-06")])
+        #expect(TrainingProgramSchedule.suggestedDayIndex(body, on: day("2026-10-10"), context: saturday, calendar: eastern) == 1)
+        #expect(TrainingProgramSchedule.suggestedDayIndex(body, on: day("2026-09-27"), context: .empty, calendar: eastern) == nil)
+    }
+
+    @Test func pickingTodaysCycleDayClearsTheOverride() {
+        let context = TrainingDayContext(
+            history: programCycleRealHistory(), override: TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3))
+        #expect(TrainingProgramSchedule.overrideAfterPicking(1, in: body, on: day("2026-10-06"),
+            context: context, calendar: eastern) == nil)
+        #expect(TrainingProgramSchedule.overrideAfterPicking(4, in: body, on: day("2026-10-06"),
+            context: context, calendar: eastern) == TodayWorkoutOverride(date: "2026-10-06", dayIndex: 4))
+        // On a rest day every pick is a makeup session, even the suggested one.
+        #expect(TrainingProgramSchedule.overrideAfterPicking(1, in: body, on: day("2026-10-10"),
+            context: .empty, calendar: eastern) == TodayWorkoutOverride(date: "2026-10-10", dayIndex: 1))
     }
 
     // MARK: History parsing

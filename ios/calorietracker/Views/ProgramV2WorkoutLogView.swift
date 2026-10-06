@@ -10,9 +10,12 @@ import SwiftUI
 struct ProgramV2WorkoutLogView: View {
     let day: ProgramV2Day
     let onSaved: () -> Void
+    /// Advances the next-in-cycle day as soon as the bridge accepts the save.
+    private let progress: TrainProgressStore
 
-    init(day: ProgramV2Day, onSaved: @escaping () -> Void = {}) {
+    init(day: ProgramV2Day, progress: TrainProgressStore = .shared, onSaved: @escaping () -> Void = {}) {
         self.day = day
+        self.progress = progress
         self.onSaved = onSaved
         _entry = State(initialValue: WorkoutSetEntry(day: day))
     }
@@ -644,7 +647,11 @@ struct ProgramV2WorkoutLogView: View {
         // The store builds the payload from the draft, posts it, and clears the
         // draft only after the bridge accepts it. On failure the draft stays.
         do {
+            let saved = draftStore.draft
             try await draftStore.save()
+            if let saved {
+                progress.recordCompleted(programDay: saved.programDay, title: saved.title, sessionDate: saved.sessionDate)
+            }
 
             await MainActor.run {
                 showingSaveConfirmation = true
@@ -696,6 +703,7 @@ extension ProgramV2WorkoutLogView {
          openedAt: Date, initiallyReordering: Bool = false) {
         day = entry.day
         onSaved = {}
+        progress = .shared
         _entry = State(initialValue: entry)
         _restSession = State(initialValue: restSession)
         _openedAt = State(initialValue: openedAt)

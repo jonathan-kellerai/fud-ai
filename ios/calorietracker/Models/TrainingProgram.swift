@@ -684,36 +684,208 @@ enum ResolvedTrainingDay: Equatable {
     }
 }
 
+/// Why today's card shows what it shows: the subtitle and the Change control.
+struct TrainingDayResolution: Equatable {
+    enum Reason: Equatable {
+        case upcoming
+        case loggedToday
+        case changed
+        case inProgress
+        case cycle
+        case rest
+        case weekComplete
+    }
+
+    var plan: ResolvedTrainingDay
+    var reason: Reason
+    /// Program week of the date; nil before the start or without a start date.
+    var week: Int?
+
+    /// "Week 2 · Day 1 · Next in cycle". Nil where the card has nothing to add.
+    var subtitle: String? {
+        let weekPart = week.map { "Week \($0)" }
+        switch plan {
+        case .session(let dayIndex, _, _):
+            let status: String
+            switch reason {
+            case .loggedToday: status = "Logged today"
+            case .changed: status = "Changed for today"
+            case .inProgress: status = "In progress"
+            case .cycle, .upcoming, .rest, .weekComplete: status = "Next in cycle"
+            }
+            return ([weekPart, "Day \(dayIndex)", status].compactMap { $0 }).joined(separator: " · ")
+        case .rest:
+            guard reason == .weekComplete else { return nil }
+            return weekPart.map { "\($0) complete" } ?? "Week complete"
+        case .upcoming:
+            return nil
+        }
+    }
+
+    /// One lifting session per day: once one is logged today it cannot be swapped.
+    var canChange: Bool {
+        reason != .upcoming && reason != .loggedToday
+    }
+
+    var isChanged: Bool {
+        reason == .changed
+    }
+}
+
+/// One row of the Change workout sheet.
+struct TrainingWorkoutOption: Equatable, Identifiable {
+    var dayIndex: Int
+    var name: String
+    var exerciseCount: Int
+    var conditioning: String
+
+    var id: Int { dayIndex }
+
+    var title: String {
+        "Day \(dayIndex) · \(name)"
+    }
+
+    var detail: String {
+        let exercises = exerciseCount == 1 ? "1 exercise" : "\(exerciseCount) exercises"
+        return "\(exercises) · \(conditioning)"
+    }
+
+    func accessibilityLabel(suggested: Bool, selected: Bool) -> String {
+        var parts = ["Day \(dayIndex)", name,
+                     exerciseCount == 1 ? "1 exercise" : "\(exerciseCount) exercises",
+                     "conditioning \(conditioning)"]
+        if suggested { parts.append("suggested") }
+        if selected { parts.append("selected") }
+        return parts.joined(separator: ", ")
+    }
+}
+
 enum TrainingProgramSchedule {
+    /// Today's program day. Precedence: a session already completed today,
+    /// then today's pick from the Change sheet, then an unsaved session
+    /// started today, then rest weekdays, then the next day in the cycle.
     static func resolve(
         _ body: TrainingProgramBody,
         on date: Date,
+        context: TrainingDayContext,
         calendar: Calendar = .current
     ) -> ResolvedTrainingDay {
+        resolution(body, on: date, context: context, calendar: calendar).plan
+    }
+
+    static func resolution(
+        _ body: TrainingProgramBody,
+        on date: Date,
+        context: TrainingDayContext,
+        calendar: Calendar = .current
+    ) -> TrainingDayResolution {
         let steps = body.dailyStepsTarget
-        let today = SessionDateFormatting.yearMonthDay(
-            from: SessionDateFormatting.calendarDateString(from: date, calendar: calendar)
-        )
+        let todayKey = SessionDateFormatting.calendarDateString(from: date, calendar: calendar)
+        let today = SessionDateFormatting.yearMonthDay(from: todayKey)
         let start = SessionDateFormatting.yearMonthDay(from: body.startDate)
 
         if let today, let start, compare(today, start) == .orderedAscending {
             if let upcoming = firstSession(in: body, onOrAfter: start, calendar: calendar) {
-                return .upcoming(
-                    name: upcoming.day.name,
-                    weekday: upcoming.weekday.displayName,
-                    stepsTarget: steps
+                return TrainingDayResolution(
+                    plan: .upcoming(name: upcoming.day.name, weekday: upcoming.weekday.displayName, stepsTarget: steps),
+                    reason: .upcoming,
+                    week: nil
                 )
             }
         }
 
-        if let match = programDay(in: body, on: date, calendar: calendar), !isRest(body, on: date, calendar: calendar) {
-            return .session(dayIndex: match.dayIndex, name: match.name, stepsTarget: steps)
+        let week = start == nil ? nil : ProgramWeekRules.weekNumber(civilDay: todayKey, body: body)
+        func session(_ dayIndex: Int, _ reason: TrainingDayResolution.Reason) -> TrainingDayResolution? {
+            guard let day = body.days.first(where: { $0.dayIndex == dayIndex }) else { return nil }
+            return TrainingDayResolution(
+                plan: .session(dayIndex: day.dayIndex, name: day.name, stepsTarget: steps),
+                reason: reason,
+                week: week
+            )
+        }
+        func rest(_ reason: TrainingDayResolution.Reason) -> TrainingDayResolution {
+            let plan: ResolvedTrainingDay
+            if let next = nextSession(in: body, after: date, history: context.history, calendar: calendar) {
+                plan = .rest(stepsTarget: steps, nextName: next.day.name, nextWeekday: next.weekday.displayName)
+            } else {
+                plan = .rest(stepsTarget: steps, nextName: "Workout", nextWeekday: "")
+            }
+            return TrainingDayResolution(plan: plan, reason: reason, week: week)
         }
 
-        if let next = nextSession(in: body, after: date, calendar: calendar) {
-            return .rest(stepsTarget: steps, nextName: next.day.name, nextWeekday: next.weekday.displayName)
+        if let done = ProgramCycle.completed(on: todayKey, in: context.history),
+           let logged = session(done.dayIndex, .loggedToday) {
+            return logged
         }
-        return .rest(stepsTarget: steps, nextName: "Workout", nextWeekday: "")
+        if let override = context.override, override.date == todayKey,
+           let changed = session(override.dayIndex, .changed) {
+            return changed
+        }
+        if let draft = context.inProgress, draft.sessionDate == todayKey,
+           let resumed = session(draft.dayIndex, .inProgress) {
+            return resumed
+        }
+        if isRest(body, on: date, calendar: calendar) {
+            return rest(.rest)
+        }
+        switch ProgramCycle.suggestion(body: body, history: context.history, on: todayKey) {
+        case .day(let dayIndex, _):
+            return session(dayIndex, .cycle) ?? rest(.rest)
+        case .weekComplete:
+            return rest(.weekComplete)
+        case nil:
+            return rest(.rest)
+        }
+    }
+
+    /// The cycle's day for the Change sheet's "Suggested" tag: today's
+    /// session ignoring the override, or on a rest day the next session.
+    static func suggestedDayIndex(
+        _ body: TrainingProgramBody,
+        on date: Date,
+        context: TrainingDayContext,
+        calendar: Calendar = .current
+    ) -> Int? {
+        switch resolve(body, on: date, context: context.withoutOverride, calendar: calendar) {
+        case .session(let dayIndex, _, _):
+            return dayIndex
+        case .rest:
+            return nextSession(in: body, after: date, history: context.history, calendar: calendar)?.day.dayIndex
+        case .upcoming:
+            return nil
+        }
+    }
+
+    /// Today's override after picking `dayIndex`: none when the pick is the
+    /// session today would have anyway, else the pick for today's date.
+    static func overrideAfterPicking(
+        _ dayIndex: Int,
+        in body: TrainingProgramBody,
+        on date: Date,
+        context: TrainingDayContext,
+        calendar: Calendar = .current
+    ) -> TodayWorkoutOverride? {
+        if case .session(let planned, _, _) = resolve(body, on: date, context: context.withoutOverride, calendar: calendar),
+           planned == dayIndex {
+            return nil
+        }
+        return TodayWorkoutOverride(
+            date: SessionDateFormatting.calendarDateString(from: date, calendar: calendar),
+            dayIndex: dayIndex
+        )
+    }
+
+    /// Every program day, dated for `date` so week rules (reduction week) show.
+    static func workoutOptions(_ body: TrainingProgramBody, on date: Date) -> [TrainingWorkoutOption] {
+        body.days.sorted { $0.dayIndex < $1.dayIndex }.map { day in
+            let dated = body.programV2Day(for: day, on: date)
+            return TrainingWorkoutOption(
+                dayIndex: day.dayIndex,
+                name: day.name,
+                exerciseCount: dated.exercises.count,
+                conditioning: dated.conditioning
+            )
+        }
     }
 
     static func programDay(in body: TrainingProgramBody, matching resolved: ResolvedTrainingDay) -> TrainingProgramDay? {
@@ -729,52 +901,51 @@ enum TrainingProgramSchedule {
         return rest.contains(weekday)
     }
 
-    private static func programDay(
-        in body: TrainingProgramBody,
-        on date: Date,
-        calendar: Calendar
-    ) -> TrainingProgramDay? {
-        guard let weekday = weekday(on: date, calendar: calendar) else { return nil }
-        return body.days
-            .filter { ProgramWeekday.parse($0.weekday) == weekday }
-            .sorted { $0.dayIndex < $1.dayIndex }
-            .first
-    }
-
+    /// Day 1 (lowest index) on the first non-rest date on or after the start.
     private static func firstSession(
         in body: TrainingProgramBody,
         onOrAfter start: (year: Int, month: Int, day: Int),
         calendar: Calendar
     ) -> (day: TrainingProgramDay, weekday: ProgramWeekday)? {
-        guard let origin = date(from: start, calendar: calendar) else { return nil }
+        guard let origin = date(from: start, calendar: calendar),
+              let first = body.days.min(by: { $0.dayIndex < $1.dayIndex }) else { return nil }
         for offset in 0..<21 {
             guard let candidate = calendar.date(byAdding: .day, value: offset, to: origin),
                   let weekday = weekday(on: candidate, calendar: calendar),
-                  !isRest(body, on: candidate, calendar: calendar),
-                  let day = programDay(in: body, on: candidate, calendar: calendar) else {
+                  !isRest(body, on: candidate, calendar: calendar) else {
                 continue
             }
-            return (day, weekday)
+            return (first, weekday)
         }
         return nil
     }
 
+    /// The cycle's pick on the first later non-rest date that has a session.
     private static func nextSession(
         in body: TrainingProgramBody,
         after date: Date,
+        history: [CompletedProgramSession],
         calendar: Calendar
     ) -> (day: TrainingProgramDay, weekday: ProgramWeekday)? {
+        let start = SessionDateFormatting.yearMonthDay(from: body.startDate)
         for offset in 1..<21 {
             guard let candidate = calendar.date(byAdding: .day, value: offset, to: date),
                   let parts = SessionDateFormatting.yearMonthDay(
                     from: SessionDateFormatting.calendarDateString(from: candidate, calendar: calendar)
-                  ),
-                  let start = SessionDateFormatting.yearMonthDay(from: body.startDate) else {
+                  ) else {
                 continue
             }
-            let effective = compare(parts, start) == .orderedAscending ? start : parts
-            if let session = firstSession(in: body, onOrAfter: effective, calendar: calendar) {
-                return session
+            if let start, compare(parts, start) == .orderedAscending {
+                return firstSession(in: body, onOrAfter: start, calendar: calendar)
+            }
+            guard !isRest(body, on: candidate, calendar: calendar),
+                  let weekday = weekday(on: candidate, calendar: calendar) else {
+                continue
+            }
+            let key = SessionDateFormatting.calendarDateString(from: candidate, calendar: calendar)
+            if case .day(let dayIndex, _) = ProgramCycle.suggestion(body: body, history: history, on: key),
+               let day = body.days.first(where: { $0.dayIndex == dayIndex }) {
+                return (day, weekday)
             }
         }
         return nil

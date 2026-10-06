@@ -117,6 +117,7 @@ struct HomeV2Cards: View {
     @State private var showingPeptideLog = false
 
     private let bridge = NeonBridgeService.shared
+    private let trainProgress = TrainProgressStore.shared
 
     private var calendar: Calendar {
         var calendar = Calendar.current
@@ -472,7 +473,8 @@ struct HomeV2Cards: View {
 
     private var selectedResolution: ResolvedTrainingDay? {
         guard let programBody else { return nil }
-        return TrainingProgramSchedule.resolve(programBody, on: selectedDate, calendar: calendar)
+        return TrainingProgramSchedule.resolve(programBody, on: selectedDate,
+            context: trainingContext(programBody), calendar: calendar)
     }
 
     @ViewBuilder
@@ -497,9 +499,14 @@ struct HomeV2Cards: View {
         }
     }
 
+    private func trainingContext(_ programBody: TrainingProgramBody) -> TrainingDayContext {
+        trainProgress.context(draft: workoutDraftStore.draft, days: programBody.days)
+    }
+
     @ViewBuilder
     private func plannedSession(_ programBody: TrainingProgramBody) -> some View {
-        let resolved = TrainingProgramSchedule.resolve(programBody, on: selectedDate, calendar: calendar)
+        let resolved = TrainingProgramSchedule.resolve(programBody, on: selectedDate,
+            context: trainingContext(programBody), calendar: calendar)
         switch resolved {
         case .session(_, let name, _):
             Text(name)
@@ -1050,6 +1057,7 @@ struct HomeV2Cards: View {
         do {
             let listed = try await bridge.listWorkouts(limit: 50)
             workouts = listed
+            trainProgress.replaceHistory(with: listed, days: programBody?.days ?? [])
             workoutsLoaded = true
             let key = SessionDateFormatting.calendarDateString(from: selectedDate, calendar: calendar)
             if let match = listed.first(where: { String($0.sessionDate.prefix(10)) == key }) {

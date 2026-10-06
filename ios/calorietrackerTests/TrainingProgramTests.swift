@@ -62,7 +62,7 @@ struct TrainingProgramTests {
     @Test func sundayBeforeStartShowsFirstSessionAsUpcoming() {
         let calendar = newYorkCalendar()
         let sunday = civilDate(2026, 9, 27, calendar: calendar)
-        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: sunday, calendar: calendar)
+        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: sunday, context: .empty, calendar: calendar)
         guard case .upcoming(let name, let weekday, let steps) = plan else {
             #expect(Bool(false))
             return
@@ -76,7 +76,7 @@ struct TrainingProgramTests {
     @Test func mondayOnStartDateIsLowerA() {
         let calendar = newYorkCalendar()
         let monday = civilDate(2026, 9, 28, calendar: calendar)
-        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: monday, calendar: calendar)
+        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: monday, context: .empty, calendar: calendar)
         guard case .session(_, let name, _) = plan else {
             #expect(Bool(false))
             return
@@ -90,7 +90,7 @@ struct TrainingProgramTests {
     @Test func saturdayRestDayNamesTheNextSession() {
         let calendar = newYorkCalendar()
         let saturday = civilDate(2026, 10, 3, calendar: calendar)
-        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: saturday, calendar: calendar)
+        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: saturday, context: .empty, calendar: calendar)
         guard case .rest(let steps, let nextName, let nextWeekday) = plan else {
             #expect(Bool(false))
             return
@@ -223,7 +223,9 @@ struct TrainingProgramTests {
     @Test func fridayMapsToLowerB() {
         let calendar = newYorkCalendar()
         let friday = civilDate(2026, 10, 2, calendar: calendar)
-        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: friday, calendar: calendar)
+        // Day 1–4 done Mon–Thu, so the cycle lands on Day 5 on Friday.
+        let plan = TrainingProgramSchedule.resolve(.bundledV2(), on: friday,
+            context: programCycleContext(reaching: 5, on: "2026-10-02"), calendar: calendar)
         guard case .session(_, let name, _) = plan else {
             #expect(Bool(false))
             return

@@ -24,14 +24,21 @@ struct JLPhysicalTabView: View {
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
     @State private var trainMode: TrainMode
+    /// Completed sessions and today's pick; Visual QA injects a seeded store.
+    private let progress: TrainProgressStore
 
-    init(referenceDate: Date? = nil, initialMode: TrainMode = .today) {
+    init(referenceDate: Date? = nil, initialMode: TrainMode = .today, progress: TrainProgressStore = .shared) {
         self.referenceDate = referenceDate
+        self.progress = progress
         _trainMode = State(initialValue: initialMode)
     }
 
+    private var trainingContext: TrainingDayContext {
+        progress.context(draft: workoutDraftStore.draft, days: programBody.days)
+    }
+
     private var todayPlan: ResolvedTrainingDay {
-        TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date())
+        TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date(), context: trainingContext)
     }
     
     var body: some View {
@@ -90,7 +97,7 @@ struct JLPhysicalTabView: View {
                 }
             }
             .sheet(item: $loggingDay) { day in
-                ProgramV2WorkoutLogView(day: day, onSaved: {
+                ProgramV2WorkoutLogView(day: day, progress: progress, onSaved: {
                     Task { await loadRecentWorkouts() }
                 })
             }
@@ -133,7 +140,7 @@ struct JLPhysicalTabView: View {
         if let body = ActiveProgramCache.load()?.body {
             programBody = body
         }
-        let resolved = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date())
+        let resolved = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date(), context: trainingContext)
         guard let day = TrainingProgramSchedule.programDay(in: programBody, matching: resolved) else { return }
         switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft,
             today: workoutDraftStore.dayToOpen(day, in: programBody, on: referenceDate ?? Date())) {
@@ -209,9 +216,11 @@ struct JLPhysicalTabView: View {
         defer { isLoadingRecent = false }
         
         do {
-            let workouts = try await neonBridge.listWorkouts(limit: 5)
+            // 20 rows cover the current program week for the next-in-cycle day.
+            let workouts = try await neonBridge.listWorkouts(limit: 20)
             await MainActor.run {
                 recentWorkouts = workouts
+                progress.replaceHistory(with: workouts, days: programBody.days)
             }
         } catch {
             print("Failed to load recent workouts: \(error)")

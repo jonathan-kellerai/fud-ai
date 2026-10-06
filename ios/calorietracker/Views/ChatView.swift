@@ -14,6 +14,9 @@ struct ChatView: View {
     @Environment(FoodStore.self) private var foodStore
     @Environment(FastingStore.self) private var fastingStore
     @Environment(StrengthWorkoutStore.self) private var strengthWorkoutStore
+    /// Optional so hosts without the draft store (previews) still render; the
+    /// Coach's "today's session" answer resumes an unsaved session when present.
+    @Environment(WorkoutDraftStore.self) private var workoutDraftStore: WorkoutDraftStore?
     @AppStorage("heightUnit") private var heightUnitRaw = "ftin"
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
 
@@ -705,7 +708,12 @@ struct ChatView: View {
         Task {
             defer { isSending = false }
             if image == nil,
-               let handled = await CoachIntentRouter.route(text, hasImage: false) {
+               let handled = await CoachIntentRouter.route(text, hasImage: false, trainingContext: {
+                   TrainProgressStore.shared.context(
+                       draft: workoutDraftStore?.draft,
+                       days: ActiveProgramCache.load()?.body?.days ?? []
+                   )
+               }) {
                 chatStore.append(handled)
                 return
             }

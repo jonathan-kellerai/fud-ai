@@ -12,6 +12,7 @@ enum CoachIntentRouter {
         stepsLast7: (() async throws -> [Int])? = nil,
         stepGoal: (() -> Int)? = nil,
         program: (() -> TrainingProgramBody?)? = nil,
+        trainingContext: (() -> TrainingDayContext)? = nil,
         now: () -> Date = { Date() },
         calendar: Calendar = .current
     ) async -> ChatMessage? {
@@ -23,6 +24,7 @@ enum CoachIntentRouter {
         }
         let stepGoal = stepGoal ?? { StepsGoal.current }
         let program = program ?? { ActiveProgramCache.load()?.body }
+        let trainingContext = trainingContext ?? { TrainingDayContext.empty }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isEnabled() else { return nil }
         if hasImage || trimmed.count > 300 {
@@ -86,7 +88,7 @@ enum CoachIntentRouter {
                 await router.report(.coachIntent, .fellBack(.none), preview: trimmed, latencyMs: latency, model: response.model)
                 return nil
             }
-            message = programMessage(detail, body: program(), now: now(), calendar: calendar)
+            message = programMessage(detail, body: program(), context: trainingContext(), now: now(), calendar: calendar)
         case "log_food":
             message = ChatMessage(
                 role: .assistant,
@@ -185,11 +187,12 @@ enum CoachIntentRouter {
     private static func programMessage(
         _ detail: String,
         body: TrainingProgramBody?,
+        context: TrainingDayContext,
         now: Date,
         calendar: Calendar
     ) -> ChatMessage? {
         guard let body else { return nil }
-        let resolved = TrainingProgramSchedule.resolve(body, on: now, calendar: calendar)
+        let resolved = TrainingProgramSchedule.resolve(body, on: now, context: context, calendar: calendar)
         let content: String
         switch detail {
         case "today_session":

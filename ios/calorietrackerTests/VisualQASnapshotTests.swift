@@ -1575,7 +1575,7 @@ enum VisualQAFixtures {
         let calendar = Calendar.current
         var date = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: referenceNow) ?? referenceNow
         for _ in 0..<90 {
-            switch TrainingProgramSchedule.resolve(body, on: date) {
+            switch TrainingProgramSchedule.resolve(body, on: date, context: .empty) {
             case .session:
                 if !rest { return date }
             case .rest:
