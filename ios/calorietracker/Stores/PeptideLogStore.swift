@@ -62,14 +62,6 @@ final class NeonPeptideBridgeClient: PeptideBridgeClient {
     }
 }
 
-enum PeptideLogPersistence {
-    /// App group `Library/Application Support/PeptideLog/peptide_log_v1.json`, UserDefaults fallback.
-    case appGroup
-    /// Nothing is written (tests, Visual QA).
-    case inMemory
-    case file(URL)
-}
-
 // MARK: - Store
 
 @Observable
@@ -120,7 +112,7 @@ final class PeptideLogStore {
     private(set) var inFlightOpID: String?
     @ObservationIgnored private var flushTask: Task<Void, Never>?
 
-    private let persistence: PeptideLogPersistence
+    private let file: PeptideLogFile
     private let client: any PeptideBridgeClient
     private let autoFlush: Bool
 
@@ -129,7 +121,7 @@ final class PeptideLogStore {
         client: (any PeptideBridgeClient)? = nil,
         autoFlush: Bool = true
     ) {
-        self.persistence = persistence
+        self.file = PeptideLogFile(persistence: persistence, defaultsKey: Self.defaultsKey)
         self.client = client ?? NeonPeptideBridgeClient()
         self.autoFlush = autoFlush
         load()
@@ -1235,37 +1227,10 @@ final class PeptideLogStore {
         }
     }
 
-    private var fileURL: URL? {
-        switch persistence {
-        case .inMemory:
-            return nil
-        case .file(let url):
-            return url
-        case .appGroup:
-            guard let directory = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: WidgetSnapshot.appGroupID)?
-                .appendingPathComponent("Library/Application Support/PeptideLog", isDirectory: true) else { return nil }
-            return directory.appendingPathComponent("peptide_log_v1.json")
-        }
-    }
-
-    private var usesDefaults: Bool {
-        if case .appGroup = persistence { return true }
-        return false
-    }
-
     private func load() {
-        if case .inMemory = persistence { return }
-        var data: Data?
-        if let url = fileURL {
-            data = try? Data(contentsOf: url)
-        }
-        if data == nil, usesDefaults {
-            data = UserDefaults.standard.data(forKey: Self.defaultsKey)
-        }
-        guard let data else { return }
+        guard let data = file.read() else { return }
         guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else {
-            keepUnreadable(data)
+            file.keepUnreadable(data)
             return
         }
         rows = Dictionary(snapshot.rows.filter { !$0.id.isEmpty }.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
@@ -1277,16 +1242,8 @@ final class PeptideLogStore {
         historyComplete = snapshot.historyComplete
     }
 
-    /// Never overwrite data that could not be read: set it aside first.
-    private func keepUnreadable(_ data: Data) {
-        guard let url = fileURL else { return }
-        let stamp = Int(Date().timeIntervalSince1970)
-        let backup = url.deletingLastPathComponent().appendingPathComponent("peptide_log_v1.unreadable-\(stamp).json")
-        try? data.write(to: backup, options: .atomic)
-    }
-
     private func persist() {
-        if case .inMemory = persistence { return }
+        if file.isInMemory { return }
         let snapshot = Snapshot(
             version: 1,
             rows: Array(rows.values),
@@ -1301,23 +1258,13 @@ final class PeptideLogStore {
             persistError = "Peptide log couldn't be encoded."
             return
         }
-        var wroteFile = false
-        if let url = fileURL {
-            do {
-                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: url, options: .atomic)
-                wroteFile = true
-                persistError = nil
-            } catch {
-                persistError = error.localizedDescription
-            }
-        }
-        if usesDefaults {
-            if wroteFile {
-                UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
-            } else {
-                UserDefaults.standard.set(data, forKey: Self.defaultsKey)
-            }
+        switch file.write(data) {
+        case .success?:
+            persistError = nil
+        case .failure(let error)?:
+            persistError = error.localizedDescription
+        case nil:
+            break
         }
     }
 }
