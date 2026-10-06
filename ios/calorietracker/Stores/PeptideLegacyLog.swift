@@ -199,13 +199,20 @@ enum PeptideLegacyLog {
         )
     }
 
-    /// Queued corrections and voids, sent or refused, are applied: the user made them.
+    /// Queued corrections and voids, sent or refused, are applied: the user
+    /// made them. Each adds to the correction trail with the user's reason and
+    /// the time it was queued, as the bridge would have.
     private static func apply(_ op: PeptidePendingOp, to entry: inout Merged) {
+        let before = entry.local
+        let at = op.createdAt.map(PeptideMath.iso8601NewYork) ?? ""
+        let reason = op.reason ?? ""
         switch op.kind {
         case .create:
             return
         case .correct:
             guard let changes = op.changes else { return }
+            let trail = before.corrected(changes, reason: reason, at: at).corrections
+            entry.corrections += trail.dropFirst(before.corrections.count)
             if let datetime = changes.datetime {
                 entry.date = PeptideMath.parseISO8601(datetime)
                 entry.datetimeRaw = datetime
@@ -217,6 +224,9 @@ enum PeptideLegacyLog {
             entry.notes = changes.notes ?? entry.notes
             entry.sourceVial = changes.sourceVial ?? entry.sourceVial
         case .void:
+            if !before.voided {
+                entry.corrections += before.voiding(reason: reason, at: at).corrections.dropFirst(before.corrections.count)
+            }
             entry.voided = true
             entry.voidReason = op.reason
         }
@@ -297,6 +307,8 @@ nonisolated struct PeptidePendingOp: Decodable, Equatable {
     var rowID: String?
     var reason: String?
     var changes: PeptideCorrectionChanges?
+    /// When the user made the change (saved as seconds since 2001).
+    var createdAt: Date?
     /// Set when the user removed a create the bridge may already have had.
     var cancelReason: String?
 }

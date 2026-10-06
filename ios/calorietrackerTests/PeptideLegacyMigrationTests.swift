@@ -149,6 +149,68 @@ struct PeptideLegacyMigrationTests {
         #expect(cancelled.voidReason == "Removed in the app before it synced.")
     }
 
+    /// The queue saved `createdAt` as seconds since 2001 (JSONEncoder's default).
+    private let queuedAt = PeptideMath.iso8601NewYork(Date(timeIntervalSinceReferenceDate: 800_000_000))
+
+    @Test func queuedCorrectionsAndVoidsKeepTheirReasonInTheTrail() throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PeptideLogStore(persistence: .file(try write(version1, in: directory)))
+
+        let corrected = try #require(store.entry(id: "row-corrected"))
+        #expect(corrected.corrections == [
+            PeptideCorrection(at: queuedAt, field: "dose", old: "250", new: "300", reason: "Wrong amount", by: "app"),
+            PeptideCorrection(at: queuedAt, field: "notes", old: "—", new: "Corrected on the phone", reason: "Wrong amount", by: "app"),
+        ])
+
+        let refused = try #require(store.entry(id: "row-refused-void"))
+        #expect(refused.corrections == [
+            PeptideCorrection(at: queuedAt, field: "voided", old: "false", new: "true", reason: "Duplicate", by: "app"),
+        ])
+
+        // Survives the save: a relaunch reads the same trail.
+        let reopened = PeptideLogStore(persistence: .file(directory.appendingPathComponent("peptide_log_v1.json")))
+        #expect(reopened.entry(id: "row-corrected")?.corrections == corrected.corrections)
+        #expect(reopened.entry(id: "row-refused-void")?.corrections == refused.corrections)
+    }
+
+    @Test func queuedChangesAddToTheExistingTrailInOrder() throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let json = """
+        {"version":1,
+         "rows":[
+          {"id":"row-1","datetime":"2026-09-17T08:00:00-04:00","compound":"MT2","dose":250,"units":"mcg",
+           "status":"COMPLETED","recorded_via":"app","voided":false,
+           "correction_history":[{"at":"2026-09-17T13:00:00Z","field":"units","old":"mg","new":"mcg","reason":"Typo","by":"app"}]},
+          {"id":"row-2","datetime":"2026-09-16T08:00:00-04:00","compound":"MT2","dose":250,"units":"mcg",
+           "status":"COMPLETED","recorded_via":"app","voided":true,"void_reason":"Already removed"}
+         ],
+         "pendingOps":[
+          {"id":"op-1","kind":"correct","rowID":"row-1","reason":"Wrong site","changes":{"route":"Thigh L"},
+           "attempts":0,"failed":false,"createdAt":800000000},
+          {"id":"op-2","kind":"void","rowID":"row-1","reason":"Never taken","attempts":1,"failed":true,"createdAt":800000060},
+          {"id":"op-3","kind":"void","rowID":"row-2","reason":"Again","attempts":0,"failed":false,"createdAt":800000000}
+         ],
+         "meta":[],"vials":[],"schedules":[]}
+        """
+        let store = PeptideLogStore(persistence: .file(try write(json, in: directory)))
+        let entry = try #require(store.entry(id: "row-1"))
+        #expect(entry.voided)
+        #expect(entry.voidReason == "Never taken")
+        #expect(entry.route == "Thigh L")
+        #expect(entry.corrections == [
+            PeptideCorrection(at: "2026-09-17T13:00:00Z", field: "units", old: "mg", new: "mcg", reason: "Typo", by: "app"),
+            PeptideCorrection(at: queuedAt, field: "route", old: "—", new: "Thigh L", reason: "Wrong site", by: "app"),
+            PeptideCorrection(
+                at: PeptideMath.iso8601NewYork(Date(timeIntervalSinceReferenceDate: 800_000_060)),
+                field: "voided", old: "false", new: "true", reason: "Never taken", by: "app"
+            ),
+        ])
+        // Already voided: the queued void changes nothing, so the trail gains nothing.
+        #expect(store.entry(id: "row-2")?.corrections.isEmpty == true)
+    }
+
     @Test func vialsAndSchedulesComeAcross() throws {
         let directory = tempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
