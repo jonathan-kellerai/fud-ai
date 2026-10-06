@@ -189,8 +189,6 @@ struct calorietrackerApp: App {
                 // Refresh on scene-active so widgets roll over at midnight even
                 // without an explicit food change.
                 refreshWidgetSnapshot()
-                // Send any queued peptide writes when the app comes back.
-                Task { await peptideLogStore.flush() }
             }
         }
         .onChange(of: hasCompletedOnboarding) { _, completed in

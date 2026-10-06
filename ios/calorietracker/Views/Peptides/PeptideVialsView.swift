@@ -2,8 +2,7 @@
 //  PeptideVialsView.swift
 //  calorietracker
 //
-//  The user's own vials (device only) and the peptide assistant's inventory
-//  (read-only, verbatim). Remaining volume is only shown when it can be worked
+//  The user's own vials. Remaining volume is only shown when it can be worked
 //  out from the user's own vial numbers.
 //
 
@@ -39,7 +38,6 @@ struct PeptideVialsView: View {
                 .buttonStyle(IronPrimaryButtonStyle())
                 activeSection
                 finishedSection
-                PeptideAgentInventorySection()
                 PeptideFooter()
             }
             .padding(16)
@@ -47,7 +45,6 @@ struct PeptideVialsView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Vials")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.refreshIfStale() }
         .sheet(item: $editorTarget) { target in
             PeptideVialEditor(vial: target.vial, person: target.person)
         }
@@ -130,7 +127,6 @@ struct PeptideVialCard: View {
             Text(remaining.linkedCount == 1 ? "1 dose logged from this vial" : "\(remaining.linkedCount) doses logged from this vial")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
-            linkedInventory
             buttons
         }
         .padding(12)
@@ -223,16 +219,6 @@ struct PeptideVialCard: View {
         }
     }
 
-    @ViewBuilder
-    private var linkedInventory: some View {
-        if let item = store.inventoryItem(id: vial.bridgeInventoryID) {
-            VStack(alignment: .leading, spacing: 4) {
-                PeptideFieldLabel("Peptide assistant's vial: " + item.compound)
-                PeptideAgentBadges(item: item)
-            }
-        }
-    }
-
     private var buttons: some View {
         HStack(spacing: 10) {
             if let onEdit {
@@ -253,81 +239,6 @@ struct PeptideVialCard: View {
     }
 }
 
-/// Badges and warnings exactly as the peptide assistant sent them.
-struct PeptideAgentBadges: View {
-    let item: PeptideInventoryItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if !item.badges.isEmpty {
-                PeptideFlowLayout(spacing: 6) {
-                    ForEach(uniqueBadges, id: \.self) { badge in
-                        PeptideTag(text: badge, tone: IronTheme.brass)
-                    }
-                }
-            }
-            ForEach(Array(item.warnings.enumerated()), id: \.offset) { _, warning in
-                Text(warning.text)
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(IronTheme.rust)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var uniqueBadges: [String] {
-        var seen = Set<String>()
-        return item.badges.filter { !$0.isEmpty && seen.insert($0).inserted }
-    }
-}
-
-/// The assistant's vial mirror. Read-only; nothing is computed from it.
-struct PeptideAgentInventorySection: View {
-    @Environment(PeptideLogStore.self) private var store
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            IronSectionTitle(title: "From the peptide assistant (read-only)")
-            if store.inventory.isEmpty {
-                Text("No inventory from the peptide assistant.")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(IronTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(store.inventory) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(item.compound.isEmpty ? "Vial" : item.compound)
-                        .font(.system(.headline, design: .rounded))
-                        .foregroundStyle(IronTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let basis = item.concentrationBasis, !basis.isEmpty {
-                        PeptideDetailRow(label: "Concentration basis", value: basis)
-                    }
-                    if let gate = item.calcGate, !gate.isEmpty {
-                        PeptideDetailRow(label: "Calculation", value: gate)
-                    }
-                    if volumeUnavailable(item) {
-                        Text(HomeV2Logic.volumeUnavailableText)
-                            .font(.system(.footnote, design: .rounded, weight: .semibold))
-                            .foregroundStyle(IronTheme.rust)
-                    }
-                    PeptideAgentBadges(item: item)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .ironCard(fill: IronTheme.surface)
-            }
-        }
-    }
-
-    /// Same gate rules as HomeV2Logic.volumeState: a BLOCKED gate or a NONE basis.
-    private func volumeUnavailable(_ item: PeptideInventoryItem) -> Bool {
-        let gate = (item.calcGate ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let basis = (item.concentrationBasis ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return gate.hasPrefix("BLOCKED") || basis == "NONE"
-    }
-}
-
 // MARK: - Editor
 
 struct PeptideVialEditor: View {
@@ -344,7 +255,6 @@ struct PeptideVialEditor: View {
     @State private var confirmed: Bool
     @State private var thresholdText: String
     @State private var notes: String
-    @State private var inventoryID: String?
     @State private var errorText: String?
     @State private var confirmDelete = false
 
@@ -376,7 +286,6 @@ struct PeptideVialEditor: View {
         _confirmed = State(initialValue: vial?.concentrationConfirmed ?? false)
         _thresholdText = State(initialValue: vial?.lowStockThresholdML.map(PeptideMath.number) ?? "")
         _notes = State(initialValue: vial?.notes ?? "")
-        _inventoryID = State(initialValue: vial?.bridgeInventoryID)
     }
 
     var body: some View {
@@ -390,7 +299,6 @@ struct PeptideVialEditor: View {
                     mixedSection
                     confirmSection
                     thresholdSection
-                    inventoryLinkSection
                     notesSection
                     NavigationLink {
                         ReconView()
@@ -439,11 +347,7 @@ struct PeptideVialEditor: View {
     }
 
     private var compoundSection: some View {
-        let options = PeptideMath.compoundOptions(
-            person: person,
-            inventoryCompounds: store.inventory.map(\.compound),
-            loggedCompounds: store.loggedCompounds(person: person)
-        )
+        let options = PeptideMath.compoundOptions(person: person, loggedCompounds: store.loggedCompounds(person: person))
         return VStack(alignment: .leading, spacing: 8) {
             PeptideFieldLabel("Compound")
             PeptideFlowLayout(spacing: 8) {
@@ -569,23 +473,6 @@ struct PeptideVialEditor: View {
         }
     }
 
-    @ViewBuilder
-    private var inventoryLinkSection: some View {
-        if !store.inventory.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                PeptideFieldLabel("Link to the peptide assistant's vial (optional, badges only)")
-                PeptideFlowLayout(spacing: 8) {
-                    PeptideChoiceChip(title: "None", selected: inventoryID == nil) { inventoryID = nil }
-                    ForEach(store.inventory) { item in
-                        PeptideChoiceChip(title: item.compound.isEmpty ? item.id : item.compound, selected: inventoryID == item.id) {
-                            inventoryID = item.id
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             PeptideFieldLabel("Notes (optional)")
@@ -646,7 +533,6 @@ struct PeptideVialEditor: View {
             mixedOn: mixedKnown ? PeptideViewDates.civil(fromLocal: mixedOn) : nil,
             concentrationConfirmed: confirmed,
             lowStockThresholdML: threshold.value,
-            bridgeInventoryID: inventoryID,
             status: existing?.status ?? .active,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             createdAt: existing?.createdAt ?? Date()

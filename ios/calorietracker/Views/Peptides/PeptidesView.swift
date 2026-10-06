@@ -18,15 +18,12 @@ struct PeptideLogRequest: Identifiable {
 
 struct PeptidesView: View {
     @Environment(PeptideLogStore.self) private var store
-    @Environment(\.scenePhase) private var scenePhase
     @State private var person: String
     @State private var day: String
     @State private var logRequest: PeptideLogRequest?
     @State private var editTarget: PeptideLogEntry?
     @State private var voidTarget: PeptideLogEntry?
-    @State private var failedTarget: PeptideLogEntry?
     @State private var showVoided = false
-    @State private var actionMessage: String?
 
     /// Fixed "now" for the date strip and due list (Visual QA). Nil uses the
     /// live date, refreshed on foreground and when the day changes.
@@ -46,7 +43,6 @@ struct PeptidesView: View {
     var body: some View {
         List {
             headerSection
-            bannerSection
             summarySection
             dueSection
             logSection
@@ -58,17 +54,6 @@ struct PeptidesView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Peptides")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable {
-            await store.refresh()
-        }
-        .task {
-            await store.refreshIfStale()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                Task { await store.flush() }
-            }
-        }
         .onChange(of: person) { _, newValue in
             PeptidePersonMemory.save(newValue)
         }
@@ -86,29 +71,6 @@ struct PeptidesView: View {
         .sheet(item: $voidTarget) { entry in
             PeptideVoidSheet(entry: entry)
         }
-        .confirmationDialog(
-            "Not saved to the bridge",
-            isPresented: failedDialogBinding,
-            titleVisibility: .visible,
-            presenting: failedTarget
-        ) { entry in
-            Button("Retry") {
-                if let opID = entry.pendingOpID { store.retry(opID: opID) }
-            }
-            Button("Discard", role: .destructive) {
-                if let opID = entry.pendingOpID { store.discard(opID: opID) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { entry in
-            Text(entry.syncState.failureMessage ?? "The bridge didn't accept this entry.")
-        }
-    }
-
-    private var failedDialogBinding: Binding<Bool> {
-        Binding(
-            get: { failedTarget != nil },
-            set: { shown in if !shown { failedTarget = nil } }
-        )
     }
 
     // MARK: Sections
@@ -167,52 +129,6 @@ struct PeptidesView: View {
         .ironCard()
     }
 
-    @ViewBuilder
-    private var bannerSection: some View {
-        let pending = store.pendingCount
-        let failed = store.failedCount
-        if pending > 0 || failed > 0 || store.lastSyncError != nil || store.historyUnavailable || actionMessage != nil
-            || store.syncWarning != nil {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let warning = store.syncWarning {
-                        PeptideBanner(title: "Some bridge rows couldn’t be read", message: warning, tone: IronTheme.rust)
-                    }
-                    if let actionMessage {
-                        PeptideBanner(title: actionMessage, tone: IronTheme.bloodText, actionTitle: "Dismiss") {
-                            self.actionMessage = nil
-                        }
-                    }
-                    if pending > 0 || failed > 0 {
-                        PeptideBanner(
-                            title: queueTitle(pending: pending, failed: failed),
-                            message: "Saved on this phone. They go to the bridge when it answers.",
-                            tone: failed > 0 ? IronTheme.rust : IronTheme.brass,
-                            actionTitle: "Sync now"
-                        ) {
-                            Task { await store.flush() }
-                        }
-                    }
-                    if store.historyUnavailable {
-                        PeptideBanner(title: "Bridge needs the history update", message: PeptideLogStore.historyUnavailableMessage, tone: IronTheme.rust)
-                    } else if let error = store.lastSyncError {
-                        PeptideBanner(title: "Couldn’t refresh from the bridge", message: error, tone: IronTheme.rust, actionTitle: "Retry") {
-                            Task { await store.refresh() }
-                        }
-                    }
-                }
-                .peptideListRow()
-            }
-        }
-    }
-
-    private func queueTitle(pending: Int, failed: Int) -> String {
-        var parts: [String] = []
-        if pending > 0 { parts.append(pending == 1 ? "1 change waiting to sync" : "\(pending) changes waiting to sync") }
-        if failed > 0 { parts.append(failed == 1 ? "1 not accepted" : "\(failed) not accepted") }
-        return parts.joined(separator: " · ")
-    }
-
     private var summarySection: some View {
         Section {
             PeptideDaySummaryCard(person: person, day: day)
@@ -225,15 +141,11 @@ struct PeptidesView: View {
     @ViewBuilder
     private var dueSection: some View {
         let items = PeptideMath.dueItems(date: day, person: person, schedules: store.schedules, entries: store.entries)
-        let planned = store.plannedEntries(day, person: person)
-        if !items.isEmpty || !planned.isEmpty {
+        if !items.isEmpty {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(items) { item in
                         dueRow(item)
-                    }
-                    ForEach(planned) { entry in
-                        plannedRow(entry)
                     }
                 }
                 .padding(12)
@@ -274,30 +186,6 @@ struct PeptidesView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func plannedRow(_ entry: PeptideLogEntry) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(entry.compound)
-                    .font(.system(.headline, design: .rounded))
-                    .foregroundStyle(IronTheme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
-                PeptideDueStatus(plannedCompleted: entry.completedID != nil).pill
-            }
-            Text("From the peptide assistant · " + PeptideMath.amountText(entry.dose, entry.units))
-                .font(.system(.footnote, design: .rounded))
-                .foregroundStyle(IronTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if entry.completedID == nil {
-                Text("Mark it taken from the Home card.")
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(IronTheme.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var logSection: some View {
         let rows = store.dayEntries(day, person: person, includeVoided: showVoided).reversed()
         let voidedCount = store.dayEntries(day, person: person, includeVoided: true).filter(\.voided).count
@@ -332,18 +220,14 @@ struct PeptidesView: View {
 
     private func logRow(_ entry: PeptideLogEntry) -> some View {
         NavigationLink {
-            PeptideEntryDetailView(entryID: entry.id, clientRequestID: entry.clientRequestID)
+            PeptideEntryDetailView(entryID: entry.id)
         } label: {
-            PeptideLogRow(
-                entry: entry,
-                vialName: store.vial(id: entry.vialID)?.displayName,
-                onFailedTap: { failedTarget = entry }
-            )
+            PeptideLogRow(entry: entry, vialName: store.vial(id: entry.vialID)?.displayName)
         }
         .listRowBackground(IronTheme.surface)
         .listRowSeparatorTint(IronTheme.hairline)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if entry.isEditableInApp && !entry.voided {
+            if !entry.voided {
                 Button {
                     voidTarget = entry
                 } label: {
@@ -455,9 +339,8 @@ struct PeptideDaySummaryCard: View {
     var body: some View {
         let summary = PeptideMath.dailySummary(entries: store.entries, date: day, person: person)
         let due = PeptideMath.dueItems(date: day, person: person, schedules: store.schedules, entries: store.entries)
-        let planned = store.plannedEntries(day, person: person)
-        let dueCount = due.count + planned.count
-        let doneCount = due.filter(\.taken).count + planned.filter { $0.completedID != nil }.count
+        let dueCount = due.count
+        let doneCount = due.filter(\.taken).count
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 0) {

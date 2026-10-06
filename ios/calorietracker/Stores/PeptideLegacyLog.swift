@@ -2,19 +2,104 @@
 //  PeptideLegacyLog.swift
 //  calorietracker
 //
-//  The version-1 peptide log: cached bridge rows plus queued writes and
-//  device-only details, merged into what the Peptides screens list.
+//  Reads the version-1 peptide log (cached bridge rows, queued writes and
+//  device-only details) once, and turns it into on-device records: exactly
+//  what the Peptides screens listed, minus the peptide assistant's plans.
+//  Read only; nothing here is ever written in this format again.
 //
 
 import Foundation
 
 enum PeptideLegacyLog {
+    struct Migrated {
+        var entries: [PeptideLogEntry]
+        var vials: [PeptideVial]
+        var schedules: [PeptideUserSchedule]
+        /// Saved records that couldn't be read and were left out.
+        var skipped: Int
+    }
+
+    /// The version-1 log as local records. Nil when the bytes aren't a version-1 log.
+    static func migrate(_ data: Data) -> Migrated? {
+        guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data), snapshot.version == 1 else { return nil }
+        let rows = Dictionary(
+            snapshot.rows.filter { !$0.id.isEmpty }.map { ($0.id, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let meta = Dictionary(snapshot.meta.map { ($0.key, $0) }, uniquingKeysWith: { _, latest in latest })
+        var seen = Set<String>()
+        var entries: [PeptideLogEntry] = []
+        // The assistant's PLANNED rows were its plans, not doses taken.
+        for merged in merge(rows: rows, pendingOps: snapshot.pendingOps, meta: meta) where merged.status == "COMPLETED" {
+            let local = merged.local
+            guard seen.insert(local.id).inserted else { continue }
+            entries.append(local)
+        }
+        let rowsWithoutID = snapshot.rows.count - rows.count
+        return Migrated(
+            entries: entries,
+            vials: snapshot.vials,
+            schedules: snapshot.schedules,
+            skipped: snapshot.skipped + max(rowsWithoutID, 0)
+        )
+    }
+
+    // MARK: Merge (unchanged from the bridge-era store)
+
+    /// One merged row before it becomes a local record.
+    private struct Merged {
+        var id: String
+        var rowID: String?
+        var clientRequestID: String?
+        var person: String
+        var compound: String
+        var dose: Double?
+        var units: String?
+        var date: Date?
+        var datetimeRaw: String
+        var route: String?
+        var notes: String?
+        var sourceVial: String?
+        /// "COMPLETED" or "PLANNED" (upper-cased).
+        var status: String
+        var voided: Bool
+        var voidReason: String?
+        var corrections: [PeptideCorrection]
+        var vialID: String?
+        var drawnVolume: Double?
+        var drawnUnit: String?
+        var createdAt: String?
+
+        /// Keyed by the bridge row id, or the client_request_id of a create that never synced.
+        var local: PeptideLogEntry {
+            PeptideLogEntry(
+                id: rowID ?? clientRequestID ?? id,
+                person: person,
+                compound: compound,
+                dose: dose,
+                units: units,
+                date: date,
+                datetimeRaw: datetimeRaw,
+                route: route,
+                notes: notes,
+                sourceVial: sourceVial,
+                voided: voided,
+                voidReason: voidReason,
+                corrections: corrections,
+                vialID: vialID,
+                drawnVolume: drawnVolume,
+                drawnUnit: drawnUnit,
+                createdAt: createdAt
+            )
+        }
+    }
+
     /// Bridge rows merged with queued creates, oldest first.
-    static func entries(
+    private static func merge(
         rows: [String: PeptideAdministration],
         pendingOps: [PeptidePendingOp],
         meta: [String: PeptideLocalMeta]
-    ) -> [PeptideLogEntry] {
+    ) -> [Merged] {
         var opsByRow: [String: [PeptidePendingOp]] = [:]
         for op in pendingOps where op.kind != .create {
             if let rowID = op.rowID { opsByRow[rowID, default: []].append(op) }
@@ -26,7 +111,7 @@ enum PeptideLegacyLog {
             if let crid = op.create?.clientRequestID { createOps[crid.lowercased()] = op }
         }
         var synced = Set<String>()
-        var result: [PeptideLogEntry] = []
+        var result: [Merged] = []
         for row in rows.values {
             if let crid = row.clientRequestID { synced.insert(crid.lowercased()) }
             var entry = makeEntry(row, meta: meta)
@@ -40,8 +125,6 @@ enum PeptideLegacyLog {
                     entry.voided = true
                     entry.voidReason = op.cancelReason
                 }
-                entry.pendingOpID = op.id
-                entry.syncState = op.failed ? .failed(op.lastError ?? "The bridge didn't accept this change.") : .pending
             }
             result.append(entry)
         }
@@ -58,19 +141,9 @@ enum PeptideLegacyLog {
         return result
     }
 
-    private static func makeEntry(_ row: PeptideAdministration, meta: [String: PeptideLocalMeta]) -> PeptideLogEntry {
-        let status = row.status.uppercased()
-        let syncState: PeptideSyncState
-        if row.recordedVia == "peptide-agent" || status == "PLANNED" {
-            syncState = .readOnlyAgent
-        } else if row.recordedVia != "app" {
-            // Missing or unknown origin: read-only.
-            syncState = .readOnly
-        } else {
-            syncState = .synced
-        }
+    private static func makeEntry(_ row: PeptideAdministration, meta: [String: PeptideLocalMeta]) -> Merged {
         let local = meta[row.clientRequestID?.lowercased() ?? row.id] ?? meta[row.id]
-        return PeptideLogEntry(
+        return Merged(
             id: row.id,
             rowID: row.id,
             clientRequestID: row.clientRequestID,
@@ -83,20 +156,13 @@ enum PeptideLegacyLog {
             route: row.route,
             notes: row.notes,
             sourceVial: row.sourceVial,
-            status: status,
-            plannedID: row.plannedId,
-            scheduleID: row.scheduleId,
-            completedID: row.completedId,
+            status: row.status.uppercased(),
             voided: row.voided,
             voidReason: row.voidReason,
-            recordedVia: row.recordedVia,
             corrections: row.correctionHistory,
-            badges: row.badges,
             vialID: local?.vialID,
             drawnVolume: local?.drawnVolume,
             drawnUnit: local?.drawnUnit,
-            syncState: syncState,
-            pendingOpID: nil,
             createdAt: row.createdAt
         )
     }
@@ -106,11 +172,10 @@ enum PeptideLegacyLog {
         payload: PeptideCreatePayload,
         rows: [String: PeptideAdministration],
         meta: [String: PeptideLocalMeta]
-    ) -> PeptideLogEntry {
+    ) -> Merged {
         let planned = payload.plannedID.flatMap { rows[$0] }
         let local = meta[payload.clientRequestID]
-        let state: PeptideSyncState = op.failed ? .failed(op.lastError ?? "The bridge didn't accept this entry.") : .pending
-        return PeptideLogEntry(
+        return Merged(
             id: "pending-" + payload.clientRequestID,
             rowID: nil,
             clientRequestID: payload.clientRequestID,
@@ -124,102 +189,53 @@ enum PeptideLegacyLog {
             notes: payload.notes,
             sourceVial: payload.sourceVial,
             status: "COMPLETED",
-            plannedID: payload.plannedID,
-            scheduleID: planned?.scheduleId,
-            completedID: nil,
             voided: op.cancelReason != nil,
             voidReason: op.cancelReason,
-            recordedVia: "app",
             corrections: [],
-            badges: [],
             vialID: local?.vialID,
             drawnVolume: local?.drawnVolume,
             drawnUnit: local?.drawnUnit,
-            syncState: state,
-            pendingOpID: op.id,
             createdAt: nil
         )
     }
 
-    private static func apply(_ op: PeptidePendingOp, to entry: inout PeptideLogEntry) {
+    /// Queued corrections and voids, sent or refused, are applied: the user made them.
+    private static func apply(_ op: PeptidePendingOp, to entry: inout Merged) {
         switch op.kind {
         case .create:
             return
         case .correct:
             guard let changes = op.changes else { return }
-            var date = entry.date
-            if let datetime = changes.datetime { date = PeptideMath.parseISO8601(datetime) }
-            entry = PeptideLogEntry(
-                id: entry.id,
-                rowID: entry.rowID,
-                clientRequestID: entry.clientRequestID,
-                person: entry.person,
-                compound: changes.compound ?? entry.compound,
-                dose: changes.dose ?? entry.dose,
-                units: changes.units ?? entry.units,
-                date: date,
-                datetimeRaw: changes.datetime ?? entry.datetimeRaw,
-                route: changes.route ?? entry.route,
-                notes: changes.notes ?? entry.notes,
-                sourceVial: changes.sourceVial ?? entry.sourceVial,
-                status: entry.status,
-                plannedID: entry.plannedID,
-                scheduleID: entry.scheduleID,
-                completedID: entry.completedID,
-                voided: entry.voided,
-                voidReason: entry.voidReason,
-                recordedVia: entry.recordedVia,
-                corrections: entry.corrections,
-                badges: entry.badges,
-                vialID: entry.vialID,
-                drawnVolume: entry.drawnVolume,
-                drawnUnit: entry.drawnUnit,
-                syncState: entry.syncState,
-                pendingOpID: entry.pendingOpID,
-                createdAt: entry.createdAt
-            )
+            if let datetime = changes.datetime {
+                entry.date = PeptideMath.parseISO8601(datetime)
+                entry.datetimeRaw = datetime
+            }
+            entry.compound = changes.compound ?? entry.compound
+            entry.dose = changes.dose ?? entry.dose
+            entry.units = changes.units ?? entry.units
+            entry.route = changes.route ?? entry.route
+            entry.notes = changes.notes ?? entry.notes
+            entry.sourceVial = changes.sourceVial ?? entry.sourceVial
         case .void:
             entry.voided = true
             entry.voidReason = op.reason
         }
-        entry.pendingOpID = op.id
-        entry.syncState = op.failed ? .failed(op.lastError ?? "The bridge didn't accept this change.") : .pending
     }
 
-    // MARK: Saved file
+    // MARK: Saved file (version 1)
 
-    struct Snapshot: Codable {
+    struct Snapshot: Decodable {
         var version: Int
         var rows: [PeptideAdministration]
         var pendingOps: [PeptidePendingOp]
         var meta: [PeptideLocalMeta]
         var vials: [PeptideVial]
         var schedules: [PeptideUserSchedule]
-        var lastSync: Date?
-        var historyComplete: Bool
+        /// List elements that couldn't be read.
+        var skipped: Int
 
         enum CodingKeys: String, CodingKey {
-            case version, rows, pendingOps, meta, vials, schedules, lastSync, historyComplete
-        }
-
-        init(
-            version: Int,
-            rows: [PeptideAdministration],
-            pendingOps: [PeptidePendingOp],
-            meta: [PeptideLocalMeta],
-            vials: [PeptideVial],
-            schedules: [PeptideUserSchedule],
-            lastSync: Date?,
-            historyComplete: Bool
-        ) {
-            self.version = version
-            self.rows = rows
-            self.pendingOps = pendingOps
-            self.meta = meta
-            self.vials = vials
-            self.schedules = schedules
-            self.lastSync = lastSync
-            self.historyComplete = historyComplete
+            case version, rows, pendingOps, meta, vials, schedules
         }
 
         init(from decoder: Decoder) throws {
@@ -235,118 +251,52 @@ enum PeptideLegacyLog {
             vials = lossyVials.compactMap(\.value)
             let lossySchedules = (try? container.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
             schedules = lossySchedules.compactMap(\.value)
-            lastSync = try? container.decodeIfPresent(Date.self, forKey: .lastSync)
-            // Older saves have no flag: not complete until the next full refresh.
-            let savedComplete = (try? container.decodeIfPresent(Bool.self, forKey: .historyComplete)) ?? false
-            // A saved row or local link that no longer decodes may have been a dose from a vial,
-            // so the cache can't vouch for completeness until the next full refresh.
-            let droppedSomething = rows.count != lossyRows.count || meta.count != lossyMeta.count
-            historyComplete = savedComplete && !droppedSomething
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(version, forKey: .version)
-            try container.encode(rows, forKey: .rows)
-            try container.encode(pendingOps, forKey: .pendingOps)
-            try container.encode(meta, forKey: .meta)
-            try container.encode(vials, forKey: .vials)
-            try container.encode(schedules, forKey: .schedules)
-            try container.encodeIfPresent(lastSync, forKey: .lastSync)
-            try container.encode(historyComplete, forKey: .historyComplete)
+            skipped = (lossyRows.count - rows.count) + (lossyOps.count - pendingOps.count)
+                + (lossyMeta.count - meta.count) + (lossyVials.count - vials.count)
+                + (lossySchedules.count - schedules.count)
         }
     }
 }
 
-// MARK: - Row cache
+// MARK: - Version-1 records (read only)
 
-extension PeptideAdministration: Encodable {
-    init(
-        id: String,
-        datetime: String,
-        compound: String,
-        dose: Double? = nil,
-        units: String? = nil,
-        volume: Double? = nil,
-        volumeUnits: String? = nil,
-        route: String? = nil,
-        notes: String? = nil,
-        status: String = "COMPLETED",
-        plannedId: String? = nil,
-        scheduleId: String? = nil,
-        completedId: String? = nil,
-        sourceVial: String? = nil,
-        voided: Bool = false,
-        doseDeviatesFromPlanned: Bool = false,
-        volumeBasis: String? = nil,
-        calcGate: String? = nil,
-        concentrationBasis: String? = nil,
-        badges: [String] = [],
-        person: String? = nil,
-        recordedVia: String? = nil,
-        voidReason: String? = nil,
-        correctionHistory: [PeptideCorrection] = [],
-        createdAt: String? = nil,
-        updatedAt: String? = nil,
-        clientRequestID: String? = nil
-    ) {
-        self.id = id
-        self.datetime = datetime
-        self.compound = compound
-        self.dose = dose
-        self.units = units
-        self.volume = volume
-        self.volumeUnits = volumeUnits
-        self.route = route
-        self.notes = notes
-        self.status = status
-        self.plannedId = plannedId
-        self.scheduleId = scheduleId
-        self.completedId = completedId
-        self.sourceVial = sourceVial
-        self.voided = voided
-        self.doseDeviatesFromPlanned = doseDeviatesFromPlanned
-        self.volumeBasis = volumeBasis
-        self.calcGate = calcGate
-        self.concentrationBasis = concentrationBasis
-        self.badges = badges
-        self.person = person
-        self.recordedVia = recordedVia
-        self.voidReason = voidReason
-        self.correctionHistory = correctionHistory
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.clientRequestID = clientRequestID
-    }
+/// Device-only details for one administration, keyed by client_request_id
+/// (or the bridge row id for rows without one).
+nonisolated struct PeptideLocalMeta: Decodable, Equatable {
+    var key: String
+    var vialID: String?
+    var drawnVolume: Double?
+    var drawnUnit: String?
+}
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(datetime, forKey: .datetime)
-        try container.encode(compound, forKey: .compound)
-        try container.encodeIfPresent(dose, forKey: .dose)
-        try container.encodeIfPresent(units, forKey: .units)
-        try container.encodeIfPresent(volume, forKey: .volume)
-        try container.encodeIfPresent(volumeUnits, forKey: .volumeUnits)
-        try container.encodeIfPresent(route, forKey: .route)
-        try container.encodeIfPresent(notes, forKey: .notes)
-        try container.encode(status, forKey: .status)
-        try container.encodeIfPresent(plannedId, forKey: .plannedId)
-        try container.encodeIfPresent(scheduleId, forKey: .scheduleId)
-        try container.encodeIfPresent(completedId, forKey: .completedId)
-        try container.encodeIfPresent(sourceVial, forKey: .sourceVial)
-        try container.encode(voided, forKey: .voided)
-        try container.encode(doseDeviatesFromPlanned, forKey: .doseDeviatesFromPlanned)
-        try container.encodeIfPresent(volumeBasis, forKey: .volumeBasis)
-        try container.encodeIfPresent(calcGate, forKey: .calcGate)
-        try container.encodeIfPresent(concentrationBasis, forKey: .concentrationBasis)
-        try container.encode(badges, forKey: .badges)
-        try container.encodeIfPresent(person, forKey: .person)
-        try container.encodeIfPresent(recordedVia, forKey: .recordedVia)
-        try container.encodeIfPresent(voidReason, forKey: .voidReason)
-        try container.encode(correctionHistory, forKey: .correctionHistory)
-        try container.encodeIfPresent(createdAt, forKey: .createdAt)
-        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
-        try container.encodeIfPresent(clientRequestID, forKey: .clientRequestID)
-    }
+/// A queued create, as the bridge-era queue saved it.
+nonisolated struct PeptideCreatePayload: Decodable, Equatable {
+    var clientRequestID: String
+    var plannedID: String?
+    var datetime: String
+    var dose: Double?
+    var units: String?
+    var compound: String?
+    var route: String?
+    var notes: String?
+    var sourceVial: String?
+    var person: String?
+}
+
+nonisolated enum PeptidePendingKind: String, Decodable, Equatable {
+    case create
+    case correct
+    case void
+}
+
+/// One queued bridge write, as saved.
+nonisolated struct PeptidePendingOp: Decodable, Equatable {
+    var id: String
+    var kind: PeptidePendingKind
+    var create: PeptideCreatePayload?
+    var rowID: String?
+    var reason: String?
+    var changes: PeptideCorrectionChanges?
+    /// Set when the user removed a create the bridge may already have had.
+    var cancelReason: String?
 }

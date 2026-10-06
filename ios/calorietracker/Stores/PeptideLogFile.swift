@@ -13,7 +13,8 @@ enum PeptideLogPersistence {
     case appGroup
     /// Nothing is written (tests, Visual QA).
     case inMemory
-    case file(URL)
+    /// A file, with an optional UserDefaults fallback (tests).
+    case file(URL, defaults: UserDefaults? = nil)
 }
 
 struct PeptideLogFile {
@@ -29,7 +30,7 @@ struct PeptideLogFile {
         switch persistence {
         case .inMemory:
             return nil
-        case .file(let url):
+        case .file(let url, _):
             return url
         case .appGroup:
             guard let directory = FileManager.default
@@ -39,9 +40,12 @@ struct PeptideLogFile {
         }
     }
 
-    private var usesDefaults: Bool {
-        if case .appGroup = persistence { return true }
-        return false
+    private var defaults: UserDefaults? {
+        switch persistence {
+        case .appGroup: return .standard
+        case .inMemory: return nil
+        case .file(_, let defaults): return defaults
+        }
     }
 
     /// The saved bytes: the file, else the UserDefaults fallback.
@@ -51,8 +55,8 @@ struct PeptideLogFile {
         if let url {
             data = try? Data(contentsOf: url)
         }
-        if data == nil, usesDefaults {
-            data = UserDefaults.standard.data(forKey: defaultsKey)
+        if data == nil, let defaults {
+            data = defaults.data(forKey: defaultsKey)
         }
         return data
     }
@@ -63,6 +67,21 @@ struct PeptideLogFile {
         let stamp = Int(Date().timeIntervalSince1970)
         let backup = url.deletingLastPathComponent().appendingPathComponent("peptide_log_v1.unreadable-\(stamp).json")
         try? data.write(to: backup, options: .atomic)
+    }
+
+    /// Writes the untouched bytes of an older log next to it before it is
+    /// upgraded. True only when the copy is on disk and reads back the same.
+    func keepBeforeUpgrade(_ data: Data, now: Date = Date()) -> Bool {
+        guard let url else { return false }
+        let directory = url.deletingLastPathComponent()
+        let copy = directory.appendingPathComponent("peptide_log_v1.pre-local-\(Int(now.timeIntervalSince1970)).json")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: copy, options: .atomic)
+        } catch {
+            return false
+        }
+        return (try? Data(contentsOf: copy)) == data
     }
 
     /// Writes the file atomically and keeps the UserDefaults copy only while
@@ -79,11 +98,11 @@ struct PeptideLogFile {
                 result = .failure(error)
             }
         }
-        if usesDefaults {
+        if let defaults {
             if case .success = result {
-                UserDefaults.standard.removeObject(forKey: defaultsKey)
+                defaults.removeObject(forKey: defaultsKey)
             } else {
-                UserDefaults.standard.set(data, forKey: defaultsKey)
+                defaults.set(data, forKey: defaultsKey)
             }
         }
         return result

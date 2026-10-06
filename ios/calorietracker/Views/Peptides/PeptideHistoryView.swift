@@ -38,7 +38,7 @@ struct PeptideHistoryView: View {
         let owner = PeptidePerson.normalized(person)
         let key = compoundFilter.map(PeptideMath.compoundKey)
         return store.entries.filter {
-            $0.isCompleted && PeptidePerson.normalized($0.person) == owner
+            PeptidePerson.normalized($0.person) == owner
                 && (key == nil || PeptideMath.compoundKey($0.compound) == key)
         }
     }
@@ -47,6 +47,7 @@ struct PeptideHistoryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 PeptideScreenTitle(title: "History", subtitle: "Every dose you logged, by day.")
+                storageNotes
                 PeptidePersonToggle(person: $person)
                 filterChips
                 PeptideMonthCalendar(
@@ -67,11 +68,21 @@ struct PeptideHistoryView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Peptide history")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.refreshIfStale() }
         .onChange(of: person) { _, _ in
             compoundFilter = nil
         }
         .peptideLiveDate($now, fixed: referenceDate != nil)
+    }
+
+    /// Why the saved log isn't complete or isn't being saved, as plain text.
+    @ViewBuilder
+    private var storageNotes: some View {
+        ForEach([store.storageNote, store.persistError].compactMap { $0 }, id: \.self) { note in
+            Text(note)
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(IronTheme.rust)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var compoundChoices: [String] {
@@ -203,7 +214,7 @@ struct PeptideHistoryView: View {
 
     private func entryLink(_ entry: PeptideLogEntry) -> some View {
         NavigationLink {
-            PeptideEntryDetailView(entryID: entry.id, clientRequestID: entry.clientRequestID)
+            PeptideEntryDetailView(entryID: entry.id)
         } label: {
             PeptideLogRow(entry: entry, vialName: store.vial(id: entry.vialID)?.displayName)
                 .padding(.horizontal, 12)

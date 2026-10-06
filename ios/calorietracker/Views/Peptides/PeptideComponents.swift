@@ -182,11 +182,9 @@ struct PeptideChoiceChip: View {
     }
 }
 
-/// Small status tag. Text tone is a theme color on the raised surface.
-/// Where one due or planned dose stands today. The Due list shows it as a status pill.
+/// Where one due dose stands today. The Due list shows it as a status pill.
 enum PeptideDueStatus: Hashable {
     case logged
-    case planned
     case pending
 
     /// A scheduled dose: logged once taken, otherwise still pending.
@@ -194,20 +192,15 @@ enum PeptideDueStatus: Hashable {
         self = taken ? .logged : .pending
     }
 
-    /// A dose planned by the peptide assistant: logged once completed.
-    init(plannedCompleted: Bool) {
-        self = plannedCompleted ? .logged : .planned
-    }
-
     var pill: IronStatusPill {
         switch self {
         case .logged: IronStatusPill(text: "Logged", tone: .olive)
-        case .planned: IronStatusPill(text: "Planned", tone: .brass)
         case .pending: IronStatusPill(text: "Pending", tone: .rust)
         }
     }
 }
 
+/// Small status tag. Text tone is a theme color on the raised surface.
 struct PeptideTag: View {
     let text: String
     let tone: Color
@@ -231,26 +224,6 @@ struct PeptideTag: View {
                     .stroke(tone, lineWidth: 1)
             )
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// Synced (olive) / Pending (brass) / Failed (rust) / Peptide assistant (concrete).
-struct PeptideSyncChip: View {
-    let state: PeptideSyncState
-
-    var body: some View {
-        switch state {
-        case .synced:
-            PeptideTag(text: "Synced", tone: IronTheme.olive)
-        case .pending:
-            PeptideTag(text: "Pending", tone: IronTheme.brass)
-        case .failed:
-            PeptideTag(text: "Failed", tone: IronTheme.rust)
-        case .readOnlyAgent:
-            PeptideTag(text: "Peptide assistant", tone: IronTheme.concrete, filled: true)
-        case .readOnly:
-            PeptideTag(text: "Read-only", tone: IronTheme.concrete, filled: true)
-        }
     }
 }
 
@@ -384,24 +357,19 @@ struct PeptideRemainingBar: View {
     }
 }
 
-/// One administration in a list: compound, amount as stored, time ET, site, vial, sync chip.
+/// One administration in a list: compound, amount as stored, time ET, site, vial.
 struct PeptideLogRow: View {
     let entry: PeptideLogEntry
     var vialName: String?
     var showsPerson = false
-    var onFailedTap: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(entry.compound.isEmpty ? "Dose" : entry.compound)
-                    .font(.system(.headline, design: .rounded))
-                    .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
-                    .strikethrough(entry.voided)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
-                chip
-            }
+            Text(entry.compound.isEmpty ? "Dose" : entry.compound)
+                .font(.system(.headline, design: .rounded))
+                .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
+                .strikethrough(entry.voided)
+                .fixedSize(horizontal: false, vertical: true)
             Text(PeptideMath.amountText(entry.dose, entry.units))
                 .font(.system(.title3, design: .rounded, weight: .bold).monospacedDigit())
                 .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
@@ -416,28 +384,10 @@ struct PeptideLogRow: View {
                     .foregroundStyle(IronTheme.rust)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let message = entry.syncState.failureMessage {
-                Text(message)
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(IronTheme.rust)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private var chip: some View {
-        if case .failed = entry.syncState, let onFailedTap {
-            Button(action: onFailedTap) {
-                PeptideSyncChip(state: entry.syncState)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Failed to sync. Retry or discard.")
-        } else {
-            PeptideSyncChip(state: entry.syncState)
-        }
     }
 
     private var detailLine: String {

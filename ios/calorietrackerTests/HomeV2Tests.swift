@@ -55,28 +55,26 @@ struct HomeV2Tests {
         #expect(HomeV2Logic.recompCaption(weightChangeLb: nil, leanChangeLb: 1) == nil)
     }
 
-    @Test func peptideCardStaysHiddenUntilSomethingIsScheduled() {
-        #expect(HomeV2Logic.peptideCardVisible(hasActiveSchedules: false, plannedCount: 0, completedCount: 0) == false)
-        #expect(HomeV2Logic.peptideCardVisible(hasActiveSchedules: true, plannedCount: 0, completedCount: 0) == true)
-        #expect(HomeV2Logic.peptideCardVisible(hasActiveSchedules: false, plannedCount: 1, completedCount: 0) == true)
+    /// Visible iff there is local activity: an active schedule or vial, or a dose today.
+    @MainActor @Test func peptideCardShowsOnlyWithLocalActivity() throws {
+        let store = PeptideLogStore(persistence: .inMemory)
+        let today = "2026-09-27"
+        #expect(!store.hasLocalActivity(today: today))
+        var draft = PeptideLogDraft.new(person: "jonathan", compound: "BPC-157", now: try #require(PeptideMath.date(civil: today)))
+        draft.amountText = "500"
+        draft.units = "mcg"
+        _ = try #require(store.log(draft))
+        #expect(store.hasLocalActivity(today: today))
+        #expect(!store.hasLocalActivity(today: "2026-09-28"))
+        store.saveSchedule(PeptideUserSchedule(id: "s", person: "victoria", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: today, active: false))
+        #expect(!store.hasLocalActivity(today: "2026-09-28"))
+        store.setScheduleActive(id: "s", active: true)
+        #expect(store.hasLocalActivity(today: "2026-09-28"))
     }
 
-    @Test func volumeCannotBeCalculatedForBlockedOrMissingNumbers() {
-        #expect(HomeV2Logic.volumeUnavailableText == "volume can't be calculated")
-        #expect(HomeV2Logic.volumeState(volume: nil, volumeUnits: "mL", volumeBasis: "FROM_PLANNED_CALC", calcGate: nil, concentrationBasis: nil) == .unavailable)
-        #expect(HomeV2Logic.volumeState(volume: 0.2, volumeUnits: "mL", volumeBasis: "NOT_CALCULATED", calcGate: nil, concentrationBasis: nil) == .unavailable)
-        #expect(HomeV2Logic.volumeState(volume: 0.2, volumeUnits: "mL", volumeBasis: nil, calcGate: "BLOCKED_UNVERIFIED", concentrationBasis: nil) == .unavailable)
-        #expect(HomeV2Logic.volumeState(volume: 0.2, volumeUnits: "mL", volumeBasis: nil, calcGate: nil, concentrationBasis: "NONE") == .unavailable)
-        #expect(
-            HomeV2Logic.volumeState(
-                volume: 0.2,
-                volumeUnits: "mL",
-                volumeBasis: "FROM_PLANNED_CALC",
-                calcGate: "CONCENTRATION_COMPUTED_VIA_USER_QNA_DILUENT",
-                concentrationBasis: "USER_STATED_DILUENT_PLAN"
-            ) == .shown(amount: "0.2", units: "mL")
-        )
+    @Test func storedNumbersDropTrailingZeros() {
         #expect(HomeV2Logic.storedNumber(250) == "250")
+        #expect(HomeV2Logic.storedNumber(0.25) == "0.25")
     }
 
     @Test func weekStripStatusUsesWorkoutStepsAndFood() {

@@ -705,6 +705,12 @@ final class VisualQASnapshotTests: XCTestCase {
     }
 
     func test52HomePeptideCard() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        VisualQAFixtures.skipsTodaysPeptideDoses = true
+        defer {
+            VisualQAFixtures.seedsPeptides = false
+            VisualQAFixtures.skipsTodaysPeptideDoses = false
+        }
         let savedLayout = HomeCardLayout.load()
         defer { HomeCardLayout.save(order: savedLayout.order, hidden: savedLayout.hidden) }
         HomeCardLayout.save(order: [.peptides] + HomeCardID.allCases.filter { $0 != .peptides }, hidden: [])
@@ -758,7 +764,7 @@ final class VisualQASnapshotTests: XCTestCase {
         try await eachSize("63-peptide-entry-detail", heightMultiplier: 1.8) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "Peptides") {
-                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideVoidedRowID, clientRequestID: nil)
+                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideVoidedRowID)
                 }
             }
         }
@@ -1495,7 +1501,7 @@ final class VisualQAStores {
         healthKit = HealthKitManager()
         profile = ProfileStore()
         chat = ChatStore()
-        peptides = PeptideLogStore(persistence: .inMemory, client: VisualQAPeptideClient(), autoFlush: false)
+        peptides = PeptideLogStore(persistence: .inMemory)
         if VisualQAFixtures.seedsPeptides {
             VisualQAFixtures.seedPeptides(peptides)
         }
@@ -1940,7 +1946,6 @@ enum VisualQAFixtures {
             "/api/peptides/today": (200, Data(peptideTodayJSON().utf8)),
             "/api/peptides/inventory": (200, Data(peptideInventoryJSON.utf8)),
             "/api/peptides/schedules": (200, Data(peptideSchedulesJSON.utf8)),
-            "/api/peptides/administrations": (200, peptideAdministrationsJSON()),
             "/api/cc/ladders": (200, Data((ccLaddersJSONOverride ?? ccLaddersJSON).utf8)),
         ]
     }

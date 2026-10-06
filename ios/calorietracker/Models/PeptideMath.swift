@@ -63,22 +63,10 @@ nonisolated enum PeptideMath {
         return (ReconMath.roster[PeptidePerson.jonathan] ?? []).compactMap { ReconMath.compounds[$0]?.name }
     }
 
-    /// Compound chips for the log sheet. Agent inventory names replace a matching
-    /// default so the bridge gets the assistant's exact string. De-duplicated by key.
-    static func compoundOptions(person: String, inventoryCompounds: [String], loggedCompounds: [String]) -> [String] {
+    /// Compound chips for the log sheet: the person's starting list, then
+    /// compounds they've logged. De-duplicated by key.
+    static func compoundOptions(person: String, loggedCompounds: [String]) -> [String] {
         var options = defaultCompounds(person: person)
-        let isJonathan = PeptidePerson.normalized(person) == PeptidePerson.jonathan
-        if isJonathan {
-            for name in inventoryCompounds {
-                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
-                if let index = options.firstIndex(where: { sameCompound($0, trimmed) }) {
-                    options[index] = trimmed
-                } else {
-                    options.append(trimmed)
-                }
-            }
-        }
         for name in loggedCompounds {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, !options.contains(where: { sameCompound($0, trimmed) }) else { continue }
@@ -239,18 +227,10 @@ nonisolated enum PeptideMath {
 
     /// Diluent minus every drawn volume logged from this vial. Never estimated:
     /// one unknown draw makes the whole figure uncalculable.
-    /// `incompleteHistory`: bridge history isn't fully synced (a window failed
-    /// or hit its limit, or rows couldn't be read), so a dose from this vial
-    /// may be missing and the figure would look larger than it is.
-    static let incompleteHistoryReason = "Bridge history isn't fully synced yet, so a dose from this vial may be missing."
-
-    static func remaining(vial: PeptideVial, entries: [PeptideLogEntry], incompleteHistory: Bool = false) -> Remaining {
+    static func remaining(vial: PeptideVial, entries: [PeptideLogEntry]) -> Remaining {
         let linked = entries.filter { $0.vialID == vial.id && $0.countsAsTaken }
         if case .uncalculable(let reason) = concentration(vial) {
             return .uncalculable(reason, linkedCount: linked.count)
-        }
-        if incompleteHistory {
-            return .uncalculable(incompleteHistoryReason, linkedCount: linked.count)
         }
         guard let diluent = vial.diluentML, diluent > 0 else {
             return .uncalculable("Diluent volume is missing.", linkedCount: linked.count)
@@ -691,19 +671,6 @@ nonisolated enum PeptideMath {
             }
         }
         return items
-    }
-
-    /// Bridge PLANNED rows: taken once the assistant's row has a completed_id.
-    static func plannedAdherence(_ entries: [PeptideLogEntry], person: String, through today: String) -> (due: Int, taken: Int) {
-        let owner = PeptidePerson.normalized(person)
-        var due = 0
-        var taken = 0
-        for entry in entries where entry.isPlanned && !entry.voided && PeptidePerson.normalized(entry.person) == owner {
-            guard let civil = entry.civilDate, civil <= today else { continue }
-            due += 1
-            if entry.completedID != nil { taken += 1 }
-        }
-        return (due, taken)
     }
 
     // MARK: - Summaries

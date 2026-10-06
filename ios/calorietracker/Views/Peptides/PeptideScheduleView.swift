@@ -44,7 +44,6 @@ struct PeptideScheduleView: View {
                 }
                 .buttonStyle(IronPrimaryButtonStyle())
                 schedulesSection
-                PeptidePlannedAdherenceCard(person: person, today: today)
                 PeptideFooter()
             }
             .padding(16)
@@ -52,7 +51,6 @@ struct PeptideScheduleView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Schedule & adherence")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.refreshIfStale() }
         .peptideLiveDate($now, fixed: referenceDate != nil)
         .sheet(item: $editorTarget) { target in
             PeptideScheduleEditor(schedule: target.schedule, person: target.person)
@@ -183,52 +181,6 @@ struct PeptideScheduleCard: View {
     }
 }
 
-/// The assistant's PLANNED rows: taken once they have a completed row.
-struct PeptidePlannedAdherenceCard: View {
-    @Environment(PeptideLogStore.self) private var store
-    let person: String
-    let today: String
-
-    var body: some View {
-        let from = ReconMath.addDays(today, -29)
-        let recent = store.entries.filter {
-            $0.isPlanned && !$0.voided && PeptidePerson.normalized($0.person) == PeptidePerson.normalized(person)
-                && ($0.civilDate ?? "") >= from && ($0.civilDate ?? "") <= ReconMath.addDays(today, 7)
-        }
-        let counted = PeptideMath.plannedAdherence(recent, person: person, through: today)
-        return VStack(alignment: .leading, spacing: 8) {
-            IronSectionTitle(title: "From the peptide assistant (read-only)")
-            if recent.isEmpty {
-                Text("No planned doses from the peptide assistant in the last 30 days.")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(IronTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("\(counted.taken) of \(counted.due) planned doses taken (last 30 days)")
-                    .font(.system(.headline, design: .rounded))
-                    .foregroundStyle(IronTheme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(recent.reversed().prefix(10)) { entry in
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(entry.compound + " · " + PeptideMath.amountText(entry.dose, entry.units))
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(IronTheme.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 4)
-                        Text(entry.civilDate.map(ReconMath.formatDateShort) ?? "—")
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(IronTheme.textSecondary)
-                        PeptideTag(text: entry.completedID == nil ? "Planned" : "Taken", tone: entry.completedID == nil ? IronTheme.brass : IronTheme.olive)
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .ironCard()
-    }
-}
-
 // MARK: - Editor
 
 struct PeptideScheduleEditor: View {
@@ -349,11 +301,7 @@ struct PeptideScheduleEditor: View {
     }
 
     private var compoundSection: some View {
-        let options = PeptideMath.compoundOptions(
-            person: person,
-            inventoryCompounds: store.inventory.map(\.compound),
-            loggedCompounds: store.loggedCompounds(person: person)
-        )
+        let options = PeptideMath.compoundOptions(person: person, loggedCompounds: store.loggedCompounds(person: person))
         return VStack(alignment: .leading, spacing: 8) {
             PeptideFieldLabel("Compound")
             PeptideFlowLayout(spacing: 8) {

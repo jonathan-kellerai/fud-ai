@@ -60,8 +60,6 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
     /// The user ticked "I mixed this vial with exactly this diluent volume".
     var concentrationConfirmed: Bool
     var lowStockThresholdML: Double?
-    /// Optional link to a peptide-assistant inventory row, for its badges only.
-    var bridgeInventoryID: String?
     var status: PeptideVialStatus
     var notes: String
     var createdAt: Date
@@ -76,7 +74,6 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         mixedOn: String? = nil,
         concentrationConfirmed: Bool = false,
         lowStockThresholdML: Double? = nil,
-        bridgeInventoryID: String? = nil,
         status: PeptideVialStatus = .active,
         notes: String = "",
         createdAt: Date = Date()
@@ -90,7 +87,6 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         self.mixedOn = mixedOn
         self.concentrationConfirmed = concentrationConfirmed
         self.lowStockThresholdML = lowStockThresholdML
-        self.bridgeInventoryID = bridgeInventoryID
         self.status = status
         self.notes = notes
         self.createdAt = createdAt
@@ -162,64 +158,13 @@ nonisolated struct PeptideUserSchedule: Codable, Equatable, Identifiable, Hashab
     }
 }
 
-/// Device-only details for one administration, keyed by client_request_id
-/// (or the bridge row id for rows without one).
-nonisolated struct PeptideLocalMeta: Codable, Equatable {
-    var key: String
-    var vialID: String?
-    /// Drawn volume the user typed.
-    var drawnVolume: Double?
-    /// "mL" or "units" (U-100 insulin syringe units; 100 units = 1 mL).
-    var drawnUnit: String?
-
-    init(key: String, vialID: String? = nil, drawnVolume: Double? = nil, drawnUnit: String? = nil) {
-        self.key = key
-        self.vialID = vialID
-        self.drawnVolume = drawnVolume
-        self.drawnUnit = drawnUnit
-    }
-
-    var isEmpty: Bool { vialID == nil && drawnVolume == nil }
-}
-
-/// Body of `POST /api/peptides/administrations`.
-nonisolated struct PeptideCreatePayload: Codable, Equatable {
-    var clientRequestID: String
-    var plannedID: String?
-    /// ISO-8601 with offset (America/New_York).
-    var datetime: String
-    var dose: Double?
-    var units: String?
-    var compound: String?
-    var route: String?
-    var notes: String?
-    var sourceVial: String?
-    var person: String?
-
-    func body() -> [String: Any] {
-        var body: [String: Any] = [
-            "client_request_id": clientRequestID,
-            "datetime": datetime,
-        ]
-        if let plannedID, !plannedID.isEmpty { body["planned_id"] = plannedID }
-        if let dose { body["dose"] = dose }
-        if let units, !units.isEmpty { body["units"] = units }
-        if let compound, !compound.isEmpty { body["compound"] = compound }
-        if let route, !route.isEmpty { body["route"] = route }
-        if let notes, !notes.isEmpty { body["notes"] = notes }
-        if let sourceVial, !sourceVial.isEmpty { body["source_vial"] = sourceVial }
-        if let person, !person.isEmpty { body["person"] = person }
-        return body
-    }
-}
-
-/// `changes` of a PATCH correct. Nil fields are left alone.
+/// What a correction changes. Nil fields are left alone.
 nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
+    /// ISO-8601 with offset (America/New_York).
     var datetime: String?
     var dose: Double?
     var route: String?
     var notes: String?
-    /// Unscheduled rows only.
     var compound: String?
     var units: String?
     var sourceVial: String?
@@ -246,174 +191,47 @@ nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
         datetime == nil && dose == nil && route == nil && notes == nil
             && compound == nil && units == nil && sourceVial == nil
     }
-
-    func dictionary() -> [String: Any] {
-        var body: [String: Any] = [:]
-        if let datetime { body["datetime"] = datetime }
-        if let dose { body["dose"] = dose }
-        if let route { body["route"] = route }
-        if let notes { body["notes"] = notes }
-        if let compound { body["compound"] = compound }
-        if let units { body["units"] = units }
-        if let sourceVial { body["source_vial"] = sourceVial }
-        return body
-    }
-
-    /// Applies the changes to a queued create (no reason needed before it syncs).
-    func apply(to payload: inout PeptideCreatePayload) {
-        if let datetime { payload.datetime = datetime }
-        if let dose { payload.dose = dose }
-        if let route { payload.route = route.isEmpty ? nil : route }
-        if let notes { payload.notes = notes.isEmpty ? nil : notes }
-        if let compound { payload.compound = compound }
-        if let units { payload.units = units }
-        if let sourceVial { payload.sourceVial = sourceVial.isEmpty ? nil : sourceVial }
-    }
 }
 
-nonisolated enum PeptidePendingKind: String, Codable, Equatable {
-    case create
-    case correct
-    case void
-}
-
-/// One queued bridge write. Kept until the bridge accepts it or the user discards it.
-nonisolated struct PeptidePendingOp: Codable, Equatable, Identifiable {
+/// One administration the user logged, saved on this phone. Every amount is
+/// what the user typed.
+nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     var id: String
-    var kind: PeptidePendingKind
-    var create: PeptideCreatePayload?
-    var rowID: String?
-    var reason: String?
-    var changes: PeptideCorrectionChanges?
-    var attempts: Int
-    var lastError: String?
-    /// The bridge refused it (4xx). It waits for Retry or Discard.
-    var failed: Bool
-    var createdAt: Date
-    /// Creates only: a send started whose outcome isn't known (in flight,
-    /// timed out, offline, app killed). The bridge may already have the row,
-    /// so the op can't simply be deleted. Optional so older saves still decode.
-    var outcomeUncertain: Bool? = nil
-    /// Creates only: the user voided it while its outcome was uncertain. When
-    /// the bridge returns the row, a void with this reason is queued for it.
-    var cancelReason: String? = nil
-    /// Creates only: the bridge answered idempotency_key_conflict. Kept (not
-    /// sent) until the matching server row is found and the user's edits are
-    /// queued as a correction.
-    var reconciling: Bool? = nil
-    /// Creates only: why it is reconciling (nil = idempotency conflict).
-    /// Kept in the saved queue so recovery survives an app restart.
-    var reconcileCause: String? = nil
-
-    static let causeAlreadyCompleted = "already_completed"
-    static let causeRejectedAfterUncertain = "rejected_after_uncertain"
-
-    var isUncertain: Bool { outcomeUncertain == true }
-    var isReconciling: Bool { reconciling == true }
-
-    static func makeCreate(_ payload: PeptideCreatePayload, now: Date = Date()) -> PeptidePendingOp {
-        PeptidePendingOp(
-            id: payload.clientRequestID,
-            kind: .create,
-            create: payload,
-            rowID: nil,
-            reason: nil,
-            changes: nil,
-            attempts: 0,
-            lastError: nil,
-            failed: false,
-            createdAt: now
-        )
-    }
-
-    static func makeCorrect(rowID: String, reason: String, changes: PeptideCorrectionChanges, now: Date = Date()) -> PeptidePendingOp {
-        PeptidePendingOp(
-            id: UUID().uuidString.lowercased(),
-            kind: .correct,
-            create: nil,
-            rowID: rowID,
-            reason: reason,
-            changes: changes,
-            attempts: 0,
-            lastError: nil,
-            failed: false,
-            createdAt: now
-        )
-    }
-
-    static func makeVoid(rowID: String, reason: String, now: Date = Date()) -> PeptidePendingOp {
-        PeptidePendingOp(
-            id: UUID().uuidString.lowercased(),
-            kind: .void,
-            create: nil,
-            rowID: rowID,
-            reason: reason,
-            changes: nil,
-            attempts: 0,
-            lastError: nil,
-            failed: false,
-            createdAt: now
-        )
-    }
-}
-
-nonisolated enum PeptideSyncState: Equatable {
-    case synced
-    case pending
-    case failed(String)
-    /// Recorded by the peptide assistant. Read-only in the app.
-    case readOnlyAgent
-    /// recorded_via is missing or unknown. Read-only in the app.
-    case readOnly
-
-    var isPending: Bool {
-        if case .pending = self { return true }
-        return false
-    }
-
-    var failureMessage: String? {
-        if case .failed(let message) = self { return message }
-        return nil
-    }
-}
-
-/// One administration for display: a bridge row or a queued create.
-nonisolated struct PeptideLogEntry: Identifiable, Equatable {
-    var id: String
-    var rowID: String?
-    var clientRequestID: String?
     var person: String
     var compound: String
     var dose: Double?
     var units: String?
     var date: Date?
+    /// ISO-8601 with offset, as saved.
     var datetimeRaw: String
     var route: String?
     var notes: String?
+    /// Where the dose came from, as recorded (kept from bridge-era rows).
     var sourceVial: String?
-    /// "COMPLETED" or "PLANNED" (upper-cased).
-    var status: String
-    var plannedID: String?
-    var scheduleID: String?
-    var completedID: String?
     var voided: Bool
     var voidReason: String?
-    var recordedVia: String?
     var corrections: [PeptideCorrection]
-    var badges: [String]
     var vialID: String?
+    /// Drawn volume the user typed.
     var drawnVolume: Double?
+    /// "mL" or "units" (U-100 insulin syringe units; 100 units = 1 mL).
     var drawnUnit: String?
-    var syncState: PeptideSyncState
-    var pendingOpID: String?
     var createdAt: String?
     /// yyyy-MM-dd in America/New_York, computed once from `date`.
     let civilDate: String?
 
+    enum CodingKeys: String, CodingKey {
+        case id, person, compound, dose, units, datetime, route, notes, voided, corrections
+        case sourceVial = "source_vial"
+        case voidReason = "void_reason"
+        case vialID = "vial_id"
+        case drawnVolume = "drawn_volume"
+        case drawnUnit = "drawn_unit"
+        case createdAt = "created_at"
+    }
+
     init(
         id: String,
-        rowID: String? = nil,
-        clientRequestID: String? = nil,
         person: String,
         compound: String,
         dose: Double? = nil,
@@ -423,68 +241,146 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable {
         route: String? = nil,
         notes: String? = nil,
         sourceVial: String? = nil,
-        status: String = "COMPLETED",
-        plannedID: String? = nil,
-        scheduleID: String? = nil,
-        completedID: String? = nil,
         voided: Bool = false,
         voidReason: String? = nil,
-        recordedVia: String? = nil,
         corrections: [PeptideCorrection] = [],
-        badges: [String] = [],
         vialID: String? = nil,
         drawnVolume: Double? = nil,
         drawnUnit: String? = nil,
-        syncState: PeptideSyncState = .synced,
-        pendingOpID: String? = nil,
         createdAt: String? = nil
     ) {
         self.id = id
-        self.rowID = rowID
-        self.clientRequestID = clientRequestID
         self.person = person
         self.compound = compound
         self.dose = dose
         self.units = units
         self.date = date
-        self.datetimeRaw = datetimeRaw
+        self.datetimeRaw = datetimeRaw.isEmpty ? (date.map(PeptideMath.iso8601NewYork) ?? "") : datetimeRaw
         self.route = route
         self.notes = notes
         self.sourceVial = sourceVial
-        self.status = status
-        self.plannedID = plannedID
-        self.scheduleID = scheduleID
-        self.completedID = completedID
         self.voided = voided
         self.voidReason = voidReason
-        self.recordedVia = recordedVia
         self.corrections = corrections
-        self.badges = badges
         self.vialID = vialID
         self.drawnVolume = drawnVolume
         self.drawnUnit = drawnUnit
-        self.syncState = syncState
-        self.pendingOpID = pendingOpID
         self.createdAt = createdAt
         self.civilDate = date.map(PeptideMath.civilDate)
     }
 
-    var isCompleted: Bool { status == "COMPLETED" }
-    var isPlanned: Bool { status == "PLANNED" }
-    /// Counts toward logs, totals and adherence.
-    var countsAsTaken: Bool { isCompleted && !voided }
-    var isAgentRow: Bool { syncState == .readOnlyAgent }
-    /// Only rows this app recorded (recorded_via == "app") and unsynced local
-    /// creates can be corrected or voided. Missing/unknown origin is read-only.
-    var isEditableInApp: Bool {
-        if isPendingCreate { return true }
-        return isCompleted && recordedVia == "app"
+    /// `id` and `compound` are required; anything else that's missing reads as empty.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let id = try container.decode(String.self, forKey: .id)
+        guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "Empty id")
+        }
+        let datetime = (try container.decodeIfPresent(String.self, forKey: .datetime)) ?? ""
+        self.init(
+            id: id,
+            person: PeptidePerson.normalized(try container.decodeIfPresent(String.self, forKey: .person)),
+            compound: try container.decode(String.self, forKey: .compound),
+            dose: try container.decodeIfPresent(Double.self, forKey: .dose),
+            units: try container.decodeIfPresent(String.self, forKey: .units),
+            date: PeptideMath.parseISO8601(datetime),
+            datetimeRaw: datetime,
+            route: try container.decodeIfPresent(String.self, forKey: .route),
+            notes: try container.decodeIfPresent(String.self, forKey: .notes),
+            sourceVial: try container.decodeIfPresent(String.self, forKey: .sourceVial),
+            voided: (try container.decodeIfPresent(Bool.self, forKey: .voided)) ?? false,
+            voidReason: try container.decodeIfPresent(String.self, forKey: .voidReason),
+            corrections: (try container.decodeIfPresent([PeptideCorrection].self, forKey: .corrections)) ?? [],
+            vialID: try container.decodeIfPresent(String.self, forKey: .vialID),
+            drawnVolume: try container.decodeIfPresent(Double.self, forKey: .drawnVolume),
+            drawnUnit: try container.decodeIfPresent(String.self, forKey: .drawnUnit),
+            createdAt: try container.decodeIfPresent(String.self, forKey: .createdAt)
+        )
     }
-    /// Unscheduled rows can have compound/units corrected.
-    var isScheduled: Bool { plannedID != nil || scheduleID != nil }
-    var isPendingCreate: Bool { rowID == nil }
-    /// Local meta key.
-    var metaKey: String { clientRequestID ?? rowID ?? id }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(person, forKey: .person)
+        try container.encode(compound, forKey: .compound)
+        try container.encodeIfPresent(dose, forKey: .dose)
+        try container.encodeIfPresent(units, forKey: .units)
+        try container.encode(datetimeRaw, forKey: .datetime)
+        try container.encodeIfPresent(route, forKey: .route)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encodeIfPresent(sourceVial, forKey: .sourceVial)
+        try container.encode(voided, forKey: .voided)
+        try container.encodeIfPresent(voidReason, forKey: .voidReason)
+        try container.encode(corrections, forKey: .corrections)
+        try container.encodeIfPresent(vialID, forKey: .vialID)
+        try container.encodeIfPresent(drawnVolume, forKey: .drawnVolume)
+        try container.encodeIfPresent(drawnUnit, forKey: .drawnUnit)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+    }
+
+    /// Counts toward logs, totals and adherence.
+    var countsAsTaken: Bool { !voided }
+
+    /// This entry with `changes` applied, each changed field added to the
+    /// correction trail with the user's reason.
+    func corrected(_ changes: PeptideCorrectionChanges, reason: String, at: String) -> PeptideLogEntry {
+        var trail = corrections
+        func record(_ field: String, _ old: String?, _ new: String?) {
+            let before = Self.trailText(old)
+            let after = Self.trailText(new)
+            guard before != after else { return }
+            trail.append(PeptideCorrection(at: at, field: field, old: before, new: after, reason: reason, by: "app"))
+        }
+        let datetime = changes.datetime ?? datetimeRaw
+        record("datetime", datetimeRaw, datetime)
+        record("dose", dose.map(PeptideMath.number), (changes.dose ?? dose).map(PeptideMath.number))
+        record("compound", compound, changes.compound ?? compound)
+        record("units", units, changes.units ?? units)
+        record("route", route, changes.route ?? route)
+        record("notes", notes, changes.notes ?? notes)
+        record("source_vial", sourceVial, changes.sourceVial ?? sourceVial)
+        var newDate = date
+        if let typed = changes.datetime { newDate = PeptideMath.parseISO8601(typed) }
+        return PeptideLogEntry(
+            id: id,
+            person: person,
+            compound: changes.compound ?? compound,
+            dose: changes.dose ?? dose,
+            units: changes.units ?? units,
+            date: newDate,
+            datetimeRaw: datetime,
+            route: Self.replacing(route, with: changes.route),
+            notes: Self.replacing(notes, with: changes.notes),
+            sourceVial: Self.replacing(sourceVial, with: changes.sourceVial),
+            voided: voided,
+            voidReason: voidReason,
+            corrections: trail,
+            vialID: vialID,
+            drawnVolume: drawnVolume,
+            drawnUnit: drawnUnit,
+            createdAt: createdAt
+        )
+    }
+
+    /// This entry voided with the user's reason. It stays in history.
+    func voiding(reason: String, at: String) -> PeptideLogEntry {
+        var entry = self
+        entry.voided = true
+        entry.voidReason = reason
+        entry.corrections.append(PeptideCorrection(at: at, field: "voided", old: "false", new: "true", reason: reason, by: "app"))
+        return entry
+    }
+
+    private static func trailText(_ value: String?) -> String {
+        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "—" : trimmed
+    }
+
+    /// A typed change replaces the value; an empty one clears it.
+    private static func replacing(_ current: String?, with change: String?) -> String? {
+        guard let change else { return current }
+        return change.isEmpty ? nil : change
+    }
 }
 
 /// What the log sheet collects. Starts with the amount EMPTY: the app never

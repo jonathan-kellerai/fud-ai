@@ -21,7 +21,8 @@ struct PeptideLogSheet: View {
     @State private var typingOther = false
     @State private var issues: [PeptideDraftField: String] = [:]
     @State private var saveError: String?
-    @State private var clientRequestID = UUID().uuidString.lowercased()
+    /// One id per sheet, so saving twice replaces instead of adding a second dose.
+    @State private var entryID = UUID().uuidString.lowercased()
     private let onSaved: (() -> Void)?
 
     /// `reviewDraft` is for Visual QA only: it opens on the confirm step with
@@ -99,11 +100,7 @@ struct PeptideLogSheet: View {
     }
 
     private var compoundOptions: [String] {
-        PeptideMath.compoundOptions(
-            person: draft.person,
-            inventoryCompounds: store.inventory.map(\.compound),
-            loggedCompounds: store.loggedCompounds(person: draft.person)
-        )
+        PeptideMath.compoundOptions(person: draft.person, loggedCompounds: store.loggedCompounds(person: draft.person))
     }
 
     private var selectedOption: String? {
@@ -309,7 +306,7 @@ struct PeptideLogSheet: View {
             step = .entry
             return
         }
-        guard store.log(draft, clientRequestID: clientRequestID) != nil else {
+        guard store.log(draft, id: entryID) != nil else {
             saveError = "This dose couldn't be saved. Check the fields and try again."
             return
         }
@@ -417,8 +414,7 @@ struct PeptideLogReviewCard: View {
             date: draft.takenAt,
             vialID: draft.vialID,
             drawnVolume: draft.drawnVolume,
-            drawnUnit: draft.drawnVolume == nil ? nil : draft.drawnUnit,
-            syncState: .pending
+            drawnUnit: draft.drawnVolume == nil ? nil : draft.drawnUnit
         )
     }
 }

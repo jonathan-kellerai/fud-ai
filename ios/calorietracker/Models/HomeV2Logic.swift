@@ -11,7 +11,6 @@ import Foundation
 enum HomeV2Logic {
     static let stepsCutoffHour = 22
     static let shortSleepSeconds: TimeInterval = 6 * 60 * 60
-    static let volumeUnavailableText = "volume can't be calculated"
     private static let trendNoisePounds = 0.1
 
     struct StepsPace: Equatable {
@@ -93,11 +92,6 @@ enum HomeV2Logic {
         var daysElapsed: Int
         var averageProtein: Double?
         var milestone: String?
-    }
-
-    enum PeptideVolumeState: Equatable {
-        case shown(amount: String, units: String)
-        case unavailable
     }
 
     static func stepsPace(
@@ -236,33 +230,6 @@ enum HomeV2Logic {
         return poorSleepRule(from: notes)
     }
 
-    static func peptideCardVisible(
-        hasActiveSchedules: Bool,
-        plannedCount: Int,
-        completedCount: Int
-    ) -> Bool {
-        hasActiveSchedules || plannedCount > 0 || completedCount > 0
-    }
-
-    static func volumeState(
-        volume: Double?,
-        volumeUnits: String?,
-        volumeBasis: String?,
-        calcGate: String?,
-        concentrationBasis: String?
-    ) -> PeptideVolumeState {
-        let gate = calcGate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let basis = concentrationBasis?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let volumeBasis = volumeBasis?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if gate.uppercased().hasPrefix("BLOCKED")
-            || basis == "NONE"
-            || volumeBasis == "NOT_CALCULATED"
-            || volume == nil {
-            return .unavailable
-        }
-        return .shown(amount: storedNumber(volume ?? 0), units: volumeUnits ?? "")
-    }
-
     static func weekSoFar(
         today: Date,
         calendar: Calendar,
@@ -358,13 +325,6 @@ enum HomeV2Logic {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = newYork
         return SessionDateFormatting.calendarDateString(from: date, calendar: calendar)
-    }
-
-    static func iso8601NewYork(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = newYork
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
     }
 
     static func displayNewYork(iso8601 raw: String) -> String? {

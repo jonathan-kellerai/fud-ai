@@ -58,18 +58,15 @@ struct PeptideMathTests {
         vialID: String? = nil,
         drawn: Double? = nil,
         drawnUnit: String? = nil,
-        voided: Bool = false,
-        status: String = "COMPLETED"
+        voided: Bool = false
     ) -> PeptideLogEntry {
         PeptideLogEntry(
             id: id,
-            rowID: id,
             person: person,
             compound: compound,
             dose: dose,
             units: units,
             date: PeptideMath.date(civil: civil, minutes: hour * 60),
-            status: status,
             voided: voided,
             vialID: vialID,
             drawnVolume: drawn,
@@ -103,27 +100,25 @@ struct PeptideMathTests {
 
     @Test func victoriaDefaultsAreExactlyMT2AndGlow() {
         #expect(PeptideMath.defaultCompounds(person: "victoria") == ["MT2", "Glow"])
-        #expect(PeptideMath.compoundOptions(person: "victoria", inventoryCompounds: ["Tesamorelin"], loggedCompounds: []) == ["MT2", "Glow"])
+        #expect(PeptideMath.compoundOptions(person: "victoria", loggedCompounds: []) == ["MT2", "Glow"])
     }
 
-    @Test func jonathanOptionsUseInventoryStringsAndDeduplicate() {
+    @Test func loggedCompoundsAreAddedOncePerKey() {
+        let defaults = PeptideMath.defaultCompounds(person: "jonathan")
         let options = PeptideMath.compoundOptions(
             person: "jonathan",
-            inventoryCompounds: ["BPC 157 (Vial A)", "bpc157", "AOD-9604"],
-            loggedCompounds: ["bpc-157", "Melanotan II", "Ipamorelin"]
+            loggedCompounds: ["bpc-157", "Melanotan II", "Ipamorelin", "ipamorelin"]
         )
-        // "bpc157" from the inventory replaces the roster's BPC-157 exactly.
-        #expect(options.contains("bpc157"))
-        #expect(!options.contains("BPC-157"))
-        #expect(options.contains("AOD-9604"))
+        #expect(Array(options.prefix(defaults.count)) == defaults)
         #expect(options.contains("Ipamorelin"))
+        #expect(!options.contains("ipamorelin"))
         #expect(options.filter { PeptideMath.compoundKey($0) == "mt2" }.count == 1)
         #expect(options.filter { PeptideMath.compoundKey($0) == "bpc157" }.count == 1)
     }
 
     @Test func logDraftsNeverPrefillAnAmount() {
         for person in PeptidePerson.order {
-            let names = PeptideMath.compoundOptions(person: person, inventoryCompounds: ["Tesamorelin"], loggedCompounds: ["BPC-157"]) + [""]
+            let names = PeptideMath.compoundOptions(person: person, loggedCompounds: ["BPC-157", "Tesamorelin"]) + [""]
             for name in names {
                 let draft = PeptideLogDraft.new(person: person, compound: name)
                 #expect(draft.amount == nil, "\(person) \(name)")
@@ -239,15 +234,6 @@ struct PeptideMathTests {
         #expect(!PeptideMath.remaining(vial: vial(), entries: lighter).isLow)
         #expect(PeptideMath.remaining(vial: vial(threshold: 0.5), entries: lighter).isLow)
         #expect(!PeptideMath.remaining(vial: vial(threshold: 0.25), entries: lighter).isLow)
-    }
-
-    @Test func incompleteHistoryMakesRemainingUncalculable() {
-        let drawn = [entry("d", dose: 0.5, units: "mL", vialID: "v1")]
-        #expect(PeptideMath.remaining(vial: vial(), entries: drawn).calculable)
-        let blocked = PeptideMath.remaining(vial: vial(), entries: drawn, incompleteHistory: true)
-        #expect(!blocked.calculable)
-        #expect(blocked.remainingML == nil)
-        #expect(blocked.reason == PeptideMath.incompleteHistoryReason)
     }
 
     // MARK: Adherence
@@ -380,53 +366,6 @@ struct PeptideMathTests {
         // Four full weeks; the current week (1 of 2 so far) neither adds nor breaks.
         let recent = PeptideMath.adherence(twiceAWeek, entries: weekly, from: "2026-09-24", to: "2026-09-30", today: "2026-09-30")
         #expect(recent.streak == 4)
-    }
-
-    @Test func bridgeRowsDecodeFieldByField() throws {
-        let json = """
-        {"from":"2026-09-01","to":"2026-09-30","timezone":"America/New_York","administrations":[
-          {"id":42,"datetime":"2026-09-20T13:00:00Z","compound":"BPC-157","dose":"500","units":5,
-           "voided":"1","recorded_via":"app","badges":["LABEL",3],"person":null,
-           "correction_history":"oops","planned_id":7,"dose_deviates_from_planned":0},
-          {"datetime":"2026-09-21T13:00:00Z","compound":"MT2"},
-          "not a row",
-          {"id":"ok-1","datetime":"2026-09-22T13:00:00Z","compound":"MT2","dose":250,"units":"mcg","status":"COMPLETED"}
-        ]}
-        """
-        let list = try JSONDecoder().decode(PeptideAdministrationList.self, from: Data(json.utf8))
-        #expect(list.administrations.map(\.id) == ["42", "ok-1"])
-        #expect(list.skippedRows == 2)
-        let odd = try #require(list.administrations.first)
-        #expect(odd.dose == 500)
-        #expect(odd.units == "5")
-        #expect(odd.voided)
-        #expect(odd.recordedVia == "app")
-        #expect(odd.badges == ["LABEL", "3"])
-        #expect(odd.plannedId == "7")
-        #expect(odd.correctionHistory.isEmpty)
-
-        let today = """
-        {"date":"2026-09-22","timezone":"America/New_York","has_active_schedules":true,
-         "planned":[{"id":"p1","datetime":"2026-09-22T13:00:00Z","compound":"MT2","status":"PLANNED","dose":{"x":1}}],
-         "completed":[{"compound":"MT2"},{"id":"c1","datetime":"2026-09-22T14:00:00Z","compound":"MT2","voided":"false"}]}
-        """
-        let response = try JSONDecoder().decode(PeptideTodayResponse.self, from: Data(today.utf8))
-        #expect(response.planned.map(\.id) == ["p1"])
-        #expect(response.planned.first?.dose == nil)
-        #expect(response.completed.map(\.id) == ["c1"])
-        #expect(response.completed.first?.voided == false)
-        #expect(response.skippedRows == 1)
-        #expect(response.hasActiveSchedules)
-    }
-
-    @Test func plannedAdherenceUsesCompletedID() {
-        var taken = entry("p1", status: "PLANNED")
-        taken.completedID = "c1"
-        let open = entry("p2", civil: "2026-09-21", status: "PLANNED")
-        let future = entry("p3", civil: "2026-09-30", status: "PLANNED")
-        let result = PeptideMath.plannedAdherence([taken, open, future], person: "jonathan", through: "2026-09-22")
-        #expect(result.due == 2)
-        #expect(result.taken == 1)
     }
 
     // MARK: Summaries

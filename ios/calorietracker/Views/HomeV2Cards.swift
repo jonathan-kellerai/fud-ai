@@ -108,12 +108,7 @@ struct HomeV2Cards: View {
     @State private var restingHeartRate: Double?
     @State private var hrvSamples: [HealthSampleReading] = []
     @State private var recoveryLoaded = false
-    @State private var peptideToday: PeptideTodayResponse?
-    @State private var peptideInventory: [PeptideInventoryItem] = []
-    @State private var activeScheduleCount = 0
-    @State private var peptideError: String?
     @State private var loggingDay: ProgramV2Day?
-    @State private var peptideAction: PeptideAction?
     @State private var showingPeptideLog = false
 
     private let bridge = NeonBridgeService.shared
@@ -160,19 +155,8 @@ struct HomeV2Cards: View {
                 Task { await reloadWorkouts() }
             }
         }
-        .sheet(item: $peptideAction) { action in
-            PeptideActionSheet(action: action) {
-                Task { await reloadPeptides() }
-            }
-        }
         .sheet(isPresented: $showingPeptideLog) {
-            PeptideLogSheet(person: PeptidePersonMemory.load()) {
-                // Re-read /today only once the queued write has gone out.
-                Task {
-                    await peptideStore.flush()
-                    await reloadPeptides()
-                }
-            }
+            PeptideLogSheet(person: PeptidePersonMemory.load())
         }
     }
 
@@ -249,7 +233,7 @@ struct HomeV2Cards: View {
                 IronSectionTitle(title: "Recovery")
             }
         case .peptides:
-            if peptideSectionVisible {
+            if peptideStore.hasLocalActivity(today: peptideDay) {
                 Section {
                     NavigationLink {
                         ReconView()
@@ -261,10 +245,12 @@ struct HomeV2Cards: View {
                         }
                     }
                     .listRowBackground(IronTheme.surface)
-                    peptideCard.listRowBackground(IronTheme.surface)
-                    if HomePeptideSummary.hasContent(store: peptideStore, day: peptideDay, shownKeys: peptideShownKeys) {
-                        HomePeptideSummary(day: peptideDay, shownKeys: peptideShownKeys).listRowBackground(IronTheme.surface)
+                    HomePeptideSummary(day: peptideDay).listRowBackground(IronTheme.surface)
+                    Button("Log a dose") {
+                        showingPeptideLog = true
                     }
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .listRowBackground(IronTheme.surface)
                     NavigationLink {
                         PeptidesView()
                     } label: {
@@ -296,22 +282,6 @@ struct HomeV2Cards: View {
 
     private var peptideDay: String {
         HomeV2Logic.newYorkDateString(from: selectedDate)
-    }
-
-    /// Row ids and client_request_ids the card already shows from /today.
-    private var peptideShownKeys: Set<String> {
-        HomePeptideSummary.shownKeys(peptideToday)
-    }
-
-    private var peptideSectionVisible: Bool {
-        if peptideError != nil { return true }
-        if peptideStore.hasLocalActivity(today: peptideDay) { return true }
-        guard let peptideToday else { return false }
-        return HomeV2Logic.peptideCardVisible(
-            hasActiveSchedules: peptideToday.hasActiveSchedules || activeScheduleCount > 0,
-            plannedCount: peptideToday.planned.filter { !$0.voided }.count,
-            completedCount: peptideToday.completed.filter { !$0.voided }.count
-        )
     }
 
     private var weekDates: [Date] {
@@ -859,147 +829,6 @@ struct HomeV2Cards: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
-    private var peptideCard: some View {
-        if let peptideError {
-            Text(peptideError)
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(AppColors.calorie)
-        } else if let peptideToday {
-            VStack(alignment: .leading, spacing: 12) {
-                let planned = peptideToday.planned.filter { !$0.voided }
-                if planned.isEmpty {
-                    Text("Nothing scheduled today.")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(planned) { row in
-                    peptideRow(row, completed: peptideToday.completed)
-                }
-                ForEach(peptideToday.completed.filter { !$0.voided && $0.plannedId == nil }) { row in
-                    completedRow(row)
-                }
-                Button("Log a dose I type") {
-                    showingPeptideLog = true
-                }
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func peptideRow(_ row: PeptideAdministration, completed: [PeptideAdministration]) -> some View {
-        let match = completed.first { $0.id == row.completedId }
-        let inventory = inventoryItem(for: row)
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(row.compound.isEmpty ? "Dose" : row.compound)
-                .font(.system(.headline, design: .rounded))
-            Text(doseLine(row))
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            if let when = HomeV2Logic.displayNewYork(iso8601: row.datetime) {
-                Text(when)
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            volumeText(row, inventory: inventory)
-            badgeList(row.badges + (inventory?.badges ?? []))
-            warningList(inventory?.warnings ?? [])
-            if let match {
-                Text("Taken \(HomeV2Logic.displayNewYork(iso8601: match.datetime) ?? match.datetime)")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                // Only rows this app recorded can be corrected or voided.
-                if match.recordedVia == "app" {
-                    Button("Correct or void") { peptideAction = .edit(match) }
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
-                }
-            } else if row.completedId == nil {
-                Button("Mark taken") { peptideAction = .mark(row) }
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppColors.calorie)
-            }
-        }
-    }
-
-    private func completedRow(_ row: PeptideAdministration) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(row.compound)
-                .font(.system(.headline, design: .rounded))
-            Text(doseLine(row))
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            if let when = HomeV2Logic.displayNewYork(iso8601: row.datetime) {
-                Text("Taken \(when)")
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            volumeText(row, inventory: inventoryItem(for: row))
-            badgeList(row.badges)
-            if row.recordedVia == "app" {
-                Button("Correct or void") { peptideAction = .edit(row) }
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-            }
-        }
-    }
-
-    private func doseLine(_ row: PeptideAdministration) -> String {
-        let amount = row.dose.map(HomeV2Logic.storedNumber) ?? ""
-        let units = row.units ?? ""
-        return [amount, units].filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
-    @ViewBuilder
-    private func volumeText(_ row: PeptideAdministration, inventory: PeptideInventoryItem?) -> some View {
-        let state = HomeV2Logic.volumeState(
-            volume: row.volume,
-            volumeUnits: row.volumeUnits,
-            volumeBasis: row.volumeBasis,
-            calcGate: row.calcGate ?? inventory?.calcGate,
-            concentrationBasis: row.concentrationBasis ?? inventory?.concentrationBasis
-        )
-        switch state {
-        case .unavailable:
-            Text(HomeV2Logic.volumeUnavailableText)
-                .font(.system(.footnote, design: .rounded, weight: .semibold))
-        case .shown(let amount, let units):
-            Text([amount, units].filter { !$0.isEmpty }.joined(separator: " "))
-                .font(.system(.footnote, design: .rounded))
-        }
-    }
-
-    private func badgeList(_ badges: [String]) -> some View {
-        var seen = Set<String>()
-        var unique: [String] = []
-        for badge in badges where !badge.isEmpty && seen.insert(badge).inserted {
-            unique.append(badge)
-        }
-        return VStack(alignment: .leading, spacing: 4) {
-            ForEach(unique, id: \.self) { badge in
-                Text(badge)
-                    .font(.system(.caption2, design: .rounded, weight: .semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppColors.calorie.opacity(0.12), in: Capsule())
-            }
-        }
-    }
-
-    private func warningList(_ warnings: [PeptideWarning]) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in
-                Text(warning.text)
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(AppColors.calorie)
-            }
-        }
-    }
-
-    private func inventoryItem(for row: PeptideAdministration) -> PeptideInventoryItem? {
-        if let source = row.sourceVial, let match = peptideInventory.first(where: { $0.id == source }) {
-            return match
-        }
-        return nil
-    }
-
     private func format(_ value: Double, digits: Int) -> String {
         String(format: "%.\(digits)f", value)
     }
@@ -1027,7 +856,6 @@ struct HomeV2Cards: View {
         await reloadProgram()
         await reloadWorkouts()
         await reloadHealth()
-        await reloadPeptides()
     }
 
     private func reloadProgram() async {
@@ -1110,25 +938,6 @@ struct HomeV2Cards: View {
         )
         return samples?.max { $0.date < $1.date }?.value
     }
-
-    private func reloadPeptides() async {
-        let day = HomeV2Logic.newYorkDateString(from: selectedDate)
-        do {
-            peptideToday = try await bridge.peptidesToday(date: day)
-            peptideError = nil
-            activeScheduleCount = (try? await bridge.peptideSchedules(activeOnly: true).count) ?? activeScheduleCount
-            if let inventory = try? await bridge.peptideInventory() {
-                peptideInventory = inventory
-            }
-        } catch {
-            if case NeonBridgeError.httpError(let statusCode, _) = error, statusCode == 401 || statusCode == 503 {
-                peptideError = "Add the bridge key in Train › Bridge to sync peptides."
-            } else {
-                peptideError = "Peptide schedule couldn’t be loaded."
-            }
-        }
-        await peptideStore.refreshIfStale()
-    }
 }
 
 private struct CustomizeHomeSheet: View {
@@ -1170,237 +979,11 @@ private struct CustomizeHomeSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                Text("Peptides stays off Home until a dose is on the schedule. Drag to reorder.")
+                Text("Peptides stays off Home until you add a vial or schedule, or log a dose today. Drag to reorder.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding()
             }
         }
-    }
-}
-
-private enum PeptideAction: Identifiable {
-    case mark(PeptideAdministration)
-    case edit(PeptideAdministration)
-    case unscheduled
-
-    var id: String {
-        switch self {
-        case .mark(let row): "mark-\(row.id)"
-        case .edit(let row): "edit-\(row.id)"
-        case .unscheduled: "unscheduled"
-        }
-    }
-}
-
-private struct PeptideActionSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(PeptideLogStore.self) private var peptideStore
-    let action: PeptideAction
-    var onFinished: () -> Void
-
-    @State private var takenAt = Date()
-    @State private var doseText = ""
-    @State private var compound = ""
-    @State private var units = ""
-    @State private var notes = ""
-    @State private var reason = ""
-    @State private var errorText: String?
-    @State private var isSaving = false
-    @State private var clientRequestID = UUID().uuidString
-
-    private let bridge = NeonBridgeService.shared
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                switch action {
-                case .mark(let row):
-                    Text(row.compound)
-                    DatePicker("Time", selection: $takenAt)
-                    TextField("Dose", text: $doseText)
-                        .keyboardType(.decimalPad)
-                    Text("Units stay \(row.units ?? "as stored"). Editing the dose leaves volume unset.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    TextField("Notes", text: $notes, axis: .vertical)
-                case .unscheduled:
-                    TextField("Compound", text: $compound)
-                    TextField("Dose", text: $doseText)
-                        .keyboardType(.decimalPad)
-                    TextField("Units", text: $units)
-                    DatePicker("Time", selection: $takenAt)
-                    TextField("Notes", text: $notes, axis: .vertical)
-                    Text("Type the dose you took. Volume can’t be calculated for a dose that isn’t on the schedule.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                case .edit(let row):
-                    Text(row.compound)
-                    DatePicker("Time", selection: $takenAt)
-                    TextField("Dose", text: $doseText)
-                        .keyboardType(.decimalPad)
-                    TextField("Notes", text: $notes, axis: .vertical)
-                    TextField("Reason", text: $reason)
-                    Button("Void this dose", role: .destructive) {
-                        Task { await voidDose(row) }
-                    }
-                    .disabled(reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
-                }
-                if let errorText {
-                    Text(errorText).foregroundStyle(.red)
-                }
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .disabled(isSaving)
-                }
-            }
-            .onAppear(perform: prefill)
-        }
-    }
-
-    private var title: String {
-        switch action {
-        case .mark: "Mark taken"
-        case .edit: "Correct dose"
-        case .unscheduled: "Log a dose"
-        }
-    }
-
-    private func prefill() {
-        switch action {
-        case .mark(let row):
-            doseText = row.dose.map(HomeV2Logic.storedNumber) ?? ""
-            notes = row.notes ?? ""
-        case .edit(let row):
-            doseText = row.dose.map(HomeV2Logic.storedNumber) ?? ""
-            notes = row.notes ?? ""
-            if let date = parseISO(row.datetime) { takenAt = date }
-        case .unscheduled:
-            break
-        }
-    }
-
-    private func save() async {
-        switch action {
-        case .mark(let row):
-            await markTaken(row)
-        case .unscheduled:
-            await logUnscheduled()
-        case .edit(let row):
-            await correct(row)
-        }
-    }
-
-    private func markTaken(_ row: PeptideAdministration) async {
-        isSaving = true
-        defer { isSaving = false }
-        let typed = Double(doseText.replacingOccurrences(of: ",", with: "."))
-        let planned = row.dose
-        let doseChanged = typed != nil && planned != nil && abs((typed ?? 0) - (planned ?? 0)) > 0.000_1
-        // Queued through the Peptides log so it survives being offline.
-        let opID = peptideStore.logPlanned(
-            plannedID: row.id,
-            takenAt: takenAt,
-            dose: doseChanged ? typed : nil,
-            notes: notes,
-            clientRequestID: clientRequestID
-        )
-        await peptideStore.flush()
-        if let message = peptideStore.failureMessage(forOp: opID) {
-            errorText = message
-            return
-        }
-        onFinished()
-        dismiss()
-    }
-
-    private func logUnscheduled() async {
-        let trimmedCompound = compound.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedUnits = units.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedCompound.isEmpty, !trimmedUnits.isEmpty, let dose = Double(doseText.replacingOccurrences(of: ",", with: ".")) else {
-            errorText = "Type the compound, dose, and units."
-            return
-        }
-        isSaving = true
-        defer { isSaving = false }
-        do {
-            _ = try await bridge.createCompletedAdministration(
-                clientRequestID: clientRequestID,
-                plannedID: nil,
-                datetime: HomeV2Logic.iso8601NewYork(takenAt),
-                dose: dose,
-                units: trimmedUnits,
-                compound: trimmedCompound,
-                route: nil,
-                notes: notes.isEmpty ? nil : notes,
-                sourceVial: nil
-            )
-            onFinished()
-            dismiss()
-        } catch {
-            errorText = error.localizedDescription
-        }
-    }
-
-    private func correct(_ row: PeptideAdministration) async {
-        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedReason.isEmpty else {
-            errorText = "A reason is required."
-            return
-        }
-        var changes = PeptideCorrectionChanges(datetime: HomeV2Logic.iso8601NewYork(takenAt))
-        if let dose = Double(doseText.replacingOccurrences(of: ",", with: ".")) {
-            changes.dose = dose
-        }
-        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedNotes.isEmpty { changes.notes = trimmedNotes }
-        isSaving = true
-        defer { isSaving = false }
-        // Queued through the Peptides log so it survives being offline.
-        if let message = peptideStore.correct(rowID: row.id, recordedVia: row.recordedVia, reason: trimmedReason, changes: changes) {
-            errorText = message
-            return
-        }
-        await peptideStore.flush()
-        if let message = peptideStore.failureMessage(forRow: row.id) {
-            errorText = message
-            return
-        }
-        onFinished()
-        dismiss()
-    }
-
-    private func voidDose(_ row: PeptideAdministration) async {
-        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedReason.isEmpty else { return }
-        isSaving = true
-        defer { isSaving = false }
-        if let message = peptideStore.void(rowID: row.id, recordedVia: row.recordedVia, reason: trimmedReason) {
-            errorText = message
-            return
-        }
-        await peptideStore.flush()
-        if let message = peptideStore.failureMessage(forRow: row.id) {
-            errorText = message
-            return
-        }
-        onFinished()
-        dismiss()
-    }
-
-    private func parseISO(_ raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: raw)
     }
 }
