@@ -276,6 +276,27 @@ final class PeptideLogStore {
         return summary
     }
 
+    /// Replaces everything with `archive` (iCloud restore). A vial or schedule
+    /// with no person is Jonathan's, as on any record without one.
+    func replaceAll(with archive: PeptideArchive, now: Date = Date()) {
+        vials = archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) }
+        schedules = archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
+        entries = archive.entries
+        didChangeEntries()
+    }
+
+    /// Delete Everything: the saved log, its set-aside copies, the
+    /// UserDefaults fallback and everything in memory.
+    func deleteAll() {
+        file.removeAll()
+        entries = []
+        vials = []
+        schedules = []
+        persistError = nil
+        storageNote = nil
+        savingBlocked = false
+    }
+
     // MARK: Private
 
     private func didChangeEntries() {
@@ -421,6 +442,25 @@ struct PeptideLogSnapshot: Codable {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             version = try? container.decodeIfPresent(Int.self, forKey: .version)
+        }
+    }
+}
+
+// MARK: - iCloud backup
+
+extension PeptideLogStore: CloudBackupPeptides {
+    /// The archive without an export time, so unchanged peptides back up to the same bytes.
+    func backupArchiveData() -> Data? {
+        try? archive(exportedAt: nil).encoded()
+    }
+
+    func restoreArchiveData(_ data: Data) -> String? {
+        do {
+            replaceAll(with: try PeptideArchive.decode(data))
+            return nil
+        } catch {
+            let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return "Peptides weren't restored, so the ones on this phone were kept. " + reason
         }
     }
 }

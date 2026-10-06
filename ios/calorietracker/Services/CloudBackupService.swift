@@ -3,11 +3,22 @@ import Foundation
 import Observation
 import os
 
+/// Peptides live in their own file, not UserDefaults. The backup carries
+/// them as one peptides archive (the same format as export/import).
+@MainActor
+protocol CloudBackupPeptides: AnyObject {
+    func backupArchiveData() -> Data?
+    /// Validates before replacing anything. An error message, or nil when restored.
+    func restoreArchiveData(_ data: Data) -> String?
+}
+
 @Observable
 final class CloudBackupService {
     static let enabledKey = "cloudBackupEnabled"
     static let lastAtKey = "cloudBackupLastAt"
     static let lastHashKey = "cloudBackupLastHash"
+    /// Backup value holding the peptides archive. Never a UserDefaults key.
+    static let peptidesKey = "peptides.archive.v1"
     static let smokeTestLaunchArgument = "-fudai.cloudBackup.smokeTest"
     static let smokeTestRecordName = "smoke-test"
 
@@ -28,10 +39,12 @@ final class CloudBackupService {
     var errorMessage: String?
 
     private let defaults: UserDefaults
+    @ObservationIgnored private let peptides: (any CloudBackupPeptides)?
     private var container: CKContainer { CKContainer.default() }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, peptides: (any CloudBackupPeptides)? = nil) {
         self.defaults = defaults
+        self.peptides = peptides
         self.enabled = defaults.bool(forKey: Self.enabledKey)
         self.lastAt = defaults.string(forKey: Self.lastAtKey)
     }
@@ -54,6 +67,9 @@ final class CloudBackupService {
                 }
             }
         }
+        if let archive = peptides?.backupArchiveData() {
+            out[Self.peptidesKey] = .data(archive)
+        }
         return out
     }
 
@@ -65,6 +81,16 @@ final class CloudBackupService {
         }
         for (key, value) in values {
             guard CloudBackupPolicy.include(key) else { continue }
+            if key == Self.peptidesKey {
+                // A backup without this value (older builds) never gets here: peptides stay as they are.
+                guard let peptides else { continue }
+                if let encoded = value.d, let archive = Data(base64Encoded: encoded) {
+                    if let problem = peptides.restoreArchiveData(archive) { errorMessage = problem }
+                } else {
+                    errorMessage = "Peptides weren't restored, so the ones on this phone were kept."
+                }
+                continue
+            }
             switch value.t {
             case "b":
                 if let b = value.b { defaults.set(b, forKey: key) }

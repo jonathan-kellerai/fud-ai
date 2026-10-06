@@ -125,7 +125,15 @@ final class ReconBenchStore {
         return try? Data(contentsOf: url)
     }
 
-    private static var fileURL: URL? {
+    /// Delete Everything: the saved bench file and its UserDefaults copy.
+    static func deleteSavedData() {
+        if let url = fileURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        UserDefaults.standard.removeObject(forKey: defaultsKey)
+    }
+
+    static var fileURL: URL? {
         guard let directory = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: WidgetSnapshot.appGroupID)?
             .appendingPathComponent("Library/Application Support/ReconBench", isDirectory: true) else { return nil }

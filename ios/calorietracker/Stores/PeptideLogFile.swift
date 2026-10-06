@@ -84,6 +84,19 @@ struct PeptideLogFile {
         return (try? Data(contentsOf: copy)) == data
     }
 
+    /// Delete Everything: the log, every copy set aside next to it, and the
+    /// UserDefaults fallback.
+    func removeAll() {
+        defaults?.removeObject(forKey: defaultsKey)
+        guard let url else { return }
+        let directory = url.deletingLastPathComponent()
+        let stem = url.deletingPathExtension().lastPathComponent
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names where name.hasPrefix(stem) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
     /// Writes the file atomically and keeps the UserDefaults copy only while
     /// the file can't be written. Nil when there is no file to write.
     @discardableResult

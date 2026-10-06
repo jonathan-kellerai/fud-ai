@@ -1,0 +1,167 @@
+import Foundation
+import Testing
+@testable import calorietracker
+
+/// Peptides are in the iCloud backup (as one peptides archive) and gone after
+/// Delete Everything. Peptide stores use temporary files and a throwaway
+/// UserDefaults suite, never the app-group file. Synthetic data only.
+@MainActor
+struct PeptideBackupAndResetTests {
+    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func directory() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("peptide-backup-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func defaultsSuite() throws -> (UserDefaults, String) {
+        let name = "peptide-backup-\(UUID().uuidString)"
+        return (try #require(UserDefaults(suiteName: name)), name)
+    }
+
+    private func filledStore(at url: URL, compound: String = "BPC-157", id: String = "e1") throws -> PeptideLogStore {
+        let store = PeptideLogStore(persistence: .file(url))
+        store.saveVial(PeptideVial(id: "v-" + id, person: "victoria", compound: "Glow", diluentML: 2, createdAt: now))
+        store.saveSchedule(PeptideUserSchedule(id: "s-" + id, person: "jonathan", compound: compound, frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01", createdAt: now))
+        var draft = PeptideLogDraft.new(person: "jonathan", compound: compound, now: now)
+        draft.amountText = "500"
+        draft.units = "mcg"
+        _ = try #require(store.log(draft, id: id, now: now))
+        return store
+    }
+
+    @Test func backupCarriesPeptidesAndRestoreReplacesThem() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (fromDefaults, fromName) = try defaultsSuite()
+        let (toDefaults, toName) = try defaultsSuite()
+        defer {
+            fromDefaults.removePersistentDomain(forName: fromName)
+            toDefaults.removePersistentDomain(forName: toName)
+        }
+        let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
+        let values = CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
+        let value = try #require(values[CloudBackupService.peptidesKey])
+        #expect(value.t == "d")
+
+        let targetURL = folder.appendingPathComponent("b/peptide_log_v1.json")
+        let target = try filledStore(at: targetURL, compound: "MT2", id: "other")
+        let service = CloudBackupService(defaults: toDefaults, peptides: target)
+        service.applyValues(values)
+        #expect(service.errorMessage == nil)
+        #expect(target.entries == source.entries)
+        #expect(target.vials == source.vials)
+        #expect(target.schedules == source.schedules)
+        // Saved, so a relaunch sees the restored peptides.
+        #expect(PeptideLogStore(persistence: .file(targetURL)).entries == source.entries)
+        // The archive is a backup value, never a UserDefaults key.
+        #expect(toDefaults.object(forKey: CloudBackupService.peptidesKey) == nil)
+    }
+
+    @Test func unchangedPeptidesBackUpToTheSameBytes() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = try filledStore(at: folder.appendingPathComponent("peptide_log_v1.json"))
+        let service = CloudBackupService(defaults: defaults, peptides: store)
+        let first = service.snapshotValues()
+        let second = service.snapshotValues()
+        #expect(CloudBackupArchive.contentHash(values: first, photos: [:]) == CloudBackupArchive.contentHash(values: second, photos: [:]))
+        let encoded = try #require(first[CloudBackupService.peptidesKey]?.d)
+        let bytes = try #require(Data(base64Encoded: encoded))
+        let archive = try PeptideArchive.decode(bytes)
+        #expect(archive.exportedAt == nil)
+        #expect(archive.entries == store.entries)
+    }
+
+    @Test func badArchiveKeepsThePhonesPeptidesAndSaysSo() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = try filledStore(at: folder.appendingPathComponent("peptide_log_v1.json"))
+        let before = store.entries
+        let service = CloudBackupService(defaults: defaults, peptides: store)
+        service.applyValues([CloudBackupService.peptidesKey: .data(Data(#"{"format":"something-else","format_version":1}"#.utf8))])
+        #expect(store.entries == before)
+        #expect(service.errorMessage?.contains("kept") == true)
+
+        service.errorMessage = nil
+        service.applyValues([CloudBackupService.peptidesKey: CloudBackupValue(t: "d", d: "not base64!")])
+        #expect(store.entries == before)
+        #expect(service.errorMessage != nil)
+    }
+
+    @Test func olderBackupWithoutPeptidesLeavesThemUntouched() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = try filledStore(at: folder.appendingPathComponent("peptide_log_v1.json"))
+        let before = (store.entries, store.vials, store.schedules)
+        let service = CloudBackupService(defaults: defaults, peptides: store)
+        service.applyValues(["weekStartsOnMonday": .bool(true)])
+        #expect(store.entries == before.0)
+        #expect(store.vials == before.1)
+        #expect(store.schedules == before.2)
+        #expect(service.errorMessage == nil)
+    }
+
+    @Test func deleteAllLeavesAnEmptyFreshStore() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let url = folder.appendingPathComponent("peptide_log_v1.json")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // A version-1 log migrates and leaves its untouched copy next to the file.
+        let version1 = #"{"version":1,"rows":[{"id":"r1","datetime":"2026-09-20T07:30:00-04:00","compound":"BPC-157","status":"COMPLETED","recorded_via":"app"}],"pendingOps":[],"meta":[],"vials":[],"schedules":[]}"#
+        try Data(version1.utf8).write(to: url)
+        try Data("unrelated".utf8).write(to: folder.appendingPathComponent("keep-me.txt"))
+        let store = PeptideLogStore(persistence: .file(url, defaults: defaults))
+        #expect(store.entries.count == 1)
+        defaults.set(Data("fallback".utf8), forKey: PeptideLogStore.defaultsKey)
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        #expect(names.contains { $0.hasPrefix("peptide_log_v1.pre-local-") })
+
+        store.deleteAll()
+        #expect(store.entries.isEmpty && store.vials.isEmpty && store.schedules.isEmpty)
+        #expect(store.persistError == nil && store.storageNote == nil)
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        #expect(left == ["keep-me.txt"])
+        #expect(defaults.data(forKey: PeptideLogStore.defaultsKey) == nil)
+        let fresh = PeptideLogStore(persistence: .file(url, defaults: defaults))
+        #expect(fresh.entries.isEmpty && fresh.vials.isEmpty && fresh.schedules.isEmpty)
+        #expect(fresh.storageNote == nil)
+    }
+
+    /// The Recon Bench saves to the app group and standard defaults; whatever
+    /// was there before the test is put back afterwards.
+    @Test func reconBenchDataIsWiped() throws {
+        let savedDefaults = UserDefaults.standard.data(forKey: ReconBenchStore.defaultsKey)
+        let savedFile = ReconBenchStore.fileURL.flatMap { try? Data(contentsOf: $0) }
+        defer {
+            if let savedDefaults {
+                UserDefaults.standard.set(savedDefaults, forKey: ReconBenchStore.defaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: ReconBenchStore.defaultsKey)
+            }
+            if let savedFile, let url = ReconBenchStore.fileURL {
+                try? savedFile.write(to: url, options: .atomic)
+            }
+        }
+        let store = ReconBenchStore()
+        store.add(ReconMath.ScheduleEntry(
+            id: "wipe-\(UUID().uuidString)", person: "jonathan", compound: "tesamorelin",
+            dose: 1.4, doseUnit: "mg", draw: nil, freq: ReconMath.Frequency(type: "daily"), start: "2026-09-01", weeks: 1
+        ))
+        #expect(UserDefaults.standard.data(forKey: ReconBenchStore.defaultsKey) != nil)
+
+        ReconBenchStore.deleteSavedData()
+        #expect(UserDefaults.standard.data(forKey: ReconBenchStore.defaultsKey) == nil)
+        if let url = ReconBenchStore.fileURL {
+            #expect(!FileManager.default.fileExists(atPath: url.path))
+        }
+        #expect(ReconBenchStore().entries.isEmpty)
+    }
+}

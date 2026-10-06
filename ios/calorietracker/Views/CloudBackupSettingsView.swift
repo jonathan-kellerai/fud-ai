@@ -100,6 +100,11 @@ struct CloudBackupSettingsSection: View {
     private func run(_ work: () async throws -> Void) async {
         do {
             try await work()
+            // A restore that went through but kept this phone's peptides says why.
+            if let note = backup.errorMessage {
+                errorMessage = note
+                backup.errorMessage = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
