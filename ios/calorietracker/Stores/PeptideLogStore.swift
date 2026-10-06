@@ -281,13 +281,14 @@ final class PeptideLogStore {
 
     /// Replaces everything with `archive` (iCloud restore). A vial or schedule
     /// with no person is Jonathan's, as on any record without one. Saved
-    /// first: when it can't be saved, nothing changes and the reason is returned.
+    /// first: when it can't be saved, nothing in memory or saved changes and the
+    /// reason is returned.
     func replaceAll(with archive: PeptideArchive, now: Date = Date()) -> String? {
         let newVials = archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) }
         let newSchedules = archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
         let newEntries = Self.sorted(archive.entries)
         if savingBlocked { return persistError ?? "Peptides can't be saved on this phone right now." }
-        if !file.isInMemory, case .failure(let error)? = save(entries: newEntries, vials: newVials, schedules: newSchedules) {
+        if !file.isInMemory, case .failure(let error)? = save(entries: newEntries, vials: newVials, schedules: newSchedules, fallbackOnFailure: false) {
             return error.localizedDescription
         }
         vials = newVials
@@ -395,10 +396,10 @@ final class PeptideLogStore {
     }
 
     /// Writes these records as the saved log. Nil when there is no file to write.
-    private func save(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule]) -> Result<Void, Error>? {
+    private func save(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
         let snapshot = PeptideLogSnapshot(version: Self.fileVersion, entries: entries, vials: vials, schedules: schedules, omitted: omitted)
         guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(SaveError.encoding) }
-        return file.write(data)
+        return file.write(data, fallbackOnFailure: fallbackOnFailure)
     }
 
     private enum SaveError: LocalizedError {

@@ -98,9 +98,11 @@ struct PeptideLogFile {
     }
 
     /// Writes the file atomically and keeps the UserDefaults copy only while
-    /// the file can't be written. Nil when there is no file to write.
+    /// the file can't be written. With `fallbackOnFailure` false (a restore),
+    /// a failed file write leaves the UserDefaults copy as it was, so nothing
+    /// saved changes. Nil when there is no file to write.
     @discardableResult
-    func write(_ data: Data) -> Result<Void, Error>? {
+    func write(_ data: Data, fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
         var result: Result<Void, Error>?
         if let url {
             do {
@@ -111,6 +113,7 @@ struct PeptideLogFile {
                 result = .failure(error)
             }
         }
+        if case .failure = result, !fallbackOnFailure { return result }
         if let defaults {
             if case .success = result {
                 defaults.removeObject(forKey: defaultsKey)

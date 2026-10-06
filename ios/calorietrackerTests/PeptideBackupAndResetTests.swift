@@ -18,8 +18,8 @@ struct PeptideBackupAndResetTests {
         return (try #require(UserDefaults(suiteName: name)), name)
     }
 
-    private func filledStore(at url: URL, compound: String = "BPC-157", id: String = "e1") throws -> PeptideLogStore {
-        let store = PeptideLogStore(persistence: .file(url))
+    private func filledStore(at url: URL, defaults: UserDefaults? = nil, compound: String = "BPC-157", id: String = "e1") throws -> PeptideLogStore {
+        let store = PeptideLogStore(persistence: .file(url, defaults: defaults))
         store.saveVial(PeptideVial(id: "v-" + id, person: "victoria", compound: "Glow", diluentML: 2, createdAt: now))
         store.saveSchedule(PeptideUserSchedule(id: "s-" + id, person: "jonathan", compound: compound, frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01", createdAt: now))
         var draft = PeptideLogDraft.new(person: "jonathan", compound: compound, now: now)
@@ -123,9 +123,11 @@ struct PeptideBackupAndResetTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let (fromDefaults, fromName) = try defaultsSuite()
         let (toDefaults, toName) = try defaultsSuite()
+        let (fallback, fallbackName) = try defaultsSuite()
         defer {
             fromDefaults.removePersistentDomain(forName: fromName)
             toDefaults.removePersistentDomain(forName: toName)
+            fallback.removePersistentDomain(forName: fallbackName)
         }
         let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
         let values = CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
@@ -143,12 +145,17 @@ struct PeptideBackupAndResetTests {
         #expect(try Data(contentsOf: blockedURL) == newer)
 
         // The file can't be written (a folder now sits at its path): memory
-        // keeps what the phone had, as a relaunch would.
+        // and the UserDefaults fallback keep what the phone had, so a
+        // relaunch sees it too.
         let failingURL = folder.appendingPathComponent("c/peptide_log_v1.json")
-        let failing = try filledStore(at: failingURL, compound: "MT2", id: "other")
+        let failing = try filledStore(at: failingURL, defaults: fallback, compound: "MT2", id: "other")
         let before = (failing.entries, failing.vials, failing.schedules)
         try FileManager.default.removeItem(at: failingURL)
         try FileManager.default.createDirectory(at: failingURL, withIntermediateDirectories: false)
+        // A normal save while the file can't be written keeps the phone's
+        // records in the fallback.
+        failing.deleteVial(id: "no-such-vial")
+        let fallbackBytes = try #require(fallback.data(forKey: PeptideLogStore.defaultsKey))
         let failingService = CloudBackupService(defaults: toDefaults, peptides: failing)
         failingService.applyValues(values)
         #expect(failingService.errorMessage?.contains("kept") == true)
@@ -156,6 +163,11 @@ struct PeptideBackupAndResetTests {
         #expect(failing.vials == before.1)
         #expect(failing.schedules == before.2)
         #expect(failing.entries != source.entries)
+        #expect(fallback.data(forKey: PeptideLogStore.defaultsKey) == fallbackBytes)
+        let reopened = PeptideLogStore(persistence: .file(failingURL, defaults: fallback))
+        #expect(reopened.entries == before.0)
+        #expect(reopened.vials == before.1)
+        #expect(reopened.schedules == before.2)
     }
 
     @Test func olderBackupWithoutPeptidesLeavesThemUntouched() throws {
