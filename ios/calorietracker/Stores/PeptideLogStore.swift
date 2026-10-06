@@ -27,6 +27,9 @@ final class PeptideLogStore {
     /// Saving would overwrite data that wasn't read: a save from a newer
     /// app, or an older one that couldn't be set aside before upgrading.
     @ObservationIgnored private var savingBlocked = false
+    /// Records that couldn't be read and are no longer in the saved log.
+    /// Saved with it, so `storageNote` survives a relaunch.
+    @ObservationIgnored private var omitted = 0
 
     private let file: PeptideLogFile
 
@@ -303,6 +306,7 @@ final class PeptideLogStore {
         schedules = []
         persistError = nil
         storageNote = nil
+        omitted = 0
         savingBlocked = false
     }
 
@@ -339,7 +343,8 @@ final class PeptideLogStore {
                 file.keepUnreadable(data)
                 return
             }
-            apply(entries: snapshot.entries, vials: snapshot.vials, schedules: snapshot.schedules, skipped: snapshot.skipped)
+            // Records skipped now are dropped by the next save, so they join the count saved with it.
+            apply(entries: snapshot.entries, vials: snapshot.vials, schedules: snapshot.schedules, omitted: snapshot.omitted + snapshot.skipped)
         } else if version == 1 {
             upgrade(data)
         } else {
@@ -357,7 +362,7 @@ final class PeptideLogStore {
             file.keepUnreadable(data)
             return
         }
-        apply(entries: migrated.entries, vials: migrated.vials, schedules: migrated.schedules, skipped: migrated.skipped)
+        apply(entries: migrated.entries, vials: migrated.vials, schedules: migrated.schedules, omitted: migrated.skipped)
         guard file.keepBeforeUpgrade(data) else {
             savingBlocked = true
             persistError = "Peptides from the earlier version couldn't be backed up on this phone, so changes aren't saved yet."
@@ -366,13 +371,14 @@ final class PeptideLogStore {
         persist()
     }
 
-    private func apply(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], skipped: Int) {
+    private func apply(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], omitted: Int) {
         self.entries = Self.sorted(entries)
         self.vials = vials
         self.schedules = schedules
-        if skipped > 0 {
-            let records = skipped == 1 ? "1 saved peptide record" : "\(skipped) saved peptide records"
-            storageNote = "\(records) couldn't be read, so \(skipped == 1 ? "it isn't" : "they aren't") listed. Remaining in a vial may be off."
+        self.omitted = omitted
+        if omitted > 0 {
+            let records = omitted == 1 ? "1 saved peptide record" : "\(omitted) saved peptide records"
+            storageNote = "\(records) couldn't be read, so \(omitted == 1 ? "it isn't" : "they aren't") listed. Remaining in a vial may be off."
         }
     }
 
@@ -390,7 +396,7 @@ final class PeptideLogStore {
 
     /// Writes these records as the saved log. Nil when there is no file to write.
     private func save(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule]) -> Result<Void, Error>? {
-        let snapshot = PeptideLogSnapshot(version: Self.fileVersion, entries: entries, vials: vials, schedules: schedules)
+        let snapshot = PeptideLogSnapshot(version: Self.fileVersion, entries: entries, vials: vials, schedules: schedules, omitted: omitted)
         guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(SaveError.encoding) }
         return file.write(data)
     }
@@ -408,18 +414,23 @@ struct PeptideLogSnapshot: Codable {
     var entries: [PeptideLogEntry]
     var vials: [PeptideVial]
     var schedules: [PeptideUserSchedule]
-    /// Records that couldn't be read. Not saved.
+    /// Records that were left out of an earlier save because they couldn't
+    /// be read (an upgrade, or a damaged save). Saved only when above 0;
+    /// older saves without it read as 0.
+    var omitted = 0
+    /// Records in this save that couldn't be read. Not saved.
     var skipped = 0
 
     enum CodingKeys: String, CodingKey {
-        case version, entries, vials, schedules
+        case version, entries, vials, schedules, omitted
     }
 
-    init(version: Int, entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule]) {
+    init(version: Int, entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], omitted: Int = 0) {
         self.version = version
         self.entries = entries
         self.vials = vials
         self.schedules = schedules
+        self.omitted = omitted
     }
 
     init(from decoder: Decoder) throws {
@@ -432,6 +443,7 @@ struct PeptideLogSnapshot: Codable {
         let lossySchedules = (try? container.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
         schedules = lossySchedules.compactMap(\.value)
         skipped = (lossyEntries.count - entries.count) + (lossyVials.count - vials.count) + (lossySchedules.count - schedules.count)
+        omitted = max((try? container.decodeIfPresent(Int.self, forKey: .omitted)) ?? 0, 0)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -440,6 +452,7 @@ struct PeptideLogSnapshot: Codable {
         try container.encode(entries, forKey: .entries)
         try container.encode(vials, forKey: .vials)
         try container.encode(schedules, forKey: .schedules)
+        if omitted > 0 { try container.encode(omitted, forKey: .omitted) }
     }
 
     /// The `version` of a saved log (1 when absent, as version-1 saves read).

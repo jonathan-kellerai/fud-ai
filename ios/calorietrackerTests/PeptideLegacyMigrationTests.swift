@@ -233,6 +233,27 @@ struct PeptideLegacyMigrationTests {
         #expect(store.persistError == nil)
     }
 
+    @Test func omittedRecordsWarningSurvivesARelaunch() throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = try write(version1, in: directory)
+        let first = PeptideLogStore(persistence: .file(url))
+        let note = try #require(first.storageNote)
+        #expect(note.hasPrefix("2 saved peptide records"))
+
+        // The saved log holds only what was read; the count is saved with it.
+        let second = PeptideLogStore(persistence: .file(url))
+        #expect(second.storageNote == note)
+        second.saveVial(PeptideVial(id: "vial-2", person: "jonathan", compound: "MT2", diluentML: 1))
+        let third = PeptideLogStore(persistence: .file(url))
+        #expect(third.storageNote == note)
+        #expect(third.vial(id: "vial-2") != nil)
+
+        // Delete Everything clears it.
+        third.deleteAll()
+        #expect(PeptideLogStore(persistence: .file(url)).storageNote == nil)
+    }
+
     @Test func untouchedCopyIsWrittenFirstAndASecondLaunchIsANoOp() throws {
         let directory = tempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

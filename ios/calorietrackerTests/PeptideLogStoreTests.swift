@@ -276,6 +276,24 @@ struct PeptideLogStoreTests {
         #expect(store.entries.map(\.id) == ["ok"])
         #expect(store.entries.first?.civilDate == "2026-09-20")
         #expect(store.storageNote?.hasPrefix("3 saved peptide records") == true)
+
+        // A save drops the unreadable records but keeps their count, so the
+        // warning is still there after a relaunch.
+        _ = store.log(draft())
+        let reopened = PeptideLogStore(persistence: .file(url))
+        #expect(reopened.entries.count == 2)
+        #expect(reopened.storageNote == store.storageNote)
+    }
+
+    @Test func savesWithoutAnOmittedCountReadAsNone() throws {
+        let plain = #"{"version":2,"entries":[],"vials":[],"schedules":[]}"#
+        let snapshot = try JSONDecoder().decode(PeptideLogSnapshot.self, from: Data(plain.utf8))
+        #expect(snapshot.omitted == 0 && snapshot.skipped == 0)
+        // Nothing omitted: the key isn't written, so the bytes stay as before.
+        let encoded = try JSONEncoder().encode(PeptideLogSnapshot(version: 2, entries: [], vials: [], schedules: []))
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("omitted"))
+        let counted = try JSONEncoder().encode(PeptideLogSnapshot(version: 2, entries: [], vials: [], schedules: [], omitted: 4))
+        #expect(try JSONDecoder().decode(PeptideLogSnapshot.self, from: counted).omitted == 4)
     }
 
     @Test func unreadableFileIsKeptAside() throws {
