@@ -746,6 +746,17 @@ struct TrainingDayResolution: Equatable {
         reason != .upcoming && reason != .loggedToday
     }
 
+    /// Whether Start (and the Coach handoff) may open the logger. A session
+    /// logged today is done: one lifting session per day.
+    var canStart: Bool {
+        switch reason {
+        case .cycle, .changed, .inProgress:
+            return true
+        case .loggedToday, .upcoming, .rest, .weekComplete:
+            return false
+        }
+    }
+
     var isChanged: Bool {
         reason == .changed
     }

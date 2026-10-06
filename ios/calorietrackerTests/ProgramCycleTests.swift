@@ -200,6 +200,45 @@ struct ProgramCycleTests {
         #expect(wednesday.nextLabel == nil)
     }
 
+    @Test func startIsOfferedOnlyForASessionNotYetLoggedToday() {
+        let real = programCycleRealHistory()
+        let cycle = resolution("2026-10-06", TrainingDayContext(history: real))
+        #expect(cycle.reason == .cycle)
+        #expect(cycle.canStart)
+
+        let changed = resolution("2026-10-06", TrainingDayContext(
+            history: real, override: TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3)))
+        #expect(changed.reason == .changed)
+        #expect(changed.canStart)
+
+        let inProgress = resolution("2026-10-06", TrainingDayContext(
+            history: real, inProgress: TrainingDayContext.Draft(dayIndex: 2, sessionDate: "2026-10-06")))
+        #expect(inProgress.reason == .inProgress)
+        #expect(inProgress.canStart)
+
+        // Logged today beats the override and the draft: nothing left to start.
+        let logged = resolution("2026-10-06", TrainingDayContext(
+            history: real + [session(1, "2026-10-06")],
+            override: TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3),
+            inProgress: TrainingDayContext.Draft(dayIndex: 2, sessionDate: "2026-10-06")))
+        #expect(logged.reason == .loggedToday)
+        #expect(logged.dayIndex == 1)
+        #expect(!logged.canStart)
+
+        let rest = resolution("2026-10-10", TrainingDayContext(history: [session(1, "2026-10-05")]))
+        #expect(rest.reason == .rest)
+        #expect(!rest.canStart)
+
+        let weekComplete = resolution("2026-10-02", TrainingDayContext(
+            history: [session(4, "2026-10-01"), session(5, "2026-10-01")]))
+        #expect(weekComplete.reason == .weekComplete)
+        #expect(!weekComplete.canStart)
+
+        let upcoming = resolution("2026-09-27", .empty)
+        #expect(upcoming.reason == .upcoming)
+        #expect(!upcoming.canStart)
+    }
+
     @Test func onlyALoggedTodayCardCarriesTheNextSession() {
         #expect(resolution("2026-10-06", TrainingDayContext(history: programCycleRealHistory())).next == nil)
         let saturday = resolution("2026-10-10", TrainingDayContext(history: [session(1, "2026-10-05")]))

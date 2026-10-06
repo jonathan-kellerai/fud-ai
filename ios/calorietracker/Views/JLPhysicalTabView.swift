@@ -156,8 +156,11 @@ struct JLPhysicalTabView: View {
         if let body = ActiveProgramCache.load()?.body {
             programBody = body
         }
-        let resolved = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date(), context: trainingContext)
-        guard let day = TrainingProgramSchedule.programDay(in: programBody, matching: resolved) else { return }
+        // A session already logged today stays on the Train card; the Coach
+        // handoff does not open a second one.
+        let resolved = todayResolution
+        guard resolved.canStart,
+              let day = TrainingProgramSchedule.programDay(in: programBody, matching: resolved.plan) else { return }
         openLogger(for: day)
     }
 

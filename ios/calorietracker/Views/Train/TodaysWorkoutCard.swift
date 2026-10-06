@@ -3,7 +3,8 @@
 //  calorietracker
 //
 //  The Train tab's Today's Workout card: the resolved session, rest day, or
-//  upcoming program start, with the Start button and the Change control.
+//  upcoming program start, with the Start button (or Logged once today's
+//  session is saved) and the Change control.
 //
 
 import SwiftUI
@@ -106,7 +107,7 @@ struct TodaysWorkoutCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 title
                 if let day {
-                    startButton(day, fullWidth: true)
+                    startControl(day, fullWidth: true)
                 }
             }
         } else {
@@ -114,7 +115,7 @@ struct TodaysWorkoutCard: View {
                 title
                 Spacer(minLength: 12)
                 if let day {
-                    startButton(day, fullWidth: false)
+                    startControl(day, fullWidth: false)
                 }
             }
         }
@@ -143,6 +144,40 @@ struct TodaysWorkoutCard: View {
         }
     }
     
+    /// Start, or once today's session is logged a status in its place: one
+    /// lifting session per day.
+    @ViewBuilder
+    private func startControl(_ day: TrainingProgramDay, fullWidth: Bool) -> some View {
+        if resolution.canStart {
+            startButton(day, fullWidth: fullWidth)
+        } else {
+            loggedStatus(fullWidth: fullWidth)
+        }
+    }
+
+    private func loggedStatus(fullWidth: Bool) -> some View {
+        Label {
+            Text("Logged")
+                .foregroundStyle(IronTheme.textPrimary)
+        } icon: {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(IronTheme.olive)
+        }
+        .font(.headline)
+        .lineLimit(1)
+        .fixedSize(horizontal: !fullWidth, vertical: false)
+        .frame(maxWidth: fullWidth ? .infinity : nil)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .overlay {
+            RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+                .strokeBorder(IronTheme.hairline, lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Logged today")
+        .accessibilityIdentifier("train.loggedToday")
+    }
+
     private func startButton(_ day: TrainingProgramDay, fullWidth: Bool) -> some View {
         Button {
             onStart(day)
