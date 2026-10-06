@@ -243,8 +243,18 @@ Deviations from §2–§6, all toward smaller diffs or the Codex resolutions:
 - An extra pure refactor (`FileShareSheet`) precedes export, per "move it to the owner on second use".
 
 ### Peptide archive (`format: "jl-peptides"`, `format_version: 1`)
-UTF-8 JSON object, at most 1,000,000 bytes. Unknown keys are ignored; a record that fails to read is
-skipped and counted, never fatal. Import adds a record only when its `id` is not already on the phone.
+UTF-8 JSON object, at most 1,000,000 bytes. Unknown keys are ignored. Import adds a record only when its
+`id` is not already on the phone; there a record that fails to read is skipped and counted, never fatal.
+An iCloud restore replaces everything, so it is strict: all three lists must be arrays and every record
+must read, and the replacement is saved before it is shown. Otherwise the phone's peptides are kept and
+the backup screen says why.
+
+The on-device save (`version: 2`) also carries `omitted` (int, written only when > 0, absent reads as
+0): records that couldn't be read and were left out of an earlier save (the version-1 upgrade, or a
+damaged save). It keeps the "couldn't be read" note on History across relaunches until Delete Everything.
+
+The version-1 upgrade adds a trail row for each queued or refused correction and void it applies,
+using the queued op's reason and `createdAt`.
 
 | key | type | notes |
 |---|---|---|
