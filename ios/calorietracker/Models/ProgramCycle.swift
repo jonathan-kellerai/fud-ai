@@ -63,6 +63,12 @@ struct TodayWorkoutOverride: Codable, Equatable {
     /// Civil date `yyyy-MM-dd`; the override means nothing on any other date.
     var date: String
     var dayIndex: Int
+
+    /// A session completed on the override's date uses it up: the pick was
+    /// for that one session.
+    func isConsumed(by history: [CompletedProgramSession]) -> Bool {
+        ProgramCycle.completed(on: date, in: history) != nil
+    }
 }
 
 /// Everything besides the program and the date that decides today's workout.

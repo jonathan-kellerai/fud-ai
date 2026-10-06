@@ -108,6 +108,43 @@ struct TrainProgressStoreTests {
         #expect(store.history.count == 1)
     }
 
+    @Test func aSaveOnTheOverridesDateConsumesIt() throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TrainProgressStore(defaults: defaults)
+        store.setOverride(dayIndex: 3, on: day("2026-10-06"), calendar: eastern)
+        store.recordCompleted(programDay: "3-wed", title: "Pull / Hinge", sessionDate: "2026-10-06")
+        #expect(store.override == nil)
+        #expect(defaults.data(forKey: TrainProgressStore.overrideKey) == nil)
+        #expect(TrainProgressStore(defaults: defaults).override == nil)
+    }
+
+    @Test func aBridgeListWithASessionOnTheOverridesDateConsumesIt() throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TrainProgressStore(defaults: defaults)
+        store.setOverride(dayIndex: 3, on: day("2026-10-06"), calendar: eastern)
+        // Logged on another device (the gym PWA), so it arrives only with the list.
+        store.replaceHistory(with: [remote("4-thu", "2026-10-01"), remote("Day3_PullHinge", "2026-10-06")],
+                             days: body.days)
+        #expect(store.override == nil)
+        #expect(defaults.data(forKey: TrainProgressStore.overrideKey) == nil)
+        #expect(TrainProgressStore(defaults: defaults).override == nil)
+    }
+
+    @Test func todaysOverrideSurvivesASaveDatedYesterday() throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TrainProgressStore(defaults: defaults)
+        let picked = TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3)
+        store.setOverride(dayIndex: 3, on: day("2026-10-06"), calendar: eastern)
+        store.recordCompleted(programDay: "1-mon", title: "Lower A", sessionDate: "2026-10-05")
+        #expect(store.override == picked)
+        store.replaceHistory(with: [remote("1-mon", "2026-10-05")], days: body.days)
+        #expect(store.override == picked)
+        #expect(TrainProgressStore(defaults: defaults).override == picked)
+    }
+
     @Test func contextCarriesTodaysDraft() throws {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }

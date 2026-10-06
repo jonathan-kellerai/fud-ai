@@ -32,6 +32,7 @@ final class TrainProgressStore {
     func replaceHistory(with workouts: [RemoteWorkout], days: [TrainingProgramDay]) {
         history = workouts.compactMap { CompletedProgramSession(remote: $0, days: days) }
         persistHistory()
+        clearOverrideIfConsumed()
     }
 
     /// A save the bridge accepted, so the card advances even if the next
@@ -48,6 +49,7 @@ final class TrainProgressStore {
             recordedAt: formatter.string(from: now)
         ))
         persistHistory()
+        clearOverrideIfConsumed()
     }
 
     /// Picking a day in the Change sheet. Picking the day today would have
@@ -97,6 +99,12 @@ final class TrainProgressStore {
             return TrainingDayContext.Draft(dayIndex: dayIndex, sessionDate: draft.sessionDate)
         }
         return TrainingDayContext(history: history, override: override, inProgress: inProgress)
+    }
+
+    private func clearOverrideIfConsumed() {
+        if let override, override.isConsumed(by: history) {
+            clearOverride()
+        }
     }
 
     private func persistHistory() {
