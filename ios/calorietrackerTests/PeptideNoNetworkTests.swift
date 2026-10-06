@@ -129,6 +129,24 @@ struct PeptideNoNetworkTests {
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }
 
+    @Test func exportAndImportStayOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .inMemory)
+            store.saveVial(PeptideVial(id: "v1", person: "victoria", compound: "MT2"))
+            _ = store.log(draft())
+            let file = url.deletingLastPathComponent().appendingPathComponent(PeptideArchive.fileName(exportedOn: Date()))
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try store.archive(exportedAt: Date()).encoded().write(to: file)
+            let archive = try PeptideArchive.load(from: file)
+            let other = PeptideLogStore(persistence: .file(url))
+            #expect(other.importSummary(of: archive).added == 2)
+            #expect(other.importArchive(archive, person: "jonathan").added == 2)
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
+
     @Test func reconBenchTakenMarkStaysOnThePhone() async throws {
         let seen = try await requests {
             let store = ReconBenchStore()

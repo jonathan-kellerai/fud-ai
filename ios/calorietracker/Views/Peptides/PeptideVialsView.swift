@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct PeptideVialEditorTarget: Identifiable {
     let id = UUID().uuidString
@@ -20,6 +21,9 @@ struct PeptideVialsView: View {
     @State private var editorTarget: PeptideVialEditorTarget?
     @State private var showFinished = false
     @State private var finishTarget: PeptideVial?
+    @State private var isPickingFile = false
+    @State private var importRequest: PeptideImportRequest?
+    @State private var importError: String?
 
     init(person: String = PeptidePerson.jonathan) {
         _person = State(initialValue: PeptidePerson.normalized(person))
@@ -36,6 +40,13 @@ struct PeptideVialsView: View {
                     Label("Add vial", systemImage: "plus")
                 }
                 .buttonStyle(IronPrimaryButtonStyle())
+                Button {
+                    isPickingFile = true
+                } label: {
+                    Label("Import from a file", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(PeptideSecondaryButtonStyle())
+                .accessibilityHint("Adds vials, schedules and doses from a peptides file. You see what it adds first.")
                 activeSection
                 finishedSection
                 PeptideFooter()
@@ -47,6 +58,20 @@ struct PeptideVialsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editorTarget) { target in
             PeptideVialEditor(vial: target.vial, person: target.person)
+        }
+        .fileImporter(
+            isPresented: $isPickingFile,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false,
+            onCompletion: loadFile
+        )
+        .sheet(item: $importRequest) { request in
+            PeptideImportPreviewSheet(archive: request.archive, person: person)
+        }
+        .alert("Unable to Import", isPresented: importErrorBinding) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "The selected file could not be imported.")
         }
         .confirmationDialog(
             "Finish this vial?",
@@ -66,6 +91,23 @@ struct PeptideVialsView: View {
             get: { finishTarget != nil },
             set: { shown in if !shown { finishTarget = nil } }
         )
+    }
+
+    private var importErrorBinding: Binding<Bool> {
+        Binding(
+            get: { importError != nil },
+            set: { shown in if !shown { importError = nil } }
+        )
+    }
+
+    /// Validates the picked file; nothing changes until the preview is confirmed.
+    private func loadFile(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            importRequest = PeptideImportRequest(archive: try PeptideArchive.load(from: url))
+        } catch {
+            importError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     @ViewBuilder
@@ -127,6 +169,12 @@ struct PeptideVialCard: View {
             Text(remaining.linkedCount == 1 ? "1 dose logged from this vial" : "\(remaining.linkedCount) doses logged from this vial")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
+            if !vial.notes.isEmpty {
+                Text(vial.notes)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             buttons
         }
         .padding(12)

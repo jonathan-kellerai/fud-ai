@@ -16,6 +16,7 @@ struct PeptideHistoryView: View {
     @State private var anchor: String
     @State private var selectedDay: String?
     @State private var showVoided = false
+    @State private var exportError: String?
 
     /// Fixed "now" for the calendar and windows (Visual QA). Nil uses the
     /// live date, refreshed on foreground and when the day changes.
@@ -48,6 +49,7 @@ struct PeptideHistoryView: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 PeptideScreenTitle(title: "History", subtitle: "Every dose you logged, by day.")
                 storageNotes
+                exportButton
                 PeptidePersonToggle(person: $person)
                 filterChips
                 PeptideMonthCalendar(
@@ -72,6 +74,34 @@ struct PeptideHistoryView: View {
             compoundFilter = nil
         }
         .peptideLiveDate($now, fixed: referenceDate != nil)
+    }
+
+    private var exportButton: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                export()
+            } label: {
+                Label("Export all peptides", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(PeptideSecondaryButtonStyle())
+            .accessibilityHint("Saves both people's doses, vials and schedules as a file you can keep or import later.")
+            if let exportError {
+                PeptideIssueText(text: exportError)
+            }
+        }
+    }
+
+    /// Writes every record (both people) to a peptides file and opens the share sheet.
+    private func export() {
+        let now = Date()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(PeptideArchive.fileName(exportedOn: now))
+        do {
+            try store.archive(exportedAt: now).encoded().write(to: url, options: .atomic)
+            exportError = nil
+            FileShareSheet.present(url)
+        } catch {
+            exportError = "The peptides file couldn't be written. " + error.localizedDescription
+        }
     }
 
     /// Why the saved log isn't complete or isn't being saved, as plain text.

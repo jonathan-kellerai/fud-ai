@@ -227,6 +227,28 @@ struct PeptideTag: View {
     }
 }
 
+/// Outlined secondary action, at least 44 pt tall at every text size.
+struct PeptideSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(.subheadline, design: .rounded, weight: .heavy))
+            .textCase(.uppercase)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(IronTheme.bloodText)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.horizontal, 12)
+            .background(
+                configuration.isPressed ? IronTheme.surface : IronTheme.surfaceRaised,
+                in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+                    .stroke(IronTheme.hairline, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+    }
+}
+
 /// Decimal or text field in the Recon Bench input style.
 struct PeptideInputField: View {
     let title: String

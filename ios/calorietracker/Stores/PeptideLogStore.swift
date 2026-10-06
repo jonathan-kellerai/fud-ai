@@ -221,6 +221,61 @@ final class PeptideLogStore {
         didChange()
     }
 
+    // MARK: Archive
+
+    /// Everything on this phone in the archive format.
+    func archive(exportedAt: Date?) -> PeptideArchive {
+        PeptideArchive(
+            exportedAt: exportedAt.map(PeptideMath.iso8601NewYork),
+            vials: vials,
+            schedules: schedules,
+            entries: entries
+        )
+    }
+
+    /// What importing `archive` would add. A record whose id is already here
+    /// (or earlier in the file) is left alone, so importing twice adds nothing.
+    func importSummary(of archive: PeptideArchive) -> PeptideImportSummary {
+        var summary = PeptideImportSummary(skipped: archive.skipped)
+        var vialIDs = Set(vials.map(\.id))
+        for vial in archive.vials {
+            if vialIDs.insert(vial.id).inserted {
+                summary.newVials += 1
+                if vial.person == nil { summary.newVialsWithoutPerson += 1 }
+            } else {
+                summary.alreadyHere += 1
+            }
+        }
+        var scheduleIDs = Set(schedules.map(\.id))
+        for schedule in archive.schedules {
+            if scheduleIDs.insert(schedule.id).inserted { summary.newSchedules += 1 } else { summary.alreadyHere += 1 }
+        }
+        var entryIDs = Set(entries.map(\.id))
+        for entry in archive.entries {
+            if entryIDs.insert(entry.id).inserted { summary.newEntries += 1 } else { summary.alreadyHere += 1 }
+        }
+        return summary
+    }
+
+    /// Adds what `archive` has that this phone doesn't. Records with no
+    /// person go to `person`. Nothing already here is changed.
+    @discardableResult
+    func importArchive(_ archive: PeptideArchive, person: String, now: Date = Date()) -> PeptideImportSummary {
+        let summary = importSummary(of: archive)
+        guard summary.added > 0 else { return summary }
+        for vial in archive.vials where !vials.contains(where: { $0.id == vial.id }) {
+            vials.append(vial.vial(defaultPerson: person, now: now))
+        }
+        for schedule in archive.schedules where !schedules.contains(where: { $0.id == schedule.id }) {
+            schedules.append(schedule.schedule(defaultPerson: person, now: now))
+        }
+        for entry in archive.entries where !entries.contains(where: { $0.id == entry.id }) {
+            entries.append(entry)
+        }
+        didChangeEntries()
+        return summary
+    }
+
     // MARK: Private
 
     private func didChangeEntries() {

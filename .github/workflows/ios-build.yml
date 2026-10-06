@@ -104,6 +104,7 @@ jobs:
           -only-testing:calorietrackerTests/PeptideLogStoreTests \
           -only-testing:calorietrackerTests/PeptideLegacyMigrationTests \
           -only-testing:calorietrackerTests/PeptideNoNetworkTests \
+          -only-testing:calorietrackerTests/PeptideArchiveTests \
           -only-testing:calorietrackerTests/MoreHubSubtitlesTests \
           -only-testing:calorietrackerTests/JLFeatureFlagsTests \
           -only-testing:calorietrackerTests/ChallengeEngineTests \
@@ -124,7 +125,7 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
@@ -151,7 +152,7 @@ jobs:
           ChallengeRewardEvaluatorTests ChallengeReminderPlannerTests ChallengeStoreTests \
           ChallengeMetricProviderTests ChallengePresentationTests IronThemeTests HomeV2Tests \
           TrainingProgramTests ProgramCycleTests TrainProgressStoreTests \
-          PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests; do
+          PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests PeptideArchiveTests; do
           if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log"; then
             echo "ok: ${suite}"
           else
