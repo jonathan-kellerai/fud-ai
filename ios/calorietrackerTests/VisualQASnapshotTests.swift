@@ -716,7 +716,7 @@ final class VisualQASnapshotTests: XCTestCase {
         HomeCardLayout.save(order: [.peptides] + HomeCardID.allCases.filter { $0 != .peptides }, hidden: [])
         try await eachSize("52-home-peptide-card") { _ in
             VisualQATabShell(selected: .home) {
-                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in }, referenceDate: VisualQAFixtures.peptideReferenceDate)
             }
         }
     }
@@ -831,7 +831,7 @@ final class VisualQASnapshotTests: XCTestCase {
         HomeCardLayout.save(order: [.peptides] + HomeCardID.allCases.filter { $0 != .peptides }, hidden: [])
         try await eachSize("69-home-peptide-card-with-logs", heightMultiplier: 1.6) { _ in
             VisualQATabShell(selected: .home) {
-                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in })
+                HomeView(quickActionRequest: nil, onQuickActionHandled: { _ in }, referenceDate: VisualQAFixtures.peptideReferenceDate)
             }
         }
     }
@@ -1558,6 +1558,8 @@ enum VisualQAFixtures {
         return calendar.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: 9)) ?? .now
     }()
     private static var savedSettings: NeonBridgeSettings?
+    /// Off for shots of a phone with no bridge key at all (105).
+    static var installsBridgeKey = true
 
     static func install() {
         VisualQAStubStorage.setResponses(buildResponses())
@@ -1570,7 +1572,10 @@ enum VisualQAFixtures {
             savedSettings = NeonBridgeService.shared.settings
         }
         // Fake key, never persisted, so screens that show the bridge as configured render that way.
-        NeonBridgeService.shared.settings = NeonBridgeSettings(baseURL: "https://\(host)", apiKey: VisualQAStubStorage.bridgeKey)
+        NeonBridgeService.shared.settings = NeonBridgeSettings(
+            baseURL: "https://\(host)",
+            apiKey: installsBridgeKey ? VisualQAStubStorage.bridgeKey : nil
+        )
     }
 
     static func uninstall() {
@@ -2579,5 +2584,43 @@ enum VisualQABuild66Fixture {
     static func resolution(_ progress: TrainProgressStore) -> TrainingDayResolution {
         let body = TrainingProgramBody.bundledV2()
         return TrainingProgramSchedule.resolution(body, on: date, context: progress.context(draft: nil, days: body.days))
+    }
+}
+
+// MARK: - Build 67: peptides on this phone only
+
+/// Shots 104-105 at `referenceNow`, seeded locally. 104 previews a synthetic
+/// peptides file over the Vials screen; 105 is the Peptides screen on a phone
+/// with no bridge key at all, which must look exactly like any other day.
+extension VisualQASnapshotTests {
+    func test104PeptidesImportPreview() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let archive = VisualQAFixtures.peptideImportArchive()
+        XCTAssertEqual(archive.vials.count, 3)
+        XCTAssertEqual(archive.entries.count, 1)
+        try await eachSize("104-peptides-import-preview", heightMultiplier: 1.6, sheet: {
+            PeptideImportPreviewSheet(archive: archive, person: "jonathan")
+        }) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView(person: "jonathan") }
+            }
+        }
+    }
+
+    func test105PeptidesAirplane() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        VisualQAFixtures.installsBridgeKey = false
+        defer {
+            VisualQAFixtures.seedsPeptides = false
+            VisualQAFixtures.installsBridgeKey = true
+        }
+        try await eachSize("105-peptides-airplane", heightMultiplier: 2.4) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") {
+                    PeptidesView(initialPerson: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate)
+                }
+            }
+        }
     }
 }

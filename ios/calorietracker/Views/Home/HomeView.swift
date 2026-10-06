@@ -17,6 +17,8 @@ struct HomeView: View {
     let onQuickActionHandled: (UUID) -> Void
     var foodLogMethodRequest: FoodLogMethodRequest?
     var onFoodLogMethodHandled: (UUID) -> Void = { _ in }
+    /// Fixed day to open on (Visual QA). Nil opens on today.
+    var referenceDate: Date? = nil
     @Environment(FoodStore.self) private var foodStore
     @Environment(WaterStore.self) private var waterStore
     @Environment(FastingStore.self) private var fastingStore
@@ -430,6 +432,7 @@ struct HomeView: View {
                 }
             }
             .onAppear {
+                if let referenceDate { selectedDate = referenceDate }
                 checkAndConsumeSharedImage()
                 prewarmFoodDestinations()
             }

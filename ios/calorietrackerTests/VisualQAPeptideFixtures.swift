@@ -20,13 +20,10 @@ extension VisualQAFixtures {
     private static let mt2Offsets = [0, 2, 4, 7, 9, 11, 14, 16]
     private static let glowOffsets = [1, 3, 5, 8]
 
-    /// The one fixed instant every Peptides fixture and screen uses as "now":
-    /// 9:00 AM New York time on the day the run starts, captured once (same
-    /// convention as `trainingDate`: today's date, a fixed time of day).
-    static let peptideReferenceDate: Date = {
-        let civil = PeptideMath.civilDate(.now)
-        return PeptideMath.date(civil: civil, minutes: 9 * 60) ?? .now
-    }()
+    /// The one fixed instant every Peptides fixture and screen (Home included)
+    /// uses as "now": `referenceNow`, Wed 2026-10-07 09:00 New York, so the
+    /// shots don't change from one day to the next.
+    static var peptideReferenceDate: Date { referenceNow }
 
     static var peptideToday: String { PeptideMath.civilDate(peptideReferenceDate) }
 
@@ -177,5 +174,28 @@ extension VisualQAFixtures {
         draft.vialID = vialID
         draft.notes = notes
         store.log(draft, id: id, now: takenAt)
+    }
+}
+
+extension VisualQAFixtures {
+    /// A synthetic peptides file for the import preview: two vials with no
+    /// person, one vial already on the phone, and one dose. Made-up records only.
+    static func peptideImportArchive() -> PeptideArchive {
+        let json = """
+        {"format":"jl-peptides","format_version":1,"exported_at":"2026-10-06T18:00:00-04:00",
+         "vials":[
+          {"id":"qa-import-vial-1","person":null,"compound":"Tesamorelin","components":[],
+           "concentration_confirmed":false,"status":"active","notes":"labeled_amount: 5 mg\\nsource: QA-SYNTHETIC"},
+          {"id":"qa-import-vial-2","person":null,"compound":"MT2","components":[],
+           "concentration_confirmed":false,"status":"active","notes":"source: QA-SYNTHETIC"},
+          {"id":"\(peptideBPCVialID)","person":"jonathan","compound":"BPC-157","components":[],"status":"active"}
+         ],
+         "schedules":[],
+         "entries":[
+          {"id":"qa-import-dose-1","person":"victoria","compound":"MT2","dose":250,"units":"mcg",
+           "datetime":"2026-10-05T07:15:00-04:00","voided":false,"corrections":[]}
+         ]}
+        """
+        return (try? PeptideArchive.decode(Data(json.utf8))) ?? PeptideArchive(exportedAt: nil, vials: [], schedules: [], entries: [])
     }
 }
