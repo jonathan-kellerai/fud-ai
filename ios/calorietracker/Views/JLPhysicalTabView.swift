@@ -127,12 +127,8 @@ struct JLPhysicalTabView: View {
         if let body = ActiveProgramCache.load()?.body {
             programBody = body
         }
-        guard case .session(let dayIndex, let name, _) = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date()) else {
-            return
-        }
-        let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
-            ?? programBody.days.first { $0.dayIndex == dayIndex }
-        guard let day else { return }
+        let resolved = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date())
+        guard let day = TrainingProgramSchedule.programDay(in: programBody, matching: resolved) else { return }
         switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft,
             today: workoutDraftStore.dayToOpen(day, in: programBody, on: referenceDate ?? Date())) {
         case .openToday(let today):
@@ -151,8 +147,8 @@ struct JLPhysicalTabView: View {
     private var todaysWorkoutCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             switch todayPlan {
-            case .session(let dayIndex, let name, _):
-                sessionCard(dayIndex: dayIndex, name: name)
+            case .session(_, let name, _):
+                sessionCard(name: name, day: TrainingProgramSchedule.programDay(in: programBody, matching: todayPlan))
             case .rest(let stepsTarget, _, _):
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Rest Day")
@@ -195,9 +191,7 @@ struct JLPhysicalTabView: View {
     }
 
     @ViewBuilder
-    private func sessionCard(dayIndex: Int, name: String) -> some View {
-        let day = programBody.days.first { $0.dayIndex == dayIndex && $0.name == name }
-            ?? programBody.days.first { $0.dayIndex == dayIndex }
+    private func sessionCard(name: String, day: TrainingProgramDay?) -> some View {
         let title = VStack(alignment: .leading) {
             Text("Today's Workout")
                 .font(.subheadline)

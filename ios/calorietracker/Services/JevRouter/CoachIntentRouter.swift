@@ -194,9 +194,8 @@ enum CoachIntentRouter {
         switch detail {
         case "today_session":
             switch resolved {
-            case .session(let dayIndex, let name, _):
-                let day = body.days.first { $0.dayIndex == dayIndex && $0.name == name }
-                    ?? body.days.first { $0.dayIndex == dayIndex }
+            case .session(_, let name, _):
+                let day = TrainingProgramSchedule.programDay(in: body, matching: resolved)
                 let names = day?.exercises.sorted { $0.order < $1.order }.map(\.name) ?? []
                 if names.isEmpty {
                     content = "Today: \(name)."
