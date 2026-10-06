@@ -1555,6 +1555,10 @@ enum VisualQAFixtures {
 
     static func install() {
         VisualQAStubStorage.setResponses(buildResponses())
+        // Shots that use the shared Train store start from no history and no
+        // pick, whatever an earlier shot's stub list left behind.
+        TrainProgressStore.shared.replaceHistory(with: [], days: [])
+        TrainProgressStore.shared.clearOverride()
         URLProtocol.registerClass(VisualQAStubProtocol.self)
         if savedSettings == nil {
             savedSettings = NeonBridgeService.shared.settings
@@ -2471,5 +2475,106 @@ enum VisualQACCFormFixtures {
             )
         }
         return CCSeriesState(series: code, label: ladder.label, currentStep: currentStep, inProgram: true, steps: steps)
+    }
+}
+
+// MARK: - Build 66: next workout in the cycle (additive, human-owned goldens-update)
+
+/// Shots 100-102: Train on Tue 2026-10-06 09:00 New York with the real Neon
+/// history (Day 1-4 on 9/28-10/1, Day 5 skipped), so the cycle says Day 1
+/// Lower A, week 2. Each render gets its own TrainProgressStore on a fresh
+/// defaults suite, seeded with the same history the stub bridge returns.
+extension VisualQASnapshotTests {
+    func test100TrainNextInCycle() async throws {
+        try await build66Shot("100-train-next-in-cycle", overrideDayIndex: nil)
+    }
+
+    func test101TrainChangeWorkout() async throws {
+        try await build66Shot("101-train-change-workout", overrideDayIndex: nil, showsSheet: true)
+    }
+
+    func test102TrainWorkoutChanged() async throws {
+        try await build66Shot("102-train-workout-changed", overrideDayIndex: 3)
+    }
+
+    private func build66Shot(_ name: String, overrideDayIndex: Int?, showsSheet: Bool = false) async throws {
+        let date = VisualQABuild66Fixture.date
+        let check = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex)
+        let resolution = VisualQABuild66Fixture.resolution(check)
+        XCTAssertEqual(resolution.dayIndex, Optional(overrideDayIndex ?? 1))
+        XCTAssertEqual(resolution.isChanged, overrideDayIndex != nil)
+        try await eachSize(name, sheet: showsSheet ? {
+            let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex)
+            VisualQAGraveyard.keep(progress)
+            let body = TrainingProgramBody.bundledV2()
+            let context = progress.context(draft: nil, days: body.days)
+            let current = VisualQABuild66Fixture.resolution(progress)
+            return AnyView(ChangeWorkoutSheet(
+                options: TrainingProgramSchedule.workoutOptions(body, on: date),
+                suggestedDayIndex: TrainingProgramSchedule.suggestedDayIndex(body, on: date, context: context),
+                currentDayIndex: current.dayIndex,
+                isChanged: current.isChanged,
+                onPick: { _ in },
+                onBackToSuggested: {}
+            ))
+        } : nil) { _ in
+            // install() has already registered the read-only protocol; only
+            // /api/workouts differs from the shared fixtures.
+            VisualQAStubStorage.setResponses(VisualQABuild66Fixture.responses())
+            let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex)
+            VisualQAGraveyard.keep(progress)
+            return VisualQATabShell(selected: .train) {
+                JLPhysicalTabView(referenceDate: date, progress: progress)
+            }
+        }
+    }
+}
+
+@MainActor
+enum VisualQABuild66Fixture {
+    /// Tue 2026-10-06 09:00 New York, the morning Jonathan asked for this.
+    static let date: Date = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        return calendar.date(from: DateComponents(year: 2026, month: 10, day: 6, hour: 9)) ?? .now
+    }()
+
+    /// COMPLETED program-v2 rows as Neon has them: 1-mon … 4-thu, 9/28 – 10/1.
+    static func history() -> [RemoteWorkout] {
+        let days = TrainingProgramBody.bundledV2().days
+        let dates = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"]
+        return zip(days.prefix(4), dates).reversed().map { day, sessionDate in
+            RemoteWorkout(id: "qa-build66-day\(day.dayIndex)", kind: "COMPLETED",
+                programVersion: "program-v2", programDay: day.asProgramV2Day().id,
+                title: day.name, units: "lb", sessionDate: sessionDate,
+                conditioning: nil, notes: [], contentHash: nil, synthetic: false, recordedAt: nil)
+        }
+    }
+
+    static func responses() -> [String: (Int, Data)] {
+        var responses = VisualQAFixtures.buildResponses()
+        if let data = try? JSONEncoder().encode(ListWorkoutsResponse(workouts: history())) {
+            responses["/api/workouts"] = (200, data)
+        } else {
+            XCTFail("Could not encode build-66 workout history")
+        }
+        return responses
+    }
+
+    /// A store on a fresh suite with the bridge history, and Day 3 picked for
+    /// today when `overrideDayIndex` is set.
+    static func progress(overrideDayIndex: Int?) -> TrainProgressStore {
+        let suite = "visual-qa-build66-\(UUID().uuidString)"
+        let store = TrainProgressStore(defaults: UserDefaults(suiteName: suite) ?? .standard)
+        store.replaceHistory(with: history(), days: TrainingProgramBody.bundledV2().days)
+        if let overrideDayIndex {
+            store.setOverride(dayIndex: overrideDayIndex, on: date)
+        }
+        return store
+    }
+
+    static func resolution(_ progress: TrainProgressStore) -> TrainingDayResolution {
+        let body = TrainingProgramBody.bundledV2()
+        return TrainingProgramSchedule.resolution(body, on: date, context: progress.context(draft: nil, days: body.days))
     }
 }
