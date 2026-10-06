@@ -2480,7 +2480,7 @@ enum VisualQACCFormFixtures {
 
 // MARK: - Build 66: next workout in the cycle (additive, human-owned goldens-update)
 
-/// Shots 100-102: Train on Tue 2026-10-06 09:00 New York with the real Neon
+/// Shots 100-103: Train on Tue 2026-10-06 09:00 New York with the real Neon
 /// history (Day 1-4 on 9/28-10/1, Day 5 skipped), so the cycle says Day 1
 /// Lower A, week 2. Each render gets its own TrainProgressStore on a fresh
 /// defaults suite, seeded with the same history the stub bridge returns.
@@ -2497,14 +2497,32 @@ extension VisualQASnapshotTests {
         try await build66Shot("102-train-workout-changed", overrideDayIndex: 3)
     }
 
-    private func build66Shot(_ name: String, overrideDayIndex: Int?, showsSheet: Bool = false) async throws {
+    /// Day 1 Lower A logged at 07:40 ET: Logged instead of Start, the next
+    /// session named, and no Change control.
+    func test103TrainLoggedToday() async throws {
+        try await build66Shot("103-train-logged-today", overrideDayIndex: nil, loggedToday: true)
+    }
+
+    private func build66Shot(
+        _ name: String,
+        overrideDayIndex: Int?,
+        loggedToday: Bool = false,
+        showsSheet: Bool = false
+    ) async throws {
         let date = VisualQABuild66Fixture.date
-        let check = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex)
+        let check = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex, loggedToday: loggedToday)
         let resolution = VisualQABuild66Fixture.resolution(check)
         XCTAssertEqual(resolution.dayIndex, Optional(overrideDayIndex ?? 1))
         XCTAssertEqual(resolution.isChanged, overrideDayIndex != nil)
+        if loggedToday {
+            XCTAssertEqual(resolution.reason, .loggedToday)
+            XCTAssertEqual(resolution.subtitle, "Week 2 · Day 1 · Logged today")
+            XCTAssertEqual(resolution.nextLabel, "Next: Upper Push Wednesday")
+            XCTAssertFalse(resolution.canStart)
+            XCTAssertFalse(resolution.canChange)
+        }
         try await eachSize(name, sheet: showsSheet ? {
-            let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex)
+            let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex, loggedToday: loggedToday)
             VisualQAGraveyard.keep(progress)
             let body = TrainingProgramBody.bundledV2()
             let context = progress.context(draft: nil, days: body.days)
@@ -2520,8 +2538,8 @@ extension VisualQASnapshotTests {
         } : nil) { _ in
             // install() has already registered the read-only protocol; only
             // /api/workouts differs from the shared fixtures.
-            VisualQAStubStorage.setResponses(VisualQABuild66Fixture.responses())
-            let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex)
+            VisualQAStubStorage.setResponses(VisualQABuild66Fixture.responses(loggedToday: loggedToday))
+            let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex, loggedToday: loggedToday)
             VisualQAGraveyard.keep(progress)
             return VisualQATabShell(selected: .train) {
                 JLPhysicalTabView(referenceDate: date, progress: progress)
@@ -2539,21 +2557,29 @@ enum VisualQABuild66Fixture {
         return calendar.date(from: DateComponents(year: 2026, month: 10, day: 6, hour: 9)) ?? .now
     }()
 
-    /// COMPLETED program-v2 rows as Neon has them: 1-mon … 4-thu, 9/28 – 10/1.
-    static func history() -> [RemoteWorkout] {
+    /// COMPLETED program-v2 rows as Neon has them: 1-mon … 4-thu, 9/28 – 10/1,
+    /// plus 1-mon Lower A on 10/6 (07:40 ET) when `loggedToday` is set.
+    static func history(loggedToday: Bool = false) -> [RemoteWorkout] {
         let days = TrainingProgramBody.bundledV2().days
         let dates = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"]
-        return zip(days.prefix(4), dates).reversed().map { day, sessionDate in
+        let week1 = zip(days.prefix(4), dates).reversed().map { day, sessionDate in
             RemoteWorkout(id: "qa-build66-day\(day.dayIndex)", kind: "COMPLETED",
                 programVersion: "program-v2", programDay: day.asProgramV2Day().id,
                 title: day.name, units: "lb", sessionDate: sessionDate,
                 conditioning: nil, notes: [], contentHash: nil, synthetic: false, recordedAt: nil)
         }
+        guard loggedToday, let dayOne = days.first else { return week1 }
+        let today = RemoteWorkout(id: "qa-build66-day1-2026-10-06", kind: "COMPLETED",
+            programVersion: "program-v2", programDay: dayOne.asProgramV2Day().id,
+            title: dayOne.name, units: "lb", sessionDate: "2026-10-06",
+            conditioning: "incline walk 15 min", notes: [], contentHash: nil, synthetic: false,
+            recordedAt: "2026-10-06T11:40:00.000Z")
+        return [today] + week1
     }
 
-    static func responses() -> [String: (Int, Data)] {
+    static func responses(loggedToday: Bool = false) -> [String: (Int, Data)] {
         var responses = VisualQAFixtures.buildResponses()
-        if let data = try? JSONEncoder().encode(ListWorkoutsResponse(workouts: history())) {
+        if let data = try? JSONEncoder().encode(ListWorkoutsResponse(workouts: history(loggedToday: loggedToday))) {
             responses["/api/workouts"] = (200, data)
         } else {
             XCTFail("Could not encode build-66 workout history")
@@ -2563,10 +2589,10 @@ enum VisualQABuild66Fixture {
 
     /// A store on a fresh suite with the bridge history, and Day 3 picked for
     /// today when `overrideDayIndex` is set.
-    static func progress(overrideDayIndex: Int?) -> TrainProgressStore {
+    static func progress(overrideDayIndex: Int?, loggedToday: Bool = false) -> TrainProgressStore {
         let suite = "visual-qa-build66-\(UUID().uuidString)"
         let store = TrainProgressStore(defaults: UserDefaults(suiteName: suite) ?? .standard)
-        store.replaceHistory(with: history(), days: TrainingProgramBody.bundledV2().days)
+        store.replaceHistory(with: history(loggedToday: loggedToday), days: TrainingProgramBody.bundledV2().days)
         if let overrideDayIndex {
             store.setOverride(dayIndex: overrideDayIndex, on: date)
         }
