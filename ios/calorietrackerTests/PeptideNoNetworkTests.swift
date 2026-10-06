@@ -8,9 +8,11 @@ import Testing
 /// so a URLProtocol registered for the test's duration is the only way to
 /// prove "no request" without adding hooks to production code. It records
 /// every request (no host exemptions) and fails it. A control request proves
-/// it is in the path before the flows run. CI runs suites serially in one
-/// process (-parallel-testing-enabled NO) and this suite is `.serialized`, so
-/// no other suite's requests can land in the log while it is registered.
+/// it is in the path before the flows run. Swift Testing runs suites
+/// concurrently in one process even with -parallel-testing-enabled NO, so CI
+/// skips this suite in the shared run and runs it alone in its own xcodebuild
+/// invocation (ios-build.yml); `.serialized` keeps its own tests one at a
+/// time. No other suite's requests can land in the log while it is registered.
 @MainActor
 @Suite(.serialized)
 struct PeptideNoNetworkTests {

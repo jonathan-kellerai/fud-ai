@@ -79,12 +79,14 @@ jobs:
         sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
 
     - name: Run ReconMath tests
+      # PeptideNoNetworkTests is skipped here and runs alone in the next step.
       run: |
         cd ios
         xcodebuild test \
           -project calorietracker.xcodeproj \
           -scheme calorietracker \
           -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
           -only-testing:calorietrackerTests/ReconMathTests \
           -only-testing:calorietrackerTests/SettingsKeyPreservationTests \
           -only-testing:calorietrackerTests/TypeSafeEstimateCheckTests \
@@ -103,7 +105,7 @@ jobs:
           -only-testing:calorietrackerTests/PeptideMathTests \
           -only-testing:calorietrackerTests/PeptideLogStoreTests \
           -only-testing:calorietrackerTests/PeptideLegacyMigrationTests \
-          -only-testing:calorietrackerTests/PeptideNoNetworkTests \
+          -skip-testing:calorietrackerTests/PeptideNoNetworkTests \
           -only-testing:calorietrackerTests/PeptideArchiveTests \
           -only-testing:calorietrackerTests/PeptideBackupAndResetTests \
           -only-testing:calorietrackerTests/MoreHubSubtitlesTests \
@@ -138,6 +140,70 @@ jobs:
         fi
         exit $STATUS
 
+    - name: Run PeptideNoNetworkTests alone
+      # The tripwire registers a URLProtocol for the whole test process and
+      # changes the bridge settings. Swift Testing runs suites concurrently in
+      # one process even with -parallel-testing-enabled NO, so other suites'
+      # requests and settings changes could overlap it. It runs here in its own
+      # xcodebuild invocation and test process, on the products built above.
+      run: |
+        cd ios
+        LOG="$RUNNER_TEMP/peptide-no-network-tests.log"
+        RESULT="$RUNNER_TEMP/peptide-no-network-tests.xcresult"
+        rm -rf "$RESULT"
+        xcodebuild test-without-building \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          -resultBundlePath "$RESULT" \
+          -only-testing:calorietrackerTests/PeptideNoNetworkTests \
+          -parallel-testing-enabled NO \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          2>&1 | tee "$LOG" | xcpretty
+        STATUS=${PIPESTATUS[0]}
+        echo "---- Swift Testing results (raw log) ----"
+        grep -E "PeptideNoNetworkTests|Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|\*\* TEST" "$LOG" || true
+        exit $STATUS
+
+    - name: Fail unless PeptideNoNetworkTests passed on its own
+      # Same guard as the listed-suite check below, on the separate run's log,
+      # plus its result bundle (at least one test, none failed), plus proof it
+      # did not also run in the shared process.
+      run: |
+        LOG="$RUNNER_TEMP/peptide-no-network-tests.log"
+        RESULT="$RUNNER_TEMP/peptide-no-network-tests.xcresult"
+        SUMMARY="$RUNNER_TEMP/peptide-no-network-tests-summary.json"
+        fail=0
+        if grep -qE "Suite PeptideNoNetworkTests passed after [0-9.]+ seconds" "$LOG"; then
+          echo "ok: PeptideNoNetworkTests (log)"
+        else
+          echo "::error::PeptideNoNetworkTests did not report a passing run in its own invocation"
+          fail=1
+        fi
+        if grep -qE "Suite PeptideNoNetworkTests " "$RUNNER_TEMP/recon-tests.log"; then
+          echo "::error::PeptideNoNetworkTests also ran in the shared test process"
+          fail=1
+        fi
+        if xcrun xcresulttool get test-results summary --path "$RESULT" > "$SUMMARY"; then
+          python3 - "$SUMMARY" <<'PY' || fail=1
+        import json, sys
+        s = json.load(open(sys.argv[1]))
+        print("result bundle: result=%s total=%s passed=%s failed=%s" % (
+            s.get("result"), s.get("totalTestCount"), s.get("passedTests"), s.get("failedTests")))
+        ok = s.get("result") == "Passed" and (s.get("passedTests") or 0) >= 1 and (s.get("failedTests") or 0) == 0
+        if not ok:
+            print("::error::PeptideNoNetworkTests result bundle does not show a passing run")
+        sys.exit(0 if ok else 1)
+        PY
+        else
+          echo "::error::Couldn't read the PeptideNoNetworkTests result bundle"
+          fail=1
+        fi
+        exit $fail
+
     - name: Fail if a listed suite ran no tests
       # A misspelled -only-testing identifier selects nothing and still exits 0.
       # Swift Testing prints one line per finished suite, e.g. (raw log):
@@ -147,6 +213,7 @@ jobs:
       #     | grep -qE "Suite ChallengeEngineTests passed after [0-9.]+ seconds" && echo match
       #   -> match
       # A suite only reports "passed" after running at least one test.
+      # PeptideNoNetworkTests reports in its own run's log, so both logs are read.
       run: |
         missing=0
         for suite in MoreHubSubtitlesTests JLFeatureFlagsTests ChallengeEngineTests \
@@ -155,7 +222,7 @@ jobs:
           TrainingProgramTests ProgramCycleTests TrainProgressStoreTests \
           PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests PeptideArchiveTests \
           PeptideBackupAndResetTests; do
-          if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log"; then
+          if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log" "$RUNNER_TEMP/peptide-no-network-tests.log"; then
             echo "ok: ${suite}"
           else
             echo "::error::${suite} did not report a passing run (0 tests executed or not selected)"
