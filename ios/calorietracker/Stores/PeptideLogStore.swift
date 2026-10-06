@@ -277,12 +277,21 @@ final class PeptideLogStore {
     }
 
     /// Replaces everything with `archive` (iCloud restore). A vial or schedule
-    /// with no person is Jonathan's, as on any record without one.
-    func replaceAll(with archive: PeptideArchive, now: Date = Date()) {
-        vials = archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) }
-        schedules = archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
-        entries = archive.entries
-        didChangeEntries()
+    /// with no person is Jonathan's, as on any record without one. Saved
+    /// first: when it can't be saved, nothing changes and the reason is returned.
+    func replaceAll(with archive: PeptideArchive, now: Date = Date()) -> String? {
+        let newVials = archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) }
+        let newSchedules = archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
+        let newEntries = Self.sorted(archive.entries)
+        if savingBlocked { return persistError ?? "Peptides can't be saved on this phone right now." }
+        if !file.isInMemory, case .failure(let error)? = save(entries: newEntries, vials: newVials, schedules: newSchedules) {
+            return error.localizedDescription
+        }
+        vials = newVials
+        schedules = newSchedules
+        entries = newEntries
+        persistError = nil
+        return nil
     }
 
     /// Delete Everything: the saved log, its set-aside copies, the
@@ -369,12 +378,7 @@ final class PeptideLogStore {
 
     private func persist() {
         if file.isInMemory || savingBlocked { return }
-        let snapshot = PeptideLogSnapshot(version: Self.fileVersion, entries: entries, vials: vials, schedules: schedules)
-        guard let data = try? JSONEncoder().encode(snapshot) else {
-            persistError = "Peptide log couldn't be encoded."
-            return
-        }
-        switch file.write(data) {
+        switch save(entries: entries, vials: vials, schedules: schedules) {
         case .success?:
             persistError = nil
         case .failure(let error)?:
@@ -382,6 +386,19 @@ final class PeptideLogStore {
         case nil:
             break
         }
+    }
+
+    /// Writes these records as the saved log. Nil when there is no file to write.
+    private func save(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule]) -> Result<Void, Error>? {
+        let snapshot = PeptideLogSnapshot(version: Self.fileVersion, entries: entries, vials: vials, schedules: schedules)
+        guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(SaveError.encoding) }
+        return file.write(data)
+    }
+
+    private enum SaveError: LocalizedError {
+        case encoding
+
+        var errorDescription: String? { "Peptide log couldn't be encoded." }
     }
 }
 
@@ -454,13 +471,16 @@ extension PeptideLogStore: CloudBackupPeptides {
         try? archive(exportedAt: nil).encoded()
     }
 
+    /// Replaces the peptides only with a whole backup that was saved; otherwise
+    /// the phone's peptides stay as they are and the reason is returned.
     func restoreArchiveData(_ data: Data) -> String? {
+        let reason: String
         do {
-            replaceAll(with: try PeptideArchive.decode(data))
-            return nil
+            guard let problem = replaceAll(with: try PeptideArchive.decode(data, complete: true)) else { return nil }
+            reason = problem
         } catch {
-            let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            return "Peptides weren't restored, so the ones on this phone were kept. " + reason
+            reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+        return "Peptides weren't restored, so the ones on this phone were kept. " + reason
     }
 }

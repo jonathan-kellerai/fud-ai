@@ -92,6 +92,72 @@ struct PeptideBackupAndResetTests {
         #expect(service.errorMessage != nil)
     }
 
+    @Test func damagedArchiveNeverReplacesThePhonesPeptides() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let url = folder.appendingPathComponent("peptide_log_v1.json")
+        let store = try filledStore(at: url)
+        let before = (store.entries, store.vials, store.schedules)
+        let saved = try Data(contentsOf: url)
+        let service = CloudBackupService(defaults: defaults, peptides: store)
+        let damaged = [
+            #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],"entries":"bad"}"#,
+            #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[]}"#,
+            #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],"entries":[{"id":"x","compound":"MT2"},{"id":""}]}"#,
+        ]
+        for json in damaged {
+            service.errorMessage = nil
+            service.applyValues([CloudBackupService.peptidesKey: .data(Data(json.utf8))])
+            #expect(service.errorMessage?.contains("kept") == true)
+            #expect(store.entries == before.0)
+            #expect(store.vials == before.1)
+            #expect(store.schedules == before.2)
+            #expect(try Data(contentsOf: url) == saved)
+        }
+    }
+
+    @Test func restoreThatCantBeSavedKeepsThePhonesPeptides() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (fromDefaults, fromName) = try defaultsSuite()
+        let (toDefaults, toName) = try defaultsSuite()
+        defer {
+            fromDefaults.removePersistentDomain(forName: fromName)
+            toDefaults.removePersistentDomain(forName: toName)
+        }
+        let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
+        let values = CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
+
+        // Saved by a newer app: saving is blocked, so nothing may be replaced.
+        let blockedURL = folder.appendingPathComponent("b/peptide_log_v1.json")
+        try FileManager.default.createDirectory(at: blockedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let newer = Data(#"{"version":7,"entries":[]}"#.utf8)
+        try newer.write(to: blockedURL)
+        let blocked = PeptideLogStore(persistence: .file(blockedURL))
+        let blockedService = CloudBackupService(defaults: toDefaults, peptides: blocked)
+        blockedService.applyValues(values)
+        #expect(blockedService.errorMessage?.contains("kept") == true)
+        #expect(blocked.entries.isEmpty && blocked.vials.isEmpty && blocked.schedules.isEmpty)
+        #expect(try Data(contentsOf: blockedURL) == newer)
+
+        // The file can't be written (a folder now sits at its path): memory
+        // keeps what the phone had, as a relaunch would.
+        let failingURL = folder.appendingPathComponent("c/peptide_log_v1.json")
+        let failing = try filledStore(at: failingURL, compound: "MT2", id: "other")
+        let before = (failing.entries, failing.vials, failing.schedules)
+        try FileManager.default.removeItem(at: failingURL)
+        try FileManager.default.createDirectory(at: failingURL, withIntermediateDirectories: false)
+        let failingService = CloudBackupService(defaults: toDefaults, peptides: failing)
+        failingService.applyValues(values)
+        #expect(failingService.errorMessage?.contains("kept") == true)
+        #expect(failing.entries == before.0)
+        #expect(failing.vials == before.1)
+        #expect(failing.schedules == before.2)
+        #expect(failing.entries != source.entries)
+    }
+
     @Test func olderBackupWithoutPeptidesLeavesThemUntouched() throws {
         let folder = directory()
         defer { try? FileManager.default.removeItem(at: folder) }

@@ -29,6 +29,8 @@ enum PeptideArchiveError: LocalizedError, Equatable {
     case unreadable
     case wrongFormat
     case newerVersion
+    /// A restore needs every record: some lists or records couldn't be read.
+    case incomplete
 
     var errorDescription: String? {
         switch self {
@@ -36,6 +38,7 @@ enum PeptideArchiveError: LocalizedError, Equatable {
         case .unreadable: "This file couldn't be read as JSON."
         case .wrongFormat: "This isn't a JL Physical peptides file."
         case .newerVersion: "This file was made by a newer version of the app. Update the app, then import it."
+        case .incomplete: "Some peptide records in the backup couldn't be read."
         }
     }
 }
@@ -59,8 +62,11 @@ struct PeptideArchive: Equatable {
         self.entries = entries
     }
 
-    /// Validates size, format and version before anything is read.
-    static func decode(_ data: Data) throws -> PeptideArchive {
+    /// Validates size, format and version before anything is read. With
+    /// `complete`, every list must be there and every record readable (a
+    /// restore replaces everything); otherwise unreadable records are skipped
+    /// and counted (an import only adds).
+    static func decode(_ data: Data, complete: Bool = false) throws -> PeptideArchive {
         guard data.count <= maxBytes else { throw PeptideArchiveError.tooLarge }
         let file: FileIn
         do {
@@ -72,6 +78,9 @@ struct PeptideArchive: Equatable {
             throw PeptideArchiveError.wrongFormat
         }
         guard version <= formatVersion else { throw PeptideArchiveError.newerVersion }
+        if complete, file.vials == nil || file.schedules == nil || file.entries == nil {
+            throw PeptideArchiveError.incomplete
+        }
         let vials = (file.vials ?? []).compactMap(\.value)
         let schedules = (file.schedules ?? []).compactMap(\.value)
         let entries = (file.entries ?? []).compactMap(\.value)
@@ -81,6 +90,7 @@ struct PeptideArchive: Equatable {
         archive.skipped = ((file.vials?.count ?? 0) - vials.count)
             + ((file.schedules?.count ?? 0) - schedules.count)
             + ((file.entries?.count ?? 0) - entries.count)
+        if complete, archive.skipped > 0 { throw PeptideArchiveError.incomplete }
         return archive
     }
 
@@ -126,7 +136,8 @@ struct PeptideArchive: Equatable {
         case exportedAt = "exported_at"
     }
 
-    /// Read side: one unreadable record never drops the rest.
+    /// Read side: one unreadable record never drops the rest. A list that is
+    /// missing or isn't an array reads as nil.
     private struct FileIn: Decodable {
         var format: String?
         var formatVersion: Int?

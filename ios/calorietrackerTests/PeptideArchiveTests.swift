@@ -155,6 +155,19 @@ struct PeptideArchiveTests {
         #expect(archive.schedules.isEmpty)
         #expect(archive.entries.map(\.id) == ["e"])
         #expect(archive.skipped == 3)
+        // A restore needs every record, so the same file is refused there.
+        #expect(throws: PeptideArchiveError.incomplete) { try PeptideArchive.decode(Data(json.utf8), complete: true) }
+    }
+
+    @Test func listsThatArentArraysImportNothingButRefuseARestore() throws {
+        let json = #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":{},"entries":"bad"}"#
+        let archive = try PeptideArchive.decode(Data(json.utf8))
+        #expect(archive.vials.isEmpty && archive.schedules.isEmpty && archive.entries.isEmpty)
+        #expect(throws: PeptideArchiveError.incomplete) { try PeptideArchive.decode(Data(json.utf8), complete: true) }
+        let missing = #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[]}"#
+        #expect(throws: PeptideArchiveError.incomplete) { try PeptideArchive.decode(Data(missing.utf8), complete: true) }
+        let whole = #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],"entries":[]}"#
+        #expect(try PeptideArchive.decode(Data(whole.utf8), complete: true).skipped == 0)
     }
 
     @Test func otherFilesAreRefused() throws {
