@@ -11,10 +11,17 @@ enum ProgramWeekRules {
     /// Compare ET civil dates, avoiding elapsed-hour arithmetic across DST.
     /// Both dates are anchored to their Monday, so weeks run Monday–Sunday.
     static func weekNumber(on date: Date, body: TrainingProgramBody) -> Int? {
+        weekNumber(
+            civilDay: SessionDateFormatting.calendarDateString(from: date, calendar: easternCalendar),
+            body: body
+        )
+    }
+
+    /// Program week of a civil date string (`yyyy-MM-dd`), Monday–Sunday weeks from the start date.
+    static func weekNumber(civilDay: String, body: TrainingProgramBody) -> Int? {
         let calendar = easternCalendar
         guard let start = SessionDateFormatting.date(from: body.startDate, calendar: calendar),
-              let civilToday = SessionDateFormatting.date(
-                from: SessionDateFormatting.calendarDateString(from: date, calendar: calendar), calendar: calendar)
+              let civilToday = SessionDateFormatting.date(from: civilDay, calendar: calendar)
         else { return nil }
         func monday(_ day: Date) -> Date {
             let offset = (calendar.component(.weekday, from: day) + 5) % 7
