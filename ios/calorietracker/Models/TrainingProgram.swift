@@ -730,6 +730,12 @@ struct TrainingDayResolution: Equatable {
     var isChanged: Bool {
         reason == .changed
     }
+
+    /// The program day the card shows; nil on rest and upcoming cards.
+    var dayIndex: Int? {
+        if case .session(let dayIndex, _, _) = plan { return dayIndex }
+        return nil
+    }
 }
 
 /// One row of the Change workout sheet.

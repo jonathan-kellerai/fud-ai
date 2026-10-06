@@ -3,20 +3,24 @@
 //  calorietracker
 //
 //  The Train tab's Today's Workout card: the resolved session, rest day, or
-//  upcoming program start, with the Start button.
+//  upcoming program start, with the Start button and the Change control.
 //
 
 import SwiftUI
 
 struct TodaysWorkoutCard: View {
-    let plan: ResolvedTrainingDay
+    let resolution: TrainingDayResolution
     let programBody: TrainingProgramBody
     /// The session date the card's week rules and Start use.
     let date: Date
     let bridgeNotice: String?
     let onStart: (TrainingProgramDay) -> Void
+    let onChangeWorkout: () -> Void
+    let onBackToSuggested: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var plan: ResolvedTrainingDay { resolution.plan }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -35,6 +39,11 @@ struct TodaysWorkoutCard: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+                    if let subtitle = resolution.subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(IronTheme.textSecondary)
+                    }
                 }
             case .upcoming(let name, let weekday, let stepsTarget):
                 VStack(alignment: .leading, spacing: 8) {
@@ -50,6 +59,10 @@ struct TodaysWorkoutCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            if resolution.canChange {
+                changeControls
             }
 
             if let bridgeNotice {
@@ -73,6 +86,12 @@ struct TodaysWorkoutCard: View {
             Text(name)
                 .font(.title2.bold())
                 .fixedSize(horizontal: false, vertical: true)
+            if let subtitle = resolution.subtitle {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(resolution.isChanged ? IronTheme.brass : IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         // At accessibility sizes the Start button no longer fits beside the
         // session name on small phones, so stack it full-width underneath
@@ -133,5 +152,58 @@ struct TodaysWorkoutCard: View {
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
+    }
+
+    /// Change sits on session and rest cards alike (a rest day can be a makeup
+    /// session). At accessibility sizes the buttons stack full-width.
+    @ViewBuilder
+    private var changeControls: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                changeButton(fullWidth: true)
+                if resolution.isChanged {
+                    backToSuggestedButton(fullWidth: true)
+                }
+            }
+        } else {
+            HStack(spacing: 12) {
+                changeButton(fullWidth: false)
+                if resolution.isChanged {
+                    backToSuggestedButton(fullWidth: false)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func changeButton(fullWidth: Bool) -> some View {
+        Button(action: onChangeWorkout) {
+            secondaryLabel("Change", systemImage: "arrow.triangle.2.circlepath", fullWidth: fullWidth)
+        }
+        .accessibilityLabel("Change workout")
+        .accessibilityHint("Pick a different program day for today")
+        .accessibilityIdentifier("train.changeWorkout")
+    }
+
+    private func backToSuggestedButton(fullWidth: Bool) -> some View {
+        Button(action: onBackToSuggested) {
+            secondaryLabel("Back to suggested", systemImage: "arrow.uturn.backward", fullWidth: fullWidth)
+        }
+        .accessibilityHint("Show the next workout in the cycle again")
+        .accessibilityIdentifier("train.backToSuggested")
+    }
+
+    private func secondaryLabel(_ title: String, systemImage: String, fullWidth: Bool) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(IronTheme.bloodText)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 12)
+            .overlay {
+                RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+                    .strokeBorder(IronTheme.hairline, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
     }
 }

@@ -173,6 +173,7 @@ struct ProgramCycleTests {
         #expect(tuesday.subtitle == "Week 2 · Day 1 · Next in cycle")
         #expect(tuesday.canChange)
         #expect(!tuesday.isChanged)
+        #expect(tuesday.dayIndex == 1)
         #expect(resolution("2026-10-05", context).plan == .session(dayIndex: 1, name: "Lower A", stepsTarget: 10_000))
     }
 
@@ -192,6 +193,7 @@ struct ProgramCycleTests {
         #expect(saturday.reason == .rest)
         #expect(saturday.subtitle == nil)
         #expect(saturday.canChange)
+        #expect(saturday.dayIndex == nil)
         // Mid-week the rest label names the cycle's day, not the weekday's.
         var wednesdayOff = body
         wednesdayOff.restWeekdays = ["wed", "sat", "sun"]

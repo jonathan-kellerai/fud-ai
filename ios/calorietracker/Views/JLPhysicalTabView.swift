@@ -14,9 +14,10 @@ struct JLPhysicalTabView: View {
     @State private var loggingDay: ProgramV2Day?
     @State private var recentWorkouts: [RemoteWorkout] = []
     @State private var isLoadingRecent = false
-    /// Set when the Coach handoff finds an unsaved workout for another day.
+    /// Set when the Coach handoff or Start finds an unsaved workout for another day.
     @State private var pendingResume: PendingResume?
     @State private var showingResumePrompt = false
+    @State private var showingChangeWorkout = false
     
     private let routerHandoff = RouterHandoff.shared
     @Environment(WorkoutDraftStore.self) private var workoutDraftStore
@@ -37,8 +38,8 @@ struct JLPhysicalTabView: View {
         progress.context(draft: workoutDraftStore.draft, days: programBody.days)
     }
 
-    private var todayPlan: ResolvedTrainingDay {
-        TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date(), context: trainingContext)
+    private var todayResolution: TrainingDayResolution {
+        TrainingProgramSchedule.resolution(programBody, on: referenceDate ?? Date(), context: trainingContext)
     }
     
     var body: some View {
@@ -53,13 +54,14 @@ struct JLPhysicalTabView: View {
                         .ironCard(rule: true)
                     }
                     TodaysWorkoutCard(
-                        plan: todayPlan,
+                        resolution: todayResolution,
                         programBody: programBody,
                         date: referenceDate ?? Date(),
-                        bridgeNotice: bridgeNotice
-                    ) { day in
-                        loggingDay = workoutDraftStore.dayToOpen(day, in: programBody, on: referenceDate ?? Date())
-                    }
+                        bridgeNotice: bridgeNotice,
+                        onStart: { day in openLogger(for: day) },
+                        onChangeWorkout: { showingChangeWorkout = true },
+                        onBackToSuggested: { progress.clearOverride() }
+                    )
                     quickActionsCard
                     recentWorkoutsSection
                 }
@@ -95,6 +97,20 @@ struct JLPhysicalTabView: View {
                 NavigationStack {
                     ProgramLibraryView()
                 }
+            }
+            .sheet(isPresented: $showingChangeWorkout) {
+                ChangeWorkoutSheet(
+                    options: TrainingProgramSchedule.workoutOptions(programBody, on: referenceDate ?? Date()),
+                    suggestedDayIndex: TrainingProgramSchedule.suggestedDayIndex(
+                        programBody, on: referenceDate ?? Date(), context: trainingContext),
+                    currentDayIndex: todayResolution.dayIndex,
+                    isChanged: todayResolution.isChanged,
+                    onPick: { dayIndex in
+                        progress.choose(dayIndex: dayIndex, in: programBody, on: referenceDate ?? Date(),
+                                        draft: workoutDraftStore.draft)
+                    },
+                    onBackToSuggested: { progress.clearOverride() }
+                )
             }
             .sheet(item: $loggingDay) { day in
                 ProgramV2WorkoutLogView(day: day, progress: progress, onSaved: {
@@ -142,6 +158,12 @@ struct JLPhysicalTabView: View {
         }
         let resolved = TrainingProgramSchedule.resolve(programBody, on: referenceDate ?? Date(), context: trainingContext)
         guard let day = TrainingProgramSchedule.programDay(in: programBody, matching: resolved) else { return }
+        openLogger(for: day)
+    }
+
+    /// Start and the Coach handoff: a draft for another day is offered back
+    /// (resume or discard) instead of being replaced silently.
+    private func openLogger(for day: TrainingProgramDay) {
         switch WorkoutHandoffDecision.decide(draft: workoutDraftStore.draft,
             today: workoutDraftStore.dayToOpen(day, in: programBody, on: referenceDate ?? Date())) {
         case .openToday(let today):
