@@ -1,23 +1,18 @@
 import Foundation
 
-/// Local Recon Bench state. Syringe units are not stored; screens recompute them with ReconMath.
-/// Bridge sync is off unless the operator turns the flag on.
+/// Local Recon Bench state, on this phone only. Syringe units are not stored;
+/// screens recompute them with ReconMath.
 @Observable
 final class ReconBenchStore {
     private(set) var cards: [String: [String: ReconMath.Card]]
     private(set) var entries: [ReconMath.ScheduleEntry]
     private(set) var taken: [String: Bool]
-    var bridgeSyncEnabled: Bool {
-        didSet { UserDefaults.standard.set(bridgeSyncEnabled, forKey: Self.bridgeKey) }
-    }
-    var syncNotice: String?
 
     init() {
         let loaded = Self.load()
         cards = loaded.cards
         entries = loaded.entries
         taken = loaded.taken
-        bridgeSyncEnabled = UserDefaults.standard.bool(forKey: Self.bridgeKey)
     }
 
     /// Explicit nonisolated deinit: the synthesized main-actor-isolated deinit
@@ -84,51 +79,16 @@ final class ReconBenchStore {
 
     func toggleTaken(_ occurrence: ReconMath.Occurrence) {
         let key = takenKey(occurrence)
-        let markingTaken = taken[key] != true
-        if markingTaken {
+        if taken[key] != true {
             taken[key] = true
         } else {
             taken[key] = nil
         }
         persist()
-        guard ReconMath.shouldSyncTakenToBridge(syncEnabled: bridgeSyncEnabled, markingTaken: markingTaken) else { return }
-        let posted = occurrence
-        Task { await postTaken(posted, clientRequestID: "recon-" + key) }
     }
 
     func takenKey(_ occurrence: ReconMath.Occurrence) -> String {
         occurrence.entry.id + "|" + occurrence.date
-    }
-
-    private func postTaken(_ occurrence: ReconMath.Occurrence, clientRequestID: String) async {
-        let compound = ReconMath.compounds[occurrence.entry.compound]
-        let dose: Double?
-        let units: String?
-        if compound?.blend.isEmpty == false {
-            dose = occurrence.entry.draw
-            units = "units"
-        } else {
-            dose = occurrence.entry.dose
-            units = occurrence.entry.doseUnit
-        }
-        do {
-            _ = try await NeonBridgeService.shared.createCompletedAdministration(
-                clientRequestID: clientRequestID,
-                plannedID: nil,
-                datetime: occurrence.date + "T12:00:00Z",
-                dose: dose,
-                units: units,
-                compound: compound?.name,
-                route: nil,
-                notes: "Logged from Recon Bench.",
-                sourceVial: nil
-            )
-            syncNotice = nil
-        } catch let error as NeonBridgeError where error.isAlreadyCompleted {
-            syncNotice = nil
-        } catch {
-            syncNotice = error.localizedDescription
-        }
     }
 
     private func persist() {
@@ -173,7 +133,6 @@ final class ReconBenchStore {
     }
 
     static let defaultsKey = "recon.bench.v1"
-    static let bridgeKey = "recon.bridgeSyncEnabled"
 
     private struct Snapshot: Codable {
         var cards: [String: [String: ReconMath.Card]]

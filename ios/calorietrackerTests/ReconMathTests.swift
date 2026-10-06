@@ -35,12 +35,6 @@ struct ReconMathTests {
         #expect(object["doseUnit"] as? String == "mg")
     }
 
-    @Test func bridgeSyncStaysOffUnlessMarkedTaken() {
-        #expect(ReconMath.shouldSyncTakenToBridge(syncEnabled: false, markingTaken: true) == false)
-        #expect(ReconMath.shouldSyncTakenToBridge(syncEnabled: true, markingTaken: false) == false)
-        #expect(ReconMath.shouldSyncTakenToBridge(syncEnabled: true, markingTaken: true) == true)
-    }
-
     @Test func footerTextMatchesTheBench() {
         #expect(ReconMath.footerText == "This app converts doses to syringe units and tracks supply. It sets no doses and recommends no protocol. Research compounds; not medical advice.")
     }

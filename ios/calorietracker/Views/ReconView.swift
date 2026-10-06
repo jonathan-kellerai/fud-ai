@@ -313,9 +313,6 @@ struct ReconView: View {
             ForEach(ReconMath.supplyLines(entries: store.entries, simulation: simulation, config: { store.config(person: $0, key: $1) }, onHand: { store.onHand(person: $0, key: $1) })) { line in
                 banner(line.text, level: line.level.isEmpty ? "info" : line.level)
             }
-            if let notice = store.syncNotice, store.bridgeSyncEnabled {
-                banner(notice, level: "amber")
-            }
             HStack(spacing: 0) {
                 ForEach(ReconCalendarView.allCases) { item in
                     Button(item.rawValue) { calendarView = item }
@@ -343,18 +340,6 @@ struct ReconView: View {
                 .foregroundStyle(IronTheme.textSecondary)
             calendarGrid(simulation)
             entryList()
-            NavigationLink {
-                BridgeSettingsView()
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Dose sync: \(store.bridgeSyncEnabled ? "On" : "Off") · Data & Sync")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(IronTheme.textPrimary)
-                    Text("Change in More › Data & Sync › Neon Bridge")
-                        .font(.system(size: 12))
-                        .foregroundStyle(IronTheme.textSecondary)
-                }
-            }
         }
         .padding(12)
         .modifier(IronCardModifier())

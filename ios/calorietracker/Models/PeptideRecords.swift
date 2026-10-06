@@ -2,123 +2,13 @@
 //  PeptideRecords.swift
 //  calorietracker
 //
-//  Read models for the peptide bridge. The app does not compute dose,
-//  volume, concentration, or unit conversions.
+//  Bridge-era peptide rows, read only to migrate a version-1 log, plus the
+//  tolerant decoding and correction trail the local log still uses.
 //
 
 import Foundation
 
-struct PeptideTodayResponse: Decodable, Equatable {
-    var date: String
-    var timezone: String
-    var hasActiveSchedules: Bool
-    var planned: [PeptideAdministration]
-    var completed: [PeptideAdministration]
-    /// Rows that couldn't be read (no id). Not shown; counted for a warning.
-    var skippedRows: Int = 0
-
-    enum CodingKeys: String, CodingKey {
-        case date, timezone
-        case hasActiveSchedules = "has_active_schedules"
-        case planned, completed
-    }
-
-    init(
-        date: String,
-        timezone: String = "America/New_York",
-        hasActiveSchedules: Bool = false,
-        planned: [PeptideAdministration] = [],
-        completed: [PeptideAdministration] = [],
-        skippedRows: Int = 0
-    ) {
-        self.date = date
-        self.timezone = timezone
-        self.hasActiveSchedules = hasActiveSchedules
-        self.planned = planned
-        self.completed = completed
-        self.skippedRows = skippedRows
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        date = (try? container.decode(String.self, forKey: .date)) ?? ""
-        timezone = (try? container.decode(String.self, forKey: .timezone)) ?? "America/New_York"
-        hasActiveSchedules = PeptideDecode.bool(container, .hasActiveSchedules) ?? false
-        let plannedRows = (try? container.decode([PeptideLossy<PeptideAdministration>].self, forKey: .planned)) ?? []
-        let completedRows = (try? container.decode([PeptideLossy<PeptideAdministration>].self, forKey: .completed)) ?? []
-        planned = plannedRows.compactMap(\.value).filter { !$0.id.isEmpty }
-        completed = completedRows.compactMap(\.value).filter { !$0.id.isEmpty }
-        skippedRows = (plannedRows.count - planned.count) + (completedRows.count - completed.count)
-    }
-}
-
-struct PeptideInventoryList: Decodable {
-    var inventory: [PeptideInventoryItem]
-}
-
-struct PeptideScheduleList: Decodable {
-    var schedules: [PeptideSchedule]
-}
-
-struct PeptideSchedule: Decodable, Equatable, Identifiable {
-    var id: String
-    var active: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case id, active
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = (try? container.decode(String.self, forKey: .id)) ?? ""
-        active = (try? container.decode(Bool.self, forKey: .active)) ?? false
-    }
-}
-
-struct PeptideWarning: Decodable, Equatable, Hashable {
-    var type: String
-    var text: String
-
-    enum CodingKeys: String, CodingKey {
-        case type, text
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        type = (try? container.decode(String.self, forKey: .type)) ?? ""
-        text = (try? container.decode(String.self, forKey: .text)) ?? ""
-    }
-}
-
-struct PeptideInventoryItem: Decodable, Equatable, Identifiable {
-    var id: String
-    var compound: String
-    var calcGate: String?
-    var concentrationBasis: String?
-    var identityBasis: String?
-    var badges: [String]
-    var warnings: [PeptideWarning]
-
-    enum CodingKeys: String, CodingKey {
-        case id, compound, badges, warnings
-        case calcGate = "calc_gate"
-        case concentrationBasis = "concentration_basis"
-        case identityBasis = "identity_basis"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = (try? container.decode(String.self, forKey: .id)) ?? ""
-        compound = (try? container.decode(String.self, forKey: .compound)) ?? ""
-        calcGate = try container.decodeIfPresent(String.self, forKey: .calcGate)
-        concentrationBasis = try container.decodeIfPresent(String.self, forKey: .concentrationBasis)
-        identityBasis = try container.decodeIfPresent(String.self, forKey: .identityBasis)
-        badges = (try? container.decode([String].self, forKey: .badges)) ?? []
-        let decodedWarnings = (try? container.decode([PeptideWarning].self, forKey: .warnings)) ?? []
-        warnings = decodedWarnings.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    }
-}
-
+/// One cached bridge row from a version-1 log.
 struct PeptideAdministration: Decodable, Equatable, Identifiable {
     var id: String
     var datetime: String
@@ -359,44 +249,5 @@ struct PeptideLossy<Value: Decodable>: Decodable {
 
     init(from decoder: Decoder) throws {
         value = try? Value(from: decoder)
-    }
-}
-
-/// `GET /api/peptides/administrations` (bridge v1.1).
-struct PeptideAdministrationList: Decodable {
-    var from: String
-    var to: String
-    var timezone: String
-    var administrations: [PeptideAdministration]
-    /// Rows the bridge sent that couldn't be read (no id). Not shown; counted
-    /// so the app can say the history is incomplete.
-    var skippedRows: Int
-
-    enum CodingKeys: String, CodingKey {
-        case from, to, timezone, administrations
-    }
-
-    init(
-        from: String,
-        to: String,
-        timezone: String = "America/New_York",
-        administrations: [PeptideAdministration],
-        skippedRows: Int = 0
-    ) {
-        self.from = from
-        self.to = to
-        self.timezone = timezone
-        self.administrations = administrations
-        self.skippedRows = skippedRows
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        from = (try? container.decode(String.self, forKey: .from)) ?? ""
-        to = (try? container.decode(String.self, forKey: .to)) ?? ""
-        timezone = (try? container.decode(String.self, forKey: .timezone)) ?? "America/New_York"
-        let rows = try container.decode([PeptideLossy<PeptideAdministration>].self, forKey: .administrations)
-        administrations = rows.compactMap(\.value).filter { !$0.id.isEmpty }
-        skippedRows = rows.count - administrations.count
     }
 }

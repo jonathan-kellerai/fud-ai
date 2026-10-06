@@ -132,7 +132,6 @@ struct BridgeKeyStorageTests {
         _ = try await CCLadderClient.fetchLadders(settings: bridge.settings)
         try await CCLadderClient.postEvent(CCLadderEventRequest(series: "pushup", eventType: "manual_step",
             fromStep: 1, toStep: 2, reason: "auth test", createdBy: "app"), settings: bridge.settings)
-        _ = try await bridge.peptidesToday(date: "2026-10-03")
         let progressConfig = ProgressTrainingLoader.currentConfig()
         #expect(progressConfig.apiKey == Self.testKey)
         _ = try await ProgressTrainingAPI.fetchWorkouts(config: progressConfig, limit: 1)
@@ -148,7 +147,6 @@ struct BridgeKeyStorageTests {
             "POST /api/steps",
             "GET /api/cc/ladders",
             "POST /api/cc/events",
-            "GET /api/peptides/today",
             "GET /api/workouts",
             "GET /api/workouts/auth-test-workout",
         ])
@@ -304,8 +302,6 @@ nonisolated private final class BridgeAuthorizationURLProtocol: URLProtocol, @un
             json = #"{"series":[]}"#
         case ("POST", "/api/cc/events"):
             json = #"{"ok":true}"#
-        case ("GET", "/api/peptides/today"):
-            json = #"{"date":"2026-10-03","timezone":"America/New_York","has_active_schedules":false,"planned":[],"completed":[]}"#
         default:
             client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
             return

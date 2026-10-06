@@ -1053,10 +1053,6 @@ nonisolated enum ReconMath {
         return ("\(monthShort[parts.month - 1]) \(parts.year)", days)
     }
 
-    static func shouldSyncTakenToBridge(syncEnabled: Bool, markingTaken: Bool) -> Bool {
-        syncEnabled && markingTaken
-    }
-
     private static func knownOnHand(_ raw: Double?, unit: String) -> (known: Bool, amount: Double) {
         guard let raw, raw >= 0, raw.isFinite, let normalized = normalize(amount: raw, unit: unit), normalized.value >= 0, normalized.value.isFinite else {
             return (false, .nan)

@@ -167,16 +167,6 @@ struct HomeV2Tests {
         #expect(HomeV2Logic.stepsRingTone(steps: 10_000, pace: short, hour: 12) == .olive)
     }
 
-    @Test func emptyPeptideTodayDecodes() throws {
-        let json = """
-        {"date":"2026-09-27","timezone":"America/New_York","has_active_schedules":false,"planned":[],"completed":[]}
-        """
-        let today = try JSONDecoder().decode(PeptideTodayResponse.self, from: Data(json.utf8))
-        #expect(today.hasActiveSchedules == false)
-        #expect(today.planned.isEmpty)
-        #expect(today.completed.isEmpty)
-    }
-
     @MainActor
     @Test func legacySavedLayoutGetsChallengesAppendedAtTheEnd() throws {
         let suite = "home-layout-\(UUID().uuidString)"

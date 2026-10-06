@@ -16,8 +16,7 @@ struct BridgeSettingsView: View {
     @State private var testSuccess = false
     @State private var syncService = WorkoutSyncService.shared
     @State private var stepsService = StepsTrackingService.shared
-    @State private var reconStore = ReconBenchStore()
-    
+
     init() {
         let settings = NeonBridgeService.shared.settings
         _baseURL = State(initialValue: settings.baseURL)
@@ -100,15 +99,6 @@ struct BridgeSettingsView: View {
                 }
             } header: {
                 IronSectionTitle(title: "Sync Status")
-            }
-
-            Section {
-                Toggle("Sync Peptide Doses", isOn: Binding(
-                    get: { reconStore.bridgeSyncEnabled },
-                    set: { reconStore.bridgeSyncEnabled = $0 }
-                ))
-            } footer: {
-                Text("Off by default. Taken Recon doses stay on this phone until this is on.")
             }
         }
         .settingsFloatingTabClearance()

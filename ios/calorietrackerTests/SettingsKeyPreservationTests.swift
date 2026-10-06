@@ -26,7 +26,6 @@ struct SettingsKeyPreservationTests {
         #expect(AddMenuConfig.storageKey == "addMenu.config")
         #expect(OutdoorActivitySettings.enabledKey == "walkRunQuickLogEnabled")
         #expect(WorkoutTabMode.storageKey == "fudai.workouts.tab.mode.v2")
-        #expect(ReconBenchStore.bridgeKey == "recon.bridgeSyncEnabled")
         #expect(ReconBenchStore.defaultsKey == "recon.bench.v1")
         #expect(HomeCardLayout.storageKey == "jl.physical.homeCards.v1")
         #expect(ActiveProgramCache.storageKey == "jl.physical.activeProgram.v1")
@@ -246,7 +245,6 @@ struct SettingsKeyPreservationTests {
         defaults.set(Data("preserve-menu".utf8), forKey: AddMenuConfig.storageKey)
         defaults.set(true, forKey: OutdoorActivitySettings.enabledKey)
         defaults.set(WorkoutTabMode.library.rawValue, forKey: WorkoutTabMode.storageKey)
-        defaults.set(true, forKey: ReconBenchStore.bridgeKey)
         defaults.set(Data("preserve-recon".utf8), forKey: ReconBenchStore.defaultsKey)
         defaults.set(Data("preserve-home".utf8), forKey: HomeCardLayout.storageKey)
         defaults.set(Data("preserve-program".utf8), forKey: ActiveProgramCache.storageKey)
@@ -326,7 +324,6 @@ struct SettingsKeyPreservationTests {
         AddMenuConfig.storageKey,
         OutdoorActivitySettings.enabledKey,
         WorkoutTabMode.storageKey,
-        ReconBenchStore.bridgeKey,
         ReconBenchStore.defaultsKey,
         HomeCardLayout.storageKey,
         ActiveProgramCache.storageKey,

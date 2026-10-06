@@ -102,6 +102,8 @@ jobs:
           -only-testing:calorietrackerTests/ProgressV2MathTests \
           -only-testing:calorietrackerTests/PeptideMathTests \
           -only-testing:calorietrackerTests/PeptideLogStoreTests \
+          -only-testing:calorietrackerTests/PeptideLegacyMigrationTests \
+          -only-testing:calorietrackerTests/PeptideNoNetworkTests \
           -only-testing:calorietrackerTests/MoreHubSubtitlesTests \
           -only-testing:calorietrackerTests/JLFeatureFlagsTests \
           -only-testing:calorietrackerTests/ChallengeEngineTests \
@@ -122,7 +124,7 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
@@ -148,7 +150,8 @@ jobs:
         for suite in MoreHubSubtitlesTests JLFeatureFlagsTests ChallengeEngineTests \
           ChallengeRewardEvaluatorTests ChallengeReminderPlannerTests ChallengeStoreTests \
           ChallengeMetricProviderTests ChallengePresentationTests IronThemeTests HomeV2Tests \
-          TrainingProgramTests ProgramCycleTests TrainProgressStoreTests; do
+          TrainingProgramTests ProgramCycleTests TrainProgressStoreTests \
+          PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests; do
           if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log"; then
             echo "ok: ${suite}"
           else
@@ -157,6 +160,48 @@ jobs:
           fi
         done
         exit $missing
+
+  peptide-local-lint:
+    name: Peptides stay on device
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: No bridge or network code in peptide paths
+      # Peptides are on-device only (build 67). Fails on a match or on a scan
+      # error (a missing path or unreadable file), never silently passes.
+      shell: bash
+      run: |
+        set -euo pipefail
+        src=ios/calorietracker
+        test -d "$src"
+        fail=0
+        # grep exits 0 on a match, 1 on none, 2 on an error (unreadable path, bad glob).
+        scan() {
+          local pattern="$1" what="$2"
+          shift 2
+          local out status
+          set +e
+          out=$(grep -rnE "$pattern" "$@" 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::$what"
+            echo "$out"
+            fail=1
+          elif [ "$status" -ne 1 ]; then
+            echo "::error::Scan failed (grep exit $status): $out"
+            fail=1
+          fi
+        }
+        scan '/api/peptides' "Peptide bridge route in app sources" "$src"
+        scan 'PeptideBridge' "Peptide bridge type in app sources" "$src"
+        scan '[Pp]eptide' "Peptide code in NeonBridgeService" "$src/Services/NeonBridgeService.swift"
+        scan 'URLSession|URLRequest|NeonBridgeService' "Network code in peptide sources" \
+          "$src"/Stores/Peptide*.swift "$src"/Models/Peptide*.swift "$src/Views/Peptides"
+        if [ "$fail" -eq 0 ]; then echo "Peptides stay on device: ok"; fi
+        exit "$fail"
 
   visual-qa:
     name: Visual QA screenshots

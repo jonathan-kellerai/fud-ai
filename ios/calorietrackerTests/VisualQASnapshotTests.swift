@@ -1569,7 +1569,7 @@ enum VisualQAFixtures {
         if savedSettings == nil {
             savedSettings = NeonBridgeService.shared.settings
         }
-        // Fake key, never persisted: the stub rejects peptide calls without it.
+        // Fake key, never persisted, so screens that show the bridge as configured render that way.
         NeonBridgeService.shared.settings = NeonBridgeSettings(baseURL: "https://\(host)", apiKey: VisualQAStubStorage.bridgeKey)
     }
 
@@ -1753,27 +1753,6 @@ enum VisualQAFixtures {
         return WorkoutDetailResponse(workout: workout, sets: sets)
     }
 
-    static func peptideTodayJSON() -> String {
-        let today = isoDay(offset: 0)
-        return """
-        {"date":"\(today)","timezone":"America/New_York","has_active_schedules":true,
-         "planned":[{"id":"qa-planned-1","datetime":"\(today)T12:00:00Z","compound":"Tesamorelin","dose":1.4,"units":"mg",
-                     "status":"planned","schedule_id":"qa-schedule-1","source_vial":"qa-vial-1","voided":false,
-                     "dose_deviates_from_planned":false,"badges":["LABEL"]}],
-         "completed":[{"id":"qa-done-1","datetime":"\(today)T11:30:00Z","compound":"BPC-157","dose":500,"units":"mcg",
-                       "status":"completed","voided":false,"dose_deviates_from_planned":false,"badges":[]}]}
-        """
-    }
-
-    static let peptideInventoryJSON = """
-    {"inventory":[{"id":"qa-vial-1","compound":"Tesamorelin","calc_gate":null,"concentration_basis":null,
-                   "identity_basis":null,"badges":[],"warnings":[]}]}
-    """
-
-    static let peptideSchedulesJSON = """
-    {"schedules":[{"id":"qa-schedule-1","active":true}]}
-    """
-
     /// When set, /api/cc/ladders answers with this payload instead of `ccLaddersJSON`.
     static var ccLaddersJSONOverride: String?
 
@@ -1943,9 +1922,6 @@ enum VisualQAFixtures {
             "/api/programs": json(TrainingProgramListResponse(programs: [program])),
             "/api/programs/active": json(program),
             "/api/programs/\(program.id)": json(program),
-            "/api/peptides/today": (200, Data(peptideTodayJSON().utf8)),
-            "/api/peptides/inventory": (200, Data(peptideInventoryJSON.utf8)),
-            "/api/peptides/schedules": (200, Data(peptideSchedulesJSON.utf8)),
             "/api/cc/ladders": (200, Data((ccLaddersJSONOverride ?? ccLaddersJSON).utf8)),
         ]
     }
@@ -1954,7 +1930,7 @@ enum VisualQAFixtures {
 /// Thread-safe holder the URLProtocol reads from URLSession's queue.
 nonisolated final class VisualQAStubStorage: @unchecked Sendable {
     static let host = "visual-qa.invalid"
-    /// Fake bridge key for Visual QA only. Peptide routes answer 401 without it.
+    /// Fake bridge key for Visual QA only.
     static let bridgeKey = "visual-qa-bridge-key"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var responses: [String: (Int, Data)] = [:]
@@ -1969,10 +1945,6 @@ nonisolated final class VisualQAStubStorage: @unchecked Sendable {
             return (405, Data(#"{"error":"visual_qa_read_only"}"#.utf8))
         }
         let path = request.url?.path ?? ""
-        if path.hasPrefix("/api/peptides/"),
-           request.value(forHTTPHeaderField: "Authorization") != "Bearer \(bridgeKey)" {
-            return (401, Data(#"{"error":"unauthorized"}"#.utf8))
-        }
         lock.lock(); defer { lock.unlock() }
         return responses[path] ?? (404, Data(#"{"error":"not_found"}"#.utf8))
     }
