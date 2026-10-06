@@ -112,6 +112,9 @@ jobs:
           -only-testing:calorietrackerTests/ChallengePresentationTests \
           -only-testing:calorietrackerTests/IronThemeTests \
           -only-testing:calorietrackerTests/HomeV2Tests \
+          -only-testing:calorietrackerTests/TrainingProgramTests \
+          -only-testing:calorietrackerTests/ProgramCycleTests \
+          -only-testing:calorietrackerTests/TrainProgressStoreTests \
           -parallel-testing-enabled NO \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
@@ -119,7 +122,7 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
@@ -144,7 +147,8 @@ jobs:
         missing=0
         for suite in MoreHubSubtitlesTests JLFeatureFlagsTests ChallengeEngineTests \
           ChallengeRewardEvaluatorTests ChallengeReminderPlannerTests ChallengeStoreTests \
-          ChallengeMetricProviderTests ChallengePresentationTests IronThemeTests HomeV2Tests; do
+          ChallengeMetricProviderTests ChallengePresentationTests IronThemeTests HomeV2Tests \
+          TrainingProgramTests ProgramCycleTests TrainProgressStoreTests; do
           if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log"; then
             echo "ok: ${suite}"
           else
