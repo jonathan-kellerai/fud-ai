@@ -540,6 +540,8 @@ struct AIProviderSettings {
     private static let currentModelRegistryMigrationVersion = 3
     private static let maxResponseTokensKey = "aiMaxResponseTokens"
     private static let requestTimeoutSecondsKey = "aiRequestTimeoutSeconds"
+    /// SHA-256 of the OpenRouter key that sign-in created. Never the key itself.
+    private static let openRouterSignInFingerprintKey = "openRouterSignInKeyFingerprint"
 
     /// The AI output-token cap sent with every request (`max_tokens` /
     /// `max_completion_tokens` / Gemini `maxOutputTokens`). Default 1024; raise it for
@@ -744,6 +746,31 @@ struct AIProviderSettings {
         } else {
             KeychainHelper.delete(key: keychainKey)
         }
+    }
+
+    /// True while the saved OpenRouter key is the one OpenRouter sign-in created.
+    /// Pasting a different key, or deleting it, ends the signed-in state.
+    static var isSignedInWithOpenRouter: Bool {
+        guard let fingerprint = UserDefaults.standard.string(forKey: openRouterSignInFingerprintKey),
+              let key = apiKey(for: .openrouter)
+        else { return false }
+        return OpenRouterOAuth.keyFingerprint(key) == fingerprint
+    }
+
+    /// Saves the sign-in key in the same Keychain item the request path reads.
+    /// False when the Keychain refused it; nothing is marked signed in then.
+    @discardableResult
+    static func saveOpenRouterSignInKey(_ key: String) -> Bool {
+        setAPIKey(key, for: .openrouter)
+        guard apiKey(for: .openrouter) == key else { return false }
+        UserDefaults.standard.set(OpenRouterOAuth.keyFingerprint(key), forKey: openRouterSignInFingerprintKey)
+        return true
+    }
+
+    /// Deletes the OpenRouter key from the Keychain and forgets it came from sign-in.
+    static func signOutOfOpenRouter() {
+        setAPIKey(nil, for: .openrouter)
+        UserDefaults.standard.removeObject(forKey: openRouterSignInFingerprintKey)
     }
 
     static func customBaseURL(for provider: AIProvider) -> String? {
@@ -984,6 +1011,7 @@ struct AIProviderSettings {
         UserDefaults.standard.removeObject(forKey: textFallbackModelKey)
         UserDefaults.standard.removeObject(forKey: fallbackBaseURLMigrationVersionKey)
         UserDefaults.standard.removeObject(forKey: requestTimeoutSecondsKey)
+        UserDefaults.standard.removeObject(forKey: openRouterSignInFingerprintKey)
     }
 
     static func replaceDeletedLocalGemmaSelections(defaults: UserDefaults = .standard) {
