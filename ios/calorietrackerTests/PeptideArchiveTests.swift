@@ -236,6 +236,56 @@ struct PeptideArchiveTests {
         #expect(again.heldAside == store.heldAside)
     }
 
+    /// Build 67 imports can carry a single-compound vial with no components.
+    /// Confirming it in Reconstitute updates that vial (same id, notes, stock
+    /// line, created date), so its draws stay linked, rather than adding a second one.
+    @Test func confirmingAnImportedVialWithNoAmountKeepsTheSameVial() throws {
+        let json = """
+        {"format":"jl-peptides","format_version":1,
+         "vials":[{"id":"imported","compound":"BPC-157","diluent_ml":2,"notes":"Fridge door",
+                   "low_stock_threshold_ml":0.4,"created_at":"2026-09-01T08:00:00-04:00"}],
+         "schedules":[],
+         "entries":[{"id":"draw","compound":"BPC-157","vial_id":"imported","drawn_volume":0.5,"drawn_unit":"mL",
+                     "datetime":"2026-09-20T07:00:00-04:00"}]}
+        """
+        let store = PeptideLogStore(persistence: .inMemory)
+        store.importArchive(try PeptideArchive.decode(Data(json.utf8)), now: now)
+        let imported = try #require(store.vial(id: "imported"))
+        #expect(imported.components.isEmpty)
+        #expect(imported.opensInReconstitute)
+        #expect(!PeptideMath.remaining(vial: imported, entries: store.entries).calculable)
+
+        // What Reconstitute saves for the vial it opened.
+        store.saveVial(PeptideVial.reconstituted(
+            id: imported.id, compound: imported.compound, amount: 10, unit: "mg", diluentML: 2,
+            mixedOn: "2026-09-19", confirmedAt: now, existing: imported, now: now
+        ))
+
+        #expect(store.vials.map(\.id) == ["imported"])
+        let confirmed = try #require(store.vial(id: "imported"))
+        #expect(confirmed.concentrationConfirmed)
+        #expect(confirmed.concentrationConfirmedAt == now)
+        #expect(confirmed.components.map(\.amount) == [10])
+        #expect(confirmed.notes == "Fridge door")
+        #expect(confirmed.lowStockThresholdML == 0.4)
+        #expect(confirmed.createdAt == imported.createdAt)
+        let remaining = PeptideMath.remaining(vial: confirmed, entries: store.entries)
+        #expect(remaining.calculable)
+        #expect(remaining.linkedCount == 1)
+        #expect(remaining.remainingML == 1.5)
+    }
+
+    @Test func blendsAndMultiComponentVialsDontOpenInReconstitute() {
+        let parts = [
+            PeptideVialComponent(id: "a", name: "GHK-Cu", amount: 50, unit: "mg"),
+            PeptideVialComponent(id: "b", name: "BPC-157", amount: 10, unit: "mg"),
+        ]
+        #expect(PeptideVial(compound: "BPC-157").opensInReconstitute)
+        #expect(PeptideVial(compound: "BPC-157", components: [parts[1]]).opensInReconstitute)
+        #expect(!PeptideVial(compound: "Glow", isBlend: true).opensInReconstitute)
+        #expect(!PeptideVial(compound: "Glow", components: parts).opensInReconstitute)
+    }
+
     @Test func unreadableRecordsAreSkippedAndCounted() throws {
         let json = """
         {"format":"jl-peptides","format_version":1,

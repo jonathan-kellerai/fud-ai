@@ -19,10 +19,11 @@ struct ReconView: View {
     @State private var confirmedAt: Date?
     @State private var errorText: String?
 
-    /// `vial` re-opens a single-compound vial to confirm or correct it.
+    /// `vial` re-opens a single-compound vial to confirm or correct it, keeping
+    /// its id (and so its draws), even one imported with no amount typed yet.
     /// `initialConfirmedAt` is for Visual QA only (step 3 already ticked).
     init(vial: PeptideVial? = nil, referenceDate: Date? = nil, initialConfirmedAt: Date? = nil) {
-        let single = (vial?.isBlend == false && vial?.components.count == 1) ? vial : nil
+        let single = vial?.opensInReconstitute == true ? vial : nil
         existing = single
         self.referenceDate = referenceDate
         let component = single?.components.first
