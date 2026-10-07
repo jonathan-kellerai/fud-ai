@@ -4,7 +4,7 @@ import UIKit
 @testable import calorietracker
 
 /// Peptide choice chips (compound, unit, syringe scale): text scales with
-/// Dynamic Type, every chip is at least 44 pt tall, and a long title wraps
+/// Dynamic Type, every chip is at least 44 pt tall and 44 pt wide, and a long title wraps
 /// inside an iPhone SE row at AX5 instead of running off it.
 ///
 /// xcodebuild test -project ios/calorietracker.xcodeproj -scheme calorietracker -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -only-testing:calorietrackerTests/PeptideChipLayoutTests CODE_SIGNING_ALLOWED=NO
@@ -25,10 +25,14 @@ struct PeptideChipLayoutTests {
         return host.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
     }
 
-    @Test func everyChipIsAtLeast44PointsTall() {
+    @Test func everyChipIsAtLeast44PointsTallAndWide() {
         for dynamicType in [DynamicTypeSize.xSmall, .large, .accessibility1, .accessibility5] {
-            #expect(size(title: "mL", dynamicType: dynamicType).height >= 44)
-            #expect(size(title: "U-100", subtitle: "1 mL", dynamicType: dynamicType).height >= 44)
+            let short = size(title: "mL", dynamicType: dynamicType)
+            #expect(short.height >= 44)
+            #expect(short.width >= 44)
+            let withSubtitle = size(title: "U-100", subtitle: "1 mL", dynamicType: dynamicType)
+            #expect(withSubtitle.height >= 44)
+            #expect(withSubtitle.width >= 44)
         }
     }
 
