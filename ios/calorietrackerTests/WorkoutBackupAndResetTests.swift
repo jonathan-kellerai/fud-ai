@@ -39,7 +39,7 @@ struct WorkoutBackupAndResetTests {
         try source.correct(id: "w1", with: WorkoutPayload.historyCorrection(
             programVersion: "program-v2", programDay: "Day1_LowerA", sessionDate: "2026-10-06",
             title: "Lower A", conditioning: "", notesText: "fixed", sets: [], now: now))
-        let values = CloudBackupService(defaults: fromDefaults, workouts: source).snapshotValues()
+        let values = try CloudBackupService(defaults: fromDefaults, workouts: source).snapshotValues()
         let value = try #require(values[CloudBackupService.workoutsKey])
         #expect(value.t == "d")
 
@@ -63,8 +63,8 @@ struct WorkoutBackupAndResetTests {
         defer { defaults.removePersistentDomain(forName: name) }
         let store = try filledLog(at: folder.appendingPathComponent("workout_log_v1.json"))
         let service = CloudBackupService(defaults: defaults, workouts: store)
-        let first = service.snapshotValues()
-        let second = service.snapshotValues()
+        let first = try service.snapshotValues()
+        let second = try service.snapshotValues()
         #expect(CloudBackupArchive.contentHash(values: first, photos: [:]) == CloudBackupArchive.contentHash(values: second, photos: [:]))
     }
 
@@ -95,6 +95,68 @@ struct WorkoutBackupAndResetTests {
         service.applyValues([CloudBackupService.workoutsKey: CloudBackupValue(t: "d", d: "not base64!")])
         #expect(store.records == before)
         #expect(service.errorMessage != nil)
+    }
+
+    /// Makes a saved log unreadable (as file protection does before first unlock) or readable again.
+    private func lock(_ url: URL, _ locked: Bool) throws {
+        try FileManager.default.setAttributes([.posixPermissions: locked ? 0o000 : 0o644], ofItemAtPath: url.path)
+    }
+
+    /// While the workout log is read-only nothing is uploaded, so the last
+    /// iCloud backup keeps its workouts: a log that can't be opened, and one a newer app saved.
+    @Test func aReadOnlyWorkoutLogSkipsTheWholeBackup() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let lockedURL = folder.appendingPathComponent("a/workout_log_v1.json")
+        _ = try filledLog(at: lockedURL)
+        try lock(lockedURL, true)
+        defer { try? lock(lockedURL, false) }
+        let locked = WorkoutLogStore(persistence: .file(lockedURL))
+        let newerURL = folder.appendingPathComponent("b/workout_log_v1.json")
+        try FileManager.default.createDirectory(at: newerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"version":2,"workouts":[]}"#.utf8).write(to: newerURL)
+        let newer = WorkoutLogStore(persistence: .file(newerURL))
+
+        for (store, reason) in [(locked, "Workouts couldn't be read on this phone"),
+                                (newer, "Workouts were saved by a newer version of the app")] {
+            #expect(store.backupData() == .blocked(reason: reason))
+            let service = CloudBackupService(defaults: defaults, workouts: store)
+            #expect(throws: CloudBackupError.backupSkipped(reason)) { try service.snapshotValues() }
+        }
+    }
+
+    /// A backup with workouts isn't restored over a log a newer app saved:
+    /// nothing changes, settings and diary included, so the phone isn't left half restored.
+    @Test func restoreOverANewerWorkoutLogChangesNothing() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (fromDefaults, fromName) = try defaultsSuite()
+        let (toDefaults, toName) = try defaultsSuite()
+        defer {
+            fromDefaults.removePersistentDomain(forName: fromName)
+            toDefaults.removePersistentDomain(forName: toName)
+        }
+        let source = try filledLog(at: folder.appendingPathComponent("a/workout_log_v1.json"))
+        fromDefaults.set("kg", forKey: "weightUnit")
+        let values = try CloudBackupService(defaults: fromDefaults, workouts: source).snapshotValues()
+        toDefaults.set("lbs", forKey: "weightUnit")
+        toDefaults.set(true, forKey: "weekStartsOnMonday")
+
+        let targetURL = folder.appendingPathComponent("b/workout_log_v1.json")
+        try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let newer = Data(#"{"version":2,"workouts":[]}"#.utf8)
+        try newer.write(to: targetURL)
+        let target = WorkoutLogStore(persistence: .file(targetURL))
+        let service = CloudBackupService(defaults: toDefaults, workouts: target)
+
+        #expect(!service.applyValues(values))
+        #expect(service.errorMessage == "Workouts were saved by a newer version of the app, so nothing was restored and everything on this phone was kept.")
+        #expect(toDefaults.string(forKey: "weightUnit") == "lbs")
+        #expect(toDefaults.bool(forKey: "weekStartsOnMonday"))
+        #expect(toDefaults.object(forKey: CloudBackupService.enabledKey) == nil)
+        #expect(try Data(contentsOf: targetURL) == newer)
     }
 
     @Test func anOlderBackupWithoutWorkoutsLeavesThemAlone() throws {

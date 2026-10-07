@@ -7,7 +7,8 @@ import os
 enum CloudBackupPart: Equatable {
     case include(Data)
     /// The store's data couldn't be read in full here (or packed), so the
-    /// backup can't carry it. `reason` is a clause, e.g. "Peptides couldn't be read on this phone".
+    /// backup can't carry it and a restore can't replace it. `reason` is a
+    /// clause, e.g. "Peptides couldn't be read on this phone".
     case blocked(reason: String)
 
     var data: Data? {
@@ -78,7 +79,10 @@ final class CloudBackupService {
         self.lastAt = defaults.string(forKey: Self.lastAtKey)
     }
 
-    func snapshotValues() -> [String: CloudBackupValue] {
+    /// Everything a backup uploads. Throws `.backupSkipped` when peptides or
+    /// workouts can't be backed up: the upload replaces the last iCloud
+    /// backup, so one without them would drop the copy it holds.
+    func snapshotValues() throws -> [String: CloudBackupValue] {
         var out: [String: CloudBackupValue] = [:]
         for (key, raw) in defaults.dictionaryRepresentation() {
             guard CloudBackupPolicy.include(key) else { continue }
@@ -96,16 +100,32 @@ final class CloudBackupService {
                 }
             }
         }
-        if let archive = peptides?.backupArchiveData().data {
-            out[Self.peptidesKey] = .data(archive)
+        if let peptides {
+            out[Self.peptidesKey] = .data(try Self.bytes(peptides.backupArchiveData()))
         }
-        if let log = workouts?.backupData().data {
-            out[Self.workoutsKey] = .data(log)
+        if let workouts {
+            out[Self.workoutsKey] = .data(try Self.bytes(workouts.backupData()))
         }
         return out
     }
 
-    func applyValues(_ values: [String: CloudBackupValue]) {
+    private static func bytes(_ part: CloudBackupPart) throws -> Data {
+        switch part {
+        case .include(let data): return data
+        case .blocked(let reason): throw CloudBackupError.backupSkipped(reason)
+        }
+    }
+
+    /// Restores `values` over this phone. When the backup carries peptides or
+    /// workouts this phone can't take now (its own couldn't be read), nothing
+    /// changes, `errorMessage` says why and the result is false: half a
+    /// restore would replace the diary and settings but not them.
+    @discardableResult
+    func applyValues(_ values: [String: CloudBackupValue]) -> Bool {
+        if let reason = restoreBlock(for: values) {
+            errorMessage = "\(reason), so nothing was restored and everything on this phone was kept."
+            return false
+        }
         let restoredKeys = Set(values.keys)
         for key in defaults.dictionaryRepresentation().keys
         where CloudBackupPolicy.include(key) && !restoredKeys.contains(key) {
@@ -153,6 +173,15 @@ final class CloudBackupService {
         defaults.set(true, forKey: "healthKitFoodRecoveryDone")
         defaults.set(true, forKey: Self.enabledKey)
         enabled = true
+        return true
+    }
+
+    /// Why a store can't take its part of `values`. A store that can't back
+    /// up its part can't be restored over either: both need its log read in full.
+    private func restoreBlock(for values: [String: CloudBackupValue]) -> String? {
+        if values[Self.peptidesKey] != nil, case .blocked(let reason)? = peptides?.backupArchiveData() { return reason }
+        if values[Self.workoutsKey] != nil, case .blocked(let reason)? = workouts?.backupData() { return reason }
+        return nil
     }
 
     func snapshotPhotos() -> [String: Data] {
@@ -190,8 +219,16 @@ final class CloudBackupService {
     func backupNow(skipIfUnchanged: Bool = false) async throws {
         busy = true
         defer { busy = false }
+        errorMessage = nil
         try await checkAccount()
-        let values = snapshotValues()
+        let values: [String: CloudBackupValue]
+        do {
+            values = try snapshotValues()
+        } catch {
+            // Nothing is uploaded, so the last iCloud backup keeps what this phone couldn't read.
+            errorMessage = error.localizedDescription
+            return
+        }
         let photos = snapshotPhotos()
         let hash = CloudBackupArchive.contentHash(values: values, photos: photos)
         if skipIfUnchanged, hash == defaults.string(forKey: Self.lastHashKey) { return }
@@ -213,6 +250,7 @@ final class CloudBackupService {
     func restoreNow() async throws {
         busy = true
         defer { busy = false }
+        errorMessage = nil
         try await checkAccount()
         guard let record = try await fetchRecord(),
               let asset = record[assetField] as? CKAsset,
@@ -220,8 +258,8 @@ final class CloudBackupService {
         else { throw CloudBackupError.noBackup }
         let zip = try Data(contentsOf: url)
         let (document, photos) = try CloudBackupArchive.unpack(zip)
+        guard applyValues(document.payload.values) else { return }
         restorePhotos(photos)
-        applyValues(document.payload.values)
         defaults.set(document.contentSha256, forKey: Self.lastHashKey)
         defaults.set(document.exportedAt, forKey: Self.lastAtKey)
         lastAt = document.exportedAt
@@ -259,7 +297,7 @@ final class CloudBackupService {
 
         do {
             try await checkAccount()
-            let values = snapshotValues()
+            let values = try snapshotValues()
             let photos = snapshotPhotos()
             let hash = CloudBackupArchive.contentHash(values: values, photos: photos)
             let zip = try CloudBackupArchive.pack(

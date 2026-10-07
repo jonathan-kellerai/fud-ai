@@ -90,6 +90,7 @@ struct CloudBackupSettingsSection: View {
                 showRestoreChoice = true
             } else {
                 try await backup.backupNow()
+                showServiceNote()
             }
         } catch {
             backup.enabled = false
@@ -100,13 +101,17 @@ struct CloudBackupSettingsSection: View {
     private func run(_ work: () async throws -> Void) async {
         do {
             try await work()
-            // A restore that went through but kept this phone's peptides says why.
-            if let note = backup.errorMessage {
-                errorMessage = note
-                backup.errorMessage = nil
-            }
+            showServiceNote()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// A backup skipped, or a restore that kept this phone's peptides or workouts, says why.
+    private func showServiceNote() {
+        if let note = backup.errorMessage {
+            errorMessage = note
+            backup.errorMessage = nil
         }
     }
 

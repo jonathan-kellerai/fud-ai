@@ -39,7 +39,7 @@ struct PeptideBackupAndResetTests {
             toDefaults.removePersistentDomain(forName: toName)
         }
         let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
-        let values = CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
+        let values = try CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
         let value = try #require(values[CloudBackupService.peptidesKey])
         #expect(value.t == "d")
 
@@ -64,8 +64,8 @@ struct PeptideBackupAndResetTests {
         defer { defaults.removePersistentDomain(forName: name) }
         let store = try filledStore(at: folder.appendingPathComponent("peptide_log_v1.json"))
         let service = CloudBackupService(defaults: defaults, peptides: store)
-        let first = service.snapshotValues()
-        let second = service.snapshotValues()
+        let first = try service.snapshotValues()
+        let second = try service.snapshotValues()
         #expect(CloudBackupArchive.contentHash(values: first, photos: [:]) == CloudBackupArchive.contentHash(values: second, photos: [:]))
         let encoded = try #require(first[CloudBackupService.peptidesKey]?.d)
         let bytes = try #require(Data(base64Encoded: encoded))
@@ -161,7 +161,7 @@ struct PeptideBackupAndResetTests {
             fallback.removePersistentDomain(forName: fallbackName)
         }
         let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
-        let values = CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
+        let values = try CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
 
         // Saved by a newer app: saving is blocked, so nothing may be replaced.
         let blockedURL = folder.appendingPathComponent("b/peptide_log_v1.json")
@@ -199,6 +199,85 @@ struct PeptideBackupAndResetTests {
         #expect(reopened.entries == before.0)
         #expect(reopened.vials == before.1)
         #expect(reopened.schedules == before.2)
+    }
+
+    /// Makes a saved log unreadable (as file protection does before first unlock) or readable again.
+    private func lock(_ url: URL, _ locked: Bool) throws {
+        try FileManager.default.setAttributes([.posixPermissions: locked ? 0o000 : 0o644], ofItemAtPath: url.path)
+    }
+
+    /// While the peptide log is read-only nothing is uploaded, so the last
+    /// iCloud backup keeps its peptides: a log that can't be opened, and one
+    /// a newer app saved (which used to back up as an empty archive).
+    @Test func aReadOnlyPeptideLogSkipsTheWholeBackup() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let lockedURL = folder.appendingPathComponent("a/peptide_log_v1.json")
+        _ = try filledStore(at: lockedURL)
+        try lock(lockedURL, true)
+        defer { try? lock(lockedURL, false) }
+        let locked = PeptideLogStore(persistence: .file(lockedURL))
+        let newerURL = folder.appendingPathComponent("b/peptide_log_v1.json")
+        try FileManager.default.createDirectory(at: newerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"version":7,"entries":[]}"#.utf8).write(to: newerURL)
+        let newer = PeptideLogStore(persistence: .file(newerURL))
+
+        for (store, reason) in [(locked, "Peptides couldn't be read on this phone"),
+                                (newer, "Peptides were saved by a newer version of the app")] {
+            #expect(store.backupArchiveData() == .blocked(reason: reason))
+            let service = CloudBackupService(defaults: defaults, peptides: store)
+            #expect(throws: CloudBackupError.backupSkipped(reason)) { try service.snapshotValues() }
+        }
+        #expect(CloudBackupError.backupSkipped("Peptides couldn't be read on this phone").localizedDescription
+            == "Peptides couldn't be read on this phone, so iCloud backup was skipped to keep your last backup.")
+    }
+
+    /// A backup with peptides isn't restored over a log that can't be opened:
+    /// nothing changes, settings and diary included, so the phone isn't left half restored.
+    @Test func restoreOverAPeptideLogThatCantBeOpenedChangesNothing() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (fromDefaults, fromName) = try defaultsSuite()
+        let (toDefaults, toName) = try defaultsSuite()
+        defer {
+            fromDefaults.removePersistentDomain(forName: fromName)
+            toDefaults.removePersistentDomain(forName: toName)
+        }
+        let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
+        fromDefaults.set(true, forKey: "weekStartsOnMonday")
+        let values = try CloudBackupService(defaults: fromDefaults, peptides: source).snapshotValues()
+        toDefaults.set("lbs", forKey: "weightUnit")
+
+        let targetURL = folder.appendingPathComponent("b/peptide_log_v1.json")
+        _ = try filledStore(at: targetURL, compound: "MT2", id: "other")
+        let saved = try Data(contentsOf: targetURL)
+        try lock(targetURL, true)
+        defer { try? lock(targetURL, false) }
+        let target = PeptideLogStore(persistence: .file(targetURL))
+        let service = CloudBackupService(defaults: toDefaults, peptides: target)
+
+        #expect(!service.applyValues(values))
+        #expect(service.errorMessage == "Peptides couldn't be read on this phone, so nothing was restored and everything on this phone was kept.")
+        #expect(toDefaults.string(forKey: "weightUnit") == "lbs")
+        #expect(toDefaults.object(forKey: "weekStartsOnMonday") == nil)
+        #expect(toDefaults.object(forKey: CloudBackupService.enabledKey) == nil)
+        try lock(targetURL, false)
+        #expect(try Data(contentsOf: targetURL) == saved)
+
+        // A backup without peptides (older builds) still restores; the log is left alone.
+        try lock(targetURL, true)
+        service.errorMessage = nil
+        #expect(service.applyValues(["weekStartsOnMonday": .bool(true)]))
+        #expect(service.errorMessage == nil)
+        #expect(toDefaults.bool(forKey: "weekStartsOnMonday"))
+
+        // Once the log opens, the backup restores over it.
+        try lock(targetURL, false)
+        #expect(service.applyValues(values))
+        #expect(service.errorMessage == nil)
+        #expect(target.entries == source.entries)
     }
 
     @Test func olderBackupWithoutPeptidesLeavesThemUntouched() throws {

@@ -156,6 +156,8 @@ enum CloudBackupError: LocalizedError, Equatable {
     case needsNewerApp
     case iCloudUnavailable
     case noBackup
+    /// Peptides or workouts couldn't be backed up (the reason, as a clause), so nothing was uploaded.
+    case backupSkipped(String)
 
     var errorDescription: String? {
         switch self {
@@ -163,6 +165,7 @@ enum CloudBackupError: LocalizedError, Equatable {
         case .needsNewerApp: return "This backup needs a newer JL Physical."
         case .iCloudUnavailable: return "Sign into iCloud in iOS Settings first."
         case .noBackup: return "No iCloud backup found."
+        case .backupSkipped(let reason): return "\(reason), so iCloud backup was skipped to keep your last backup."
         }
     }
 }

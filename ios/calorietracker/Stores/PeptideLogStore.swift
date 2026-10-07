@@ -697,10 +697,11 @@ struct PeptideLogSnapshot: Codable {
 
 extension PeptideLogStore: CloudBackupPeptides {
     /// The archive without an export time, so unchanged peptides back up to the same bytes.
-    /// Blocked while a change would be refused, so peptides this app couldn't read
-    /// are never backed up as an empty log.
+    /// Blocked while the saved log is read-only, so peptides this app couldn't
+    /// read (or a newer app saved) are never backed up as what memory shows.
     func backupArchiveData() -> CloudBackupPart {
-        if let readOnly, readOnly.refusal != nil { return .blocked(reason: readOnly.backupBlock) }
+        reloadIfNotOpened()
+        if let readOnly { return .blocked(reason: readOnly.backupBlock) }
         guard let data = try? archive(exportedAt: nil).encoded() else {
             return .blocked(reason: "Peptides couldn't be packed for the backup")
         }

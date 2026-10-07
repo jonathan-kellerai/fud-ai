@@ -196,6 +196,7 @@ final class WorkoutLogStore {
     /// The log for the iCloud backup: the saved file's format. Blocked while the
     /// log is read-only, so workouts this app can't read are never backed up over.
     func backupData() -> CloudBackupPart {
+        reloadIfNotOpened()
         if let readOnly {
             let reason = switch readOnly {
             case .newerVersion: "Workouts were saved by a newer version of the app"

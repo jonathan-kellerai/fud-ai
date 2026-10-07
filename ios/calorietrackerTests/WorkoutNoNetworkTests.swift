@@ -124,7 +124,7 @@ struct WorkoutNoNetworkTests {
         let seen = try await requests {
             let source = WorkoutLogStore(persistence: .file(folder.appendingPathComponent("a/\(WorkoutLogFile.fileName)")))
             try source.importFile(try WorkoutImportFile.load(from: WorkoutImportFixture.url))
-            let values = CloudBackupService(defaults: defaults, workouts: source).snapshotValues()
+            let values = try CloudBackupService(defaults: defaults, workouts: source).snapshotValues()
             let target = WorkoutLogStore(persistence: .file(folder.appendingPathComponent("b/\(WorkoutLogFile.fileName)")))
             let service = CloudBackupService(defaults: defaults, workouts: target)
             service.applyValues(values)
