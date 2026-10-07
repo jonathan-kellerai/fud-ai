@@ -644,7 +644,7 @@ struct ProgramV2WorkoutLogView: View {
         // The draft clears only after the on-device log has saved it. On failure the draft stays.
         do {
             try draftStore.save(to: workoutLog)
-            progress.adopt(workoutLog, days: [])
+            progress.adopt(workoutLog, days: (ActiveProgramCache.load()?.body ?? .bundledV2()).days)
             showingSaveConfirmation = true
         } catch {
             saveError = error.localizedDescription
