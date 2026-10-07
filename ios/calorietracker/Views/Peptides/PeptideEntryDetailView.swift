@@ -2,8 +2,10 @@
 //  PeptideEntryDetailView.swift
 //  calorietracker
 //
-//  One administration: every field and its correction trail. It can be
-//  corrected (with a reason) or voided (kept, with a reason).
+//  One draw: what was typed, the syringe scale and vial recorded when it was
+//  saved, and its trail in words. The only screen that shows mg, worked out
+//  one step per line from the entry's save-time snapshot. It can be corrected
+//  (with a reason) or voided (kept, with a reason).
 //
 
 import SwiftUI
@@ -20,13 +22,7 @@ struct PeptideEntryDetailView: View {
                 if let entry = store.entry(id: entryID) {
                     PeptideEntryHeaderCard(entry: entry)
                     fieldsCard(entry)
-                    if entry.voided {
-                        PeptideBanner(
-                            title: "Voided",
-                            message: entry.voidReason.map { "Reason: " + $0 } ?? "No reason recorded.",
-                            tone: IronTheme.rust
-                        )
-                    }
+                    PeptideMilligramCard(entry: entry)
                     PeptideCorrectionTrail(corrections: entry.corrections)
                     actions(entry)
                 } else {
@@ -36,12 +32,16 @@ struct PeptideEntryDetailView: View {
                         tone: IronTheme.rust
                     )
                 }
+                Text("Voided entries stay in the trail.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 PeptideFooter()
             }
             .padding(16)
         }
         .background(IronTheme.canvas)
-        .navigationTitle("Dose")
+        .navigationTitle("Draw")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editTarget) { entry in
             PeptideEditEntrySheet(entry: entry)
@@ -54,9 +54,14 @@ struct PeptideEntryDetailView: View {
     private func fieldsCard(_ entry: PeptideLogEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             PeptideDetailRow(label: "Time", value: entry.date.map { PeptideMath.shortDateTime($0) + " ET" } ?? entry.datetimeRaw)
+            PeptideDetailRow(label: "Vial", value: vialText(entry))
+            if entry.drawnUnit == .units {
+                PeptideDetailRow(label: "Syringe scale", value: entry.syringeScaleAtSave?.label ?? "Not recorded")
+            }
             PeptideDetailRow(label: "Site", value: nonEmpty(entry.route))
-            PeptideDetailRow(label: "Vial", value: store.vial(id: entry.vialID)?.displayName ?? "None")
-            PeptideDetailRow(label: "Drawn volume", value: entry.drawnVolume.map { PeptideMath.number($0) + " " + (entry.drawnUnit ?? "mL") } ?? "—")
+            if entry.dose != nil || entry.units != nil {
+                PeptideDetailRow(label: "Amount typed in an earlier version", value: PeptideMath.amountText(entry.dose, entry.units))
+            }
             if let source = entry.sourceVial, !source.isEmpty {
                 PeptideDetailRow(label: "Source vial", value: source)
             }
@@ -75,6 +80,14 @@ struct PeptideEntryDetailView: View {
         .ironCard()
     }
 
+    /// The vial and whether it was confirmed when this draw was saved.
+    private func vialText(_ entry: PeptideLogEntry) -> String {
+        guard let id = entry.vialID else { return "None" }
+        let name = store.vial(id: id)?.displayName ?? "A vial no longer listed"
+        guard entry.vialIDAtSave == id else { return name }
+        return name + (entry.concentrationConfirmedAtSave ? " · confirmed" : " · not confirmed")
+    }
+
     private func nonEmpty(_ value: String?) -> String {
         guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "—" }
         return value
@@ -84,72 +97,111 @@ struct PeptideEntryDetailView: View {
     private func actions(_ entry: PeptideLogEntry) -> some View {
         if !entry.voided {
             VStack(alignment: .leading, spacing: 10) {
-                Button("Edit") { editTarget = entry }
+                Button("Edit entry") { editTarget = entry }
                     .buttonStyle(IronPrimaryButtonStyle())
                 Button("Void entry") { voidTarget = entry }
-                    .font(.system(size: 15, weight: .heavy))
-                    .fontWidth(.condensed)
-                    .textCase(.uppercase)
-                    .foregroundStyle(IronTheme.bloodText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(IronTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous).stroke(IronTheme.bloodText, lineWidth: 1))
+                    .buttonStyle(PeptideSecondaryButtonStyle())
             }
         }
     }
 }
 
+/// Compound and draw, and one status: "Voided" with the reason, or nothing.
 struct PeptideEntryHeaderCard: View {
     let entry: PeptideLogEntry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            PeptideFieldLabel("Logged")
-            Text(entry.compound.isEmpty ? "Dose" : entry.compound)
-                .font(.system(size: 26, weight: .black))
+            Text(entry.compound.isEmpty ? "Draw" : entry.compound)
+                .font(.system(.title2, design: .default, weight: .black))
                 .fontWidth(.condensed)
                 .textCase(.uppercase)
-                .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
-                .strikethrough(entry.voided)
+                .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(PeptideMath.amountText(entry.dose, entry.units))
+            Text(entry.drawText ?? "Draw not recorded")
                 .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
                 .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
+            if entry.voided {
+                Text("Voided")
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .foregroundStyle(IronTheme.rust)
+                Text(entry.voidReason.map { "Reason: " + $0 } ?? "No reason recorded.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(IronTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .ironCard(rule: !entry.voided)
+        .accessibilityElement(children: .combine)
     }
 }
 
-/// at (ET), field, old → new, reason, by.
+/// The mg working, from the entry's snapshot only, one step per line. When it
+/// can't be worked out, says why instead.
+struct PeptideMilligramCard: View {
+    let entry: PeptideLogEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            PeptideFieldLabel("Arithmetic")
+            switch PeptideMath.milligramDerivation(for: entry) {
+            case .steps(let steps):
+                ForEach(steps) { step in
+                    Text(step.text)
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(step.spoken)
+                }
+            case .unavailable(let reasons):
+                ForEach(reasons, id: \.self) { reason in
+                    Text(reason)
+                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .foregroundStyle(IronTheme.rust)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("This draw shows only what you typed.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .noDraw:
+                Text("No draw was recorded for this entry, so there's nothing to work out.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ironCard()
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Changes in words: "Draw: 20 units → 25 units", then when and why.
 struct PeptideCorrectionTrail: View {
     let corrections: [PeptideCorrection]
 
     var body: some View {
         if !corrections.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                IronSectionTitle(title: "Correction history")
+                IronSectionTitle(title: "Changes")
                 ForEach(Array(corrections.enumerated()), id: \.offset) { _, item in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(whenText(item.at) + " · " + item.field + (item.derived ? " (derived)" : ""))
-                            .font(.system(.caption, design: .rounded, weight: .semibold))
-                            .foregroundStyle(IronTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(item.old + " → " + item.new)
-                            .font(.system(.subheadline, design: .monospaced))
+                        Text(PeptideMath.trailSentence(item))
+                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             .foregroundStyle(IronTheme.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
-                        if !item.reason.isEmpty || !item.by.isEmpty {
-                            Text([item.reason, item.by.isEmpty ? "" : "by " + item.by].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(.footnote, design: .rounded))
-                                .foregroundStyle(IronTheme.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        Text(trailDetail(item))
+                            .font(.system(.footnote, design: .rounded))
+                            .foregroundStyle(IronTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
                 }
             }
             .padding(12)
@@ -157,52 +209,71 @@ struct PeptideCorrectionTrail: View {
         }
     }
 
-    private func whenText(_ raw: String) -> String {
-        guard let date = PeptideMath.parseISO8601(raw) else { return raw.isEmpty ? "—" : raw }
-        return PeptideMath.shortDateTime(date) + " ET"
+    private func trailDetail(_ item: PeptideCorrection) -> String {
+        let when = PeptideMath.parseISO8601(item.at).map { PeptideMath.shortDateTime($0) + " ET" } ?? (item.at.isEmpty ? "—" : item.at)
+        return [when, item.reason].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
 // MARK: - Edit
 
-/// Compound, amount, units, time, site and notes need a reason and go into the
-/// correction trail. The vial link and drawn volume don't.
+/// Compound, draw, time, site and notes. A reason is required and each
+/// change goes into the trail. The vial and the save-time snapshot don't change.
 struct PeptideEditEntrySheet: View {
     @Environment(PeptideLogStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let entry: PeptideLogEntry
     @State private var takenAt: Date
-    @State private var amountText: String
-    @State private var units: String?
+    @State private var drawText: String
+    @State private var drawUnit: PeptideDrawUnit?
     @State private var compound: String
     @State private var site: String
     @State private var notes: String
-    @State private var vialID: String?
-    @State private var drawnText: String
-    @State private var drawnUnit: String
     @State private var reason = ""
     @State private var errorText: String?
 
     init(entry: PeptideLogEntry) {
         self.entry = entry
         _takenAt = State(initialValue: entry.date ?? Date())
-        _amountText = State(initialValue: entry.dose.map(PeptideMath.number) ?? "")
-        _units = State(initialValue: entry.units)
+        _drawText = State(initialValue: entry.drawnVolume.map(PeptideMath.number) ?? "")
+        _drawUnit = State(initialValue: entry.drawnUnit)
         _compound = State(initialValue: entry.compound)
         _site = State(initialValue: entry.route ?? "")
         _notes = State(initialValue: entry.notes ?? "")
-        _vialID = State(initialValue: entry.vialID)
-        _drawnText = State(initialValue: entry.drawnVolume.map(PeptideMath.number) ?? "")
-        _drawnUnit = State(initialValue: entry.drawnUnit ?? "mL")
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    editFields
-                    localFields
-                    PeptideInputField(title: "Reason for the correction (required)", text: $reason, prompt: "Why are you changing it?")
+                    PeptideInputField(title: "Compound", text: $compound)
+                    PeptideInputField(title: "Draw", text: $drawText, prompt: "Type what you drew", keyboard: .decimalPad, monospaced: true)
+                    PeptideFlowLayout(spacing: 8) {
+                        ForEach(PeptideDrawUnit.allCases) { unit in
+                            PeptideChoiceChip(title: unit.label, selected: drawUnit == unit) { drawUnit = unit }
+                                .accessibilityLabel(unit.spokenLabel)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        PeptideFieldLabel("Time")
+                        DatePicker("Time", selection: $takenAt)
+                            .labelsHidden()
+                            .tint(IronTheme.brass)
+                    }
+                    PeptideInputField(title: "Site or route", text: $site)
+                    VStack(alignment: .leading, spacing: 4) {
+                        PeptideFieldLabel("Notes")
+                        TextField("Notes", text: $notes, axis: .vertical)
+                            .lineLimit(2...6)
+                            .padding(10)
+                            .background(IronTheme.surfaceRaised)
+                            .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
+                    }
+                    Text("The vial, syringe scale and concentration stay as they were when you saved this draw.")
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(IronTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    PeptideInputField(title: "Reason for the change (required)", text: $reason, prompt: "Why are you changing it?")
                     if let errorText {
                         PeptideIssueText(text: errorText)
                     }
@@ -214,7 +285,7 @@ struct PeptideEditEntrySheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(IronTheme.canvas)
-            .navigationTitle("Correct dose")
+            .navigationTitle("Edit draw")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -224,70 +295,23 @@ struct PeptideEditEntrySheet: View {
         }
     }
 
-    private var editFields: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            PeptideInputField(title: "Compound", text: $compound)
-            PeptideInputField(title: "Amount", text: $amountText, keyboard: .decimalPad, monospaced: true)
-            PeptideFieldLabel("Units")
-            PeptideFlowLayout(spacing: 8) {
-                ForEach(PeptideMath.unitOptions, id: \.self) { unit in
-                    PeptideChoiceChip(title: unit, selected: units == unit) { units = unit }
-                }
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                PeptideFieldLabel("Time")
-                DatePicker("Time", selection: $takenAt)
-                    .labelsHidden()
-            }
-            PeptideInputField(title: "Site or route", text: $site)
-            VStack(alignment: .leading, spacing: 4) {
-                PeptideFieldLabel("Notes")
-                TextField("Notes", text: $notes, axis: .vertical)
-                    .lineLimit(2...6)
-                    .padding(10)
-                    .background(IronTheme.surfaceRaised)
-                    .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
-            }
-        }
-    }
-
-    private var localFields: some View {
-        let vials = store.vialList(includeFinished: true).filter {
-            PeptideMath.sameCompound($0.compound, compound) || $0.id == vialID
-        }
-        return VStack(alignment: .leading, spacing: 10) {
-            IronSectionTitle(title: "Vial")
-            if !vials.isEmpty {
-                PeptideFieldLabel("Vial")
-                PeptideFlowLayout(spacing: 8) {
-                    PeptideChoiceChip(title: "No vial", selected: vialID == nil) { vialID = nil }
-                    ForEach(vials) { vial in
-                        PeptideChoiceChip(title: vial.displayName, selected: vialID == vial.id) { vialID = vial.id }
-                    }
-                }
-            }
-            PeptideInputField(title: "Drawn volume", text: $drawnText, keyboard: .decimalPad, monospaced: true)
-            HStack(spacing: 8) {
-                PeptideChoiceChip(title: "mL", selected: drawnUnit == "mL") { drawnUnit = "mL" }
-                PeptideChoiceChip(title: "units", subtitle: "U-100", selected: drawnUnit == "units") { drawnUnit = "units" }
-            }
-            Text("Vial and drawn volume don't need a reason.")
-                .font(.system(.caption, design: .rounded))
-                .foregroundStyle(IronTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     private func save() {
         errorText = nil
         var changes = PeptideCorrectionChanges()
-        let amount = ReconMath.toNumber(amountText)
-        if !amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard amount.isFinite, amount > 0 else {
-                errorText = "Amount must be a number more than 0."
+        let drawRaw = drawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !drawRaw.isEmpty || entry.drawnVolume != nil {
+            if let problem = PeptideMath.drawIssue(drawRaw) {
+                errorText = problem
                 return
             }
-            if amount != entry.dose { changes.dose = amount }
+            guard let unit = drawUnit else {
+                errorText = "Pick units or mL."
+                return
+            }
+            let value = ReconMath.toNumber(drawRaw)
+            if value != entry.drawnVolume { changes.draw = value }
+            if unit != entry.drawnUnit { changes.drawUnit = unit }
+            if changes.drawUnit != nil && changes.draw == nil { changes.draw = value }
         }
         if let original = entry.date {
             if abs(takenAt.timeIntervalSince(original)) >= 60 { changes.datetime = PeptideMath.iso8601NewYork(takenAt) }
@@ -316,30 +340,8 @@ struct PeptideEditEntrySheet: View {
             return
         }
         if trimmedCompound != entry.compound { changes.compound = trimmedCompound }
-        if let units, units != entry.units { changes.units = units }
-        let drawnRaw = drawnText.trimmingCharacters(in: .whitespacesAndNewlines)
-        var drawn: Double?
-        if !drawnRaw.isEmpty {
-            let value = ReconMath.toNumber(drawnRaw)
-            guard value.isFinite, value > 0 else {
-                errorText = "Drawn volume must be a number more than 0."
-                return
-            }
-            drawn = value
-        }
-        let localChanged = vialID != entry.vialID || drawn != entry.drawnVolume
-            || (drawn != nil && drawnUnit != (entry.drawnUnit ?? "mL"))
-        if !changes.isEmpty {
-            if let message = store.correct(entry, reason: reason, changes: changes) {
-                errorText = message
-                return
-            }
-        }
-        if localChanged {
-            store.updateLocalDetails(for: entry, vialID: vialID, drawnVolume: drawn, drawnUnit: drawnUnit)
-        }
-        if changes.isEmpty && !localChanged {
-            errorText = "Nothing changed."
+        if let message = store.correct(entry, reason: reason, changes: changes) {
+            errorText = message
             return
         }
         dismiss()
@@ -348,7 +350,7 @@ struct PeptideEditEntrySheet: View {
 
 // MARK: - Void
 
-/// "Delete" is a void with a reason. Voided entries stay visible with it.
+/// "Delete" is a void with a reason. Voided entries stay in the trail.
 struct PeptideVoidSheet: View {
     @Environment(PeptideLogStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -382,7 +384,7 @@ struct PeptideVoidSheet: View {
                 .padding(16)
             }
             .background(IronTheme.canvas)
-            .navigationTitle("Void dose")
+            .navigationTitle("Void draw")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -390,7 +392,7 @@ struct PeptideVoidSheet: View {
                 }
             }
             .confirmationDialog(
-                "Void this dose?",
+                "Void this draw?",
                 isPresented: $confirming,
                 titleVisibility: .visible
             ) {

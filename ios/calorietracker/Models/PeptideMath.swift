@@ -3,16 +3,18 @@
 //  calorietracker
 //
 //  Pure Peptides arithmetic. Every figure comes from numbers the user typed
-//  (vial amount, diluent volume, drawn volume, logged amounts). Nothing here
-//  proposes a dose, amount, protocol or schedule. IU is never converted to mass.
+//  (vial amount, diluent volume, the draw, the syringe scale they recorded).
+//  Nothing here proposes a dose, amount, protocol or schedule. IU is never
+//  converted to mass. mg is worked out in exactly one place:
+//  `derivedMilligrams`, from an entry's save-time snapshot.
 //
 
 import Foundation
 
 nonisolated enum PeptideMath {
     static let footerText = "Logs what you enter. Sets no doses and recommends no protocol."
-    /// Amount units the log sheet offers. "units" are U-100 syringe units.
-    static let unitOptions = ["mcg", "mg", "IU", "mL", "units"]
+    /// Shown under every mg figure, which only the entry detail shows.
+    static let arithmeticNote = "As recorded at save. Arithmetic on your numbers, not advice."
     static let vialUnitOptions = ["mg", "mcg", "IU"]
     static let siteOptions = ["Abdomen L", "Abdomen R", "Thigh L", "Thigh R", "Glute L", "Glute R", "Delt L", "Delt R"]
     /// Low stock without a user threshold: at or under 20% of the diluent volume.
@@ -23,7 +25,6 @@ nonisolated enum PeptideMath {
     static let glowComponentNames = ["GHK-Cu", "BPC-157", "TB-500"]
     static let newYork = TimeZone(identifier: "America/New_York") ?? TimeZone(secondsFromGMT: 0)!
     static let maxCompoundLength = 200
-    static let maxUnitsLength = 20
     static let maxRouteLength = 200
     static let maxNotesLength = 5000
 
@@ -67,15 +68,10 @@ nonisolated enum PeptideMath {
         return options
     }
 
-    /// Single-component vials name the amount unit; blends do not.
-    static func defaultUnits(for vial: PeptideVial?) -> String? {
-        guard let vial, !vial.isBlend, vial.components.count == 1 else { return nil }
-        let unit = vial.components[0].unit
-        return unitOptions.contains(unit) ? unit : nil
-    }
-
     // MARK: - Validation
 
+    /// The draw is required, typed by the user, and more than 0, with units
+    /// or mL picked. Nothing is ever filled in.
     static func validate(_ draft: PeptideLogDraft) -> [PeptideDraftField: String] {
         var issues: [PeptideDraftField: String] = [:]
         let compound = draft.trimmedCompound
@@ -84,30 +80,11 @@ nonisolated enum PeptideMath {
         } else if compound.count > maxCompoundLength {
             issues[.compound] = "Compound is longer than \(maxCompoundLength) characters."
         }
-        if draft.amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues[.amount] = "Type the amount you took."
-        } else if let amount = draft.amount {
-            if !(amount > 0) { issues[.amount] = "Amount must be more than 0." }
-        } else {
-            issues[.amount] = "Amount must be a number."
+        if let message = drawIssue(draft.drawText) {
+            issues[.draw] = message
         }
-        if let units = draft.units {
-            if !unitOptions.contains(units) || units.count > maxUnitsLength {
-                issues[.units] = "Pick the units."
-            }
-        } else {
-            issues[.units] = "Pick the units."
-        }
-        if !draft.drawnText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if let drawn = draft.drawnVolume {
-                if !(drawn > 0) {
-                    issues[.drawn] = "Drawn volume must be more than 0."
-                } else if draft.drawnUnit != "mL" && draft.drawnUnit != "units" {
-                    issues[.drawn] = "Pick mL or units for the drawn volume."
-                }
-            } else {
-                issues[.drawn] = "Drawn volume must be a number."
-            }
+        if draft.drawUnit == nil {
+            issues[.unit] = "Pick units or mL."
         }
         if draft.trimmedSite.count > maxRouteLength {
             issues[.site] = "Site is longer than \(maxRouteLength) characters."
@@ -116,6 +93,15 @@ nonisolated enum PeptideMath {
             issues[.notes] = "Notes are longer than \(maxNotesLength) characters."
         }
         return issues
+    }
+
+    /// Why a typed draw can't be saved, or nil when it can.
+    static func drawIssue(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "Type the draw." }
+        let value = ReconMath.toNumber(trimmed)
+        guard value.isFinite else { return "The draw must be a number." }
+        return value > 0 ? nil : "The draw must be more than 0."
     }
 
     // MARK: - Concentration and volume
@@ -171,21 +157,128 @@ nonisolated enum PeptideMath {
         return .calculable(result)
     }
 
+    // MARK: - Draws and mg (the only mg arithmetic)
+
+    /// mL in a draw: an mL draw as typed, or units ÷ the syringe's units per
+    /// mL. Nil for a units draw with no syringe scale.
+    static func drawMilliliters(draw: Double, unit: PeptideDrawUnit, scale: PeptideSyringeScale?) -> Double? {
+        guard draw.isFinite, draw > 0 else { return nil }
+        switch unit {
+        case .milliliters:
+            return draw
+        case .units:
+            guard let scale else { return nil }
+            return ReconMath.clean(draw / scale.unitsPerML)
+        }
+    }
+
+    /// mg in a draw, from an entry's save-time snapshot. Nil unless the vial
+    /// was confirmed and its concentration known; a units draw also needs the
+    /// syringe scale. (An mL draw needs no scale: its mL is the draw itself.)
+    static func derivedMilligrams(
+        draw: Double,
+        unit: PeptideDrawUnit,
+        scale: PeptideSyringeScale?,
+        concentration: Double?,
+        confirmed: Bool
+    ) -> Double? {
+        guard confirmed, let concentration, concentration.isFinite, concentration > 0,
+              let milliliters = drawMilliliters(draw: draw, unit: unit, scale: scale) else { return nil }
+        return ReconMath.clean(milliliters * concentration)
+    }
+
+    /// Concentration after reconstituting: vial amount ÷ diluent, in the
+    /// amount's own unit per mL. Nil unless both are more than 0.
+    static func reconstitutedConcentration(amount: Double, diluentML: Double) -> Double? {
+        guard amount.isFinite, diluentML.isFinite, amount > 0, diluentML > 0 else { return nil }
+        return ReconMath.clean(amount / diluentML)
+    }
+
+    /// A single-compound vial's mg/mL from its typed numbers (mcg converted
+    /// to mg; IU and blends never). Nil when any number is missing.
+    static func milligramsPerML(_ vial: PeptideVial) -> Double? {
+        guard !vial.isBlend, vial.components.count == 1, let diluent = vial.diluentML,
+              let amount = vial.components[0].amount,
+              let normalized = ReconMath.normalize(amount: amount, unit: vial.components[0].unit),
+              normalized.dimension == "mass" else { return nil }
+        return reconstitutedConcentration(amount: normalized.value / 1000, diluentML: diluent)
+    }
+
+    /// One line of the mg working on the entry detail, with its spoken form.
+    struct DerivationStep: Equatable, Identifiable {
+        var text: String
+        var spoken: String
+        var id: String { text }
+    }
+
+    enum MilligramDerivation: Equatable {
+        /// One step per line, ending with the arithmetic note.
+        case steps([DerivationStep])
+        /// Why mg isn't shown: "Concentration not confirmed" and/or "Syringe scale not recorded".
+        case unavailable([String])
+        /// The entry has no draw (typed before draws were logged).
+        case noDraw
+    }
+
+    static let notConfirmedText = "Concentration not confirmed"
+    static let scaleNotRecordedText = "Syringe scale not recorded"
+
+    /// The entry detail's mg working, from the entry's snapshot only.
+    static func milligramDerivation(for entry: PeptideLogEntry) -> MilligramDerivation {
+        guard let draw = entry.drawnVolume, let unit = entry.drawnUnit else { return .noDraw }
+        var missing: [String] = []
+        if !entry.concentrationConfirmedAtSave || entry.vialConcentrationAtSave == nil {
+            missing.append(notConfirmedText)
+        }
+        if unit == .units && entry.syringeScaleAtSave == nil {
+            missing.append(scaleNotRecordedText)
+        }
+        guard missing.isEmpty,
+              let concentration = entry.vialConcentrationAtSave,
+              let milliliters = drawMilliliters(draw: draw, unit: unit, scale: entry.syringeScaleAtSave),
+              let milligrams = derivedMilligrams(
+                  draw: draw,
+                  unit: unit,
+                  scale: entry.syringeScaleAtSave,
+                  concentration: concentration,
+                  confirmed: entry.concentrationConfirmedAtSave
+              ) else {
+            return .unavailable(missing.isEmpty ? [notConfirmedText] : missing)
+        }
+        var steps: [DerivationStep] = []
+        if unit == .units, let scale = entry.syringeScaleAtSave {
+            steps.append(DerivationStep(
+                text: "\(number(draw)) units → \(number(milliliters)) mL (\(scale.label) syringe)",
+                spoken: "\(number(draw)) units is \(number(milliliters)) millilitres on a \(scale.label) syringe."
+            ))
+        }
+        steps.append(DerivationStep(
+            text: "\(number(milliliters)) mL × \(number(concentration)) mg/mL = \(number(milligrams)) mg",
+            spoken: "\(number(milliliters)) millilitres times \(number(concentration)) milligrams per millilitre equals \(number(milligrams)) milligrams."
+        ))
+        steps.append(DerivationStep(text: arithmeticNote, spoken: arithmeticNote))
+        return .steps(steps)
+    }
+
+    // MARK: - Volume from a vial
+
     /// Volume drawn for one administration, in mL. Nil when it can't be known
-    /// from the user's own numbers.
+    /// from the user's own numbers. A units draw needs its recorded scale.
     static func drawnML(
         dose: Double?,
         units: String?,
         drawnVolume: Double?,
-        drawnUnit: String?,
+        drawnUnit: PeptideDrawUnit?,
+        scale: PeptideSyringeScale?,
         vial: PeptideVial?
     ) -> Double? {
-        if let drawnVolume, drawnVolume > 0 {
-            return drawnUnit == "units" ? ReconMath.clean(drawnVolume / 100) : drawnVolume
+        if let drawnVolume, drawnVolume > 0, let drawnUnit {
+            return drawMilliliters(draw: drawnVolume, unit: drawnUnit, scale: scale)
         }
+        // Entries from an earlier version: an amount typed in mL counts as is.
         guard let dose, dose > 0, let units else { return nil }
         if units == "mL" { return dose }
-        if units == "units" { return ReconMath.clean(dose / 100) }
+        if units == "units" { return scale.map { ReconMath.clean(dose / $0.unitsPerML) } }
         guard let vial, !vial.isBlend, vial.components.count == 1,
               case .calculable = concentration(vial),
               let diluent = vial.diluentML, diluent > 0,
@@ -200,7 +293,14 @@ nonisolated enum PeptideMath {
     }
 
     static func drawnML(for entry: PeptideLogEntry, vial: PeptideVial?) -> Double? {
-        drawnML(dose: entry.dose, units: entry.units, drawnVolume: entry.drawnVolume, drawnUnit: entry.drawnUnit, vial: vial)
+        drawnML(
+            dose: entry.dose,
+            units: entry.units,
+            drawnVolume: entry.drawnVolume,
+            drawnUnit: entry.drawnUnit,
+            scale: entry.syringeScaleAtSave,
+            vial: vial
+        )
     }
 
     struct Remaining: Equatable {
@@ -231,10 +331,10 @@ nonisolated enum PeptideMath {
         for entry in linked {
             guard let volume = drawnML(for: entry, vial: vial) else {
                 let when = entry.date.map(shortDateTime) ?? entry.datetimeRaw
-                return .uncalculable(
-                    "The \(when) dose (\(amountText(entry.dose, entry.units))) has no drawn volume and can't be converted from this vial.",
-                    linkedCount: linked.count
-                )
+                let reason = entry.drawnUnit == .units && entry.syringeScaleAtSave == nil
+                    ? "The \(when) draw is in units and no syringe scale was recorded for it."
+                    : "The \(when) entry has no draw this vial's numbers can turn into mL."
+                return .uncalculable(reason, linkedCount: linked.count)
             }
             drawn += volume
         }
@@ -266,10 +366,47 @@ nonisolated enum PeptideMath {
         return text
     }
 
+    /// "50 units" / "0.1 mL", the draw as typed.
+    static func drawText(_ value: Double, _ unit: PeptideDrawUnit) -> String {
+        number(value) + " " + unit.label
+    }
+
+    /// "50u" / "0.1mL", for a week cell.
+    static func drawShortText(_ value: Double, _ unit: PeptideDrawUnit) -> String {
+        number(value) + unit.shortLabel
+    }
+
+    /// "50 units" / "0.1 millilitres", for VoiceOver.
+    static func drawSpokenText(_ value: Double, _ unit: PeptideDrawUnit) -> String {
+        number(value) + " " + unit.spokenLabel
+    }
+
     /// Amount and units exactly as stored.
     static func amountText(_ dose: Double?, _ units: String?) -> String {
         let parts = [dose.map(number) ?? "", units ?? ""].filter { !$0.isEmpty }
         return parts.isEmpty ? "no amount" : parts.joined(separator: " ")
+    }
+
+    /// One trail row in words: "Draw: 20 units → 25 units", "Voided".
+    /// Never "false → true".
+    static func trailSentence(_ item: PeptideCorrection) -> String {
+        if item.field == "voided" {
+            return item.new == "false" ? "Un-voided" : "Voided"
+        }
+        let names = [
+            "datetime": "Time", "draw": "Draw", "dose": "Amount", "units": "Units", "compound": "Compound",
+            "route": "Site", "notes": "Notes", "source_vial": "Source vial",
+        ]
+        let name = names[item.field] ?? item.field.replacingOccurrences(of: "_", with: " ").capitalized
+        func words(_ value: String) -> String {
+            if item.field == "datetime", let date = parseISO8601(value) { return shortDateTime(date) }
+            switch value {
+            case "true": return "yes"
+            case "false": return "no"
+            default: return value
+            }
+        }
+        return name + ": " + words(item.old) + " → " + words(item.new)
     }
 
     static func mlText(_ value: Double) -> String {
@@ -285,12 +422,9 @@ nonisolated enum PeptideMath {
         return text.isEmpty ? "—" : text
     }
 
+    /// How often and when. A schedule never shows an amount.
     static func scheduleText(_ schedule: PeptideUserSchedule) -> String {
-        var parts: [String] = []
-        if schedule.amount != nil || !(schedule.units ?? "").isEmpty {
-            parts.append(amountText(schedule.amount, schedule.units))
-        }
-        parts.append(frequencyText(schedule.frequency))
+        var parts: [String] = [frequencyText(schedule.frequency)]
         if let minutes = schedule.timeOfDay {
             parts.append("at " + clockText(minutes: minutes))
         }

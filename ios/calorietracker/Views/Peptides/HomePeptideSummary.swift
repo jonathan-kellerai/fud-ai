@@ -26,7 +26,7 @@ struct HomePeptideSummary: View {
                 VStack(alignment: .leading, spacing: 4) {
                     PeptideFieldLabel("Logged today")
                     ForEach(logs) { entry in
-                        Text(entry.compound + " · " + PeptideMath.amountText(entry.dose, entry.units))
+                        Text(entry.compound + " · " + (entry.drawText ?? "draw not recorded"))
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             .foregroundStyle(IronTheme.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)

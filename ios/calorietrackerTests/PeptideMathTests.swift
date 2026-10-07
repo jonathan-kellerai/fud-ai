@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import calorietracker
 
-/// Peptides arithmetic: only from the user's own vial numbers, never IU <-> mass,
-/// never a suggested amount.
+/// Peptides arithmetic: only from the user's own vial numbers and the syringe
+/// scale they recorded, never IU <-> mass, never a suggested amount.
 ///
 /// xcodebuild test -project ios/calorietracker.xcodeproj -scheme calorietracker -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -only-testing:calorietrackerTests/PeptideMathTests CODE_SIGNING_ALLOWED=NO
 @MainActor
@@ -54,7 +54,8 @@ struct PeptideMathTests {
         hour: Int = 9,
         vialID: String? = nil,
         drawn: Double? = nil,
-        drawnUnit: String? = nil,
+        drawnUnit: PeptideDrawUnit? = nil,
+        scale: PeptideSyringeScale? = nil,
         voided: Bool = false
     ) -> PeptideLogEntry {
         PeptideLogEntry(
@@ -66,7 +67,8 @@ struct PeptideMathTests {
             voided: voided,
             vialID: vialID,
             drawnVolume: drawn,
-            drawnUnit: drawnUnit
+            drawnUnit: drawnUnit,
+            syringeScaleAtSave: scale
         )
     }
 
@@ -110,36 +112,35 @@ struct PeptideMathTests {
         #expect(options.filter { PeptideMath.compoundKey($0) == "bpc157" }.count == 1)
     }
 
-    @Test func logDraftsNeverPrefillAnAmount() {
+    @Test func logDraftsNeverPrefillADraw() {
         let names = PeptideMath.compoundOptions(vialCompounds: ["MT2"], loggedCompounds: ["BPC-157", "Tesamorelin"]) + [""]
         for name in names {
             let draft = PeptideLogDraft.new(compound: name)
-            #expect(draft.amount == nil, "\(name)")
-            #expect(draft.amountText.isEmpty)
-            #expect(draft.units == nil)
-            #expect(draft.drawnVolume == nil)
-            #expect(PeptideMath.validate(draft)[.amount] != nil)
+            #expect(draft.draw == nil, "\(name)")
+            #expect(draft.drawText.isEmpty)
+            #expect(draft.drawUnit == nil)
+            #expect(draft.scaleOverride == nil)
+            #expect(PeptideMath.validate(draft)[.draw] != nil)
+            #expect(PeptideMath.validate(draft)[.unit] != nil)
         }
     }
 
-    @Test func validationNeedsPositiveAmountAndUnits() {
+    @Test func validationNeedsAPositiveDrawAndAUnit() {
         var draft = PeptideLogDraft.new(compound: "BPC-157")
-        draft.amountText = "0"
-        draft.units = "mcg"
-        #expect(PeptideMath.validate(draft)[.amount] != nil)
-        draft.amountText = "500"
+        draft.drawText = "0"
+        draft.drawUnit = .units
+        #expect(PeptideMath.validate(draft)[.draw] != nil)
+        draft.drawText = "abc"
+        #expect(PeptideMath.validate(draft)[.draw] != nil)
+        draft.drawText = "50"
         #expect(PeptideMath.validate(draft).isEmpty)
-        draft.units = nil
-        #expect(PeptideMath.validate(draft)[.units] != nil)
-        draft.units = "mcg"
-        draft.drawnText = "abc"
-        #expect(PeptideMath.validate(draft)[.drawn] != nil)
         // A typed draw needs its unit picked; none is preselected.
-        draft.drawnText = "0.1"
-        #expect(draft.drawnUnit == nil)
-        #expect(PeptideMath.validate(draft)[.drawn] != nil)
-        draft.drawnUnit = "mL"
+        draft.drawUnit = nil
+        #expect(PeptideMath.validate(draft)[.unit] != nil)
+        draft.drawUnit = .milliliters
+        draft.drawText = "0,1"
         #expect(PeptideMath.validate(draft).isEmpty)
+        #expect(draft.draw == 0.1)
     }
 
     // MARK: Concentration
@@ -163,7 +164,7 @@ struct PeptideMathTests {
     @Test func remainingForMcgDoseFromMgVial() {
         let bpc = vial()
         // 10 mg / 2 mL = 5000 mcg/mL. 500 mcg -> 0.1 mL.
-        #expect(PeptideMath.drawnML(dose: 500, units: "mcg", drawnVolume: nil, drawnUnit: nil, vial: bpc) == 0.1)
+        #expect(PeptideMath.drawnML(dose: 500, units: "mcg", drawnVolume: nil, drawnUnit: nil, scale: nil, vial: bpc) == 0.1)
         let entries = [
             entry("a", vialID: "v1"),
             entry("b", civil: "2026-09-21", vialID: "v1"),
@@ -179,7 +180,7 @@ struct PeptideMathTests {
 
     @Test func iuDoseFromIUVial() {
         let hcg = vial(compound: "HCG", amount: 5000, unit: "IU", diluent: 1)
-        #expect(PeptideMath.drawnML(dose: 500, units: "IU", drawnVolume: nil, drawnUnit: nil, vial: hcg) == 0.1)
+        #expect(PeptideMath.drawnML(dose: 500, units: "IU", drawnVolume: nil, drawnUnit: nil, scale: nil, vial: hcg) == 0.1)
         let remaining = PeptideMath.remaining(vial: hcg, entries: [entry("h", compound: "HCG", dose: 500, units: "IU", vialID: "v1")])
         #expect(remaining.remainingML == 0.9)
     }
@@ -187,23 +188,29 @@ struct PeptideMathTests {
     @Test func neverConvertsBetweenIUAndMass() {
         let mass = vial()
         let iu = vial(compound: "HCG", amount: 5000, unit: "IU", diluent: 1)
-        #expect(PeptideMath.drawnML(dose: 500, units: "IU", drawnVolume: nil, drawnUnit: nil, vial: mass) == nil)
-        #expect(PeptideMath.drawnML(dose: 1, units: "mg", drawnVolume: nil, drawnUnit: nil, vial: iu) == nil)
+        #expect(PeptideMath.drawnML(dose: 500, units: "IU", drawnVolume: nil, drawnUnit: nil, scale: nil, vial: mass) == nil)
+        #expect(PeptideMath.drawnML(dose: 1, units: "mg", drawnVolume: nil, drawnUnit: nil, scale: nil, vial: iu) == nil)
         let remaining = PeptideMath.remaining(vial: mass, entries: [entry("x", dose: 500, units: "IU", vialID: "v1")])
         #expect(!remaining.calculable)
         #expect(remaining.remainingML == nil)
     }
 
-    @Test func blendNeedsUnitsOrTypedDraw() {
+    @Test func blendNeedsADrawWithItsScale() {
         let glow = glowVial()
-        let byUnits = entry("g1", compound: "Glow", dose: 10, units: "units", vialID: "glow")
-        let byML = entry("g2", compound: "Glow", dose: 0.1, units: "mL", civil: "2026-09-21", vialID: "glow")
+        let byUnits = entry("g1", compound: "Glow", dose: nil, units: nil, vialID: "glow", drawn: 10, drawnUnit: .units, scale: .u100)
+        let byML = entry("g2", compound: "Glow", dose: nil, units: nil, civil: "2026-09-21", vialID: "glow", drawn: 0.1, drawnUnit: .milliliters)
         let ok = PeptideMath.remaining(vial: glow, entries: [byUnits, byML])
         #expect(ok.calculable)
         #expect(ok.remainingML == 1.8)
-        let typedDraw = entry("g3", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-22", vialID: "glow", drawn: 20, drawnUnit: "units")
-        #expect(PeptideMath.remaining(vial: glow, entries: [typedDraw]).remainingML == 1.8)
-        let mcgOnly = entry("g4", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-23", vialID: "glow")
+        // 20 units on a U-50 syringe is 0.4 mL.
+        let onU50 = entry("g3", compound: "Glow", dose: nil, units: nil, civil: "2026-09-22", vialID: "glow", drawn: 20, drawnUnit: .units, scale: .u50)
+        #expect(PeptideMath.remaining(vial: glow, entries: [onU50]).remainingML == 1.6)
+        // A units draw with no recorded scale is never assumed to be U-100.
+        let noScale = entry("g4", compound: "Glow", dose: nil, units: nil, civil: "2026-09-23", vialID: "glow", drawn: 10, drawnUnit: .units)
+        let unknown = PeptideMath.remaining(vial: glow, entries: [byUnits, noScale])
+        #expect(!unknown.calculable)
+        #expect(unknown.reason?.contains("no syringe scale") == true)
+        let mcgOnly = entry("g5", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-24", vialID: "glow")
         let blocked = PeptideMath.remaining(vial: glow, entries: [byUnits, mcgOnly])
         #expect(!blocked.calculable)
         #expect(blocked.reason != nil)

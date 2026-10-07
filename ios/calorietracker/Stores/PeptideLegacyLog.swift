@@ -83,7 +83,7 @@ enum PeptideLegacyLog {
                 corrections: corrections,
                 vialID: vialID,
                 drawnVolume: drawnVolume,
-                drawnUnit: drawnUnit,
+                drawnUnit: drawnUnit.flatMap(PeptideDrawUnit.init(rawValue:)),
                 createdAt: createdAt
             )
         }

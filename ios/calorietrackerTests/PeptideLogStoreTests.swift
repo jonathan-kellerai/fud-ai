@@ -2,17 +2,17 @@ import Foundation
 import Testing
 @testable import calorietracker
 
-/// The Peptides log on this phone: what the user typed is saved as typed,
+/// The Peptides log on this phone: the draw the user typed is saved as typed,
 /// corrections keep a trail with a reason, voids keep the entry, and a new
 /// store on the same file sees everything. Real files in a temp directory.
 @MainActor
 struct PeptideLogStoreTests {
     private let takenAt = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func draft(compound: String = "BPC-157", amount: String = "500", units: String = "mcg") -> PeptideLogDraft {
+    private func draft(compound: String = "BPC-157", draw: String = "50", unit: PeptideDrawUnit = .units) -> PeptideLogDraft {
         var draft = PeptideLogDraft.new(compound: compound, now: takenAt)
-        draft.amountText = amount
-        draft.units = units
+        draft.drawText = draw
+        draft.drawUnit = unit
         return draft
     }
 
@@ -41,8 +41,12 @@ struct PeptideLogStoreTests {
         #expect(id == "dose-1")
         let entry = try #require(store.entry(id: id))
         #expect(entry.compound == "BPC-157")
-        #expect(entry.dose == 500)
-        #expect(entry.units == "mcg")
+        #expect(entry.drawnVolume == 50)
+        #expect(entry.drawnUnit == .units)
+        #expect(entry.drawText == "50 units")
+        // No dose, no amount: only the draw.
+        #expect(entry.dose == nil)
+        #expect(entry.units == nil)
         #expect(entry.route == "Abdomen L")
         #expect(entry.notes == "Morning")
         #expect(entry.date == takenAt)
@@ -50,25 +54,32 @@ struct PeptideLogStoreTests {
         #expect(entry.civilDate == PeptideMath.civilDate(takenAt))
         #expect(!entry.voided)
         #expect(entry.corrections.isEmpty)
+        // Nothing recorded to snapshot: no scale in Settings, no vial.
+        #expect(entry.syringeScaleAtSave == nil)
+        #expect(entry.vialConcentrationAtSave == nil)
+        #expect(!entry.concentrationConfirmedAtSave)
+        #expect(entry.vialIDAtSave == nil)
     }
 
     @Test func invalidDraftIsNotSaved() {
         let store = PeptideLogStore(persistence: .inMemory)
         var empty = PeptideLogDraft.new(compound: "BPC-157")
-        empty.units = "mcg"
+        empty.drawUnit = .units
         #expect(store.log(empty) == nil)
-        var noUnits = draft()
-        noUnits.units = nil
-        #expect(store.log(noUnits) == nil)
+        var noUnit = draft()
+        noUnit.drawUnit = nil
+        #expect(store.log(noUnit) == nil)
+        #expect(store.log(draft(draw: "0")) == nil)
+        #expect(store.log(draft(draw: "fifty")) == nil)
         #expect(store.entries.isEmpty)
     }
 
-    @Test func savingTheSameIDAgainReplacesTheDose() throws {
+    @Test func savingTheSameIDAgainReplacesTheDraw() throws {
         let store = PeptideLogStore(persistence: .inMemory)
-        _ = try #require(store.log(draft(amount: "500"), id: "same"))
-        _ = try #require(store.log(draft(amount: "250"), id: "same"))
+        _ = try #require(store.log(draft(draw: "50"), id: "same"))
+        _ = try #require(store.log(draft(draw: "25"), id: "same"))
         #expect(store.entries.count == 1)
-        #expect(store.entries.first?.dose == 250)
+        #expect(store.entries.first?.drawnVolume == 25)
     }
 
     @Test func correctionNeedsAReasonAndKeepsATrail() throws {
@@ -76,26 +87,32 @@ struct PeptideLogStoreTests {
         let id = try #require(store.log(draft(), now: takenAt))
         let entry = try #require(store.entry(id: id))
 
-        #expect(store.correct(entry, reason: "  ", changes: PeptideCorrectionChanges(dose: 250)) == "A reason is required.")
+        #expect(store.correct(entry, reason: "  ", changes: PeptideCorrectionChanges(draw: 25)) == "A reason is required.")
         #expect(store.correct(entry, reason: "Typo", changes: PeptideCorrectionChanges()) == "Nothing changed.")
-        #expect(store.entry(id: id)?.dose == 500)
+        #expect(store.entry(id: id)?.drawnVolume == 50)
 
         let later = takenAt.addingTimeInterval(3_600)
         let newTime = PeptideMath.iso8601NewYork(takenAt.addingTimeInterval(-1_800))
-        let changes = PeptideCorrectionChanges(datetime: newTime, dose: 250, route: "Thigh L")
-        #expect(store.correct(entry, reason: " Typed the wrong amount ", changes: changes, now: later) == nil)
+        let changes = PeptideCorrectionChanges(datetime: newTime, route: "Thigh L", draw: 25)
+        #expect(store.correct(entry, reason: " Typed the wrong draw ", changes: changes, now: later) == nil)
         let corrected = try #require(store.entry(id: id))
-        #expect(corrected.dose == 250)
+        #expect(corrected.drawnVolume == 25)
+        #expect(corrected.drawnUnit == .units)
         #expect(corrected.route == "Thigh L")
         #expect(corrected.datetimeRaw == newTime)
         #expect(corrected.date == takenAt.addingTimeInterval(-1_800))
-        #expect(corrected.corrections.map(\.field) == ["datetime", "dose", "route"])
-        let dose = try #require(corrected.corrections.first { $0.field == "dose" })
-        #expect(dose.old == "500")
-        #expect(dose.new == "250")
-        #expect(dose.reason == "Typed the wrong amount")
-        #expect(dose.by == "app")
-        #expect(dose.at == PeptideMath.iso8601NewYork(later))
+        #expect(corrected.corrections.map(\.field) == ["datetime", "draw", "route"])
+        let draw = try #require(corrected.corrections.first { $0.field == "draw" })
+        // In words: "50 units → 25 units", never raw flags.
+        #expect(draw.old == "50 units")
+        #expect(draw.new == "25 units")
+        #expect(draw.reason == "Typed the wrong draw")
+        #expect(draw.by == "app")
+        #expect(draw.at == PeptideMath.iso8601NewYork(later))
+        // A unit change alone is a draw change too.
+        #expect(store.correct(corrected, reason: "Was mL", changes: PeptideCorrectionChanges(drawUnit: .milliliters), now: later) == nil)
+        #expect(store.entry(id: id)?.drawText == "25 mL")
+        #expect(store.entry(id: id)?.corrections.last?.new == "25 mL")
         #expect(corrected.corrections.first { $0.field == "route" }?.old == "—")
     }
 
@@ -114,7 +131,7 @@ struct PeptideLogStoreTests {
         let store = PeptideLogStore(persistence: .inMemory)
         let vial = bpcVial()
         store.saveVial(vial)
-        var typed = draft(amount: "0.5", units: "mL")
+        var typed = draft(draw: "0.5", unit: .milliliters)
         typed.vialID = vial.id
         let id = try #require(store.log(typed))
         let entry = try #require(store.entry(id: id))
@@ -127,7 +144,7 @@ struct PeptideLogStoreTests {
         #expect(voided.voidReason == "Logged twice")
         #expect(voided.corrections.last?.field == "voided")
         #expect(store.void(voided, reason: "Again") == "This entry is already voided.")
-        #expect(store.correct(voided, reason: "Fix", changes: PeptideCorrectionChanges(dose: 1)) == "This entry is voided.")
+        #expect(store.correct(voided, reason: "Fix", changes: PeptideCorrectionChanges(draw: 1)) == "This entry is voided.")
         // Still listed when voided entries are shown; never counted.
         let day = PeptideMath.civilDate(takenAt)
         #expect(store.dayEntries(day, includeVoided: true).count == 1)
@@ -135,21 +152,32 @@ struct PeptideLogStoreTests {
         #expect(store.remaining(for: vial).remainingML == 2)
     }
 
-    @Test func vialLinkAndDrawNeedNoReason() throws {
+    /// A units draw comes out of the vial only through the syringe scale it
+    /// was saved with; with none recorded, remaining isn't shown.
+    @Test func unitsDrawsUseTheScaleRecordedAtSave() throws {
         let store = PeptideLogStore(persistence: .inMemory)
         let vial = bpcVial()
         store.saveVial(vial)
-        let id = try #require(store.log(draft()))
-        let entry = try #require(store.entry(id: id))
-        store.updateLocalDetails(for: entry, vialID: vial.id, drawnVolume: 10, drawnUnit: "units")
-        let linked = try #require(store.entry(id: id))
-        #expect(linked.vialID == vial.id)
-        #expect(linked.drawnVolume == 10)
-        #expect(linked.drawnUnit == "units")
-        #expect(linked.corrections.isEmpty)
+        var unrecorded = draft(draw: "10")
+        unrecorded.vialID = vial.id
+        let first = try #require(store.log(unrecorded))
+        #expect(!store.remaining(for: vial).calculable)
+        #expect(store.remaining(for: vial).reason?.contains("no syringe scale") == true)
+        _ = store.void(try #require(store.entry(id: first)), reason: "No scale")
+
+        store.setSyringeScale(.u100)
+        var typed = draft(draw: "10")
+        typed.vialID = vial.id
+        _ = try #require(store.log(typed))
         #expect(store.remaining(for: vial).remainingML == 1.9)
-        store.updateLocalDetails(for: linked, vialID: nil, drawnVolume: nil, drawnUnit: "units")
-        #expect(store.entry(id: id)?.drawnUnit == nil)
+        var override = draft(draw: "10")
+        override.vialID = vial.id
+        override.scaleOverride = .u50
+        _ = try #require(store.log(override))
+        #expect(store.remaining(for: vial).remainingML == 1.7)
+        // Changing Settings later changes no saved draw.
+        store.setSyringeScale(.u40)
+        #expect(store.remaining(for: vial).remainingML == 1.7)
     }
 
     @Test func remainingIsAlwaysCalculableFromTheUsersNumbers() throws {
@@ -157,7 +185,7 @@ struct PeptideLogStoreTests {
         let vial = bpcVial()
         store.saveVial(vial)
         for amount in ["0.4", "0.4", "0.4", "0.4"] {
-            var typed = draft(amount: amount, units: "mL")
+            var typed = draft(draw: amount, unit: .milliliters)
             typed.vialID = vial.id
             _ = try #require(store.log(typed))
         }
@@ -206,7 +234,7 @@ struct PeptideLogStoreTests {
     /// One person per phone: every dose is in the one log, nothing is filtered by a profile.
     @Test func everyDoseIsInTheOneLog() throws {
         let store = PeptideLogStore(persistence: .inMemory)
-        _ = try #require(store.log(draft(compound: "MT2", amount: "250"), id: "a"))
+        _ = try #require(store.log(draft(compound: "MT2", draw: "25"), id: "a"))
         _ = try #require(store.log(draft(compound: "BPC-157"), id: "b"))
         let day = PeptideMath.civilDate(takenAt)
         #expect(store.dayEntries(day, includeVoided: false).map(\.compound) == ["MT2", "BPC-157"])
@@ -237,12 +265,13 @@ struct PeptideLogStoreTests {
         let vial = bpcVial()
         store.saveVial(vial)
         store.saveSchedule(PeptideUserSchedule(id: "s1", compound: "BPC-157", frequency: ReconMath.Frequency(type: "everyN", n: 2), startDate: "2026-09-01"))
-        var typed = draft(amount: "0.25", units: "mL")
+        store.setSyringeScale(.u50)
+        var typed = draft(draw: "0.25", unit: .milliliters)
         typed.vialID = vial.id
         typed.notes = "After training"
         let id = try #require(store.log(typed))
         let entry = try #require(store.entry(id: id))
-        _ = store.correct(entry, reason: "Typo", changes: PeptideCorrectionChanges(dose: 0.3))
+        _ = store.correct(entry, reason: "Typo", changes: PeptideCorrectionChanges(draw: 0.3))
         #expect(store.persistError == nil)
 
         let reopened = PeptideLogStore(persistence: .file(url))
@@ -251,6 +280,11 @@ struct PeptideLogStoreTests {
         #expect(reopened.schedules == store.schedules)
         #expect(reopened.entry(id: id)?.corrections.count == 1)
         #expect(reopened.remaining(for: vial).remainingML == 1.7)
+        #expect(reopened.syringeScale == .u50)
+        #expect(reopened.entry(id: id)?.syringeScaleAtSave == .u50)
+        #expect(reopened.entry(id: id)?.vialIDAtSave == vial.id)
+        #expect(reopened.entry(id: id)?.concentrationConfirmedAtSave == true)
+        #expect(reopened.entry(id: id)?.vialConcentrationAtSave == 5)
         #expect(reopened.storageNote == nil)
         let saved = try #require(PeptideLogSnapshot.savedVersion(of: Data(contentsOf: url)))
         #expect(saved == PeptideLogStore.fileVersion)

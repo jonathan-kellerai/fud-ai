@@ -24,6 +24,9 @@ final class PeptideLogStore {
     /// Records an earlier build kept under a second profile. Saved, backed up
     /// and never shown in the log until the user keeps or deletes them.
     private(set) var heldAside = PeptideRecordSet()
+    /// The user's syringe scale (Settings → Syringe scale). Nil: not recorded.
+    /// Copied into each draw when it's saved; changing it never changes a saved draw.
+    private(set) var syringeScale: PeptideSyringeScale?
     private(set) var persistError: String?
     /// Plain-text note when the saved log couldn't be read in full.
     private(set) var storageNote: String?
@@ -106,31 +109,48 @@ final class PeptideLogStore {
 
     // MARK: Logging
 
-    /// Saves a dose from what the user typed. Returns its id, or nil when the
+    /// Saves a draw from what the user typed. Returns its id, or nil when the
     /// draft is not valid. Saving the same id again replaces that entry.
     @discardableResult
     func log(_ draft: PeptideLogDraft, id: String? = nil, now: Date = Date()) -> String? {
-        guard PeptideMath.validate(draft).isEmpty, let dose = draft.amount, let units = draft.units else { return nil }
+        guard PeptideMath.validate(draft).isEmpty else { return nil }
         let entryID = (id ?? UUID().uuidString).lowercased()
-        let datetime = PeptideMath.iso8601NewYork(draft.takenAt)
-        let entry = PeptideLogEntry(
-            id: entryID,
-            compound: draft.trimmedCompound,
-            dose: dose,
-            units: units,
-            date: PeptideMath.parseISO8601(datetime),
-            datetimeRaw: datetime,
-            route: draft.trimmedSite.isEmpty ? nil : draft.trimmedSite,
-            notes: draft.trimmedNotes.isEmpty ? nil : draft.trimmedNotes,
-            vialID: draft.vialID,
-            drawnVolume: draft.drawnVolume,
-            drawnUnit: draft.drawnVolume == nil ? nil : draft.drawnUnit,
-            createdAt: PeptideMath.iso8601NewYork(now)
-        )
+        let entry = entry(from: draft, id: entryID, now: now)
         entries.removeAll { $0.id == entryID }
         entries.append(entry)
         didChangeEntries()
         return entryID
+    }
+
+    /// The entry `draft` would save, with its snapshot: the syringe scale in
+    /// force (this draw's own, else Settings) and the linked vial's
+    /// concentration and confirmation, copied now and never re-read.
+    func entry(from draft: PeptideLogDraft, id: String, now: Date = Date()) -> PeptideLogEntry {
+        let datetime = PeptideMath.iso8601NewYork(draft.takenAt)
+        let linked = vial(id: draft.vialID)
+        return PeptideLogEntry(
+            id: id,
+            compound: draft.trimmedCompound,
+            date: PeptideMath.parseISO8601(datetime),
+            datetimeRaw: datetime,
+            route: draft.trimmedSite.isEmpty ? nil : draft.trimmedSite,
+            notes: draft.trimmedNotes.isEmpty ? nil : draft.trimmedNotes,
+            vialID: linked?.id,
+            drawnVolume: draft.draw,
+            drawnUnit: draft.draw == nil ? nil : draft.drawUnit,
+            createdAt: PeptideMath.iso8601NewYork(now),
+            syringeScaleAtSave: draft.scaleOverride ?? syringeScale,
+            vialConcentrationAtSave: linked.flatMap(PeptideMath.milligramsPerML),
+            concentrationConfirmedAtSave: linked?.concentrationConfirmed ?? false,
+            vialIDAtSave: linked?.id
+        )
+    }
+
+    /// Settings → Syringe scale. Saved drafts keep the scale they were saved with.
+    func setSyringeScale(_ scale: PeptideSyringeScale?) {
+        guard scale != syringeScale else { return }
+        syringeScale = scale
+        didChange()
     }
 
     /// Changes a logged dose in place. A reason is required and every changed
@@ -158,15 +178,6 @@ final class PeptideLogStore {
         entries[index] = entries[index].voiding(reason: trimmed, at: PeptideMath.iso8601NewYork(now))
         didChangeEntries()
         return nil
-    }
-
-    /// Vial link and drawn volume. No reason needed.
-    func updateLocalDetails(for entry: PeptideLogEntry, vialID: String?, drawnVolume: Double?, drawnUnit: String?) {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
-        entries[index].vialID = vialID
-        entries[index].drawnVolume = drawnVolume
-        entries[index].drawnUnit = drawnVolume == nil ? nil : (drawnUnit ?? "mL")
-        didChange()
     }
 
     // MARK: Vials and schedules
@@ -245,7 +256,8 @@ final class PeptideLogStore {
             vials: vials,
             schedules: schedules,
             entries: entries,
-            heldAside: heldAside
+            heldAside: heldAside,
+            syringeScale: syringeScale
         )
     }
 
@@ -293,13 +305,14 @@ final class PeptideLogStore {
         var replacement = archive.records(now: now)
         replacement.own.entries = Self.sorted(replacement.own.entries)
         if savingBlocked { return persistError ?? "Peptides can't be saved on this phone right now." }
-        if !file.isInMemory, case .failure(let error)? = save(replacement, fallbackOnFailure: false) {
+        if !file.isInMemory, case .failure(let error)? = save(replacement, scale: archive.syringeScale, fallbackOnFailure: false) {
             return error.localizedDescription
         }
         vials = replacement.own.vials
         schedules = replacement.own.schedules
         entries = replacement.own.entries
         heldAside = replacement.heldAside
+        syringeScale = archive.syringeScale
         persistError = nil
         return nil
     }
@@ -312,6 +325,7 @@ final class PeptideLogStore {
         vials = []
         schedules = []
         heldAside = PeptideRecordSet()
+        syringeScale = nil
         persistError = nil
         storageNote = nil
         omitted = 0
@@ -353,6 +367,7 @@ final class PeptideLogStore {
             }
             // Records skipped now are dropped by the next save, so they join the count saved with it.
             apply(snapshot.records, omitted: snapshot.omitted + snapshot.skipped)
+            syringeScale = snapshot.syringeScale
             if version == 2 {
                 // Version 2 tagged records with a profile: keep its bytes, then save version 3.
                 keepAsideThenSave(data, label: "pre-v3")
@@ -407,7 +422,7 @@ final class PeptideLogStore {
             own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules),
             heldAside: heldAside
         )
-        switch save(records) {
+        switch save(records, scale: syringeScale) {
         case .success?:
             persistError = nil
         case .failure(let error)?:
@@ -418,8 +433,12 @@ final class PeptideLogStore {
     }
 
     /// Writes these records as the saved log. Nil when there is no file to write.
-    private func save(_ records: PeptideRecordsByProfile, fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
-        let snapshot = PeptideLogSnapshot(
+    private func save(
+        _ records: PeptideRecordsByProfile,
+        scale: PeptideSyringeScale?,
+        fallbackOnFailure: Bool = true
+    ) -> Result<Void, Error>? {
+        var snapshot = PeptideLogSnapshot(
             version: Self.fileVersion,
             entries: records.own.entries,
             vials: records.own.vials,
@@ -427,6 +446,7 @@ final class PeptideLogStore {
             heldAside: records.heldAside,
             omitted: omitted
         )
+        snapshot.syringeScale = scale
         guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(SaveError.encoding) }
         return file.write(data, fallbackOnFailure: fallbackOnFailure)
     }
@@ -448,6 +468,8 @@ struct PeptideLogSnapshot: Codable {
     var schedules: [PeptideUserSchedule]
     /// Waiting for the user to keep or delete them. Saved only when there are some.
     var heldAside = PeptideRecordSet()
+    /// Settings → Syringe scale. Saved only when recorded.
+    var syringeScale: PeptideSyringeScale?
     /// Records that were left out of an earlier save because they couldn't
     /// be read (an upgrade, or a damaged save). Saved only when above 0;
     /// older saves without it read as 0.
@@ -462,6 +484,7 @@ struct PeptideLogSnapshot: Codable {
     enum CodingKeys: String, CodingKey {
         case version, entries, vials, schedules, omitted
         case heldAside = "held_aside"
+        case syringeScale = "syringe_scale"
     }
 
     private enum HeldAsideKeys: String, CodingKey {
@@ -513,6 +536,8 @@ struct PeptideLogSnapshot: Codable {
         let read = sorted.own.count + held.count
         skipped = lossyEntries.count + lossyVials.count + lossySchedules.count + heldLossy - read
         omitted = max((try? container.decodeIfPresent(Int.self, forKey: .omitted)) ?? 0, 0)
+        let scale = (try? container.decodeIfPresent(Int.self, forKey: .syringeScale)).flatMap { $0 }
+        syringeScale = scale.flatMap(PeptideSyringeScale.init(rawValue:))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -528,6 +553,7 @@ struct PeptideLogSnapshot: Codable {
             try held.encode(heldAside.schedules, forKey: .schedules)
         }
         if omitted > 0 { try container.encode(omitted, forKey: .omitted) }
+        try container.encodeIfPresent(syringeScale?.rawValue, forKey: .syringeScale)
     }
 
     /// The `version` of a saved log (1 when absent, as version-1 saves read).
