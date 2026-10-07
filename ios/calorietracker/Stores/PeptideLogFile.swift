@@ -70,11 +70,12 @@ struct PeptideLogFile {
     }
 
     /// Writes the untouched bytes of an older log next to it before it is
-    /// upgraded. True only when the copy is on disk and reads back the same.
-    func keepBeforeUpgrade(_ data: Data, now: Date = Date()) -> Bool {
+    /// upgraded, as `peptide_log_v1.<label>-<stamp>.json`. True only when the
+    /// copy is on disk and reads back the same.
+    func keepBeforeUpgrade(_ data: Data, label: String, now: Date = Date()) -> Bool {
         guard let url else { return false }
         let directory = url.deletingLastPathComponent()
-        let copy = directory.appendingPathComponent("peptide_log_v1.pre-local-\(Int(now.timeIntervalSince1970)).json")
+        let copy = directory.appendingPathComponent("peptide_log_v1.\(label)-\(Int(now.timeIntervalSince1970)).json")
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: copy, options: .atomic)
