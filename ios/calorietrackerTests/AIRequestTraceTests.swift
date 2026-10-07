@@ -142,4 +142,22 @@ struct AIRequestTraceTests {
         #expect(trace.lastAttempt?.provider == "Google Gemini")
         #expect(trace.lastAttempt?.model == "gemini-3-flash")
     }
+
+    @Test func registeredCredentialsNeverReachEntries() {
+        let (trace, _) = trace()
+        let secret = "opaque-credential-0001"
+        trace.registerCredentials(AIRequestLogRedactor.credentials(headers: ["x-api-key": secret]))
+        trace.beginAttempt(provider: "Anthropic", model: "claude")
+        trace.recordResponse(provider: "Anthropic", status: 401, body: Data(#"{"error":{"message":"Key opaque-credential-0001 was revoked"}}"#.utf8))
+        trace.beginAttempt(provider: "OpenRouter", model: "m")
+        trace.recordResponse(provider: "OpenRouter", status: 200, body: Data("echo b3BhcXVlLWNyZWRlbnRpYWwtMDAwMQ==".utf8))
+        let entries = trace.entries(outcome: .failed("Could not parse \(secret)"))
+        #expect(entries.count == 2)
+        for entry in entries {
+            let text = entry.reportText(timeZone: TimeZone(identifier: "UTC")!)
+            #expect(!text.contains(secret))
+            #expect(!text.contains("b3BhcXVlLWNyZWRlbnRpYWwtMDAwMQ=="))
+        }
+        #expect(entries[0].errorBody?.contains(AIRequestLogRedactor.placeholder) == true)
+    }
 }

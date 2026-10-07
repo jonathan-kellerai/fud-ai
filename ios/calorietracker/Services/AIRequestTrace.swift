@@ -34,6 +34,8 @@ final class AIRequestTrace {
     let startedAt: Date
     private(set) var attempts: [Attempt] = []
     private let now: () -> Date
+    /// Credentials this request sent, scrubbed from every body before it is kept.
+    private var secrets: [String] = []
 
     init(kind: AIRequestLogEntry.Kind, now: @escaping () -> Date = Date.init) {
         self.kind = kind
@@ -48,6 +50,14 @@ final class AIRequestTrace {
 
     // MARK: - Recording
 
+    /// The request's own credentials, so a server that echoes them back (raw or encoded)
+    /// can't put them in the log. Call before the request is sent.
+    func registerCredentials(_ values: [String]) {
+        for value in values where !secrets.contains(value) {
+            secrets.append(value)
+        }
+    }
+
     func beginAttempt(provider: String, model: String?) {
         closeLastAttempt()
         attempts.append(Attempt(provider: provider, model: model, startedAt: now()))
@@ -60,9 +70,9 @@ final class AIRequestTrace {
         attempts[index].httpStatus = status
         if status == 200 {
             attempts[index].errorBody = nil
-            attempts[index].lastSuccessBody = AIRequestLogRedactor.redactedBody(body)
+            attempts[index].lastSuccessBody = AIRequestLogRedactor.redactedBody(body, secrets: secrets)
         } else {
-            let text = AIRequestLogRedactor.redactedBody(body)
+            let text = AIRequestLogRedactor.redactedBody(body, secrets: secrets)
             attempts[index].errorBody = text.isEmpty ? "HTTP \(status) with an empty body" : text
         }
     }
@@ -72,7 +82,7 @@ final class AIRequestTrace {
         ensureAttempt(provider: provider)
         let nsError = error as NSError
         let message = "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
-        attempts[attempts.count - 1].errorBody = AIRequestLogRedactor.redactedBody(message)
+        attempts[attempts.count - 1].errorBody = AIRequestLogRedactor.redactedBody(message, secrets: secrets)
     }
 
     /// Why the current attempt was abandoned, when the HTTP layer didn't already say.
@@ -134,10 +144,10 @@ final class AIRequestTrace {
 
     /// A 200 that couldn't be used is the case where the raw answer matters most.
     private func failureText(_ message: String, for attempt: Attempt) -> String {
-        let redactedMessage = AIRequestLogRedactor.redactedBody(message)
+        let redactedMessage = AIRequestLogRedactor.redactedBody(message, secrets: secrets)
         guard attempt.httpStatus == 200, let body = attempt.lastSuccessBody, !body.isEmpty else {
             return redactedMessage
         }
-        return AIRequestLogRedactor.redactedBody("\(redactedMessage)\nResponse: \(body)")
+        return AIRequestLogRedactor.redactedBody("\(redactedMessage)\nResponse: \(body)", secrets: secrets)
     }
 }

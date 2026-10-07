@@ -82,4 +82,73 @@ struct AIRequestLogRedactorTests {
         let data = Data(#"{"error":{"message":"Invalid key sk-0123456789ABCDEF"}}"#.utf8)
         #expect(AIRequestLogRedactor.redactedBody(data) == #"{"error":{"message":"Invalid key [REDACTED]"}}"#)
     }
+
+    // MARK: - Codex round 1 (P1): escaped keys, inline echoes, the request's own credential
+
+    @Test func unicodeEscapedCredentialKeysAreRedacted() {
+        let result = AIRequestLogRedactor.redact(#"{"api_key":"opaque-credential"}"#)
+        #expect(!result.contains("opaque-credential"))
+        #expect(result == #"{"api_key":"[REDACTED]"}"#)
+    }
+
+    @Test func nestedCredentialFieldsAreRedactedAtAnyDepth() {
+        let body = #"{"data":[{"auth":{"access_token":"deep-opaque-1","Client-Secret":42}}],"error":{"code":"bad"}}"#
+        let result = AIRequestLogRedactor.redact(body)
+        #expect(!result.contains("deep-opaque-1"))
+        #expect(!result.contains("42"))
+        #expect(result.contains(#""code":"bad""#))
+    }
+
+    @Test func headerEchoesInsideAMessageAreRedacted() {
+        let body = #"{"error":{"message":"Rejected x-api-key: opaque-credential"}}"#
+        let result = AIRequestLogRedactor.redact(body)
+        #expect(result == #"{"error":{"message":"Rejected x-api-key: [REDACTED]"}}"#)
+    }
+
+    @Test(arguments: [
+        "Rejected x-api-key: opaque-credential, try again",
+        "bad header Authorization: Bearer opaque-credential.",
+        "got X-Goog-Api-Key=opaque-credential;",
+        "proxy-authorization: Basic opaque-credential",
+    ])
+    func inlineHeaderEchoesInPlainTextAreRedacted(text: String) {
+        let result = AIRequestLogRedactor.redact(text)
+        #expect(!result.contains("opaque-credential"))
+        #expect(result.contains(redacted))
+    }
+
+    @Test func theRequestsOwnCredentialIsRemovedInEveryEncoding() throws {
+        let secret = "opaque/cred+ential=1"
+        let percent = try #require(secret.addingPercentEncoding(withAllowedCharacters: .alphanumerics))
+        let base64 = Data(secret.utf8).base64EncodedString()
+        let unicode = secret.unicodeScalars.map { String(format: "\\u%04x", $0.value) }.joined()
+        let text = "raw \(secret) | pct \(percent) | json opaque\\/cred+ential=1 | b64 \(base64) | u \(unicode)"
+        let result = AIRequestLogRedactor.redact(text, secrets: [secret])
+        #expect(result == "raw \(redacted) | pct \(redacted) | json \(redacted) | b64 \(redacted) | u \(redacted)")
+    }
+
+    @Test func theRequestsOwnCredentialIsRemovedFromDecodedJSONStrings() {
+        // The value is split by an escape the raw text pass can't see.
+        let body = #"{"error":{"message":"Unknown credential opaque-credential-77"}}"#
+        let result = AIRequestLogRedactor.redact(body, secrets: ["opaque-credential-77"])
+        #expect(!result.contains("credential-77"))
+        #expect(result.contains(redacted))
+    }
+
+    @Test func shortSecretsAreIgnoredSoOrdinaryWordsSurvive() {
+        #expect(AIRequestLogRedactor.redact("the key is ok", secrets: ["ok", ""]) == "the key is ok")
+    }
+
+    @Test func credentialsAreReadFromRequestHeadersAndQuery() throws {
+        let url = try #require(URL(string: "https://example.test/v1?key=query-secret-1&alt=json"))
+        let values = AIRequestLogRedactor.credentials(
+            headers: [
+                "Authorization": "Bearer bearer-secret-1",
+                "x-api-key": "header-secret-1",
+                "Content-Type": "application/json",
+            ],
+            url: url
+        )
+        #expect(Set(values) == ["Bearer bearer-secret-1", "bearer-secret-1", "header-secret-1", "query-secret-1"])
+    }
 }

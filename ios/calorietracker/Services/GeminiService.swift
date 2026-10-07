@@ -1197,6 +1197,7 @@ struct GeminiService {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        trace?.registerCredentials(AIRequestLogRedactor.credentials(headers: headers, url: url))
 
         // Retry transient overload responses (503/429/529) with exponential backoff (default 1s, 2s, 4s).
         // The "model is currently experiencing high demand" message is Google's global throttle on
