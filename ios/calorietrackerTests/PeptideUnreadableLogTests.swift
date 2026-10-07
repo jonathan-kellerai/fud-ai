@@ -419,8 +419,9 @@ struct PeptideUnreadableLogTests {
         }
     }
 
-    /// The vial and schedule editors stay open on a refused delete: the store
-    /// keeps the record and says why (a partly read log whose copy failed still shows them).
+    /// The vial and schedule editors stay open on a refused delete or save:
+    /// they show what the store call returns, and dismiss only on nil. The store
+    /// keeps the record and returns why (a partly read log whose copy failed still shows them).
     @Test func deletingAShownVialOrScheduleIsRefusedWhileTheLogIsReadOnly() throws {
         let url = tempURL()
         defer { cleanUp(url) }
@@ -437,9 +438,11 @@ struct PeptideUnreadableLogTests {
         #expect(store.vial(id: "v1") != nil)
         #expect(store.schedules.map(\.id) == ["s1"])
         let refusal = try #require(store.changeRefusal)
-        store.deleteVial(id: "v1")
-        store.deleteSchedule(id: "s1")
-        #expect(store.vial(id: "v1") != nil)
+        #expect(store.deleteVial(id: "v1") == refusal)
+        #expect(store.deleteSchedule(id: "s1") == refusal)
+        #expect(store.saveVial(PeptideVial(id: "v2", compound: "TB-500", diluentML: 2)) == refusal)
+        #expect(store.saveSchedule(PeptideUserSchedule(id: "s2", compound: "TB-500", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-10-01")) == refusal)
+        #expect(store.vials.map(\.id) == ["v1"])
         #expect(store.schedules.map(\.id) == ["s1"])
         #expect(store.persistError == refusal)
         #expect(try Data(contentsOf: url) == saved)

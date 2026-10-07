@@ -239,8 +239,7 @@ struct PeptideScheduleEditor: View {
             }
             .confirmationDialog("Delete this schedule?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete schedule", role: .destructive) {
-                    if let existing { store.deleteSchedule(id: existing.id) }
-                    if let refusal = store.changeRefusal {
+                    if let existing, let refusal = store.deleteSchedule(id: existing.id) {
                         errorText = refusal
                         return
                     }
@@ -379,8 +378,7 @@ struct PeptideScheduleEditor: View {
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             createdAt: existing?.createdAt ?? Date()
         )
-        store.saveSchedule(schedule)
-        if let refusal = store.changeRefusal {
+        if let refusal = store.saveSchedule(schedule) {
             errorText = refusal
             return
         }

@@ -199,7 +199,7 @@ struct PeptideLogStoreTests {
     @Test func vialsAndSchedulesAreSavedAndFiltered() {
         let store = PeptideLogStore(persistence: .inMemory)
         let vial = bpcVial()
-        store.saveVial(vial)
+        #expect(store.saveVial(vial) == nil)
         var renamed = vial
         renamed.compound = "BPC-157 (new)"
         store.saveVial(renamed)
@@ -208,15 +208,15 @@ struct PeptideLogStoreTests {
         store.finishVial(id: vial.id)
         #expect(store.vialList().isEmpty)
         #expect(store.vialList(includeFinished: true).count == 1)
-        store.deleteVial(id: vial.id)
+        #expect(store.deleteVial(id: vial.id) == nil)
         #expect(store.vials.isEmpty)
 
         let schedule = PeptideUserSchedule(id: "s1", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01")
-        store.saveSchedule(schedule)
+        #expect(store.saveSchedule(schedule) == nil)
         #expect(store.schedules.map(\.id) == ["s1"])
         store.setScheduleActive(id: "s1", active: false)
         #expect(store.schedules.first?.active == false)
-        store.deleteSchedule(id: "s1")
+        #expect(store.deleteSchedule(id: "s1") == nil)
         #expect(store.schedules.isEmpty)
     }
 

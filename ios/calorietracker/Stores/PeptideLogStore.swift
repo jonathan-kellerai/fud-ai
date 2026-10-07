@@ -185,14 +185,18 @@ final class PeptideLogStore {
 
     // MARK: Vials and schedules
 
-    func saveVial(_ vial: PeptideVial) {
-        guard canChange() else { return }
+    /// Saves a vial, replacing one with the same id. Returns why the log
+    /// refused the change (nothing changed), or nil when it was made.
+    @discardableResult
+    func saveVial(_ vial: PeptideVial) -> String? {
+        guard canChange() else { return persistError }
         if let index = vials.firstIndex(where: { $0.id == vial.id }) {
             vials[index] = vial
         } else {
             vials.append(vial)
         }
         didChange()
+        return nil
     }
 
     func finishVial(id: String) {
@@ -201,20 +205,27 @@ final class PeptideLogStore {
         didChange()
     }
 
-    func deleteVial(id: String) {
-        guard canChange() else { return }
+    /// Returns why the log refused the delete (nothing changed), or nil when it was made.
+    @discardableResult
+    func deleteVial(id: String) -> String? {
+        guard canChange() else { return persistError }
         vials.removeAll { $0.id == id }
         didChange()
+        return nil
     }
 
-    func saveSchedule(_ schedule: PeptideUserSchedule) {
-        guard canChange() else { return }
+    /// Saves a schedule, replacing one with the same id. Returns why the log
+    /// refused the change (nothing changed), or nil when it was made.
+    @discardableResult
+    func saveSchedule(_ schedule: PeptideUserSchedule) -> String? {
+        guard canChange() else { return persistError }
         if let index = schedules.firstIndex(where: { $0.id == schedule.id }) {
             schedules[index] = schedule
         } else {
             schedules.append(schedule)
         }
         didChange()
+        return nil
     }
 
     func setScheduleActive(id: String, active: Bool) {
@@ -223,10 +234,13 @@ final class PeptideLogStore {
         didChange()
     }
 
-    func deleteSchedule(id: String) {
-        guard canChange() else { return }
+    /// Returns why the log refused the delete (nothing changed), or nil when it was made.
+    @discardableResult
+    func deleteSchedule(id: String) -> String? {
+        guard canChange() else { return persistError }
         schedules.removeAll { $0.id == id }
         didChange()
+        return nil
     }
 
     // MARK: Second profile

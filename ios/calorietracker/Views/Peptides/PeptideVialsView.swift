@@ -381,8 +381,7 @@ struct PeptideVialEditor: View {
             }
             .confirmationDialog("Delete this vial?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete vial", role: .destructive) {
-                    if let existing { store.deleteVial(id: existing.id) }
-                    if let refusal = store.changeRefusal {
+                    if let existing, let refusal = store.deleteVial(id: existing.id) {
                         errorText = refusal
                         return
                     }
@@ -619,8 +618,7 @@ struct PeptideVialEditor: View {
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             createdAt: existing?.createdAt ?? Date()
         )
-        store.saveVial(existing.map { $0.applyingEdit(edited) } ?? edited)
-        if let refusal = store.changeRefusal {
+        if let refusal = store.saveVial(existing.map { $0.applyingEdit(edited) } ?? edited) {
             errorText = refusal
             return
         }
