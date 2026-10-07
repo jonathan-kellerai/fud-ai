@@ -55,6 +55,10 @@ from the bridge through `ExerciseHistoryLoader`; it now comes from the log. The 
     never overwritten. If that copy can't be made (or doesn't read back the same), the log is read-only
     until a later launch makes it: save, correct, delete, import, backup and restore all refuse, and
     Settings › Workouts says why. That covers a wholly unreadable log and a log with skipped records.
+  - A file that is there but can't be opened (file protection before first unlock, no permission) is
+    not an empty log. `DeviceLogFile.readFile()` tells it apart from a missing file. The store then shows
+    nothing and refuses every change, backup and restore, with a note in Settings › Workouts. It reads
+    the file again before each change and when the app comes to the foreground.
   - Before an import changes the log, a `pre-import` copy is written next to it.
   - Decoding is lossy per record. A record that can't be read is counted (`omitted`), and History says so.
   - A newer `version` leaves the file untouched and runs read-only in memory, with a note.
@@ -294,6 +298,10 @@ Commits on `integ/build-70` after 7f13e35cd, in order:
     - `behavior` an unreadable log that can't be set aside is read-only (Codex P1)
     - `behavior` Delete keeps a tombstone of every id and content hash (Codex P2)
     - this doc (the iCloud backup is an open question; Codex P1 on `CloudBackupService.swift:90` is not changed)
+18. Fixes after Codex review round 3:
+    - `refactor` `DeviceLogFile.readFile()` says whether the file is missing, read, or there but unreadable
+    - `behavior` a workout log that can't be opened is never written over (Codex P1, `WorkoutLogStore.swift:279`)
+    - this doc
 
 **Saved file** (`Application Support/WorkoutLog/workout_log_v1.json`):
 - Top level: `{version: 1, workouts: [StoredWorkout], omitted?: int, imported_at?: ISO-8601}`.
@@ -306,7 +314,7 @@ Commits on `integ/build-70` after 7f13e35cd, in order:
 **Backup:** the same bytes as the saved file (sorted keys) under `workouts.log.v1`.
 
 **Verified here:**
-- **Linux harness** (`/tmp/r70-harness`, not committed; Swift 6.2, the model and store files symlinked from this worktree): 194 tests in 13 suites (now including SetRowPolishTests and the `WorkoutSetEntry` files it needs, which the CI test-build error showed were missing), plus `PeptideNoNetworkTests` 5/5 and `WorkoutNoNetworkTests` 3/3, each run alone. That covers the workout log, import, backup/reset, draft store, next-in-cycle, logger logic, Progress training math, and the peptide and Recon suites.
+- **Linux harness** (`/tmp/r70-harness`, not committed; Swift 6.2, the model and store files symlinked from this worktree): 196 tests in 13 suites as of round 3 (194 before it; now including SetRowPolishTests and the `WorkoutSetEntry` files it needs, which the CI test-build error showed were missing), plus `PeptideNoNetworkTests` 5/5 and `WorkoutNoNetworkTests` 3/3, each run alone. That covers the workout log, import, backup/reset, draft store, next-in-cycle, logger logic, Progress training math, and the peptide and Recon suites.
   - Peptide and Recon totals are the same before and after the `DeviceLogFile` refactor: 76/76 on both.
 - **Tripwire mutation:** an injected `GET /api/workouts` in `WorkoutLogStore.save` fails `WorkoutNoNetworkTests`.
 - **Lint:** the "Workouts stay on device" script passes on this tree and fails on an injected `postWorkout` call and `URLSession` use.
@@ -365,3 +373,4 @@ Peptides make no bridge calls (build 67, lint-gated). Nutrition has no bridge en
 4. **The new CI job must be required in branch protection** for the lint to block merges.
 5. **Open: workouts in the iCloud backup.** Workouts, like peptides, ride in the user's own iCloud backup (§4). That is kept for parity with peptides, as he asked, and the Codex P1 that flagged it was not acted on. Should both stay in the backup?
 6. **Follow-up, not changed: peptides have the same unreadable-copy gap.** `PeptideLogStore.load` ignores whether `keepUnreadable` succeeded, so a failed copy can be followed by a save over the only copy. The workout fix (read-only until the copy is made) would carry over.
+7. **Follow-up, not changed: peptides also read a locked file as an empty log.** `PeptideLogStore` still uses `DeviceLogFile.read()`, which treats a file it can't open the same as no file and then falls back to UserDefaults. A save after that could replace the saved peptide log. Workouts now use `readFile()` and stay read-only until the file opens; peptides could do the same.
