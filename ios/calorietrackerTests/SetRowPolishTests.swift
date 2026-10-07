@@ -47,7 +47,7 @@ extension WorkoutLoggerLogicTests {
 }
 
 extension WorkoutDraftStoreTests {
-    @Test func switchingGhostEditorsKeepsThreeIndependentSavedSets() async throws {
+    @Test func switchingGhostEditorsKeepsThreeIndependentSavedSets() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let day = ProgramV2Templates.day1LowerA
@@ -62,10 +62,11 @@ extension WorkoutDraftStoreTests {
         #expect(entry.log(exercise, at: 2, in: store, startedAt: now) == 2)
         #expect(store.draft?.sets[exercise.name]?.map(\.reps) == [13, 11, third.reps])
         #expect(WorkoutDraftStore(directory: directory).draft?.loggedSetCount == 3)
-        try await store.save { payload in
-            #expect(payload.sets.map(\.reps) == [13, 11, third.reps])
-            #expect(payload.sets.map(\.order) == [0, 1, 2])
-        }
+        let log = WorkoutLogStore(persistence: .inMemory)
+        try store.save(to: log)
+        let saved = try #require(log.details.first)
+        #expect(saved.sets.map(\.reps) == [13, 11, third.reps])
+        #expect(saved.sets.map(\.setOrder) == [0, 1, 2])
     }
 
     @Test func changingEditorDirectlyReleasesTheGhostDestination() {
@@ -102,7 +103,7 @@ extension WorkoutDraftStoreTests {
         }
     }
 
-    @Test func typedGhostRepsReloadAndSaveWithoutCheckmark() async throws {
+    @Test func typedGhostRepsReloadAndSaveWithoutCheckmark() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let day = ProgramV2Templates.day1LowerA
@@ -120,15 +121,14 @@ extension WorkoutDraftStoreTests {
         entry.edit(exercise, at: 2, in: store, startedAt: now, field: .reps) { $0.reps = 13 }
         let reopened = WorkoutDraftStore(directory: directory)
         #expect(reopened.draft?.loggedSetCount == 1)
-        try await confirmation("save includes only explicitly entered reps") { posted in
-            try await reopened.save { payload in
-                posted()
-                #expect(payload.sets.count == 1)
-                #expect(payload.sets.first?.reps == 13)
-                #expect(payload.sets.first?.load == 155)
-                #expect(payload.sets.first?.rir == nil)
-            }
-        }
+        // The save includes only explicitly entered reps.
+        let log = WorkoutLogStore(persistence: .inMemory)
+        try reopened.save(to: log)
+        let saved = try #require(log.details.first)
+        #expect(saved.sets.count == 1)
+        #expect(saved.sets.first?.reps == 13)
+        #expect(saved.sets.first?.loadLb == 155)
+        #expect(saved.sets.first?.rir == nil)
         #expect(reopened.draft == nil)
     }
 
