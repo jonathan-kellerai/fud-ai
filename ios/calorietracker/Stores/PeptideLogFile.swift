@@ -2,8 +2,8 @@
 //  PeptideLogFile.swift
 //  calorietracker
 //
-//  Where the Peptides log is saved and how its bytes are read and written.
-//  No decoding here: PeptideLogStore owns what the bytes mean.
+//  Where the Peptides log is saved. DeviceLogFile reads and writes the bytes;
+//  PeptideLogStore owns what they mean.
 //
 
 import Foundation
@@ -48,54 +48,32 @@ struct PeptideLogFile {
         }
     }
 
+    private var file: DeviceLogFile {
+        DeviceLogFile(url: url, defaults: defaults, defaultsKey: defaultsKey)
+    }
+
     /// The saved bytes: the file, else the UserDefaults fallback.
     func read() -> Data? {
         if isInMemory { return nil }
-        var data: Data?
-        if let url {
-            data = try? Data(contentsOf: url)
-        }
-        if data == nil, let defaults {
-            data = defaults.data(forKey: defaultsKey)
-        }
-        return data
+        return file.read()
     }
 
     /// Never overwrite data that could not be read: set it aside first.
     func keepUnreadable(_ data: Data) {
-        guard let url else { return }
-        let stamp = Int(Date().timeIntervalSince1970)
-        let backup = url.deletingLastPathComponent().appendingPathComponent("peptide_log_v1.unreadable-\(stamp).json")
-        try? data.write(to: backup, options: .atomic)
+        file.keepUnreadable(data)
     }
 
     /// Writes the untouched bytes of an older log next to it before it is
     /// upgraded, as `peptide_log_v1.<label>-<stamp>.json`. True only when the
     /// copy is on disk and reads back the same.
     func keepBeforeUpgrade(_ data: Data, label: String, now: Date = Date()) -> Bool {
-        guard let url else { return false }
-        let directory = url.deletingLastPathComponent()
-        let copy = directory.appendingPathComponent("peptide_log_v1.\(label)-\(Int(now.timeIntervalSince1970)).json")
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: copy, options: .atomic)
-        } catch {
-            return false
-        }
-        return (try? Data(contentsOf: copy)) == data
+        file.keepCopy(data, label: label, now: now)
     }
 
     /// Delete Everything: the log, every copy set aside next to it, and the
     /// UserDefaults fallback.
     func removeAll() {
-        defaults?.removeObject(forKey: defaultsKey)
-        guard let url else { return }
-        let directory = url.deletingLastPathComponent()
-        let stem = url.deletingPathExtension().lastPathComponent
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        for name in names where name.hasPrefix(stem) {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
-        }
+        file.removeAll()
     }
 
     /// Writes the file atomically and keeps the UserDefaults copy only while
@@ -104,24 +82,6 @@ struct PeptideLogFile {
     /// saved changes. Nil when there is no file to write.
     @discardableResult
     func write(_ data: Data, fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
-        var result: Result<Void, Error>?
-        if let url {
-            do {
-                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: url, options: .atomic)
-                result = .success(())
-            } catch {
-                result = .failure(error)
-            }
-        }
-        if case .failure = result, !fallbackOnFailure { return result }
-        if let defaults {
-            if case .success = result {
-                defaults.removeObject(forKey: defaultsKey)
-            } else {
-                defaults.set(data, forKey: defaultsKey)
-            }
-        }
-        return result
+        file.write(data, fallbackOnFailure: fallbackOnFailure)
     }
 }
