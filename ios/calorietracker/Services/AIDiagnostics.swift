@@ -11,7 +11,7 @@ enum AIDiagnostics {
 
     /// One plain-text prompt to the Photo & Text provider and model, through the same
     /// client and `makeRequest` that meal requests use. No router, no fallback.
-    static func testConnection(store: AIRequestLogStore = .shared) async -> AIDiagnosticResult {
+    static func testConnection(store: AIRequestLogStore) async -> AIDiagnosticResult {
         let config = AIProviderSettings.currentConfig(requiresVision: true)
         let trace = AIRequestTrace(kind: .connectionTest)
         let started = Date()
@@ -34,7 +34,7 @@ enum AIDiagnostics {
 
     /// The bundled sample plate through `GeminiService.analyzeFood(image:)`, the same path
     /// as a meal photo, including the router and any configured fallback.
-    static func testMealPhoto(store: AIRequestLogStore = .shared) async -> AIDiagnosticResult {
+    static func testMealPhoto(store: AIRequestLogStore) async -> AIDiagnosticResult {
         let trace = AIRequestTrace(kind: .sampleMealPhoto)
         let started = Date()
         guard let image = UIImage(named: sampleMealAssetName) else {
