@@ -128,3 +128,7 @@ Version 2 reads the same way (records tagged with the second profile are held as
 Deferred: delete ReconMath's unused calculator/catalog and its self-test (needs Jonathan's OK: it removes a CI gate);
 the orphan `peptides.selectedPerson` UserDefaults key (harmless, wiped by Delete Everything); a reviewed CI run on
 the pushed SHA and Codex review.
+
+## Data source
+
+The peptide assistant no longer writes to Neon (as of 2026-10-07). Peptides are app-only: every entry and vial is typed or imported on the phone, and nothing reads from or writes to a server.
