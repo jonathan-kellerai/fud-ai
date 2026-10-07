@@ -25,7 +25,7 @@ outside one tested function.
 | D1 | No person anywhere: `PeptideLogEntry`, `PeptideVial`, `PeptideUserSchedule`, `PeptideLogDraft` lose `person`. The toggle, `PeptidePerson`, `PeptidePersonMemory` and `ReconMath.peopleOrder/peopleNames/roster/onHandDefault` go. | Jonathan's override. |
 | D2 | Legacy raw values are read in exactly one place, `PeptideLegacyProfile` (Models/PeptideTrackingModels.swift), with a comment. `"jonathan"`, empty or missing → the user's own. The second legacy value → held aside. | Hard rule: names only in migration decoding. |
 | D3 | Held-aside records live in the save file (`held_aside`) and in backups until the user picks **Keep them in my log** or **Delete them** on a card at the top of Peptides ("Records from a second profile were found"). Delete asks once more. The choice empties the set and is saved; nothing to ask afterwards. | "Never silently dropped"; one-time choice. |
-| D4 | Archive import never asks for a person and adds every record to the user's log, including records an old file tagged with a person. An iCloud restore (which replaces everything, like a load) holds second-profile records aside, same as a launch. | Brief: "old archives with a person field still import into the user's log"; restore = load. |
+| D4 | Archive import never asks for a person. Records an old file tagged with the first profile (or none) join the user's log; records tagged with the second profile, or in a file's `held_aside`, join the same saved held-aside set as the launch migration, and the one-time Keep/Delete card handles them. An id already on the phone (log or held aside) is skipped, so re-importing holds nothing twice. An iCloud restore (which replaces everything, like a load) holds them aside too. | Brief: "old archives with a person field still import into the user's log"; Codex P1: import must not bypass the second-profile choice. |
 | D5 | Storage stays the Codable file store (`version: 3`), not SwiftData. v1 and v2 saves upgrade on launch; the untouched bytes are copied aside first (`pre-local-*` for v1, `pre-v3-*` for v2). | Brief; §4 sketch is "records only". |
 | D6 | Draw = existing `drawnVolume` + new `PeptideDrawUnit` (`units` / `mL`, raw values unchanged). New entries have no `dose`/`units`; legacy entries keep them (shown on detail only, labelled as typed in an earlier version). | Lossless load; no second amount field. |
 | D7 | Snapshot at save on every new entry: `syringeScaleAtSave`, `vialConcentrationAtSave` (mg/mL, Double), `concentrationConfirmedAtSave`, `vialIDAtSave`. Never re-read. Old entries decode with nil/false (no backfill). | §4. |
@@ -33,7 +33,8 @@ outside one tested function.
 | D9 | Double, not Decimal, with `ReconMath.clean` rounding: every existing model and ReconMath helper is Double; the §4 test values are exact in binary. | Smaller, consistent diff. |
 | D10 | Syringe scale is one setting owned by `PeptideLogStore` (saved in the peptide file and the archive, wiped by Delete Everything). Reached at **Peptides → Settings → Syringe scale**. | The Settings hub lives in the god file `ContentView.swift` (only shrinks) and More keeps seven rows on SE; a peptide settings screen is the smallest honest home. |
 | D11 | A vial records `concentrationConfirmedAt` (who = this phone's user, shown as "You"). Editing a confirmed vial's amount or diluent clears the confirmation. The editor has no confirm toggle; step 3 of Reconstitute is the only way to confirm. | No person field; confirmation must match the numbers. |
-| D12 | Recon Bench folds into Reconstitute: `ReconView.swift` is rewritten in place as the 3-step Reconstitute flow; `ReconStore.swift` keeps only the wipe of the old Recon Bench save (Delete Everything). Its dose calculator and dose calendar go (they computed and planned doses). No file is deleted. | Design §2; "never suggest/calculate doses"; Rule 0 (no file deletions). |
+| D12 | Recon Bench folds into Reconstitute: `ReconView.swift` is rewritten in place as the 3-step Reconstitute flow. Its dose calculator and dose calendar go (they computed and planned doses). No file is deleted. Its save is migrated, not wiped (D13). | Design §2; "never suggest/calculate doses"; Rule 0 (no file deletions). |
+| D13 | Recon Bench's save holds per-profile cards (vial amount + diluent, plus dose/draw/per-week/on-hand calculator figures), dose plans and taken ticks. At launch, each card whose amount or diluent differs from the catalog's becomes an UNCONFIRMED vial (amount + diluent only; no mixed date, which Recon Bench never had; no dose/plan field); the second profile's are held aside. Untouched catalog cards, plans and ticks are not records and don't move. The untouched bytes are first kept as `peptide_log_v1.recon-bench-pre-v3-<stamp>.json` (removed by Delete Everything); then the original save is removed. A save with nothing to move is left untouched. | Codex P2: user-entered Recon Bench data must stay recoverable. |
 | D13 | No mg on Today, Week, Home or their VoiceOver labels. §5's card label "0.5 milligrams by arithmetic" is dropped (it breaks the rule and is the 5× error). | Brief. |
 | D14 | Schedule stays an optional row under Week. Its typed amount is no longer shown or edited (still saved, so nothing is lost); adherence %, streak and the rust missed list go from the schedule card. | "No target/planned dose fields"; §1 critique 66. |
 | D15 | Personal-build gating is unchanged: the section has none today (More → Peptides is unconditional), and this build adds none. | Brief: don't change exposure. |
@@ -79,9 +80,14 @@ Behavior stage:
 
 - `PeptideDerivedMilligramsTests` (new): the 9 §4 tests verbatim in behavior, plus mL draws and reconstitute edge cases.
 - `PeptideSecondProfileTests` (new): first-person migrate, keep, delete, choice persisted/one-time, nothing lost
-  before choice (on disk and in the backup), relaunch idempotent, v2 → v3 copy set aside, restore holds aside.
+  before choice (on disk and in the backup), relaunch idempotent, v2 → v3 copy set aside, restore holds aside;
+  import of a mixed old archive holds the second profile aside (keep, delete, no re-prompt, re-import idempotent,
+  backup/restore round-trip).
+- `ReconBenchMigrationTests` (new): typed mixes → unconfirmed vials, catalog cards and plans don't move, second
+  profile held aside, copy kept and original removed, plans-only and unreadable saves untouched, repeat run adds
+  nothing, Delete Everything removes the copy.
 - Updated: `PeptideLogStoreTests`, `PeptideMathTests`, `PeptideArchiveTests` (round-trip of the new fields; old
-  archives with a person still import into the log), `PeptideLegacyMigrationTests`, `PeptideBackupAndResetTests`,
+  archives with a person import their own records into the log and hold the second profile aside), `PeptideLegacyMigrationTests`, `PeptideBackupAndResetTests`,
   `PeptideNoNetworkTests`, `HomeV2Tests`, `ReconMathTests` (rows about people's rosters removed with the rosters).
 - Linux harness `/tmp/r68-harness` (not committed) builds the pure models/store/migration/archive and runs the suites.
 
@@ -104,7 +110,8 @@ Commits, in order: plan; `refactor` PeptideRecordSet; `refactor` pre-upgrade cop
 phone + held-aside second profile; `behavior` draws + save-time snapshot + mg only on detail + syringe scale setting;
 `behavior` Reconstitute replaces Recon Bench; `behavior` one screen Today/Week/Vials; `behavior` Home card one line;
 `test` names out of ProgramCycleTests comments; `test-harness` VQA [goldens-update]; `ci` suites + names gate;
-`refactor` vial-editor note (type-checker risk).
+`refactor` vial-editor note (type-checker risk). Codex fixes: `refactor` PeptideRecordSet.newRecords; `behavior`
+import holds the second profile aside (P1); `behavior` Recon Bench mixes move into Vials (P2, D13).
 
 Deviations and choices:
 - Vial confirmation stores only `concentrationConfirmedAt`; "who" is always this phone's user and shows as "You" (no person field).
