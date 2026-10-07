@@ -12,9 +12,7 @@ import Foundation
 
 enum PeptideLegacyLog {
     struct Migrated {
-        var entries: [PeptideLogEntry]
-        var vials: [PeptideVial]
-        var schedules: [PeptideUserSchedule]
+        var records: PeptideRecordSet
         /// Saved records that couldn't be read and were left out.
         var skipped: Int
     }
@@ -37,9 +35,7 @@ enum PeptideLegacyLog {
         }
         let rowsWithoutID = snapshot.rows.count - rows.count
         return Migrated(
-            entries: entries,
-            vials: snapshot.vials,
-            schedules: snapshot.schedules,
+            records: PeptideRecordSet(entries: entries, vials: snapshot.vials, schedules: snapshot.schedules),
             skipped: snapshot.skipped + max(rowsWithoutID, 0)
         )
     }

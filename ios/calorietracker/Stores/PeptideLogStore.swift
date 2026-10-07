@@ -284,16 +284,18 @@ final class PeptideLogStore {
     /// first: when it can't be saved, nothing in memory or saved changes and the
     /// reason is returned.
     func replaceAll(with archive: PeptideArchive, now: Date = Date()) -> String? {
-        let newVials = archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) }
-        let newSchedules = archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
-        let newEntries = Self.sorted(archive.entries)
+        let replacement = PeptideRecordSet(
+            entries: Self.sorted(archive.entries),
+            vials: archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) },
+            schedules: archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
+        )
         if savingBlocked { return persistError ?? "Peptides can't be saved on this phone right now." }
-        if !file.isInMemory, case .failure(let error)? = save(entries: newEntries, vials: newVials, schedules: newSchedules, fallbackOnFailure: false) {
+        if !file.isInMemory, case .failure(let error)? = save(replacement, fallbackOnFailure: false) {
             return error.localizedDescription
         }
-        vials = newVials
-        schedules = newSchedules
-        entries = newEntries
+        vials = replacement.vials
+        schedules = replacement.schedules
+        entries = replacement.entries
         persistError = nil
         return nil
     }
@@ -345,7 +347,7 @@ final class PeptideLogStore {
                 return
             }
             // Records skipped now are dropped by the next save, so they join the count saved with it.
-            apply(entries: snapshot.entries, vials: snapshot.vials, schedules: snapshot.schedules, omitted: snapshot.omitted + snapshot.skipped)
+            apply(snapshot.records, omitted: snapshot.omitted + snapshot.skipped)
         } else if version == 1 {
             upgrade(data)
         } else {
@@ -363,7 +365,7 @@ final class PeptideLogStore {
             file.keepUnreadable(data)
             return
         }
-        apply(entries: migrated.entries, vials: migrated.vials, schedules: migrated.schedules, omitted: migrated.skipped)
+        apply(migrated.records, omitted: migrated.skipped)
         guard file.keepBeforeUpgrade(data) else {
             savingBlocked = true
             persistError = "Peptides from the earlier version couldn't be backed up on this phone, so changes aren't saved yet."
@@ -372,10 +374,10 @@ final class PeptideLogStore {
         persist()
     }
 
-    private func apply(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], omitted: Int) {
-        self.entries = Self.sorted(entries)
-        self.vials = vials
-        self.schedules = schedules
+    private func apply(_ records: PeptideRecordSet, omitted: Int) {
+        entries = Self.sorted(records.entries)
+        vials = records.vials
+        schedules = records.schedules
         self.omitted = omitted
         if omitted > 0 {
             let records = omitted == 1 ? "1 saved peptide record" : "\(omitted) saved peptide records"
@@ -385,7 +387,7 @@ final class PeptideLogStore {
 
     private func persist() {
         if file.isInMemory || savingBlocked { return }
-        switch save(entries: entries, vials: vials, schedules: schedules) {
+        switch save(PeptideRecordSet(entries: entries, vials: vials, schedules: schedules)) {
         case .success?:
             persistError = nil
         case .failure(let error)?:
@@ -396,8 +398,14 @@ final class PeptideLogStore {
     }
 
     /// Writes these records as the saved log. Nil when there is no file to write.
-    private func save(entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
-        let snapshot = PeptideLogSnapshot(version: Self.fileVersion, entries: entries, vials: vials, schedules: schedules, omitted: omitted)
+    private func save(_ records: PeptideRecordSet, fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
+        let snapshot = PeptideLogSnapshot(
+            version: Self.fileVersion,
+            entries: records.entries,
+            vials: records.vials,
+            schedules: records.schedules,
+            omitted: omitted
+        )
         guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(SaveError.encoding) }
         return file.write(data, fallbackOnFailure: fallbackOnFailure)
     }
@@ -421,6 +429,10 @@ struct PeptideLogSnapshot: Codable {
     var omitted = 0
     /// Records in this save that couldn't be read. Not saved.
     var skipped = 0
+
+    var records: PeptideRecordSet {
+        PeptideRecordSet(entries: entries, vials: vials, schedules: schedules)
+    }
 
     enum CodingKeys: String, CodingKey {
         case version, entries, vials, schedules, omitted
