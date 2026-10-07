@@ -2361,37 +2361,7 @@ struct ProfileView: View {
     private var settingsList: some View {
             List {
                 if settingsCategory == .training {
-                    Section {
-                        NavigationLink {
-                            ProgramLibraryView()
-                        } label: {
-                            SettingsHubRowLabel(
-                                title: "Programs",
-                                systemImage: "list.bullet",
-                                subtitle: ActiveProgramCache.load()?.name ?? "Program V2"
-                            )
-                        }
-                        Button {
-                            showExerciseLibrary = true
-                        } label: {
-                            HStack {
-                                SettingsHubRowLabel(
-                                    title: "Exercise Library",
-                                    systemImage: "dumbbell.fill",
-                                    subtitle: "Browse movements"
-                                )
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(IronTheme.textPrimary)
-                    } header: {
-                        IronSectionTitle(title: "Program")
-                    }
-                    .listRowBackground(AppColors.appCard)
+                    TrainingProgramSettingsSection(onExerciseLibrary: { showExerciseLibrary = true })
 
                     Section {
                         Stepper(value: Binding(
