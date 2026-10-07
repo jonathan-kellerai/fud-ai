@@ -22,8 +22,9 @@ final class WorkoutLogStore {
     private(set) var persistError: String?
     /// Plain-text note when the saved log couldn't be read in full.
     private(set) var storageNote: String?
-    /// The saved log came from a newer app: it is shown but never overwritten.
-    @ObservationIgnored private var savingBlocked = false
+    /// Why the saved log is shown but never overwritten (a newer app's log, or
+    /// unreadable bytes that couldn't be kept aside); nil while it can be saved.
+    @ObservationIgnored private var readOnly: WorkoutLogError?
     /// Records that couldn't be read and are no longer in the saved log.
     @ObservationIgnored private var omitted = 0
     /// ISO-8601 of the first import that added workouts.
@@ -149,7 +150,7 @@ final class WorkoutLogStore {
     /// when that copy or the save fails or the log is read-only.
     @discardableResult
     func importFile(_ file: WorkoutImportFile, now: Date = Date()) throws -> WorkoutImportSummary {
-        if savingBlocked { throw WorkoutLogError.newerVersion }
+        if let readOnly { throw readOnly }
         let (new, duplicates) = newWorkouts(in: file)
         let summary = WorkoutImportSummary(added: new.count, duplicates: duplicates, skipped: file.skipped)
         guard !new.isEmpty else { return summary }
@@ -184,9 +185,9 @@ final class WorkoutLogStore {
     // MARK: Backup and reset
 
     /// The log for the iCloud backup: the saved file's format. Nil while the
-    /// log is read-only, so a newer app's workouts are never backed up over.
+    /// log is read-only, so workouts this app can't read are never backed up over.
     func backupData() -> Data? {
-        if savingBlocked { return nil }
+        if readOnly != nil { return nil }
         return snapshot(of: records, importedAt: importedAt).encoded()
     }
 
@@ -199,8 +200,13 @@ final class WorkoutLogStore {
               restored.skipped == 0 else {
             return "Workouts in this backup couldn't be read, so the ones on this phone were kept."
         }
-        if savingBlocked {
+        switch readOnly {
+        case .newerVersion?:
             return "Workouts can't be restored until the app is updated, so the ones on this phone were kept."
+        case .some:
+            return "Workouts weren't restored because the saved workout log couldn't be kept aside, so it was left as it is."
+        case nil:
+            break
         }
         let sorted = Self.sorted(restored.workouts)
         let replacement = WorkoutLogSnapshot(version: Self.fileVersion, workouts: sorted,
@@ -225,16 +231,16 @@ final class WorkoutLogStore {
         storageNote = nil
         omitted = 0
         importedAt = nil
-        savingBlocked = false
+        readOnly = nil
     }
 
     // MARK: Private
 
     /// Saves `next` first; memory changes only once it is saved.
     private func commit(_ next: [StoredWorkout], importedAt: String? = nil) throws {
-        if savingBlocked {
-            persistError = WorkoutLogError.newerVersion.localizedDescription
-            throw WorkoutLogError.newerVersion
+        if let readOnly {
+            persistError = readOnly.localizedDescription
+            throw readOnly
         }
         let sorted = Self.sorted(next)
         let imported = self.importedAt ?? importedAt
@@ -273,31 +279,42 @@ final class WorkoutLogStore {
     private func load() {
         guard let data = file.read() else { return }
         guard let version = WorkoutLogSnapshot.savedVersion(of: data) else {
-            file.keepUnreadable(data)
-            storageNote = "The saved workout log couldn't be read. It was kept aside on this phone and a new log was started."
+            setAsideUnreadable(data)
             return
         }
         if version > Self.fileVersion {
             // Saved by a newer app: never overwrite it.
-            savingBlocked = true
+            readOnly = .newerVersion
             storageNote = "Workouts were saved by a newer version of the app, so they can't be shown here. Update the app to see them."
             return
         }
         guard let snapshot = try? JSONDecoder().decode(WorkoutLogSnapshot.self, from: data) else {
-            file.keepUnreadable(data)
-            storageNote = "The saved workout log couldn't be read. It was kept aside on this phone and a new log was started."
+            setAsideUnreadable(data)
             return
         }
         records = Self.sorted(snapshot.workouts)
         importedAt = snapshot.importedAt
         // Records skipped now are dropped by the next save, so they join the count saved with it.
         omitted = snapshot.omitted + snapshot.skipped
-        if snapshot.skipped > 0 {
-            // Keep the readable records' bytes too, before a save drops the rest.
-            file.keepUnreadable(data)
-        }
         if let note = Self.omittedNote(omitted) {
             storageNote = note
+        }
+        if snapshot.skipped > 0, !file.keepUnreadable(data) {
+            // The next save would drop the skipped records, and they are on disk nowhere else.
+            readOnly = .unreadableNotKept
+            storageNote = WorkoutLogError.unreadableNotKept.localizedDescription
+        }
+    }
+
+    /// A log that can't be read is copied aside before a new one is started.
+    /// When the copy fails the log turns read-only, so a save can never write
+    /// over the only copy of those workouts.
+    private func setAsideUnreadable(_ data: Data) {
+        if file.keepUnreadable(data) {
+            storageNote = "The saved workout log couldn't be read. It was kept aside on this phone and a new log was started."
+        } else {
+            readOnly = .unreadableNotKept
+            storageNote = WorkoutLogError.unreadableNotKept.localizedDescription
         }
     }
 
@@ -327,6 +344,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
     case noLocation
     case copyBeforeImport
     case deletedSinceSaved
+    case unreadableNotKept
 
     var errorDescription: String? {
         switch self {
@@ -336,6 +354,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
         case .noLocation: "There's no place on this phone to save workouts."
         case .copyBeforeImport: "The workout log couldn't be copied before the import, so nothing was imported."
         case .deletedSinceSaved: "This workout was saved and then deleted in Workout History. Discard it to start fresh."
+        case .unreadableNotKept: "The saved workout log couldn't be read in full or copied aside, so it was left as it is and workouts can't be saved. Close and reopen the app to try again."
         }
     }
 }
