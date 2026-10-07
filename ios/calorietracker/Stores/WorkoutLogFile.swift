@@ -46,9 +46,10 @@ struct WorkoutLogFile {
         DeviceLogFile(url: url, defaults: nil, defaultsKey: "workout.log.v1")
     }
 
-    func read() -> Data? {
-        if isInMemory { return nil }
-        return file.read()
+    /// Missing, the bytes, or a file that is there but can't be read now.
+    func read() -> DeviceLogRead {
+        if isInMemory { return .missing }
+        return file.readFile()
     }
 
     /// True only when the copy is on disk and reads back the same.
