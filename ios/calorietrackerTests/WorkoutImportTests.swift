@@ -113,6 +113,42 @@ struct WorkoutImportTests {
         #expect(store.workouts.count == 10)
     }
 
+    @Test func aCorrectedThenDeletedWorkoutIsNotAddedBackByItsOriginalHash() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let store = WorkoutLogStore(persistence: .file(url))
+        let file = try fixture()
+        try store.importFile(file, now: now)
+        let original = try #require(file.workouts.first?.workout)
+        let hash = try #require(original.contentHash)
+
+        // A correction moves the original hash into the replaced version; Delete drops that version.
+        var draft = WorkoutDraft(day: ProgramV2Templates.day1LowerA, now: now)
+        draft.sets[draft.exercises[0].name] = [LoggedSet(weight: 205, reps: 8, rir: 1, rpeText: "")]
+        try store.correct(id: original.id, with: draft.payload(now: now), now: now)
+        try store.delete(id: original.id, now: now.addingTimeInterval(60))
+
+        let relaunched = WorkoutLogStore(persistence: .file(url))
+        let record = try #require(relaunched.record(id: original.id))
+        #expect(record.isDeleted)
+        #expect(record.sets.isEmpty && record.revisions.isEmpty)
+        #expect(record.tombstone == WorkoutTombstone(ids: [original.id], contentHashes: [hash]))
+
+        // The same file, plus the original under a new id: nothing comes back.
+        var json = try fixtureJSON()
+        var rows = try #require(json["workouts"] as? [[String: Any]])
+        var copy = rows[0]
+        var workout = try #require(copy["workout"] as? [String: Any])
+        workout["id"] = "same-content-new-id"
+        copy["workout"] = workout
+        rows.append(copy)
+        json["workouts"] = rows
+        let again = try WorkoutImportFile.decode(JSONSerialization.data(withJSONObject: json))
+        #expect(try relaunched.importFile(again) == WorkoutImportSummary(added: 0, duplicates: 12, skipped: 0))
+        #expect(relaunched.workouts.count == 10)
+        #expect(relaunched.detail(id: "same-content-new-id") == nil)
+    }
+
     @Test func aWrongFormatOversizeOrBrokenFileIsRefusedAndChangesNothing() throws {
         var json = try fixtureJSON()
         json["format"] = "jl-peptides"

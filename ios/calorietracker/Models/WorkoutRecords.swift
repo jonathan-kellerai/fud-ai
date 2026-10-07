@@ -203,9 +203,11 @@ struct StoredWorkout: Codable, Equatable {
     /// ISO-8601, set by Delete. The record stays (without its sets) so a
     /// re-import can't bring the workout back; nothing reads it as a workout.
     var deletedAt: String?
+    /// Set by Delete: every id and content hash the workout carried.
+    var tombstone: WorkoutTombstone?
 
     enum CodingKeys: String, CodingKey {
-        case workout, sets, revisions
+        case workout, sets, revisions, tombstone
         case deletedAt = "deleted_at"
     }
 
@@ -222,6 +224,7 @@ struct StoredWorkout: Codable, Equatable {
         sets = try container.decode([RemoteWorkoutSet].self, forKey: .sets)
         revisions = try container.decodeIfPresent([WorkoutRevision].self, forKey: .revisions) ?? []
         deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
+        tombstone = try container.decodeIfPresent(WorkoutTombstone.self, forKey: .tombstone)
     }
 
     /// A workout saved on this phone from the logger (or a correction).
@@ -252,9 +255,29 @@ struct StoredWorkout: Codable, Equatable {
         WorkoutDetailResponse(workout: workout, sets: sets)
     }
 
-    /// Every content hash this record has carried, current and replaced.
+    /// Every id this record has carried: current, replaced, and kept by Delete.
+    var ids: [String] {
+        [workout.id] + revisions.map(\.workout.id) + (tombstone?.ids ?? [])
+    }
+
+    /// Every content hash this record has carried: current, replaced, and kept by Delete.
     var contentHashes: [String] {
         ([workout.contentHash] + revisions.map(\.workout.contentHash)).compactMap { $0 }
+            + (tombstone?.contentHashes ?? [])
+    }
+
+    /// Delete: the sets and replaced versions go, and the tombstone keeps every
+    /// id and content hash they carried, so a re-import of any version adds nothing.
+    mutating func delete(at timestamp: String) {
+        tombstone = WorkoutTombstone(ids: Self.unique(ids), contentHashes: Self.unique(contentHashes))
+        sets = []
+        revisions = []
+        deletedAt = timestamp
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
     }
 
     static func sets(_ sets: [WorkoutSet], workoutID: String) -> [RemoteWorkoutSet] {
@@ -272,6 +295,17 @@ struct StoredWorkout: Codable, Equatable {
                 plannedPosition: set.plannedPosition
             )
         }
+    }
+}
+
+/// What a deleted workout leaves behind so a re-import can't bring it back.
+struct WorkoutTombstone: Codable, Equatable {
+    var ids: [String]
+    var contentHashes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case ids
+        case contentHashes = "content_hashes"
     }
 }
 
