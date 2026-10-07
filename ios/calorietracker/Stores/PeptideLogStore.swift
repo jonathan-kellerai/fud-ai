@@ -366,7 +366,7 @@ final class PeptideLogStore {
             return
         }
         apply(migrated.records, omitted: migrated.skipped)
-        guard file.keepBeforeUpgrade(data) else {
+        guard file.keepBeforeUpgrade(data, label: "pre-local") else {
             savingBlocked = true
             persistError = "Peptides from the earlier version couldn't be backed up on this phone, so changes aren't saved yet."
             return
