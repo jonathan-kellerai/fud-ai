@@ -11,34 +11,27 @@ extension VisualQASnapshotTests {
     func test120AIProvidersOpenRouterSignedOut() async throws {
         let restore = VisualQAAIFixtures.selectProvider(.openrouter)
         defer { restore() }
+        let store = try VisualQAAIFixtures.store()
         try await capture("120-ai-providers-openrouter-signed-out", heightMultiplier: 2) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { ProfileView(settingsCategory: .aiProviders) }
-            }
+            VisualQAAIProvidersScreen(store: store, signedIn: false)
         }
     }
 
     func test121AIProvidersOpenRouterSignedIn() async throws {
         let restore = VisualQAAIFixtures.selectProvider(.openrouter)
-        OpenRouterSignIn.visualPreviewSignedIn = true
-        defer {
-            OpenRouterSignIn.visualPreviewSignedIn = false
-            restore()
-        }
+        defer { restore() }
+        let store = try VisualQAAIFixtures.store()
         try await capture("121-ai-providers-openrouter-signed-in", heightMultiplier: 2) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { ProfileView(settingsCategory: .aiProviders) }
-            }
+            VisualQAAIProvidersScreen(store: store, signedIn: true)
         }
     }
 
     func test122AIProvidersXAIKeyOnly() async throws {
         let restore = VisualQAAIFixtures.selectProvider(.xai)
         defer { restore() }
+        let store = try VisualQAAIFixtures.store()
         try await capture("122-ai-providers-xai-key-only", heightMultiplier: 2) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { ProfileView(settingsCategory: .aiProviders) }
-            }
+            VisualQAAIProvidersScreen(store: store, signedIn: false)
         }
     }
 
@@ -78,6 +71,29 @@ extension VisualQASnapshotTests {
         try await capture("126-ai-request-log-detail", heightMultiplier: 1.6) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "Request log") { AIRequestLogDetailView(entry: entry) }
+            }
+        }
+    }
+}
+
+/// More → AI Providers with a fixture request log and a fixed OpenRouter sign-in state,
+/// so the full screen never reads the device log or the Keychain.
+@MainActor
+struct VisualQAAIProvidersScreen: View {
+    let store: AIRequestLogStore
+    let signIn: OpenRouterSignIn
+
+    init(store: AIRequestLogStore, signedIn: Bool) {
+        self.store = store
+        signIn = OpenRouterSignIn(isSignedIn: signedIn)
+    }
+
+    var body: some View {
+        VisualQATabShell(selected: .more) {
+            VisualQAPushed(rootTitle: "More") {
+                ProfileView(settingsCategory: .aiProviders)
+                    .environment(store)
+                    .environment(signIn)
             }
         }
     }

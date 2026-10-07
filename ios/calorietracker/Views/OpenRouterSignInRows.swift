@@ -4,7 +4,9 @@ import SwiftUI
 /// Signed in: who, and Sign out. Signed out: Sign in, the manual key field, and the
 /// Paste code fallback once a sign-in has been tried.
 struct OpenRouterSignInRows<KeyField: View>: View {
-    @State private var signIn: OpenRouterSignIn
+    @State private var ownSignIn: OpenRouterSignIn
+    /// Visual QA puts a sign-in with a fixed state here, so shots never depend on the Keychain.
+    @Environment(OpenRouterSignIn.self) private var injectedSignIn: OpenRouterSignIn?
     @Binding var apiKeyText: String
     let baseURL: String
     private let keyField: KeyField
@@ -12,10 +14,14 @@ struct OpenRouterSignInRows<KeyField: View>: View {
     @Environment(\.openURL) private var openURL
 
     init(apiKeyText: Binding<String>, baseURL: String, @ViewBuilder keyField: () -> KeyField) {
-        _signIn = State(initialValue: OpenRouterSignIn.live())
+        _ownSignIn = State(initialValue: OpenRouterSignIn.live())
         _apiKeyText = apiKeyText
         self.baseURL = baseURL
         self.keyField = keyField()
+    }
+
+    private var signIn: OpenRouterSignIn {
+        injectedSignIn ?? ownSignIn
     }
 
     var body: some View {

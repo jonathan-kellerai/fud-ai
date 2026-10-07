@@ -3,14 +3,21 @@ import SwiftUI
 /// The Troubleshooting card in AI Providers: Test connection, Test meal photo, the last
 /// result, and the request log. The tests themselves live in `AIDiagnostics`.
 struct AIDiagnosticsSection: View {
-    let store: AIRequestLogStore
+    private let explicitStore: AIRequestLogStore?
+    /// Visual QA puts a fixture log here so full-screen shots never read the device log.
+    @Environment(AIRequestLogStore.self) private var environmentStore: AIRequestLogStore?
     @State private var running: AIRequestLogEntry.Kind?
     @State private var result: AIDiagnosticResult?
 
+    /// `store` defaults to the environment's log, then the shared one.
     /// `result` lets Visual QA draw a finished test without a network call.
-    init(store: AIRequestLogStore = .shared, result: AIDiagnosticResult? = nil) {
-        self.store = store
+    init(store: AIRequestLogStore? = nil, result: AIDiagnosticResult? = nil) {
+        explicitStore = store
         _result = State(initialValue: result)
+    }
+
+    private var store: AIRequestLogStore {
+        explicitStore ?? environmentStore ?? .shared
     }
 
     var body: some View {

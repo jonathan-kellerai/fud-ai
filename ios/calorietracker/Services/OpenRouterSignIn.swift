@@ -43,9 +43,6 @@ final class OpenRouterSignIn {
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
 
-    /// Visual QA only: draws the signed-in card without a Keychain (unsigned CI hosts have none).
-    static var visualPreviewSignedIn = false
-
     /// `send` and `saveKey` are for tests; the defaults are the network and the Keychain.
     init(
         isSignedIn: Bool,
@@ -59,7 +56,7 @@ final class OpenRouterSignIn {
 
     /// The state Settings has now.
     static func live() -> OpenRouterSignIn {
-        OpenRouterSignIn(isSignedIn: visualPreviewSignedIn || AIProviderSettings.isSignedInWithOpenRouter)
+        OpenRouterSignIn(isSignedIn: AIProviderSettings.isSignedInWithOpenRouter)
     }
 
     var failureMessage: String? {
