@@ -67,7 +67,7 @@ from the bridge through `ExerciseHistoryLoader`; it now comes from the log. The 
 
 ## 3. One-time import from a file
 
-- **UI.** More › **Workouts** (a new hub row under Peptides) shows how many workouts are on this phone,
+- **UI.** More › Training › **Workouts** (see resolution 10) shows how many workouts are on this phone,
   then "Workout history" and **Import from a file**. Import opens `.fileImporter([.json])`, which is
   the Files picker. A preview sheet shows the counts before anything changes: "11 new workouts, 0 already
   on this phone, 0 couldn't be read". After import it says "11 workouts imported, 0 duplicates".
@@ -179,6 +179,73 @@ from the bridge through `ExerciseHistoryLoader`; it now comes from the log. The 
 - **Compile risks** (no Xcode here; CI on a pushed SHA is the only proof):
   - `RemoteWorkout` Codable is MainActor-isolated by default. It is decoded only in `@MainActor` code.
   - `WorkoutDraft.payload` is unchanged. `save` converts the payload to a record.
+
+## Plan review — resolutions (binding)
+
+The fresh-eyes review ran as a subagent, standing in for Codex: 3 P1, 7 P2 and 6 P3 findings.
+
+1. **(P1) `WorkoutSyncService` has more callers.** Besides ContentView:2289 there are ContentView:2306,
+   `BridgeSettingsView` 17/82/91 (the "Pending Workouts" row and its last error) and
+   `MoreHubInputs.bridgePendingCount`.
+   - All go in the phone-only commit, and `MoreHubSubtitles.bridgeStatus` loses `pendingCount`.
+   - `MoreHubSubtitlesTests` changes are listed as built.
+   - The file deletion needs Jonathan's OK before push. Nothing is pushed in this session.
+2. **(P1) Every commit must compile, tests included.** The commit that removes the bridge workout methods
+   also reseeds the Visual QA workouts into the log (not the stub bridge) and drops the workout lines of
+   `BridgeKeyStorageTests`. It is marked `[goldens-update]`.
+3. **(P1) The lint must not fail on code that stays.** It bans `/api/workouts` across all app sources and
+   `listWorkouts|getWorkout|postWorkout|updateWorkout|deleteWorkout` everywhere. `URLSession|URLRequest`
+   is banned only in pure workout files: the log, records, draft store, `ExerciseHistoryLoader`,
+   `ProgressTrainingLoader`, `ProgressV2Training`, History/Edit/Import views. `JLPhysicalTabView` and the
+   logger keep `NeonBridgeService` for the active program and CC ladders.
+4. **(P2) Next-in-cycle.** `TrainProgressStore.adopt(_ log:)`:
+   - Until a file import has added workouts (`imported_at` saved in the log), next-in-cycle uses the
+     sessions cached from the last bridge list merged with the log's.
+   - After that, it uses the log only.
+   - The bridge cache is never overwritten before then, so a workout deleted from the log never lingers
+     in it.
+   - `replaceHistory(with:)` stays as it is; Visual QA uses it.
+   - The logger calls `adopt` after a save. `recordCompleted` existed only for a failed bridge list, and
+     it goes.
+5. **(P2) Duplicate saves.** `WorkoutDraft.recordID` is a stable id set when the draft starts. Saving the
+   same id again replaces that workout instead of adding a second one, and a deleted one stays deleted.
+6. **(P2) Writes.** The log has no UserDefaults fallback, and memory changes only after a successful write.
+7. **(P2) Unreadable records.** When some records can't be read, the whole file is set aside before the
+   next save drops them.
+8. **(P2) Two owners?** AGENTS.md says workout logging lives in `StrengthWorkoutStore`. That store is the
+   feature-flagged legacy Fud strength diary (`StrengthWorkoutSession` in UserDefaults). Program
+   workouts never lived there: they were owned by the bridge, with `WorkoutDraftStore` for the unsaved
+   session. `WorkoutLogStore` takes over the bridge's role. Jonathan should confirm the AGENTS.md wording
+   (it is not edited here).
+9. **(P2) View logic moves first.** The history editor's payload building and note splitting move to the
+   model in a `refactor:` commit while the bridge is still the source.
+10. **(P2) No new More-hub row.** An eighth row would push About under the tab bar on SE. A pure
+    `refactor:` first extracts More › Training's "Program" section from ContentView, and the Workouts row
+    is added in the extracted file. The path is More › Training › Workouts › Import from a file.
+11. **(P3) Progress.** `ProgressTrainingCard`'s bridge states and wording change. `ProgressTabView` reads
+    the log through an optional environment value, only after the fixture guard. The log is built in
+    `calorietrackerApp.init`, which `CloudBackupService` needs.
+12. **(P3) Import.** It reuses the security-scoped read and is refused while the log is read-only.
+    Records sort by `sessionDate.prefix(10)` descending, then `recordedAt` descending.
+13. **(P3) The tripwire** exercises store and math functions, not hosted views. Train's active-program
+    fetch is out of scope.
+
+## 7b. Commit sequence as revised
+
+1. docs
+2. refactor `DeviceLogFile`
+3. refactor record types
+4. behavior: the log
+5. refactor: the history editor's correction moves to the model
+6. refactor: More › Training's Program section leaves ContentView
+7. behavior: phone-only (with the Visual QA reseed) `[goldens-update]`
+8. test: fixture
+9. behavior: import
+10. behavior: backup and Delete Everything
+11. test: tripwire
+12. ci
+13. test-harness: new shots `[goldens-update]`
+14. docs
 
 ## 9. Still calls the bridge
 
