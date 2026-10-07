@@ -232,7 +232,7 @@ struct calorietrackerApp: App {
                 refreshWidgetSnapshot()
             } else {
                 // Only "Delete Everything" turns onboarding back off; challenges and
-                // peptides (log, vials, schedules, Recon Bench) go with it.
+                // peptides (log, vials, schedules, settings, the old Recon Bench save) go with it.
                 challengeStore.clearAll()
                 peptideLogStore.deleteAll()
                 ReconBenchStore.deleteSavedData()
