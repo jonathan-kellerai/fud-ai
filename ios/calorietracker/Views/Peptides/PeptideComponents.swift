@@ -255,22 +255,24 @@ struct PeptideFlowLayout: Layout {
     }
 }
 
-/// Tappable chip. Selected chips fill with blood.
+/// Tappable chip. Selected chips fill with blood. Text scales with Dynamic
+/// Type and wraps; the chip is at least 44 pt tall at every size.
 struct PeptideChoiceChip: View {
     let title: String
     var subtitle: String?
     let selected: Bool
     let action: () -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var verticalPadding: CGFloat = 8
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.system(.subheadline, weight: .heavy))
                     .fontWidth(.condensed)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(.caption2, weight: .semibold))
                         .foregroundStyle(selected ? IronTheme.textPrimary : IronTheme.textSecondary)
                 }
             }
@@ -278,7 +280,8 @@ struct PeptideChoiceChip: View {
             .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(selected ? IronTheme.textPrimary : IronTheme.textSecondary)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, verticalPadding)
+            .frame(minHeight: 44)
             .background(
                 selected ? IronTheme.blood : IronTheme.surfaceRaised,
                 in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
