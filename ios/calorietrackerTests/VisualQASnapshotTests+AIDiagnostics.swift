@@ -76,12 +76,21 @@ extension VisualQASnapshotTests {
     }
 }
 
-/// More → AI Providers with a fixture request log and a fixed OpenRouter sign-in state.
+/// More → AI Providers with a fixture request log, a fixed OpenRouter sign-in state and
+/// fixed TypeSafe/Jev settings (off, no key, so no catalog refresh or Keychain read).
 /// Pair with `VisualQAAIFixtures.pinSettings(provider:)` so no saved setting or key shows.
 @MainActor
 struct VisualQAAIProvidersScreen: View {
     let store: AIRequestLogStore
     let signIn: OpenRouterSignIn
+    let typeSafe = TypeSafeSectionFixture(
+        enabled: false,
+        routerEnabled: false,
+        endpoint: .direct,
+        model: TypeSafeEndpoint.direct.defaultModel,
+        checkTypedMeals: true,
+        apiKey: ""
+    )
 
     init(store: AIRequestLogStore, signedIn: Bool) {
         self.store = store
@@ -94,6 +103,7 @@ struct VisualQAAIProvidersScreen: View {
                 ProfileView(settingsCategory: .aiProviders)
                     .environment(store)
                     .environment(signIn)
+                    .environment(typeSafe)
             }
         }
     }

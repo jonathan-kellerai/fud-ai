@@ -1,12 +1,52 @@
 import SwiftUI
 
+/// Fixed TypeSafe/Jev settings for Visual QA. The section shows these instead of the saved
+/// settings and Keychain key, and never reads the model catalog or calls the network.
+@Observable
+final class TypeSafeSectionFixture {
+    let enabled: Bool
+    let routerEnabled: Bool
+    let endpoint: TypeSafeEndpoint
+    let model: String
+    let checkTypedMeals: Bool
+    let apiKey: String
+
+    init(
+        enabled: Bool,
+        routerEnabled: Bool,
+        endpoint: TypeSafeEndpoint,
+        model: String,
+        checkTypedMeals: Bool,
+        apiKey: String
+    ) {
+        self.enabled = enabled
+        self.routerEnabled = routerEnabled
+        self.endpoint = endpoint
+        self.model = model
+        self.checkTypedMeals = checkTypedMeals
+        self.apiKey = apiKey
+    }
+}
+
 struct TypeSafeEstimateCheckSection: View {
-    @State private var enabled = TypeSafeSettings.enabled
-    @State private var routerEnabled = JevRouterSettings.enabled
-    @State private var endpoint = TypeSafeSettings.endpoint
-    @State private var model = TypeSafeSettings.model
-    @State private var checkTypedMeals = TypeSafeSettings.checkTypedMeals
-    @State private var apiKeyText = ""
+    /// Visual QA puts fixed settings here, so shots never depend on saved settings or keys.
+    @Environment(TypeSafeSectionFixture.self) private var fixture: TypeSafeSectionFixture?
+
+    var body: some View {
+        TypeSafeEstimateCheckRows(fixture: fixture)
+    }
+}
+
+/// The section's rows. With a fixture they start from it and do no settings, Keychain,
+/// catalog or network I/O of their own.
+struct TypeSafeEstimateCheckRows: View {
+    private let fixture: TypeSafeSectionFixture?
+    @State private var enabled: Bool
+    @State private var routerEnabled: Bool
+    @State private var endpoint: TypeSafeEndpoint
+    @State private var model: String
+    @State private var checkTypedMeals: Bool
+    @State private var apiKeyText: String
     @State private var showAPIKey = false
     @State private var showModelPicker = false
     @State private var discovered: [CatalogModel] = []
@@ -14,6 +54,16 @@ struct TypeSafeEstimateCheckSection: View {
     @State private var testMessage: String?
     @State private var isTesting = false
     @State private var refreshTask: Task<Void, Never>?
+
+    init(fixture: TypeSafeSectionFixture?) {
+        self.fixture = fixture
+        _enabled = State(initialValue: fixture?.enabled ?? TypeSafeSettings.enabled)
+        _routerEnabled = State(initialValue: fixture?.routerEnabled ?? JevRouterSettings.enabled)
+        _endpoint = State(initialValue: fixture?.endpoint ?? TypeSafeSettings.endpoint)
+        _model = State(initialValue: fixture?.model ?? TypeSafeSettings.model)
+        _checkTypedMeals = State(initialValue: fixture?.checkTypedMeals ?? TypeSafeSettings.checkTypedMeals)
+        _apiKeyText = State(initialValue: fixture?.apiKey ?? "")
+    }
 
     var body: some View {
         AISettingsSubsectionHeader(
@@ -49,6 +99,7 @@ struct TypeSafeEstimateCheckSection: View {
                 }
             }
             .onAppear {
+                guard fixture == nil else { return }
                 apiKeyText = TypeSafeSettings.apiKey(for: endpoint) ?? ""
                 loadCachedModels()
                 scheduleRefresh()
@@ -181,11 +232,13 @@ struct TypeSafeEstimateCheckSection: View {
     }
 
     private func loadCachedModels() {
+        guard fixture == nil else { return }
         discovered = TypeSafeSettings.cachedCatalog(for: endpoint)?.models ?? []
     }
 
     private func scheduleRefresh() {
         refreshTask?.cancel()
+        guard fixture == nil else { return }
         refreshTask = Task {
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard !Task.isCancelled else { return }
@@ -217,6 +270,7 @@ struct TypeSafeEstimateCheckSection: View {
     }
 
     private func testKey() async {
+        guard fixture == nil else { return }
         let key = apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return }
         isTesting = true
