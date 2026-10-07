@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct WorkoutsSettingsView: View {
     @Environment(WorkoutLogStore.self) private var workoutLog
