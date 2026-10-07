@@ -101,6 +101,17 @@ Each guard was disabled in turn in the Linux harness, and at least one listed te
 
 The harness runs as uid 1000 (not root), so `chmod` takes effect.
 
+## Codex round 2 fix
+
+- **The editor's keep-open decision had no effective test.** Removing both view fixes left every test passing, because the test pinned only the store's refusal and not what the views act on. The decision now lives in the store. `saveVial`, `deleteVial`, `saveSchedule` and `deleteSchedule` return why the log refused the change (`String?`, nothing changed), or nil when the change was made. This follows `correct` and `void`. The vial and schedule editors only do `if let refusal = store.…(…) { errorText = refusal; return }; dismiss()` for both save and delete, and no longer read `changeRefusal` after the call. The behavior is unchanged: on a refusal, `canChange()` sets `persistError` to `readOnly.refusal`, the same string `changeRefusal` returned.
+
+| test | guard that makes it fail when disabled |
+|---|---|
+| `PeptideUnreadableLogTests.deletingAShownVialOrScheduleIsRefusedWhileTheLogIsReadOnly` (read-only store: each of the four calls returns the refusal; vials, schedules and file bytes unchanged) | each of `deleteVial`, `deleteSchedule`, `saveVial`, `saveSchedule` hard-wired to return nil on refusal fails it (checked one at a time) |
+| `PeptideLogStoreTests.vialsAndSchedulesAreSavedAndFiltered` (writable store: the calls return nil and the vial and schedule are saved, then removed) | (a call that always refuses fails it) |
+
+**What this doesn't cover:** the SwiftUI wiring itself (showing `errorText` and not calling `dismiss()` when the returned value isn't nil) is covered only by the CI build, not by any test. There is no XCUITest for these sheets.
+
 ## Not changed / open
 
 - **Extra copies.** A version-3 log with skipped records gets a new copy-aside file at each launch until a save drops those records. Workouts already do this.
