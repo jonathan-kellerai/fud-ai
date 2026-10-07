@@ -147,7 +147,8 @@ struct PeptideArchiveTests {
 
     /// The shape the one-time import file uses for records kept elsewhere:
     /// no owner, labeled facts in notes, no amounts the app could calculate from.
-    /// Every vial goes into this phone's log; nobody is asked who it belongs to.
+    /// Nobody is asked who a vial belongs to: untagged vials go into this
+    /// phone's log, and one tagged with the second profile is held aside.
     @Test func vialsImportIntoTheLogWithNotesVerbatim() throws {
         let notes = "labeled_amount: 10 mg\nconcentration: 5 mg/mL\nsource: SYNTHETIC-TEST\nuncertainties: [\"label faded\"]"
         let json = """
@@ -161,7 +162,7 @@ struct PeptideArchiveTests {
         """
         let archive = try PeptideArchive.decode(Data(json.utf8))
         let store = PeptideLogStore(persistence: .inMemory)
-        #expect(store.importSummary(of: archive).newVials == 3)
+        #expect(store.importSummary(of: archive) == PeptideImportSummary(newVials: 2, heldAside: 1))
         store.importArchive(archive, now: now)
 
         let synthetic = try #require(store.vial(id: "INV-SYNTH-001"))
@@ -177,13 +178,15 @@ struct PeptideArchiveTests {
         #expect(second.mixedOn == nil)
         #expect(second.status == .finished)
         #expect(second.createdAt == now)
-        #expect(store.vial(id: "INV-SYNTH-003")?.status == .active)
-        #expect(store.heldAsideCount == 0)
+        #expect(store.vial(id: "INV-SYNTH-003") == nil)
+        #expect(store.heldAside.vials.first { $0.id == "INV-SYNTH-003" }?.status == .active)
+        #expect(store.heldAsideCount == 1)
     }
 
-    /// A build 67 export tagged every record with a profile. Importing it
-    /// adds them all to this phone's log, without asking for a person.
-    @Test func oldArchiveWithPeopleImportsEverythingIntoTheLog() throws {
+    /// A build 67 export tagged every record with a profile. Importing it asks
+    /// for no person: the first profile's records join this phone's log and
+    /// the second profile's are held aside for the one-time keep/delete choice.
+    @Test func oldArchiveWithPeopleImportsOwnRecordsAndHoldsTheSecondProfileAside() throws {
         let json = """
         {"format":"jl-peptides","format_version":1,
          "vials":[{"id":"va","person":"\(firstTag)","compound":"BPC-157"},{"id":"vb","person":"\(secondTag)","compound":"MT2"}],
@@ -193,12 +196,14 @@ struct PeptideArchiveTests {
         """
         let archive = try PeptideArchive.decode(Data(json.utf8))
         let store = PeptideLogStore(persistence: .inMemory)
-        #expect(store.importSummary(of: archive) == PeptideImportSummary(newVials: 2, newSchedules: 1, newEntries: 2))
+        #expect(store.importSummary(of: archive) == PeptideImportSummary(newVials: 1, newEntries: 1, heldAside: 3))
         store.importArchive(archive, now: now)
-        #expect(Set(store.vials.map(\.id)) == ["va", "vb"])
-        #expect(store.schedules.map(\.id) == ["sb"])
-        #expect(store.entries.map(\.id) == ["ea", "eb"])
-        #expect(store.heldAsideCount == 0)
+        #expect(store.vials.map(\.id) == ["va"])
+        #expect(store.schedules.isEmpty)
+        #expect(store.entries.map(\.id) == ["ea"])
+        #expect(store.heldAside.vials.map(\.id) == ["vb"])
+        #expect(store.heldAside.schedules.map(\.id) == ["sb"])
+        #expect(store.heldAside.entries.map(\.id) == ["eb"])
     }
 
     /// Records still held aside travel in `held_aside`, so a backup or export

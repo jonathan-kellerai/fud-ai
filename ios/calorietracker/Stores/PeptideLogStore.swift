@@ -262,40 +262,43 @@ final class PeptideLogStore {
     }
 
     /// What importing `archive` would add. A record whose id is already here
-    /// (or earlier in the file) is left alone, so importing twice adds nothing.
-    /// Records an older file tagged with a profile are added like any other.
+    /// (in the log or held aside, or earlier in the file) is left alone, so
+    /// importing twice adds nothing. Records an older file tagged with the
+    /// second profile are held aside, not added to the log.
     func importSummary(of archive: PeptideArchive) -> PeptideImportSummary {
-        var summary = PeptideImportSummary(skipped: archive.skipped)
-        var vialIDs = Set(vials.map(\.id))
-        for vial in archive.vials + archive.heldAside.vials {
-            if vialIDs.insert(vial.id).inserted { summary.newVials += 1 } else { summary.alreadyHere += 1 }
-        }
-        var scheduleIDs = Set(schedules.map(\.id))
-        for schedule in archive.schedules + archive.heldAside.schedules {
-            if scheduleIDs.insert(schedule.id).inserted { summary.newSchedules += 1 } else { summary.alreadyHere += 1 }
-        }
-        var entryIDs = Set(entries.map(\.id))
-        for entry in archive.entries + archive.heldAside.entries {
-            if entryIDs.insert(entry.id).inserted { summary.newEntries += 1 } else { summary.alreadyHere += 1 }
-        }
-        return summary
+        let file = archive.records(now: Date())
+        let new = newRecords(in: file)
+        return PeptideImportSummary(
+            newVials: new.own.vials.count,
+            newSchedules: new.own.schedules.count,
+            newEntries: new.own.entries.count,
+            heldAside: new.heldAside.count,
+            alreadyHere: file.own.count + file.heldAside.count - new.own.count - new.heldAside.count,
+            skipped: archive.skipped
+        )
     }
 
-    /// Adds what `archive` has that this phone doesn't, all to this log.
-    /// Nothing already here is changed.
+    /// Adds what `archive` has that this phone doesn't: the user's own records
+    /// to this log, second-profile records to those held aside for the user's
+    /// choice. Nothing already here is changed.
     @discardableResult
     func importArchive(_ archive: PeptideArchive, now: Date = Date()) -> PeptideImportSummary {
         let summary = importSummary(of: archive)
-        guard summary.added > 0 else { return summary }
-        let file = archive.records(now: now)
-        let merged = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules)
-            .adding(file.own)
-            .adding(file.heldAside)
-        entries = merged.entries
-        vials = merged.vials
-        schedules = merged.schedules
+        guard summary.total > 0 else { return summary }
+        let new = newRecords(in: archive.records(now: now))
+        entries += new.own.entries
+        vials += new.own.vials
+        schedules += new.own.schedules
+        heldAside = heldAside.adding(new.heldAside)
         didChangeEntries()
         return summary
+    }
+
+    /// `file`'s records whose id isn't on this phone, in the log or held aside.
+    private func newRecords(in file: PeptideRecordsByProfile) -> PeptideRecordsByProfile {
+        let here = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules).adding(heldAside)
+        let own = here.newRecords(in: file.own)
+        return PeptideRecordsByProfile(own: own, heldAside: here.adding(own).newRecords(in: file.heldAside))
     }
 
     /// Replaces everything with `archive` (iCloud restore). Records the

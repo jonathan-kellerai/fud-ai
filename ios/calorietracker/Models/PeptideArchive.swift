@@ -14,12 +14,18 @@ struct PeptideImportSummary: Equatable {
     var newVials = 0
     var newSchedules = 0
     var newEntries = 0
+    /// Records an older file tagged with a second profile, held aside (out of
+    /// the log) until the user keeps or deletes them.
+    var heldAside = 0
     /// Records whose id is already on this phone (left unchanged).
     var alreadyHere = 0
     /// Records in the file that couldn't be read.
     var skipped = 0
 
+    /// Records added to the log.
     var added: Int { newVials + newSchedules + newEntries }
+    /// Everything the import saves: added to the log or held aside.
+    var total: Int { added + heldAside }
 }
 
 enum PeptideArchiveError: LocalizedError, Equatable {

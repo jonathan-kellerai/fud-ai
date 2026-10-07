@@ -185,6 +185,167 @@ struct PeptideSecondProfileTests {
         #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self).contains("\"person\""))
     }
 
+    // MARK: Import
+
+    /// A build 67 export: the first profile's vial and dose, an untagged dose,
+    /// the second profile's vial, schedule and dose, and a dose an export
+    /// already held aside.
+    private var mixedArchive: String {
+        """
+        {"format":"jl-peptides","format_version":1,
+         "vials":[{"id":"imp-own-vial","person":"\(firstTag)","compound":"BPC-157"},
+                  {"id":"imp-second-vial","person":"\(secondTag)","compound":"Glow","notes":"Fridge"}],
+         "schedules":[{"id":"imp-second-sched","person":"\(secondTag)","compound":"MT2",
+                       "frequency":{"type":"daily","days":[]},"start_date":"2026-09-01"}],
+         "entries":[{"id":"imp-own-1","person":"\(firstTag)","compound":"BPC-157","dose":500,"units":"mcg",
+                     "datetime":"2026-09-20T07:30:00-04:00"},
+                    {"id":"imp-own-2","compound":"Tesamorelin","dose":1.4,"units":"mg",
+                     "datetime":"2026-09-20T21:30:00-04:00"},
+                    {"id":"imp-second-1","person":"\(secondTag)","compound":"MT2","dose":250,"units":"mcg",
+                     "vial_id":"imp-second-vial","drawn_volume":10,"drawn_unit":"units",
+                     "datetime":"2026-09-20T07:15:00-04:00"}],
+         "held_aside":{"vials":[],"schedules":[],
+                       "entries":[{"id":"imp-held-1","compound":"MT2","dose":200,"units":"mcg",
+                                   "datetime":"2026-09-19T07:15:00-04:00"}]}}
+        """
+    }
+
+    private func emptyStoreURL() throws -> URL {
+        let url = tempURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return url
+    }
+
+    private func importMixedArchive(into store: PeptideLogStore) throws -> PeptideImportSummary {
+        // A whole-second time: vials without a created_at get it, and the archive keeps seconds.
+        store.importArchive(try PeptideArchive.decode(Data(mixedArchive.utf8)), now: Date(timeIntervalSince1970: 1_790_000_000))
+    }
+
+    @Test func importHoldsTheSecondProfileAsideAndLosesNothing() throws {
+        let url = try emptyStoreURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = PeptideLogStore(persistence: .file(url))
+        let preview = store.importSummary(of: try PeptideArchive.decode(Data(mixedArchive.utf8)))
+        #expect(preview == PeptideImportSummary(newVials: 1, newEntries: 2, heldAside: 4))
+        #expect(try importMixedArchive(into: store) == preview)
+
+        // The user's own records are in the log; nothing from the second profile is.
+        #expect(store.entries.map(\.id) == ["imp-own-1", "imp-own-2"])
+        #expect(store.vials.map(\.id) == ["imp-own-vial"])
+        #expect(store.schedules.isEmpty)
+        // The rest is held, whole, for the same one-time choice as an upgrade.
+        #expect(store.heldAsideCount == 4)
+        #expect(Set(store.heldAside.entries.map(\.id)) == ["imp-second-1", "imp-held-1"])
+        let held = try #require(store.heldAside.entries.first { $0.id == "imp-second-1" })
+        #expect(held.dose == 250)
+        #expect(held.vialID == "imp-second-vial")
+        #expect(held.drawnVolume == 10)
+        #expect(store.heldAside.vials.first?.notes == "Fridge")
+        #expect(store.heldAside.schedules.map(\.id) == ["imp-second-sched"])
+
+        // Saved under held_aside, with no profile tag, and still there after a relaunch.
+        let saved = String(decoding: try Data(contentsOf: url), as: UTF8.self)
+        #expect(saved.contains("\"held_aside\""))
+        #expect(!saved.contains("\"person\""))
+        let relaunched = PeptideLogStore(persistence: .file(url))
+        #expect(relaunched.heldAside == store.heldAside)
+        #expect(relaunched.entries == store.entries)
+    }
+
+    @Test func keepingImportedRecordsMergesThemAndIsNotAskedAgain() throws {
+        let url = try emptyStoreURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = PeptideLogStore(persistence: .file(url))
+        _ = try importMixedArchive(into: store)
+        store.keepHeldAside()
+        #expect(store.heldAsideCount == 0)
+        #expect(store.entries.map(\.id) == ["imp-held-1", "imp-second-1", "imp-own-1", "imp-own-2"])
+        #expect(Set(store.vials.map(\.id)) == ["imp-own-vial", "imp-second-vial"])
+        #expect(store.schedules.map(\.id) == ["imp-second-sched"])
+
+        let relaunched = PeptideLogStore(persistence: .file(url))
+        #expect(relaunched.heldAsideCount == 0)
+        #expect(relaunched.entries == store.entries)
+        // Importing the same file again finds everything here and holds nothing aside.
+        let again = try importMixedArchive(into: relaunched)
+        #expect(again.total == 0)
+        #expect(again.alreadyHere == 7)
+        #expect(relaunched.heldAsideCount == 0)
+    }
+
+    @Test func deletingImportedRecordsRemovesThemAndIsNotAskedAgain() throws {
+        let url = try emptyStoreURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = PeptideLogStore(persistence: .file(url))
+        _ = try importMixedArchive(into: store)
+        store.deleteHeldAside()
+        #expect(store.heldAsideCount == 0)
+        #expect(store.entries.map(\.id) == ["imp-own-1", "imp-own-2"])
+        #expect(store.vial(id: "imp-second-vial") == nil)
+
+        let relaunched = PeptideLogStore(persistence: .file(url))
+        #expect(relaunched.heldAsideCount == 0)
+        #expect(relaunched.entries.map(\.id) == ["imp-own-1", "imp-own-2"])
+        #expect(relaunched.vials.map(\.id) == ["imp-own-vial"])
+        #expect(relaunched.schedules.isEmpty)
+        let text = String(decoding: try Data(contentsOf: url), as: UTF8.self)
+        #expect(!text.contains("imp-second"))
+        #expect(!text.contains("held_aside"))
+    }
+
+    @Test func importingTheSameFileTwiceHoldsNothingTwice() throws {
+        let url = try emptyStoreURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = PeptideLogStore(persistence: .file(url))
+        _ = try importMixedArchive(into: store)
+        let savedOnce = try Data(contentsOf: url)
+        let again = try importMixedArchive(into: store)
+        #expect(again.total == 0)
+        #expect(again.alreadyHere == 7)
+        #expect(store.heldAsideCount == 4)
+        #expect(store.entries.count == 2)
+        #expect(try Data(contentsOf: url) == savedOnce)
+    }
+
+    /// Records an upgrade already held aside aren't held a second time when an
+    /// export of the same profile is imported.
+    @Test func importSkipsRecordsAlreadyHeldAsideByTheUpgrade() throws {
+        let url = try writeVersion2()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = PeptideLogStore(persistence: .file(url))
+        let held = store.heldAside
+        let file = try PeptideArchive.decode(try #require(store.backupArchiveData()))
+        let fresh = PeptideLogStore(persistence: .inMemory)
+        _ = fresh.importArchive(file)
+        #expect(fresh.heldAside == held)
+        let summary = store.importArchive(file)
+        #expect(summary.total == 0)
+        #expect(store.heldAside == held)
+        #expect(store.heldAsideCount == 3)
+    }
+
+    @Test func importedHeldRecordsSurviveABackupAndRestore() throws {
+        let url = try emptyStoreURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = PeptideLogStore(persistence: .file(url))
+        _ = try importMixedArchive(into: store)
+        let backup = try #require(store.backupArchiveData())
+
+        let otherURL = try emptyStoreURL()
+        defer { try? FileManager.default.removeItem(at: otherURL.deletingLastPathComponent()) }
+        let restored = PeptideLogStore(persistence: .file(otherURL))
+        #expect(restored.restoreArchiveData(backup) == nil)
+        #expect(restored.heldAside == store.heldAside)
+        #expect(restored.entries == store.entries)
+        #expect(restored.vials == store.vials)
+        let relaunched = PeptideLogStore(persistence: .file(otherURL))
+        #expect(relaunched.heldAside == store.heldAside)
+        #expect(relaunched.heldAsideCount == 4)
+        // The restored phone gets the same one-time choice.
+        relaunched.keepHeldAside()
+        #expect(Set(relaunched.entries.map(\.id)) == ["imp-own-1", "imp-own-2", "imp-second-1", "imp-held-1"])
+    }
+
     @Test func legacyTagsAreReadOnlyThroughTheProfile() {
         #expect(PeptideLegacyProfile(raw: nil) == .own)
         #expect(PeptideLegacyProfile(raw: "") == .own)
