@@ -66,7 +66,9 @@ struct PeptideLogFile {
     }
 
     /// Never overwrite data that could not be read: set it aside first.
-    func keepUnreadable(_ data: Data) {
+    /// True only when the copy is on disk and reads back the same.
+    @discardableResult
+    func keepUnreadable(_ data: Data) -> Bool {
         file.keepUnreadable(data)
     }
 

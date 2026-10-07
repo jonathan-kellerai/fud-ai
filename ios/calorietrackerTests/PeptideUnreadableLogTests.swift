@@ -223,4 +223,102 @@ struct PeptideUnreadableLogTests {
         let id = try #require(store.log(draft(), now: takenAt))
         #expect(PeptideLogStore(persistence: .file(url)).entries.map(\.id) == [id])
     }
+
+    // MARK: Bytes that can't be read or kept aside
+
+    /// Opens the log while its folder can't be written to, so nothing can be set aside beside it.
+    private func openWithoutCopies(_ url: URL) throws -> PeptideLogStore {
+        let directory = url.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
+        return PeptideLogStore(persistence: .file(url))
+    }
+
+    private func unreadableCopy(beside url: URL) throws -> Data? {
+        guard let name = files(beside: url).first(where: { $0.hasPrefix("peptide_log_v1.unreadable-") }) else { return nil }
+        return try Data(contentsOf: url.deletingLastPathComponent().appendingPathComponent(name))
+    }
+
+    @Test func anUnreadableLogThatCantBeSetAsideIsNeverWrittenOver() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let garbage = Data("{not json".utf8)
+        try garbage.write(to: url)
+
+        let store = try openWithoutCopies(url)
+        #expect(try unreadableCopy(beside: url) == nil)
+        #expect(store.storageNote?.contains("copied aside") == true)
+        let refusal = try #require(store.changeRefusal)
+
+        // The folder is writable again, but nothing may replace the only copy.
+        #expect(store.log(draft()) == nil)
+        #expect(store.persistError == refusal)
+        store.saveVial(PeptideVial(id: "v-new", compound: "TB-500", diluentML: 1))
+        #expect(store.entries.isEmpty && store.vials.isEmpty)
+        #expect(store.backupArchiveData() == nil)
+        #expect(store.restoreArchiveData(try otherArchive()) != nil)
+        #expect(store.entries.isEmpty)
+        #expect(try Data(contentsOf: url) == garbage)
+        #expect(files(beside: url) == ["peptide_log_v1.json"])
+
+        // Next launch the copy can be made, so a new log starts and the old bytes are kept.
+        let relaunched = PeptideLogStore(persistence: .file(url))
+        #expect(try unreadableCopy(beside: url) == garbage)
+        #expect(relaunched.changeRefusal == nil)
+        let id = try #require(relaunched.log(draft(), now: takenAt))
+        #expect(PeptideLogStore(persistence: .file(url)).entries.map(\.id) == [id])
+        #expect(try unreadableCopy(beside: url) == garbage)
+    }
+
+    /// A version-3 log with one readable dose and one that isn't.
+    private func logWithASkippedRecord(at url: URL) throws -> Data {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let json = """
+        {"version":3,"entries":[
+          {"id":"ok","compound":"MT2","dose":250,"units":"mcg","datetime":"2026-09-20T07:15:00-04:00","voided":false,"corrections":[]},
+          {"compound":"no id"}
+        ],"vials":[],"schedules":[]}
+        """
+        let data = Data(json.utf8)
+        try data.write(to: url)
+        return data
+    }
+
+    @Test func skippedRecordsThatCantBeSetAsideAreShownButNeverDropped() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let saved = try logWithASkippedRecord(at: url)
+
+        let store = try openWithoutCopies(url)
+        #expect(store.entries.map(\.id) == ["ok"])
+        #expect(store.storageNote?.contains("copied aside") == true)
+        let refusal = try #require(store.changeRefusal)
+        #expect(store.log(draft()) == nil)
+        #expect(store.persistError == refusal)
+        let shown = try #require(store.entry(id: "ok"))
+        #expect(store.void(shown, reason: "duplicate") == refusal)
+        store.setSyringeScale(.u100)
+        #expect(store.entries.map(\.id) == ["ok"])
+        #expect(store.entry(id: "ok")?.voided == false)
+        #expect(store.syringeScale == nil)
+        #expect(store.backupArchiveData() == nil)
+        #expect(try Data(contentsOf: url) == saved)
+    }
+
+    @Test func skippedRecordsAreSetAsideBeforeASaveDropsThem() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let saved = try logWithASkippedRecord(at: url)
+
+        let store = PeptideLogStore(persistence: .file(url))
+        #expect(try unreadableCopy(beside: url) == saved)
+        #expect(store.changeRefusal == nil)
+        #expect(store.storageNote?.hasPrefix("1 saved peptide record") == true)
+        let id = try #require(store.log(draft(), now: takenAt))
+        let reopened = PeptideLogStore(persistence: .file(url))
+        #expect(Set(reopened.entries.map(\.id)) == ["ok", id])
+        #expect(reopened.storageNote == store.storageNote)
+        #expect(try unreadableCopy(beside: url) == saved)
+    }
 }

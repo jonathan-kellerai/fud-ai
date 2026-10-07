@@ -365,7 +365,7 @@ final class PeptideLogStore {
     }
 
     /// Why changes are refused now, with nothing changed (the saved log isn't
-    /// open yet). Nil while changes are made. Views read it after a change.
+    /// open yet, or couldn't be copied aside). Nil while changes are made. Views read it after a change.
     var changeRefusal: String? { readOnly?.refusal }
 
     /// A saved log that couldn't be opened (the phone was locked at launch) is
@@ -423,12 +423,12 @@ final class PeptideLogStore {
             data = bytes
         }
         guard let version = PeptideLogSnapshot.savedVersion(of: data) else {
-            file.keepUnreadable(data)
+            setAsideUnreadable(data)
             return
         }
         if version == Self.fileVersion || version == 2 {
             guard let snapshot = try? JSONDecoder().decode(PeptideLogSnapshot.self, from: data) else {
-                file.keepUnreadable(data)
+                setAsideUnreadable(data)
                 return
             }
             // Records skipped now are dropped by the next save, so they join the count saved with it.
@@ -436,7 +436,12 @@ final class PeptideLogStore {
             syringeScale = snapshot.syringeScale
             if version == 2 {
                 // Version 2 tagged records with a profile: keep its bytes, then save version 3.
+                // That copy holds any skipped records too; if it fails, nothing is saved.
                 keepAsideThenSave(data, label: "pre-v3")
+            } else if snapshot.skipped > 0, !file.keepUnreadable(data) {
+                // The next save would drop the skipped records, and they are on disk nowhere else.
+                readOnly = .unreadableNotKept
+                storageNote = Self.unreadableNotKeptNote
             }
         } else if version == 1 {
             upgrade(data)
@@ -452,12 +457,23 @@ final class PeptideLogStore {
     /// aside first; if that fails, the records are shown but nothing is saved.
     private func upgrade(_ data: Data) {
         guard let migrated = PeptideLegacyLog.migrate(data) else {
-            file.keepUnreadable(data)
+            setAsideUnreadable(data)
             return
         }
         apply(migrated.records, omitted: migrated.skipped)
         keepAsideThenSave(data, label: "pre-local")
     }
+
+    /// Bytes that can't be read are copied aside before a new log is started.
+    /// When the copy fails the log turns read-only, so a save can never write
+    /// over the only copy of those records.
+    private func setAsideUnreadable(_ data: Data) {
+        guard !file.keepUnreadable(data) else { return }
+        readOnly = .unreadableNotKept
+        storageNote = Self.unreadableNotKeptNote
+    }
+
+    private static let unreadableNotKeptNote = "The saved peptide log couldn't be read in full or copied aside, so it was left as it is. Close and reopen the app to try again."
 
     /// Writes the untouched bytes of an older save next to it, then saves in
     /// the current version. If the copy can't be made, nothing is saved.
@@ -533,12 +549,17 @@ enum PeptideLogReadOnly: Equatable {
     /// The file is there but couldn't be opened (locked before first unlock).
     /// Changes are refused: memory holds none of it.
     case notOpened
+    /// Bytes that couldn't be read (the whole file, or records skipped while
+    /// reading it) and couldn't be copied aside. Changes are refused: a save
+    /// would drop them.
+    case unreadableNotKept
 
     /// Why a change is refused, nothing changed; nil when changes are shown but not saved.
     var refusal: String? {
         switch self {
         case .newerVersion, .upgradeNotKept: nil
         case .notOpened: "Peptides can't be changed until the saved log opens."
+        case .unreadableNotKept: "Peptides can't be changed until the saved log can be copied aside."
         }
     }
 }
