@@ -126,6 +126,8 @@ jobs:
           -only-testing:calorietrackerTests/AIRequestTraceTests \
           -only-testing:calorietrackerTests/AIDiagnosticResultTests \
           -only-testing:calorietrackerTests/OpenRouterOAuthTests \
+          -only-testing:calorietrackerTests/HostedAIServiceTraceTests \
+          -only-testing:calorietrackerTests/OpenRouterSignInTests \
           -parallel-testing-enabled NO \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
@@ -133,7 +135,7 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|AIRequestLogRedactorTests|AIRequestLogStoreTests|AIRequestTraceTests|AIDiagnosticResultTests|OpenRouterOAuthTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|AIRequestLogRedactorTests|AIRequestLogStoreTests|AIRequestTraceTests|AIDiagnosticResultTests|OpenRouterOAuthTests|HostedAIServiceTraceTests|OpenRouterSignInTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
@@ -227,7 +229,8 @@ jobs:
           TrainingProgramTests ProgramCycleTests TrainProgressStoreTests \
           PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests PeptideArchiveTests \
           PeptideBackupAndResetTests AIRequestLogRedactorTests AIRequestLogStoreTests AIRequestTraceTests \
-          AIDiagnosticResultTests OpenRouterOAuthTests JevTierRoutingTests; do
+          AIDiagnosticResultTests OpenRouterOAuthTests JevTierRoutingTests HostedAIServiceTraceTests \
+          OpenRouterSignInTests; do
           if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log" "$RUNNER_TEMP/peptide-no-network-tests.log"; then
             echo "ok: ${suite}"
           else
