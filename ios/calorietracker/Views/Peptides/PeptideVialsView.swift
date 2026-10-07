@@ -525,15 +525,19 @@ struct PeptideVialEditor: View {
             .accessibilityLabel("I mixed this vial with exactly this diluent volume")
             .accessibilityValue(confirmed ? "Ticked" : "Not ticked")
             .accessibilityAddTraits(confirmed ? .isSelected : [])
-            Text(confirmed
-                ? "Confirmed by you" + (confirmedAt.map { " · " + PeptideMath.shortDateTime($0) } ?? "") + "."
-                : "Without this, concentration and remaining volume are not shown.")
+            Text(confirmNote)
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .onChange(of: components) { _, _ in unconfirm() }
         .onChange(of: diluentText) { _, _ in unconfirm() }
+    }
+
+    private var confirmNote: String {
+        guard confirmed else { return "Without this, concentration and remaining volume are not shown." }
+        guard let confirmedAt else { return "Confirmed by you." }
+        return "Confirmed by you · " + PeptideMath.shortDateTime(confirmedAt) + "."
     }
 
     private func unconfirm() {
