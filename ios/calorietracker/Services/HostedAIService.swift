@@ -137,10 +137,22 @@ enum HostedAIService {
             request.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError where error.code == .cancelled {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            trace?.recordTransportError(provider: AIRequestTrace.hostedProviderName, error)
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else {
             throw HostedAIServiceError.invalidResponse
         }
+        // Redacted by the trace; this is what the request log shows for a hosted request.
+        trace?.recordResponse(provider: AIRequestTrace.hostedProviderName, status: http.statusCode, body: data)
 
         if let snapshot = HostedAIQuotaManager.snapshot(fromHeaders: http.allHeaderFields) {
             await HostedAIQuotaManager.shared.apply(snapshot)
