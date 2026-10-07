@@ -8,14 +8,14 @@ struct MoreHubView: View {
         List {
             Section {
                 // One row for the whole peptide area so the hub keeps seven rows on iPhone SE.
-                // Recon Bench opens from the Peptides screen.
+                // Today, Week, Vials and Reconstitute all open from the Peptides screen.
                 NavigationLink {
                     PeptidesView()
                 } label: {
                     SettingsHubRowLabel(
                         title: "Peptides",
                         systemImage: "cross.vial.fill",
-                        subtitle: "Log, vials, Recon Bench"
+                        subtitle: "Today, week, vials"
                     )
                 }
                 .accessibilityIdentifier("settings.category.peptides")

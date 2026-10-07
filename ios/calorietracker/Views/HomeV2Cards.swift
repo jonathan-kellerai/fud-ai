@@ -109,7 +109,6 @@ struct HomeV2Cards: View {
     @State private var hrvSamples: [HealthSampleReading] = []
     @State private var recoveryLoaded = false
     @State private var loggingDay: ProgramV2Day?
-    @State private var showingPeptideLog = false
 
     private let bridge = NeonBridgeService.shared
     private let trainProgress = TrainProgressStore.shared
@@ -154,9 +153,6 @@ struct HomeV2Cards: View {
             ProgramV2WorkoutLogView(day: day) {
                 Task { await reloadWorkouts() }
             }
-        }
-        .sheet(isPresented: $showingPeptideLog) {
-            PeptideLogSheet()
         }
     }
 
@@ -236,11 +232,6 @@ struct HomeV2Cards: View {
             if peptideStore.hasLocalActivity(today: peptideDay) {
                 Section {
                     HomePeptideSummary(day: peptideDay).listRowBackground(IronTheme.surface)
-                    Button("Log a dose") {
-                        showingPeptideLog = true
-                    }
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .listRowBackground(IronTheme.surface)
                     NavigationLink {
                         PeptidesView()
                     } label: {
@@ -969,7 +960,7 @@ private struct CustomizeHomeSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                Text("Peptides stays off Home until you add a vial or schedule, or log a dose today. Drag to reorder.")
+                Text("Peptides stays off Home until you add a vial or schedule, or log a draw today. Drag to reorder.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding()

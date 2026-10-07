@@ -343,7 +343,7 @@ struct PeptideSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Decimal or text field in the Recon Bench input style.
+/// Decimal or text field in the Peptides input style.
 struct PeptideInputField: View {
     let title: String
     @Binding var text: String
