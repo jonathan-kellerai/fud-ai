@@ -180,6 +180,53 @@ final class WorkoutLogStore {
         return (new, duplicates)
     }
 
+    // MARK: Backup and reset
+
+    /// The log for the iCloud backup: the saved file's format. Nil while the
+    /// log is read-only, so a newer app's workouts are never backed up over.
+    func backupData() -> Data? {
+        if savingBlocked { return nil }
+        return snapshot(of: records, importedAt: importedAt).encoded()
+    }
+
+    /// iCloud restore replaces every workout. Strict: the whole log must read,
+    /// and it is saved before it is shown. Otherwise the phone's workouts are
+    /// kept and the reason is returned.
+    func restoreBackupData(_ data: Data) -> String? {
+        guard WorkoutLogSnapshot.savedVersion(of: data) == Self.fileVersion,
+              let restored = try? JSONDecoder().decode(WorkoutLogSnapshot.self, from: data),
+              restored.skipped == 0 else {
+            return "Workouts in this backup couldn't be read, so the ones on this phone were kept."
+        }
+        if savingBlocked {
+            return "Workouts can't be restored until the app is updated, so the ones on this phone were kept."
+        }
+        let sorted = Self.sorted(restored.workouts)
+        let replacement = WorkoutLogSnapshot(version: Self.fileVersion, workouts: sorted,
+                                             omitted: restored.omitted, importedAt: restored.importedAt)
+        if case .failure(let error)? = write(replacement) {
+            return "Workouts weren't restored (\(error.localizedDescription)), so the ones on this phone were kept."
+        }
+        records = sorted
+        omitted = restored.omitted
+        importedAt = restored.importedAt
+        persistError = nil
+        storageNote = Self.omittedNote(omitted)
+        return nil
+    }
+
+    /// Delete Everything: the saved log, every copy set aside next to it, and
+    /// everything in memory.
+    func deleteAll() {
+        file.removeAll()
+        records = []
+        persistError = nil
+        storageNote = nil
+        omitted = 0
+        importedAt = nil
+        savingBlocked = false
+    }
+
     // MARK: Private
 
     /// Saves `next` first; memory changes only once it is saved.
@@ -190,7 +237,7 @@ final class WorkoutLogStore {
         }
         let sorted = Self.sorted(next)
         let imported = self.importedAt ?? importedAt
-        switch write(sorted, importedAt: imported) {
+        switch write(snapshot(of: sorted, importedAt: imported)) {
         case .failure(let error)?:
             persistError = error.localizedDescription
             throw error
@@ -248,18 +295,26 @@ final class WorkoutLogStore {
             // Keep the readable records' bytes too, before a save drops the rest.
             file.keepUnreadable(data)
         }
-        if omitted > 0 {
-            storageNote = omitted == 1
-                ? "1 saved workout couldn't be read, so it isn't listed."
-                : "\(omitted) saved workouts couldn't be read, so they aren't listed."
+        if let note = Self.omittedNote(omitted) {
+            storageNote = note
         }
     }
 
-    /// Writes these records as the saved log. Nil when there is no file to write (in memory).
-    private func write(_ list: [StoredWorkout], importedAt: String?) -> Result<Void, Error>? {
+    private static func omittedNote(_ omitted: Int) -> String? {
+        guard omitted > 0 else { return nil }
+        return omitted == 1
+            ? "1 saved workout couldn't be read, so it isn't listed."
+            : "\(omitted) saved workouts couldn't be read, so they aren't listed."
+    }
+
+    private func snapshot(of list: [StoredWorkout], importedAt: String?) -> WorkoutLogSnapshot {
+        WorkoutLogSnapshot(version: Self.fileVersion, workouts: list, omitted: omitted, importedAt: importedAt)
+    }
+
+    /// Writes a snapshot as the saved log. Nil when there is no file to write (in memory).
+    private func write(_ snapshot: WorkoutLogSnapshot) -> Result<Void, Error>? {
         if file.isInMemory { return nil }
-        let snapshot = WorkoutLogSnapshot(version: Self.fileVersion, workouts: list, omitted: omitted, importedAt: importedAt)
-        guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(WorkoutLogError.encoding) }
+        guard let data = snapshot.encoded() else { return .failure(WorkoutLogError.encoding) }
         return file.write(data) ?? .failure(WorkoutLogError.noLocation)
     }
 }
@@ -326,6 +381,13 @@ struct WorkoutLogSnapshot: Codable {
         try container.encodeIfPresent(importedAt, forKey: .importedAt)
     }
 
+    /// Stable bytes: sorted keys, so the same log always encodes the same.
+    func encoded() -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(self)
+    }
+
     /// The `version` of saved bytes, or nil when they aren't a log at all.
     static func savedVersion(of data: Data) -> Int? {
         struct Probe: Decodable { let version: Int }
@@ -343,3 +405,5 @@ extension WorkoutLogStore {
     }
 }
 #endif
+
+extension WorkoutLogStore: CloudBackupWorkouts {}

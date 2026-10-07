@@ -28,7 +28,7 @@ struct WorkoutsSettingsView: View {
             } header: {
                 IronSectionTitle(title: "Workouts")
             } footer: {
-                Text("Workouts are saved only on this phone. Nothing is sent to the bridge.")
+                Text("Workouts are saved only on this phone, and in your iCloud backup when it's on. Nothing is sent to the bridge.")
             }
             .listRowBackground(AppColors.appCard)
 
