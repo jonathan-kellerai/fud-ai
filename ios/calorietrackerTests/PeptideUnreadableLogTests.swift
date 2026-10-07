@@ -354,4 +354,68 @@ struct PeptideUnreadableLogTests {
         #expect(reopened.storageNote == store.storageNote)
         #expect(try unreadableCopy(beside: url) == saved)
     }
+
+    /// Version-3 logs whose lists are there but aren't lists. Each keeps the
+    /// one readable dose.
+    private func logsWithAMalformedList() -> [Data] {
+        let dose = #"{"id":"ok","compound":"MT2","dose":250,"units":"mcg","datetime":"2026-09-20T07:15:00-04:00","voided":false,"corrections":[]}"#
+        return [
+            #"{"version":3,"entries":[\#(dose)],"vials":{"id":"v1"},"schedules":[]}"#,
+            #"{"version":3,"entries":[\#(dose)],"vials":[],"schedules":"weekly"}"#,
+            #"{"version":3,"entries":[\#(dose)],"vials":[],"schedules":[],"held_aside":[1]}"#,
+            #"{"version":3,"entries":[\#(dose)],"vials":[],"schedules":[],"held_aside":{"entries":{"id":"held"}}}"#,
+        ].map { Data($0.utf8) }
+    }
+
+    @Test func aListThatIsntAListIsSetAsideBeforeASaveDropsIt() throws {
+        for saved in logsWithAMalformedList() {
+            let url = tempURL()
+            defer { cleanUp(url) }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try saved.write(to: url)
+
+            let store = PeptideLogStore(persistence: .file(url))
+            #expect(store.entries.map(\.id) == ["ok"])
+            #expect(try unreadableCopy(beside: url) == saved)
+            #expect(store.changeRefusal == nil)
+            _ = try #require(store.log(draft(), now: takenAt))
+            #expect(try unreadableCopy(beside: url) == saved)
+        }
+    }
+
+    @Test func aListThatIsntAListAndCantBeSetAsideIsNeverWrittenOver() throws {
+        for saved in logsWithAMalformedList() {
+            let url = tempURL()
+            defer { cleanUp(url) }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try saved.write(to: url)
+
+            let store = try openWithoutCopies(url)
+            #expect(store.entries.map(\.id) == ["ok"])
+            let refusal = try #require(store.changeRefusal)
+            #expect(store.log(draft()) == nil)
+            #expect(store.persistError == refusal)
+            #expect(store.backupArchiveData().data == nil)
+            #expect(try Data(contentsOf: url) == saved)
+        }
+    }
+
+    /// Lists that aren't saved (an empty held-aside set, older saves) read as empty, and nothing is set aside.
+    @Test func absentListsAreEmptyAndNothingIsSetAside() throws {
+        let dose = #"{"id":"ok","compound":"MT2","dose":250,"units":"mcg","datetime":"2026-09-20T07:15:00-04:00","voided":false,"corrections":[]}"#
+        for json in [#"{"version":3,"entries":[\#(dose)]}"#,
+                     #"{"version":3,"entries":[\#(dose)],"vials":[],"schedules":[],"held_aside":null}"#,
+                     #"{"version":3,"entries":[\#(dose)],"vials":[],"schedules":[],"held_aside":{"vials":[]}}"#] {
+            let url = tempURL()
+            defer { cleanUp(url) }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(json.utf8).write(to: url)
+
+            let store = PeptideLogStore(persistence: .file(url))
+            #expect(store.entries.map(\.id) == ["ok"])
+            #expect(store.storageNote == nil)
+            #expect(store.changeRefusal == nil)
+            #expect(files(beside: url) == ["peptide_log_v1.json"])
+        }
+    }
 }

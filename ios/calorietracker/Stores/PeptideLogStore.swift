@@ -626,9 +626,10 @@ struct PeptideLogSnapshot: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         version = try container.decode(Int.self, forKey: .version)
-        let lossyEntries = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideLogEntry>>].self, forKey: .entries)) ?? []
-        let lossyVials = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideVial>>].self, forKey: .vials)) ?? []
-        let lossySchedules = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideUserSchedule>>].self, forKey: .schedules)) ?? []
+        var malformed = 0
+        let lossyEntries = Self.list(PeptideProfiled<PeptideLogEntry>.self, in: container, .entries, malformed: &malformed)
+        let lossyVials = Self.list(PeptideProfiled<PeptideVial>.self, in: container, .vials, malformed: &malformed)
+        let lossySchedules = Self.list(PeptideProfiled<PeptideUserSchedule>.self, in: container, .schedules, malformed: &malformed)
         let sorted = PeptideRecordsByProfile(
             entries: lossyEntries.compactMap(\.value),
             vials: lossyVials.compactMap(\.value),
@@ -639,21 +640,42 @@ struct PeptideLogSnapshot: Codable {
         schedules = sorted.own.schedules
         var held = sorted.heldAside
         var heldLossy = 0
-        if let nested = try? container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside) {
-            let heldEntries = (try? nested.decode([PeptideLossy<PeptideLogEntry>].self, forKey: .entries)) ?? []
-            let heldVials = (try? nested.decode([PeptideLossy<PeptideVial>].self, forKey: .vials)) ?? []
-            let heldSchedules = (try? nested.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
-            held.entries += heldEntries.compactMap(\.value)
-            held.vials += heldVials.compactMap(\.value)
-            held.schedules += heldSchedules.compactMap(\.value)
-            heldLossy = heldEntries.count + heldVials.count + heldSchedules.count
+        if (try? container.decodeNil(forKey: .heldAside)) == false {
+            if let nested = try? container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside) {
+                let heldEntries = Self.list(PeptideLogEntry.self, in: nested, .entries, malformed: &malformed)
+                let heldVials = Self.list(PeptideVial.self, in: nested, .vials, malformed: &malformed)
+                let heldSchedules = Self.list(PeptideUserSchedule.self, in: nested, .schedules, malformed: &malformed)
+                held.entries += heldEntries.compactMap(\.value)
+                held.vials += heldVials.compactMap(\.value)
+                held.schedules += heldSchedules.compactMap(\.value)
+                heldLossy = heldEntries.count + heldVials.count + heldSchedules.count
+            } else {
+                malformed += 1
+            }
         }
         heldAside = held
         let read = sorted.own.count + held.count
-        skipped = lossyEntries.count + lossyVials.count + lossySchedules.count + heldLossy - read
+        skipped = lossyEntries.count + lossyVials.count + lossySchedules.count + heldLossy - read + malformed
         omitted = max((try? container.decodeIfPresent(Int.self, forKey: .omitted)) ?? 0, 0)
         let scale = (try? container.decodeIfPresent(Int.self, forKey: .syringeScale)).flatMap { $0 }
         syringeScale = scale.flatMap(PeptideSyringeScale.init(rawValue:))
+    }
+
+    /// One saved list, each record read on its own. Absent (or null) is an
+    /// empty list. One that is there but isn't a list counts as one record
+    /// that couldn't be read, so its bytes are kept aside before a save drops them.
+    private static func list<Key: CodingKey, Value: Decodable>(
+        _ type: Value.Type,
+        in container: KeyedDecodingContainer<Key>,
+        _ key: Key,
+        malformed: inout Int
+    ) -> [PeptideLossy<Value>] {
+        do {
+            return try container.decodeIfPresent([PeptideLossy<Value>].self, forKey: key) ?? []
+        } catch {
+            malformed += 1
+            return []
+        }
     }
 
     func encode(to encoder: Encoder) throws {

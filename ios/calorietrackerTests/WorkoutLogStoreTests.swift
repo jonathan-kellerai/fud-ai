@@ -267,6 +267,23 @@ struct WorkoutLogStoreTests {
         #expect(Set(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id)) == [id, second])
     }
 
+    /// A `workouts` list that isn't a list is a log that can't be read: kept aside, never saved over.
+    @Test func aWorkoutsListThatIsntAListIsSetAside() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let saved = Data(#"{"version":1,"workouts":{"id":"w1"}}"#.utf8)
+        try saved.write(to: url)
+
+        let store = try openWithoutCopies(url)
+        #expect(store.storageNote == WorkoutLogError.unreadableNotKept.localizedDescription)
+        #expect(throws: WorkoutLogError.unreadableNotKept) { try save(store, draft().payload(now: finished)) }
+        #expect(try Data(contentsOf: url) == saved)
+        _ = WorkoutLogStore(persistence: .file(url))
+        let aside = try #require(files(beside: url).first { $0.hasPrefix("workout_log_v1.unreadable-") })
+        #expect(try Data(contentsOf: url.deletingLastPathComponent().appendingPathComponent(aside)) == saved)
+    }
+
     @Test func aSaveAfterTheLogBecomesReadableKeepsEveryEarlierWorkout() throws {
         let url = tempURL()
         defer { cleanUp(url) }
