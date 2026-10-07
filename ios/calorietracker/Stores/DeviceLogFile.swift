@@ -9,6 +9,15 @@
 
 import Foundation
 
+/// What reading a log file found.
+enum DeviceLogRead {
+    /// No file yet.
+    case missing
+    case data(Data)
+    /// The file is there but couldn't be read; its bytes are unknown.
+    case failed(Error)
+}
+
 struct DeviceLogFile {
     /// The log file. Nil when there is no file (in memory, or no app group).
     let url: URL?
@@ -19,13 +28,26 @@ struct DeviceLogFile {
     /// The saved bytes: the file, else the UserDefaults fallback.
     func read() -> Data? {
         var data: Data?
-        if let url {
-            data = try? Data(contentsOf: url)
+        if case .data(let bytes) = readFile() {
+            data = bytes
         }
         if data == nil, let defaults {
             data = defaults.data(forKey: defaultsKey)
         }
         return data
+    }
+
+    /// The file alone, saying whether it is missing or there but unreadable
+    /// (locked by file protection, no permission). No UserDefaults fallback.
+    func readFile() -> DeviceLogRead {
+        guard let url else { return .missing }
+        do {
+            return .data(try Data(contentsOf: url))
+        } catch CocoaError.fileReadNoSuchFile {
+            return .missing
+        } catch {
+            return .failed(error)
+        }
     }
 
     /// Never overwrite data that could not be read: set it aside first.
