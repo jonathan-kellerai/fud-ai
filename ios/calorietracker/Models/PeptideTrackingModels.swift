@@ -158,6 +158,19 @@ nonisolated struct PeptideUserSchedule: Codable, Equatable, Identifiable, Hashab
     }
 }
 
+/// Everything the Peptides log holds: logged doses, vials and schedules.
+nonisolated struct PeptideRecordSet: Equatable {
+    var entries: [PeptideLogEntry]
+    var vials: [PeptideVial]
+    var schedules: [PeptideUserSchedule]
+
+    init(entries: [PeptideLogEntry] = [], vials: [PeptideVial] = [], schedules: [PeptideUserSchedule] = []) {
+        self.entries = entries
+        self.vials = vials
+        self.schedules = schedules
+    }
+}
+
 /// What a correction changes. Nil fields are left alone.
 nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
     /// ISO-8601 with offset (America/New_York).
