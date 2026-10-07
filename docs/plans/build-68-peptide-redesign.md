@@ -97,3 +97,27 @@ mg, entry detail without scale, vials, reconstitute steps 1–3, settings syring
 - Deleting `person` touches every peptide caller; the test target must compile at each SHA.
 - Remaining volume: a legacy units draw with no recorded scale is no longer assumed U-100, so its vial's remaining
   becomes "not shown" until the draw is edited. Honest, but visible.
+
+## 8. As built (integ/build-68, not yet pushed or CI-verified)
+
+Commits, in order: plan; `refactor` PeptideRecordSet; `refactor` pre-upgrade copy label; `behavior` one person per
+phone + held-aside second profile; `behavior` draws + save-time snapshot + mg only on detail + syringe scale setting;
+`behavior` Reconstitute replaces Recon Bench; `behavior` one screen Today/Week/Vials; `behavior` Home card one line;
+`test` names out of ProgramCycleTests comments; `test-harness` VQA [goldens-update]; `ci` suites + names gate;
+`refactor` vial-editor note (type-checker risk).
+
+Deviations and choices:
+- Vial confirmation stores only `concentrationConfirmedAt`; "who" is always this phone's user and shows as "You" (no person field).
+- The syringe-scale setting lives at Peptides → Settings (gear on the Peptides screen), not the global Settings hub (D10).
+- The edit sheet changes compound, draw, time, site and notes with a reason; it never changes the vial or the snapshot.
+- Archive `format_version` stays 1: new keys are additive (`syringe_scale`, `held_aside`, entry `*_at_save`, vial `concentration_confirmed_at`); build 67 ignores them.
+- ReconMath keeps its (now unused) calculator and catalog so the CI-gated self-test still runs (41 rows).
+- Legacy units draws (no scale recorded) make that vial's remaining "not shown" instead of assuming U-100.
+
+Save format (`version: 3`): `{version, entries, vials, schedules, omitted?, held_aside?: {entries, vials, schedules}, syringe_scale?}`.
+Version 2 reads the same way (records tagged with the second profile are held aside) and is copied to
+`peptide_log_v1.pre-v3-<stamp>.json` before the first version-3 save.
+
+Deferred: delete ReconMath's unused calculator/catalog and its self-test (needs Jonathan's OK: it removes a CI gate);
+the orphan `peptides.selectedPerson` UserDefaults key (harmless, wiped by Delete Everything); a reviewed CI run on
+the pushed SHA and Codex review.
