@@ -1029,7 +1029,7 @@ struct JevTierRoutingTests {
                 log.sentImageCounts.append(imageDataList.count)
                 return try reply(config)
             },
-            hosted: { _, imageDataList in
+            hosted: { _, imageDataList, _ in
                 log.hostedImageCounts.append(imageDataList.count)
                 return try reply(Self.config(.gemini, "hosted"))
             }

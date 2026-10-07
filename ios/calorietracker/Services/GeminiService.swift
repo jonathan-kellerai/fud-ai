@@ -819,7 +819,7 @@ struct GeminiService {
             let imageDataList = try capped.map { try encodedJPEGData(for: $0) }
             trace?.beginAttempt(provider: AIRequestTrace.hostedProviderName, model: nil)
             return try await perform(AIAttempt(provider: nil) { prompt, _ in
-                try await environment.hosted(prompt, imageDataList)
+                try await environment.hosted(prompt, imageDataList, trace)
             })
         }
         let base = environment.base(!images.isEmpty)
@@ -1724,7 +1724,7 @@ struct AIRouteEnvironment {
     var imageFallback: (_ primary: Config) -> Config?
     var recordFallback: (OnDeviceFallbackNotice?) -> Void
     var dispatch: (Config, _ prompt: String, _ imageDataList: [Data], _ jsonResponse: Bool, _ trace: AIRequestTrace?) async throws -> String
-    var hosted: (_ prompt: String, _ imageDataList: [Data]) async throws -> String
+    var hosted: (_ prompt: String, _ imageDataList: [Data], _ trace: AIRequestTrace?) async throws -> String
 
     static var current = AIRouteEnvironment.live
 
@@ -1752,11 +1752,12 @@ struct AIRouteEnvironment {
                     trace: trace
                 )
             },
-            hosted: { prompt, imageDataList in
+            hosted: { prompt, imageDataList, trace in
                 try await HostedAIService.generate(
                     prompt: prompt,
                     imageDataList: imageDataList,
-                    systemInstruction: AIProviderSettings.currentUserContext
+                    systemInstruction: AIProviderSettings.currentUserContext,
+                    trace: trace
                 )
             }
         )
