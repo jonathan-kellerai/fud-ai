@@ -30,9 +30,8 @@ final class PeptideLogStore {
     private(set) var persistError: String?
     /// Plain-text note when the saved log couldn't be read in full.
     private(set) var storageNote: String?
-    /// Saving would overwrite data that wasn't read: a save from a newer
-    /// app, or an older one that couldn't be set aside before upgrading.
-    @ObservationIgnored private var savingBlocked = false
+    /// Why the saved log is never overwritten; nil while it can be saved.
+    @ObservationIgnored private var readOnly: PeptideLogReadOnly?
     /// Records that couldn't be read and are no longer in the saved log.
     /// Saved with it, so `storageNote` survives a relaunch.
     @ObservationIgnored private var omitted = 0
@@ -258,7 +257,7 @@ final class PeptideLogStore {
     func adoptReconBench(_ data: Data, now: Date = Date()) -> Bool {
         guard let found = ReconBenchMigration.vials(from: data, now: now),
               !found.own.isEmpty || !found.heldAside.isEmpty else { return false }
-        guard !file.isInMemory, !savingBlocked, file.keepBeforeUpgrade(data, label: "recon-bench-pre-v3", now: now) else {
+        guard !file.isInMemory, readOnly == nil, file.keepBeforeUpgrade(data, label: "recon-bench-pre-v3", now: now) else {
             return false
         }
         let new = newRecords(in: found)
@@ -328,7 +327,7 @@ final class PeptideLogStore {
     func replaceAll(with archive: PeptideArchive, now: Date = Date()) -> String? {
         var replacement = archive.records(now: now)
         replacement.own.entries = Self.sorted(replacement.own.entries)
-        if savingBlocked { return persistError ?? "Peptides can't be saved on this phone right now." }
+        if readOnly != nil { return persistError ?? "Peptides can't be saved on this phone right now." }
         if !file.isInMemory, case .failure(let error)? = save(replacement, scale: archive.syringeScale, fallbackOnFailure: false) {
             return error.localizedDescription
         }
@@ -353,7 +352,7 @@ final class PeptideLogStore {
         persistError = nil
         storageNote = nil
         omitted = 0
-        savingBlocked = false
+        readOnly = nil
     }
 
     // MARK: Private
@@ -400,7 +399,7 @@ final class PeptideLogStore {
             upgrade(data)
         } else {
             // Saved by a newer app: never overwrite it.
-            savingBlocked = true
+            readOnly = .newerVersion
             storageNote = "Peptides were saved by a newer version of the app, so they can't be shown here. Update the app to see them."
             persistError = "Changes to peptides aren't saved until the app is updated."
         }
@@ -421,7 +420,7 @@ final class PeptideLogStore {
     /// the current version. If the copy can't be made, nothing is saved.
     private func keepAsideThenSave(_ data: Data, label: String) {
         guard file.keepBeforeUpgrade(data, label: label) else {
-            savingBlocked = true
+            readOnly = .upgradeNotKept
             persistError = "Peptides from the earlier version couldn't be backed up on this phone, so changes aren't saved yet."
             return
         }
@@ -441,7 +440,7 @@ final class PeptideLogStore {
     }
 
     private func persist() {
-        if file.isInMemory || savingBlocked { return }
+        if file.isInMemory || readOnly != nil { return }
         let records = PeptideRecordsByProfile(
             own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules),
             heldAside: heldAside
@@ -480,6 +479,14 @@ final class PeptideLogStore {
 
         var errorDescription: String? { "Peptide log couldn't be encoded." }
     }
+}
+
+/// Why the saved peptide log is never overwritten.
+enum PeptideLogReadOnly: Equatable {
+    /// Saved by a newer app. Changes are shown but not saved.
+    case newerVersion
+    /// An older save that couldn't be set aside before upgrading. Changes are shown but not saved.
+    case upgradeNotKept
 }
 
 /// The saved file (version 3; version 2 reads the same way). One unreadable
