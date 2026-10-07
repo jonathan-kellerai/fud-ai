@@ -2,12 +2,24 @@ import SwiftUI
 import UIKit
 
 struct WorkoutsView: View {
+    var presentedAsSheet = false
+    /// Training → Exercise Library opens the browser only and does not write the stored tab mode.
+    var libraryOnly = false
+    /// Training → Advanced opens the legacy logger without changing the stored tab mode.
+    var forcedMode: WorkoutTabMode? = nil
+    @Environment(\.dismiss) private var dismiss
     @AppStorage(WorkoutTabMode.storageKey) private var selectedModeRaw = WorkoutTabMode.defaultMode.rawValue
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
     @State private var workoutLogSession = WorkoutLogSessionState()
 
     private var selectedMode: WorkoutTabMode {
-        WorkoutTabMode.mode(for: selectedModeRaw)
+        if let forcedMode { return forcedMode }
+        if libraryOnly || !JLFeatureFlags.legacyWorkoutLogger { return .library }
+        return WorkoutTabMode.mode(for: selectedModeRaw)
+    }
+
+    private var allowsWorkoutLog: Bool {
+        JLFeatureFlags.legacyWorkoutLogger && !libraryOnly && forcedMode == nil
     }
 
     var body: some View {
@@ -22,13 +34,20 @@ struct WorkoutsView: View {
                     .transition(.opacity)
                 } else {
                     ExerciseLibraryBrowserView(
-                        onShowWorkoutLog: { showMode(.log) }
+                        onShowWorkoutLog: allowsWorkoutLog ? { showMode(.log) } : nil
                     )
                     .background(WorkoutsScreenBackground())
                     .navigationTitle("Workouts")
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbar(.hidden, for: .navigationBar)
+                    .toolbar(presentedAsSheet ? .visible : .hidden, for: .navigationBar)
                     .transition(.opacity)
+                }
+            }
+            .toolbar {
+                if presentedAsSheet {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
         }
@@ -1116,7 +1135,7 @@ private struct DetailInstructionSection: View {
                         Text("Watch on YouTube")
                             .font(.callout.weight(.bold))
                             .foregroundStyle(Color.workoutCharcoal)
-                        Text("Opens YouTube search — not an official Fud AI video")
+                        Text("Opens YouTube search — not an official JL Physical video")
                             .font(.caption)
                             .foregroundStyle(Color.workoutMutedText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1137,7 +1156,7 @@ private struct DetailInstructionSection: View {
             }
             .buttonStyle(.plain)
             .workoutPressable()
-            .accessibilityHint(String(localized: "Opens YouTube search — not an official Fud AI video"))
+            .accessibilityHint(String(localized: "Opens YouTube search — not an official JL Physical video"))
 
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(instructions.enumerated()), id: \.offset) { index, instruction in

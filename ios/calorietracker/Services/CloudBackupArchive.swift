@@ -22,10 +22,14 @@ enum CloudBackupPolicy {
 
     static func include(_ key: String) -> Bool {
         if key == "healthKitEnabled" { return true }
+        // The peptide store's own fallback copy: the peptides archive carries
+        // its records, and a restore must never remove or replace it.
+        if key == PeptideLogStore.defaultsKey { return false }
         if excludedKeys.contains(key) { return false }
         if key.hasPrefix("healthKit") { return false }
         if key.hasPrefix("Apple") || key.hasPrefix("NS") || key.hasPrefix("com.apple") { return false }
         if key.hasPrefix("AK") { return false }
+        if key.hasPrefix("jevRouter.stats") || key.hasPrefix("jevRouter.exerciseAliases") { return false }
         return true
     }
 
@@ -155,13 +159,16 @@ enum CloudBackupError: LocalizedError, Equatable {
     case needsNewerApp
     case iCloudUnavailable
     case noBackup
+    /// Peptides or workouts couldn't be backed up (the reason, as a clause), so nothing was uploaded.
+    case backupSkipped(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingPayload, .invalidFormat: return "This is not a Fud AI backup."
-        case .needsNewerApp: return "This backup needs a newer Fud AI."
+        case .missingPayload, .invalidFormat: return "This is not a JL Physical backup."
+        case .needsNewerApp: return "This backup needs a newer JL Physical."
         case .iCloudUnavailable: return "Sign into iCloud in iOS Settings first."
         case .noBackup: return "No iCloud backup found."
+        case .backupSkipped(let reason): return "\(reason), so iCloud backup was skipped to keep your last backup."
         }
     }
 }

@@ -116,9 +116,9 @@ struct ContentView: View {
     @Environment(NotificationManager.self) private var notificationManager
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppThemeColor.storageKey) private var appThemeColorRaw = AppThemeColor.defaultColor.rawValue
-    @AppStorage(WorkoutTabMode.storageKey) private var workoutTabModeRaw = WorkoutTabMode.defaultMode.rawValue
     @State private var appUpdateState: AppUpdateState = .idle
     @State private var selectedTab: AppTab = .home
+    private let routerHandoff = RouterHandoff.shared
     @State private var quickActionRequest: QuickActionRequest?
     @State private var foodLogMethodRequest: FoodLogMethodRequest?
     // One-time post-update prompts for existing users (see PostUpdatePrompts).
@@ -126,17 +126,17 @@ struct ContentView: View {
     @State private var showHostedUpsellPaywall = false
     @State private var showMeetDeveloperPrompt = false
 
-    private var workoutsTabIcon: String {
-        WorkoutTabMode.mode(for: workoutTabModeRaw).tabIcon
-    }
-
     var body: some View {
         standardTabView
             .tint(AppThemeColor.color(for: appThemeColorRaw).color)
             .task {
                 consumePendingLaunchRoutes()
-                await refreshAppUpdateState()
-                await runPostUpdatePromptsIfNeeded()
+                if JLFeatureFlags.fudUpdateCheck {
+                    await refreshAppUpdateState()
+                }
+                if JLFeatureFlags.fudHostedAI || JLFeatureFlags.fudMarketing {
+                    await runPostUpdatePromptsIfNeeded()
+                }
             }
             .alert("Optional: let us handle the AI keys", isPresented: $showHostedUpsellPrompt) {
                 Button("See Plus & Pro plans") {
@@ -146,7 +146,7 @@ struct ContentView: View {
                     continueToMeetDeveloperPrompt()
                 }
             } message: {
-                Text("Fud AI is free with your own API keys (BYOK) — and always will be. If juggling keys feels confusing, Plus and Pro plans run the AI for you with no keys to manage. Totally optional, nothing changes unless you switch.")
+                Text("JL Physical is free with your own API keys (BYOK) — and always will be. If juggling keys feels confusing, Plus and Pro plans run the AI for you with no keys to manage. Totally optional, nothing changes unless you switch.")
             }
             .sheet(isPresented: $showHostedUpsellPaywall, onDismiss: { continueToMeetDeveloperPrompt() }) {
                 HostedPaywallView()
@@ -178,6 +178,12 @@ struct ContentView: View {
                     consumePendingLaunchRoutes()
                 }
             }
+            .onChange(of: routerHandoff.pendingFoodText) { _, text in
+                if text != nil { selectedTab = .home }
+            }
+            .onChange(of: routerHandoff.pendingOpenTodayWorkout) { _, open in
+                if open { selectedTab = .train }
+            }
     }
 
     private var standardTabView: some View {
@@ -198,6 +204,13 @@ struct ContentView: View {
                     Text("Home")
                 }
 
+            JLPhysicalTabView()
+                .tag(AppTab.train)
+                .tabItem {
+                    Image(systemName: "figure.strengthtraining.traditional")
+                    Text("Train")
+                }
+            
             ProgressTabView()
                 .tag(AppTab.progress)
                 .tabItem {
@@ -220,26 +233,19 @@ struct ContentView: View {
             )
                 .tag(AppTab.settings)
                 .tabItem {
-                    Image(systemName: "gearshape.fill")
-                    Text("Settings")
+                    Image(systemName: "ellipsis")
+                    Text("More")
                 }
-                .badge(appUpdateState.isUpdateAvailable ? "!" : nil)
-
-            WorkoutsView()
-                .tag(AppTab.workouts)
-                .tabItem {
-                    Image(systemName: workoutsTabIcon)
-                    Text("Workouts")
-                }
+                .badge(JLFeatureFlags.fudUpdateCheck && appUpdateState.isUpdateAvailable ? "!" : nil)
         }
     }
 
     private enum AppTab: String, Hashable {
         case home
+        case train
         case progress
         case coach
         case settings
-        case workouts
     }
 
     private func consumePendingLaunchRoutes() {
@@ -336,7 +342,7 @@ enum AboutSettingsCategory: String, CaseIterable, Identifiable, Hashable {
     var title: LocalizedStringResource {
         switch self {
         case .appUpdates: "App & Updates"
-        case .support: "Support Fud AI"
+        case .support: "Support JL Physical"
         case .helpFeedback: "Help & Feedback"
         case .community: "Community"
         case .legal: "Legal"
@@ -364,7 +370,7 @@ private struct AboutAppHeaderSection: View {
                     .frame(width: 64, height: 64)
                     .accessibilityHidden(true)
 
-                Text("Fud AI")
+                Text("JL Physical")
                     .font(.system(.title2, design: .rounded, weight: .bold))
 
                 Text("Version \(AppUpdateChecker.currentVersionDisplay)")
@@ -419,7 +425,7 @@ private struct AboutSettingsSections: View {
     }
 
     private var shareMessage: String {
-        String(localized: "I've been tracking my meals with Fud AI — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app")
+        String(localized: "I've been tracking my meals with JL Physical — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app")
     }
 
     var body: some View {
@@ -828,1991 +834,6 @@ private struct SafariView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }
 
-// MARK: - Home View (Main Dashboard)
-struct HomeView: View {
-    let quickActionRequest: QuickActionRequest?
-    let onQuickActionHandled: (UUID) -> Void
-    var foodLogMethodRequest: FoodLogMethodRequest?
-    var onFoodLogMethodHandled: (UUID) -> Void = { _ in }
-    @Environment(FoodStore.self) private var foodStore
-    @Environment(WaterStore.self) private var waterStore
-    @Environment(FastingStore.self) private var fastingStore
-    @Environment(NotificationManager.self) private var notificationManager
-    @Environment(HealthKitManager.self) private var healthKitManager
-    @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("healthKitEnabled") private var healthKitEnabled = false
-    @State private var dailySteps: Int?
-    @State private var dailyStepsFetchGeneration = 0
-    @State private var showCamera = false
-    @State private var showBarcodeScanner = false
-    @State private var capturedImage: UIImage?
-    @State private var cameraMode: CameraMode = .snapFood
-    @State private var selectedPhotoItems: [PhotosPickerItem] = []
-    @State private var showPhotoPicker = false
-    @State private var showError = false
-    @State private var errorMessage = ""
-    @State private var showHostedQuotaPaywall = false
-    @State private var showHostedPaywall = false
-    @State private var showHostedCredits = false
-    private enum RetryRequest {
-        case analysis(images: [UIImage], mode: CameraMode, description: String?, progressiveMeal: Bool)
-        case text(String)
-        case barcode(String)
-    }
-    @State private var retryRequest: RetryRequest?
-    /// The in-flight photo/text/barcode analysis behind the analyzing sheet, so Cancel can abort it.
-    @State private var analysisTask: Task<Void, Never>?
-    @State private var selectedDate: Date = .now
-    @State private var showVoicePopover = false
-    @State private var showTextPopover = false
-    @State private var showManualPopover = false
-    @State private var showSiriPhrases = false
-    @State private var savedMealsMode: SavedMealsMode?
-    @State private var showCopyFromDaySheet = false
-    @State private var pendingContextImage: UIImage?
-    @State private var captureImages: [UIImage] = []
-    @State private var isImportingPhotos = false
-    @State private var showMultiPhotoCaptureSheet = false
-    @State private var contextDescription: String = ""
-    @State private var showContextSheet = false
-
-    enum ActiveSheet: String, Identifiable {
-        case analyzing, foodResult, analyzingText, lookingUpBarcode, editFood, importSharedMeal
-        /// Analyzing and Review Food share one identity so a fast model
-        /// response does not dismiss + re-present the sheet. SwiftUI drops
-        /// that swap on slower phones (iPhone 11 / #396).
-        var id: String {
-            switch self {
-            case .analyzing, .analyzingText, .lookingUpBarcode, .foodResult:
-                return "foodLog"
-            case .editFood, .importSharedMeal:
-                return rawValue
-            }
-        }
-    }
-    private enum FoodLogPhase: Hashable {
-        case analyzing, analyzingText, lookingUpBarcode, result
-        var isLoading: Bool { self != .result }
-    }
-    @State private var activeSheet: ActiveSheet?
-    @State private var foodLogPhase: FoodLogPhase = .result
-    @State private var editingEntry: FoodEntry?
-    @State private var pendingDiaryDeletion: DiaryDeletion?
-
-    private enum DiaryDeletion {
-        case food(FoodEntry), water(WaterEntry), fasting(FastingSession)
-
-        var title: String {
-            switch self {
-            case .food: return "Delete Food Log?"
-            case .water: return "Delete Water Log?"
-            case .fasting: return "Delete Fasting Log?"
-            }
-        }
-
-        var message: String {
-            switch self {
-            case .food: return "This removes the food from your diary. Saved favorites are kept."
-            case .water: return "This removes the water entry from your diary."
-            case .fasting: return "This removes the completed fast from your diary."
-            }
-        }
-    }
-    @State private var selectedFoodIDs: Set<UUID> = []
-    private var isDiaryDeletionPresented: Binding<Bool> {
-        Binding<Bool>(
-            get: { pendingDiaryDeletion != nil },
-            set: { presented in
-                if !presented { pendingDiaryDeletion = nil }
-            }
-        )
-    }
-
-    private func confirmDiaryDeletion(_ target: DiaryDeletion) {
-        switch target {
-        case .food(let entry): foodStore.deleteEntry(entry)
-        case .water(let entry): waterStore.delete(id: entry.id)
-        case .fasting(let session):
-            fastingStore.delete(id: session.id)
-            refreshFastingGoalNotification()
-        }
-        pendingDiaryDeletion = nil
-    }
-
-    private var isFoodSelectionMode: Bool { !selectedFoodIDs.isEmpty }
-    private var foodSelectionSummary: some View {
-        HStack(spacing: 8) {
-            Button {
-                selectedFoodIDs.removeAll()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("Cancel selection")
-
-            Text("\(selectedFoodIDs.count) selected")
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var combineFoodButton: some View {
-        Button {
-            let ids = selectedFoodIDs
-            if let combined = foodStore.combineIntoMeal(ids: ids) {
-                selectedFoodIDs.removeAll()
-                editingEntry = combined
-                activeSheet = .editFood
-            } else {
-                selectedFoodIDs.removeAll()
-                errorMessage = "Can't combine foods while fasting is active."
-                showError = true
-            }
-        } label: {
-            Text("Combine")
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .fixedSize()
-                .padding(.horizontal, 16)
-                .frame(minHeight: 44)
-                .foregroundStyle(AppColors.calorie.opacity(selectedFoodIDs.count < 2 ? 0.45 : 1))
-                .background(AppColors.calorie.opacity(0.12), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(selectedFoodIDs.count < 2)
-        .accessibilityLabel("Combine into Meal")
-    }
-
-    @State private var pendingSharedMeals: [FoodEntry] = []
-
-    @State private var currentFoodResult: GeminiService.FoodAnalysis?
-    @State private var currentImage: UIImage?
-    @State private var currentImages: [UIImage] = []
-    @State private var currentEmoji: String?
-    @State private var currentFoodSource: FoodSource = .snapFood
-    @State private var showNutritionDetail = false
-    @State private var showCustomWaterLog = false
-    @State private var showFastingStart = false
-    @State private var editingFastingSession: FastingSession?
-    @State private var showFastingQuickActionDisabled = false
-    @State private var showFoodLoggingBlocked = false
-    @State private var hasPresentedFoodDestination = false
-    @State private var didPrewarmFoodDestinations = false
-    // Bumped each time the app is opened (cold launch = 1, then +1 on every
-    // return from background). Drives the gauge + macro "fill from zero" reveal.
-    // Not bumped on tab switches or data edits, so it only plays on app open.
-    @State private var launchFillEpoch = 1
-    @State private var wasBackgrounded = false
-    @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
-    @AppStorage(FoodLogSortOrder.storageKey) private var foodLogSortOrderRaw = FoodLogSortOrder.defaultOrder.rawValue
-    @AppStorage(HomeTopNutrient.storageKey) private var homeTopNutrientsRaw = HomeTopNutrient.storageValue(for: HomeTopNutrient.defaultSelection)
-    @AppStorage(OptionalNutrientGoals.storageKey) private var optionalNutrientGoalsData = Data()
-    @AppStorage(WaterSettings.enabledKey) private var waterTrackingEnabled = false
-    @AppStorage(WaterSettings.dailyGoalKey) private var waterDailyGoal = WaterSettings.defaultDailyGoalMl
-    @AppStorage(WaterSettings.unitKey) private var waterUnitRaw = WaterUnit.defaultUnit.rawValue
-    @AppStorage(FastingSettings.enabledKey) private var fastingTrackingEnabled = false
-    @AppStorage(FastingSettings.defaultGoalMinutesKey) private var fastingDefaultGoalMinutes = FastingSettings.defaultGoalMinutes
-    @AppStorage(FastingSettings.notificationEnabledKey) private var fastingGoalNotificationEnabled = true
-    @AppStorage("notificationsEnabled") private var notificationsEnabled = false
-    @Environment(ProfileStore.self) private var profileStore
-    @State private var homeBurnLine: String?
-    @State private var homeBurnRefreshGeneration = 0
-
-    /// Force a body re-evaluation whenever profileStore.profile changes by reading it
-    /// at the top of body. SwiftUI's @Observable tracking sometimes misses the access
-    /// when the read is buried in a computed property; explicit access guarantees it.
-    private var userProfile: UserProfile { profileStore.profile }
-    private var calorieGoal: Int { userProfile.effectiveCalories }
-    private var proteinGoal: Int { userProfile.effectiveProtein }
-    private var carbsGoal: Int { userProfile.effectiveCarbs }
-    private var fatGoal: Int { userProfile.effectiveFat }
-    private var selectedCalories: Int { foodStore.calories(for: selectedDate) }
-    private var isToday: Bool { Calendar.current.isDateInToday(selectedDate) }
-    private var foodLogSortOrder: FoodLogSortOrder { FoodLogSortOrder.order(for: foodLogSortOrderRaw) }
-    private var homeTopNutrients: [HomeTopNutrient] { HomeTopNutrient.selection(from: homeTopNutrientsRaw) }
-    private var displayedHomeNutrients: [HomeTopNutrient] { homeTopNutrients }
-    private var optionalNutrientGoals: OptionalNutrientGoals { OptionalNutrientGoals.decoded(from: optionalNutrientGoalsData) }
-    private var waterUnit: WaterUnit { WaterUnit(rawValue: waterUnitRaw) ?? .defaultUnit }
-    private var waterPillarUnit: String { waterUnit == .fluidOunces ? " fl oz" : "ml" }
-    private var logDateForSelectedDay: Date { logDate(on: selectedDate) }
-
-    private var navigationTitle: String {
-        if isToday { return "Today" }
-        return selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-    }
-
-    /// Horizontal swipe → previous/next day. Attached only to the top section (calorie hero +
-    /// macros), not the food log below "View More", so it never competes with the food rows'
-    /// own swipe actions or vertical scrolling there. `.simultaneousGesture` lets the List still
-    /// scroll; we act only on a clearly horizontal flick.
-    private var daySwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 24)
-            .onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                guard abs(dx) > 60, abs(dx) > abs(dy) * 1.5 else { return }
-                changeDay(by: dx < 0 ? 1 : -1)
-            }
-    }
-
-    /// Step the selected day by `delta` (−1 previous, +1 next), from the swipe gesture. Won't move
-    /// past today, and gives a light haptic on a successful change. Animates with the existing
-    /// `.animation(.snappy, value: selectedDate)` on the List.
-    private func changeDay(by delta: Int) {
-        let calendar = Calendar.current
-        guard let newDate = calendar.date(byAdding: .day, value: delta, to: selectedDate) else { return }
-        if delta > 0 && calendar.startOfDay(for: newDate) > calendar.startOfDay(for: .now) { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        selectedDate = newDate
-    }
-
-private var dailyStepsTaskKey: String {
-        "\(selectedDate.timeIntervalSince1970)-\(healthKitEnabled)"
-    }
-
-    private func refreshDailySteps() async {
-        guard healthKitEnabled else {
-            dailySteps = nil
-            return
-        }
-        let requestedDate = selectedDate
-        dailyStepsFetchGeneration += 1
-        let generation = dailyStepsFetchGeneration
-        guard !Task.isCancelled else { return }
-        let steps = await healthKitManager.fetchStepsForDay(requestedDate)
-        guard !Task.isCancelled, healthKitEnabled else { return }
-        guard generation == dailyStepsFetchGeneration else { return }
-        guard Calendar.current.isDate(selectedDate, inSameDayAs: requestedDate) else { return }
-        dailySteps = steps
-    }
-
-    private var homeBurnRefreshToken: String {
-        let profileBmr = Int(userProfile.bmr.rounded())
-        return "\(healthKitEnabled)-\(selectedDate.timeIntervalSince1970)-\(selectedCalories)-\(profileBmr)-\(homeBurnRefreshGeneration)"
-    }
-
-    private func formattedHomeBurnLine(from balance: DailyCalorieBalance) -> String {
-        let burned = balance.burnedCalories.formatted()
-        switch balance.direction {
-        case .deficit:
-            return String(
-                format: String(localized: "%@ burned · %@ deficit"),
-                burned,
-                balance.differenceCalories.formatted()
-            )
-        case .surplus:
-            return String(
-                format: String(localized: "%@ burned · %@ surplus"),
-                burned,
-                balance.differenceCalories.formatted()
-            )
-        case .balanced:
-            return String(format: String(localized: "%@ burned · balanced"), burned)
-        }
-    }
-
-    private func refreshHomeBurnLine() async {
-        let requestDate = selectedDate
-        let requestCalories = selectedCalories
-        let requestBmr = Int(userProfile.bmr.rounded())
-        let requestHealthEnabled = healthKitEnabled
-
-        func inputsStillMatch() -> Bool {
-            healthKitEnabled == requestHealthEnabled
-                && Calendar.current.isDate(selectedDate, inSameDayAs: requestDate)
-                && selectedCalories == requestCalories
-                && Int(userProfile.bmr.rounded()) == requestBmr
-        }
-
-        guard requestHealthEnabled else {
-            homeBurnLine = nil
-            return
-        }
-        guard let energy = await healthKitManager.readEnergyForDay(requestDate) else {
-            guard !Task.isCancelled, inputsStillMatch() else { return }
-            homeBurnLine = nil
-            return
-        }
-        guard !Task.isCancelled, inputsStillMatch() else { return }
-        guard let burned = DailySummaryPolicy.resolveBurnedCalories(
-            measuredTotalCalories: energy.totalCalories,
-            externalActiveCalories: energy.activeCalories,
-            profileBmrCalories: requestBmr
-        ) else {
-            guard inputsStillMatch() else { return }
-            homeBurnLine = nil
-            return
-        }
-        guard inputsStillMatch() else { return }
-        let balance = DailySummaryPolicy.balance(
-            eatenCalories: requestCalories,
-            burnedCalories: burned
-        )
-        homeBurnLine = formattedHomeBurnLine(from: balance)
-    }
-
-    private func logDate(on day: Date, now: Date = .now) -> Date {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(day) { return now }
-
-        let dayComponents = calendar.dateComponents([.year, .month, .day], from: day)
-        let timeComponents = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: now)
-        var components = DateComponents()
-        components.year = dayComponents.year
-        components.month = dayComponents.month
-        components.day = dayComponents.day
-        components.hour = timeComponents.hour
-        components.minute = timeComponents.minute
-        components.second = timeComponents.second
-        components.nanosecond = timeComponents.nanosecond
-        return calendar.date(from: components) ?? day
-    }
-
-    private func logWater(_ milliliters: Int) {
-        _ = waterStore.add(milliliters: milliliters, on: logDateForSelectedDay)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    private func refreshFastingGoalNotification() {
-        notificationManager.scheduleFastingGoal(
-            enabled: notificationsEnabled && fastingTrackingEnabled && fastingGoalNotificationEnabled,
-            session: fastingStore.activeSession
-        )
-    }
-
-    private func startFast(goalMinutes: Int) {
-        guard fastingStore.start(goalMinutes: goalMinutes) != nil else { return }
-        refreshFastingGoalNotification()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
-
-    @discardableResult
-    private func endFast() -> Bool {
-        guard fastingStore.endActive() != nil else { return false }
-        notificationManager.cancelFastingGoal()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        return true
-    }
-
-    @discardableResult
-    private func canBeginFoodLogging() -> Bool {
-        guard fastingStore.activeSession == nil else {
-            showFoodLoggingBlocked = true
-            return false
-        }
-        return true
-    }
-
-    /// Lets the native menu finish its selection before presenting the chosen destination.
-    /// The first presentation skips animation so cold setup cannot stretch the handoff;
-    /// later selections retain the short transition that already feels responsive.
-    private func presentFoodDestination(_ updates: @escaping () -> Void) {
-        let shouldAnimate = hasPresentedFoodDestination
-        hasPresentedFoodDestination = true
-
-        DispatchQueue.main.async {
-            var transaction = Transaction(animation: shouldAnimate ? .easeOut(duration: 0.16) : nil)
-            transaction.disablesAnimations = !shouldAnimate
-            withTransaction(transaction) {
-                updates()
-            }
-        }
-    }
-
-    /// Loads the native menu and media authorization code paths while Home is idle.
-    /// Reading authorization status never prompts the user or starts camera/microphone capture.
-    private func prewarmFoodDestinations() {
-        guard !didPrewarmFoodDestinations else { return }
-        didPrewarmFoodDestinations = true
-
-        let placeholderAction = UIAction(title: "") { _ in }
-        let placeholderSubmenu = UIMenu(title: "", children: [placeholderAction])
-        _ = UIMenu(title: "", children: [placeholderSubmenu])
-
-        Task.detached(priority: .utility) {
-            _ = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-            _ = AVCaptureDevice.authorizationStatus(for: .video)
-            _ = SFSpeechRecognizer.authorizationStatus()
-        }
-    }
-
-    @ViewBuilder
-    private var waterQuickMenuItems: some View {
-        Button {
-            presentFoodDestination {
-                showCustomWaterLog = true
-            }
-        } label: {
-            Label("Custom", systemImage: "slider.horizontal.3")
-        }
-        Button {
-            logWater(750)
-        } label: {
-            Label("3 Glasses (~\(waterUnit.formatted(milliliters: 750)))", systemImage: "drop.fill")
-        }
-        Button {
-            logWater(500)
-        } label: {
-            Label("2 Glasses (~\(waterUnit.formatted(milliliters: 500)))", systemImage: "drop.fill")
-        }
-        Button {
-            logWater(250)
-        } label: {
-            Label("1 Glass (~\(waterUnit.formatted(milliliters: 250)))", systemImage: "drop.fill")
-        }
-    }
-
-    var body: some View {
-        homeContent
-            .alert(pendingDiaryDeletion?.title ?? "Delete Entry?", isPresented: isDiaryDeletionPresented, presenting: pendingDiaryDeletion) { target in
-                Button("Cancel", role: .cancel) { pendingDiaryDeletion = nil }
-                Button("Delete", role: .destructive) {
-                    confirmDiaryDeletion(target)
-                }
-            } message: { target in
-                Text(target.message)
-            }
-    }
-
-    private var homeContent: some View {
-        // Explicit observation tracking — reads profileStore.profile at body root
-        // so SwiftUI invalidates this view on every profile mutation.
-        let _ = profileStore.profile
-        return NavigationStack {
-            List {
-                // Week energy strip
-                Section {
-                    WeekEnergyStrip(
-                        selectedDate: $selectedDate,
-                        caloriesForDate: { foodStore.calories(for: $0) },
-                        calorieGoal: calorieGoal
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                }
-
-                // Nutrition summary. Keeping the dome, macros, water and detail affordance in
-                // one section removes an unhelpful List section gap and matches Android's
-                // compact top-region hierarchy.
-                Section {
-                    CalorieGauge(
-                        eaten: selectedCalories,
-                        goal: calorieGoal,
-                        burnLine: homeBurnLine,
-                        launchFillEpoch: launchFillEpoch
-                    )
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, -8)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(daySwipeGesture)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .task(id: homeBurnRefreshToken) {
-                            await refreshHomeBurnLine()
-                        }
-
-                    if let dailySteps {
-                        DailyStepsRow(steps: dailySteps)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
-
-                    HStack(alignment: .top, spacing: 4) {
-                        ForEach(displayedHomeNutrients) { nutrient in
-                            MacroVerticalBar(
-                                label: nutrient.displayName,
-                                current: nutrient.value(from: foodStore, on: selectedDate),
-                                goal: nutrient.goal(for: userProfile, optionalGoals: optionalNutrientGoals),
-                                unit: nutrient.unit,
-                                gradient: nutrient.gradientColors,
-                                launchFillEpoch: launchFillEpoch
-                            )
-                        }
-                        if waterTrackingEnabled {
-                            MacroVerticalBar(
-                                label: "Water",
-                                current: waterUnit.displayAmount(
-                                    forMilliliters: waterStore.total(on: selectedDate)
-                                ),
-                                goal: waterUnit.displayAmount(forMilliliters: waterDailyGoal),
-                                unit: waterPillarUnit,
-                                gradient: AppColors.calorieGradient,
-                                launchFillEpoch: launchFillEpoch
-                            )
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(daySwipeGesture)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
-                    Button {
-                        showNutritionDetail = true
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Text("View More")
-                                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                            Image(systemName: "chevron.right")
-                                .font(.caption2)
-                            Spacer()
-                        }
-                        .foregroundStyle(AppColors.calorie.opacity(0.6))
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
-
-                // Unified diary: water and fasting are grouped by their log/end time,
-                // but stay excluded from food calories, macros, sharing and favorites.
-                // Tracking preferences control new-entry UI, not persisted history.
-                // Keep previously logged water and fasting sessions visible after
-                // either tracker is disabled so the diary never appears to lose data.
-                let diaryFasts = fastingStore.completed(on: selectedDate)
-                    + (isToday ? [fastingStore.activeSession].compactMap { $0 } : [])
-                let mealGroups = homeDiaryMealGroups(
-                    foodEntries: foodStore.entries(for: selectedDate),
-                    waterEntries: waterStore.entries(on: selectedDate),
-                    fastingSessions: diaryFasts,
-                    order: foodLogSortOrder
-                )
-                if mealGroups.isEmpty {
-                    Section(isToday ? "Today's Diary" : "Diary") {
-                        Text("No diary entries")
-                            .foregroundStyle(.secondary)
-                            .listRowBackground(AppColors.appCard)
-                    }
-                } else {
-                    ForEach(mealGroups) { group in
-                        Section {
-                            ForEach(group.items) { item in
-                                Group {
-                                    switch item {
-                                    case .food(let entry):
-                                        HStack(spacing: 12) {
-                                            if isFoodSelectionMode {
-                                                Image(systemName: selectedFoodIDs.contains(entry.id) ? "checkmark.circle.fill" : "circle")
-                                                    .font(.title2)
-                                                    .foregroundStyle(selectedFoodIDs.contains(entry.id) ? AppColors.calorie : .secondary)
-                                            }
-                                            FoodRow(entry: entry)
-                                        }
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            if isFoodSelectionMode {
-                                                if selectedFoodIDs.contains(entry.id) {
-                                                    selectedFoodIDs.remove(entry.id)
-                                                } else {
-                                                    selectedFoodIDs.insert(entry.id)
-                                                }
-                                            } else {
-                                                editingEntry = entry
-                                                activeSheet = .editFood
-                                            }
-                                        }
-                                        .onLongPressGesture {
-                                            selectedFoodIDs.insert(entry.id)
-                                        }
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            if !isFoodSelectionMode {
-                                                Button {
-                                                    pendingDiaryDeletion = .food(entry)
-                                                } label: {
-                                                    Label("Delete", systemImage: "trash.fill")
-                                                }
-                                                .tint(.red)
-                                                Button {
-                                                    foodStore.toggleFavorite(entry)
-                                                } label: {
-                                                    Label(foodStore.isFavorite(entry) ? "Unfavorite" : "Favorite", systemImage: foodStore.isFavorite(entry) ? "heart.slash.fill" : "heart.fill")
-                                                }
-                                                .tint(AppColors.calorie)
-                                            }
-                                        }
-                                    case .water(let entry):
-                                        WaterLogRow(entry: entry, unit: waterUnit)
-                                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                                Button {
-                                                    pendingDiaryDeletion = .water(entry)
-                                                } label: {
-                                                    Label("Delete", systemImage: "trash.fill")
-                                                }
-                                                .tint(.red)
-                                            }
-                                    case .fasting(let session):
-                                        Button {
-                                            editingFastingSession = session
-                                        } label: {
-                                            if session.isActive {
-                                                ActiveFastingRow(session: session)
-                                            } else {
-                                                CompletedFastingRow(session: session)
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: !session.isActive) {
-                                            if session.isActive {
-                                                Button {
-                                                    endFast()
-                                                } label: {
-                                                    Label("End Fast", systemImage: "stop.fill")
-                                                }
-                                                .tint(AppColors.calorie)
-                                                Button(role: .destructive) {
-                                                    fastingStore.cancelActive()
-                                                    notificationManager.cancelFastingGoal()
-                                                } label: {
-                                                    Label("Cancel Fast", systemImage: "trash.fill")
-                                                }
-                                            } else {
-                                                Button {
-                                                    pendingDiaryDeletion = .fasting(session)
-                                                } label: {
-                                                    Label("Delete", systemImage: "trash.fill")
-                                                }
-                                                .tint(.red)
-                                            }
-                                        }
-                                    }
-                                }
-                                .listRowBackground(AppColors.appCard)
-                            }
-                        } header: {
-                            HStack(alignment: .center) {
-                                Label(group.meal.displayName, systemImage: group.meal.icon)
-                                if group.id == mealGroups.first?.id {
-                                    Menu {
-                                        Picker("Food Log Order", selection: $foodLogSortOrderRaw) {
-                                            ForEach(FoodLogSortOrder.allCases) { order in
-                                                Text(order.displayName).tag(order.rawValue)
-                                            }
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "arrow.up.arrow.down")
-                                                .font(.system(.caption2, design: .rounded, weight: .semibold))
-                                            Text("Sort")
-                                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                        }
-                                    }
-                                    .tint(AppColors.calorie)
-                                    .textCase(nil)
-                                    .padding(.leading, 8)
-                                }
-                                Spacer()
-                                if !group.foodEntries.isEmpty {
-                                    // Share and totals include food only; water and fasting have no calories/macros.
-                                    Button {
-                                        MealShare.presentShareSheet(for: group.foodEntries)
-                                    } label: {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .padding(.trailing, 12)
-                                    .textCase(nil)
-                                    VStack(alignment: .trailing, spacing: 1) {
-                                        Text("\(group.totalCalories.formatted()) kcal")
-                                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                            .foregroundStyle(AppColors.calorie)
-                                        Text("\(Int(group.totalProtein.rounded()))P · \(Int(group.totalCarbs.rounded()))C · \(Int(group.totalFat.rounded()))F")
-                                            .font(.system(.caption2, design: .rounded, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .textCase(nil)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(AppColors.appBackground)
-            .animation(.snappy, value: selectedDate)
-            .task(id: dailyStepsTaskKey) {
-                await refreshDailySteps()
-            }
-            .contentMargins(.bottom, isFoodSelectionMode ? 8 : 96, for: .scrollContent)
-            .sensoryFeedback(.selection, trigger: selectedFoodIDs) { _, selection in
-                !selection.isEmpty
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if isFoodSelectionMode {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 12) {
-                            foodSelectionSummary
-                            combineFoodButton
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            foodSelectionSummary
-                            combineFoodButton
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 20))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(AppColors.appBackground)
-                }
-            }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .overlay(alignment: .bottomTrailing) {
-                Menu {
-                    if fastingTrackingEnabled {
-                        Section {
-                            if fastingStore.activeSession != nil {
-                                Menu {
-                                    Button {
-                                        endFast()
-                                    } label: {
-                                        Label("End Fast", systemImage: "stop.fill")
-                                    }
-                                    Button(role: .destructive) {
-                                        fastingStore.cancelActive()
-                                        notificationManager.cancelFastingGoal()
-                                    } label: {
-                                        Label("Cancel Fast", systemImage: "trash")
-                                    }
-                                } label: {
-                                    Label("Fasting", systemImage: "timer")
-                                }
-                            } else {
-                                Button {
-                                    presentFoodDestination {
-                                        showFastingStart = true
-                                    }
-                                } label: {
-                                    Label("Start Fast", systemImage: "timer")
-                                }
-                            }
-                        }
-                    }
-                    if waterTrackingEnabled {
-                        Section {
-                            Menu {
-                                waterQuickMenuItems
-                            } label: {
-                                Label("Water", systemImage: "drop.fill")
-                            }
-                        }
-                    }
-                    if fastingStore.activeSession == nil {
-                        configuredFoodAddMenuContent
-                    }
-                } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 26, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 60, height: 60)
-                                .background(AppColors.calorie, in: Circle())
-                        }
-                        .accessibilityIdentifier("home.add")
-                        .opacity(isFoodSelectionMode ? 0 : 1)
-                        .disabled(isFoodSelectionMode)
-                        .allowsHitTesting(!isFoodSelectionMode)
-                        .popover(isPresented: $showTextPopover) {
-                            TextFoodInputView(
-                                onCancel: {
-                                    showTextPopover = false
-                                },
-                                onSubmit: { description in
-                                    showTextPopover = false
-                                    currentImage = nil
-                                    currentImages = []
-                                    currentEmoji = nil
-                                    currentFoodSource = .textInput
-                                    startTextAnalysis(description)
-                                }
-                            )
-                            .presentationCompactAdaptation(.popover)
-                        }
-                        .popover(isPresented: $showVoicePopover) {
-                            VoiceInputView(
-                                onCancel: {
-                                    showVoicePopover = false
-                                },
-                                onSubmit: { description in
-                                    showVoicePopover = false
-                                    currentImage = nil
-                                    currentImages = []
-                                    currentEmoji = nil
-                                    currentFoodSource = .textInput
-                                    startTextAnalysis(description)
-                                }
-                            )
-                            .presentationCompactAdaptation(.popover)
-                        }
-                        .popover(isPresented: $showManualPopover) {
-                            ManualEntryView(
-                                logDate: logDateForSelectedDay,
-                                onCancel: { showManualPopover = false },
-                                onSave: { entry in
-                                    showManualPopover = false
-                                    if !foodStore.addEntry(entry) { showFoodLoggingBlocked = true }
-                                }
-                            )
-                            .presentationCompactAdaptation(.popover)
-                        }
-                        .padding(24)
-            }
-            .fullScreenCover(isPresented: $showCamera) {
-                CameraView(
-                    image: $capturedImage,
-                    title: captureImages.isEmpty ? nil : "Photo \(captureImages.count + 1)",
-                    onCancel: {
-                        if !captureImages.isEmpty {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                showMultiPhotoCaptureSheet = true
-                            }
-                        }
-                    }
-                )
-                    .ignoresSafeArea()
-            }
-            .fullScreenCover(isPresented: $showBarcodeScanner) {
-                BarcodeScannerView(
-                    onScan: { barcode in
-                        showBarcodeScanner = false
-                        startBarcodeLookup(barcode)
-                    },
-                    onCancel: {
-                        showBarcodeScanner = false
-                    }
-                )
-                .ignoresSafeArea()
-            }
-            .onChange(of: capturedImage) { oldValue, newValue in
-                guard let image = newValue else { return }
-                capturedImage = nil
-                currentEmoji = nil
-
-                captureImages.append(image)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    showMultiPhotoCaptureSheet = true
-                }
-            }
-            .sheet(isPresented: $showMultiPhotoCaptureSheet) {
-                MultiPhotoCaptureSheet(
-                    images: $captureImages,
-                    isImportingPhotos: isImportingPhotos,
-                    selectedPhotoItems: $selectedPhotoItems,
-                    description: $contextDescription,
-                    onAddPhoto: {
-                        guard captureImages.count < 10 else { return }
-                        showMultiPhotoCaptureSheet = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            showCamera = true
-                        }
-                    },
-                    onRemove: { index in
-                        guard captureImages.indices.contains(index) else { return }
-                        captureImages.remove(at: index)
-                        if captureImages.isEmpty {
-                            showMultiPhotoCaptureSheet = false
-                        }
-                    },
-                    onAnalyze: { progressiveMeal in
-                        let images = captureImages
-                        let description = cameraMode == .snapFoodWithContext ? contextDescription : nil
-                        showMultiPhotoCaptureSheet = false
-                        captureImages = []
-                        currentImages = images
-                        currentImage = images.first
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            startAnalysis(
-                                images: images,
-                                mode: cameraMode,
-                                description: description,
-                                progressiveMeal: progressiveMeal
-                            )
-                        }
-                    },
-                    onCancel: {
-                        showMultiPhotoCaptureSheet = false
-                        captureImages = []
-                        contextDescription = ""
-                    }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showContextSheet) {
-                ContextDescriptionSheet(
-                    image: pendingContextImage,
-                    description: $contextDescription,
-                    onAnalyze: {
-                        let desc = contextDescription
-                        let image = pendingContextImage
-                        showContextSheet = false
-                        pendingContextImage = nil
-                        
-                        if let image {
-                            // Delay presenting the next sheet until the current one fully dismisses.
-                            // This prevents SwiftUI from silently ignoring the new activeSheet presentation.
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                currentImage = image // Ensure currentImage is set so AnalyzingView/FoodResultView shows the image
-                                currentImages = [image]
-                                startAnalysis(image: image, mode: .snapFoodWithContext, description: desc)
-                            }
-                        }
-                    },
-                    onCancel: {
-                        showContextSheet = false
-                        pendingContextImage = nil
-                        currentImage = nil
-                        currentImages = []
-                    }
-                )
-            }
-            .sheet(item: $activeSheet) { sheet in
-                switch sheet {
-                case .analyzing, .analyzingText, .lookingUpBarcode, .foodResult:
-                    // Drive content from foodLogPhase, not the captured `sheet`
-                    // value — `.sheet(item:)` will not recreate the body when
-                    // identity stays `foodLog`.
-                    Group {
-                    switch foodLogPhase {
-                    case .analyzing:
-                        AnalyzingView(image: currentImage, onCancel: cancelAnalysis)
-                    case .analyzingText:
-                        AnalyzingView(image: nil, message: "Looking up nutrition...", onCancel: cancelAnalysis)
-                    case .lookingUpBarcode:
-                        AnalyzingView(image: nil, message: "Looking up barcode...", onCancel: cancelAnalysis)
-                    case .result:
-                    if let result = currentFoodResult {
-                        FoodResultView(
-                            images: currentImages,
-                            emoji: currentEmoji,
-                            source: currentFoodSource,
-                            name: result.name,
-                            calories: result.calories,
-                            protein: result.protein,
-                            carbs: result.carbs,
-                            fat: result.fat,
-                            ingredients: result.ingredients,
-                            progressiveMeal: result.progressiveMeal,
-                            productMetadata: result.productMetadata,
-                            servingSizeGrams: result.servingSizeGrams,
-                            sugar: result.sugar,
-                            addedSugar: result.addedSugar,
-                            fiber: result.fiber,
-                            saturatedFat: result.saturatedFat,
-                            monounsaturatedFat: result.monounsaturatedFat,
-                            polyunsaturatedFat: result.polyunsaturatedFat,
-                            cholesterol: result.cholesterol,
-                            caffeine: result.caffeine,
-                            supplementalNutrients: result.supplementalNutrients,
-                            sodium: result.sodium,
-                            potassium: result.potassium,
-                            transFat: result.transFat,
-                            calcium: result.calcium,
-                            iron: result.iron,
-                            magnesium: result.magnesium,
-                            zinc: result.zinc,
-                            vitaminA: result.vitaminA,
-                            vitaminC: result.vitaminC,
-                            vitaminD: result.vitaminD,
-                            vitaminB12: result.vitaminB12,
-                            vitaminE: result.vitaminE,
-                            vitaminK: result.vitaminK,
-                            folate: result.folate,
-                            omega3: result.omega3,
-                            servingUnitOptions: result.servingUnitOptions,
-                            selectedServingUnit: result.selectedServingUnit,
-                            selectedServingQuantity: result.selectedServingQuantity,
-                            servingSizeIsKnown: result.servingSizeIsKnown,
-                            logDate: logDateForSelectedDay,
-                            profile: userProfile,
-                            entriesForDate: { foodStore.entries(for: $0) },
-                            weightMetric: weightUnitRaw == "kg",
-                            onLog: { entry in
-                                if !foodStore.addEntry(entry) { showFoodLoggingBlocked = true }
-                            }
-                        )
-                    }
-                    }
-                    }
-                    .id(foodLogPhase)
-                case .editFood:
-                    if let editingEntry {
-                        EditFoodEntryView(entry: editingEntry)
-                    }
-                case .importSharedMeal:
-                    ImportSharedMealView(meals: pendingSharedMeals) { meals in
-                        let logDate = logDateForSelectedDay
-                        for meal in meals {
-                            if !foodStore.addEntry(meal.duplicatedForLogging(at: logDate, mealType: meal.mealType)) {
-                                showFoodLoggingBlocked = true
-                                break
-                            }
-                        }
-                        activeSheet = nil
-                    } onCancel: {
-                        activeSheet = nil
-                    }
-                }
-            }
-            .sheet(item: $savedMealsMode, content: { mode in
-                RecentsView(mode: mode, logDate: logDateForSelectedDay, onReview: { entry in
-                    currentImages = entry.allImageData.compactMap(UIImage.init(data:))
-                    currentImage = currentImages.first
-                    currentEmoji = entry.emoji
-                    currentFoodSource = entry.source
-                    currentFoodResult = GeminiService.FoodAnalysis(
-                        name: entry.name,
-                        calories: entry.calories,
-                        protein: entry.protein,
-                        carbs: entry.carbs,
-                        fat: entry.fat,
-                        servingSizeGrams: entry.reviewServingReference,
-                        emoji: entry.emoji,
-                        sugar: entry.sugar,
-                        addedSugar: entry.addedSugar,
-                        fiber: entry.fiber,
-                        saturatedFat: entry.saturatedFat,
-                        monounsaturatedFat: entry.monounsaturatedFat,
-                        polyunsaturatedFat: entry.polyunsaturatedFat,
-                        cholesterol: entry.cholesterol,
-                        caffeine: entry.caffeine,
-                        supplementalNutrients: entry.supplementalNutrients,
-                        sodium: entry.sodium,
-                        potassium: entry.potassium,
-                        transFat: entry.transFat,
-                        calcium: entry.calcium,
-                        iron: entry.iron,
-                        magnesium: entry.magnesium,
-                        zinc: entry.zinc,
-                        vitaminA: entry.vitaminA,
-                        vitaminC: entry.vitaminC,
-                        vitaminD: entry.vitaminD,
-                        vitaminB12: entry.vitaminB12,
-                        vitaminE: entry.vitaminE,
-                        vitaminK: entry.vitaminK,
-                        folate: entry.folate,
-                        omega3: entry.omega3,
-                        servingUnitOptions: entry.reviewServingUnitOptions,
-                        selectedServingUnit: entry.reviewSelectedServingUnit,
-                        selectedServingQuantity: entry.reviewSelectedServingQuantity,
-                        servingSizeIsKnown: entry.hasKnownServingSize,
-                        progressiveMeal: entry.progressiveMeal,
-                        ingredients: entry.ingredients,
-                        productMetadata: entry.productMetadata
-                    )
-                    foodLogPhase = .result
-                    activeSheet = .foodResult
-                })
-            })
-            .sheet(isPresented: $showCopyFromDaySheet) {
-                CopyFromDaySheet(targetDate: selectedDate)
-            }
-            .sheet(isPresented: $showFastingStart) {
-                FastingStartSheet(defaultGoalMinutes: fastingDefaultGoalMinutes) { goalMinutes in
-                    startFast(goalMinutes: goalMinutes)
-                }
-            }
-            .sheet(item: $editingFastingSession) { session in
-                FastingSessionEditorView(
-                    session: session,
-                    onSave: { updated in
-                        let saved = fastingStore.update(updated)
-                        if saved { refreshFastingGoalNotification() }
-                        return saved
-                    },
-                    onEndNow: { updated in
-                        guard fastingStore.update(updated) else { return false }
-                        return endFast()
-                    },
-                    onDelete: { removed in
-                        fastingStore.delete(id: removed.id)
-                        refreshFastingGoalNotification()
-                    }
-                )
-            }
-            .sheet(isPresented: $showSiriPhrases) {
-                NavigationStack {
-                    SiriPhrasesSettingsView()
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") {
-                                    showSiriPhrases = false
-                                }
-                            }
-                        }
-                }
-            }
-            .interactiveDismissDisabled(foodLogPhase.isLoading && (
-                activeSheet == .analyzing || activeSheet == .analyzingText || activeSheet == .lookingUpBarcode
-            ))
-            .photosPicker(
-                isPresented: $showPhotoPicker,
-                selection: $selectedPhotoItems,
-                maxSelectionCount: 10,
-                selectionBehavior: .ordered,
-                matching: .images
-            )
-            .onChange(of: selectedPhotoItems) { oldValue, newValue in
-                guard !newValue.isEmpty else { return }
-                selectedPhotoItems = []
-                Task {
-                    var imported: [UIImage] = []
-                    for item in newValue.prefix(10 - captureImages.count) {
-                        if let data = try? await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            imported.append(image)
-                        }
-                    }
-                    if !imported.isEmpty {
-                        captureImages = Array((captureImages + imported).prefix(10))
-                        currentImage = captureImages.first
-                        currentImages = captureImages
-                        currentEmoji = nil
-                        currentFoodSource = .snapFood
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            showMultiPhotoCaptureSheet = true
-                        }
-                    }
-                }
-            }
-            .alert("Error", isPresented: $showError) {
-                Button("Retry") { retryLastRequest() }
-                Button("Cancel", role: .cancel) { retryRequest = nil }
-            } message: {
-                Text(errorMessage)
-            }
-            .sheet(isPresented: $showHostedQuotaPaywall) {
-                HostedQuotaSoftPaywall(
-                    onBuyCreditsOrUpgrade: {
-                        if RevenueCatManager.shared.hasHostedEntitlement {
-                            showHostedCredits = true
-                        } else {
-                            showHostedPaywall = true
-                        }
-                    },
-                    onSwitchBYOK: {}
-                )
-            }
-            .sheet(isPresented: $showHostedPaywall) {
-                HostedPaywallView()
-            }
-            .sheet(isPresented: $showHostedCredits) {
-                HostedCreditsSheet()
-            }
-            .alert("Food logging paused", isPresented: $showFoodLoggingBlocked) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("End or cancel your active fast before logging food.")
-            }
-            .alert("Fasting Tracking off", isPresented: $showFastingQuickActionDisabled) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Enable Fasting Tracking in Settings to use this shortcut.")
-            }
-            .sheet(isPresented: $showNutritionDetail) {
-                NutritionDetailView(date: selectedDate, homeTopNutrientsRaw: $homeTopNutrientsRaw)
-            }
-            .sheet(isPresented: $showCustomWaterLog) {
-                WaterCustomAmountSheet(unit: waterUnit, onAdd: logWater)
-            }
-            .onOpenURL { url in
-                if url.scheme == "fudai", url.host == "import-share-image" {
-                    checkAndConsumeSharedImage()
-                } else if MealShare.handles(url) {
-                    // Shared meal — custom scheme or https Universal Link (issue #107).
-                    // Universal Links open the app directly (no browser). Confirm before adding.
-                    guard canBeginFoodLogging() else { return }
-                    guard let meals = MealShare.meals(from: url) else { return }
-                    activeSheet = nil
-                    pendingSharedMeals = meals
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        activeSheet = .importSharedMeal
-                    }
-                }
-            }
-            .onAppear {
-                checkAndConsumeSharedImage()
-                prewarmFoodDestinations()
-            }
-            .task(id: quickActionRequest?.id) {
-                presentQuickActionIfPossible()
-            }
-            .task(id: foodLogMethodRequest?.id) {
-                presentFoodLogMethodIfPossible()
-            }
-            .onChange(of: activeSheet) { oldValue, newValue in
-                if oldValue != nil && newValue == nil {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        presentQuickActionIfPossible()
-                        presentFoodLogMethodIfPossible()
-                    }
-                } else {
-                    presentQuickActionIfPossible()
-                    presentFoodLogMethodIfPossible()
-                }
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    checkAndConsumeSharedImage()
-                    Task { await refreshDailySteps() }
-                    // Returned to the foreground -> replay the fill-from-zero reveal.
-                    // Gated on wasBackgrounded so transient .inactive blips (control
-                    // center, app switcher) don't retrigger it.
-                    if wasBackgrounded {
-                        launchFillEpoch += 1
-                        wasBackgrounded = false
-                    }
-                    homeBurnRefreshGeneration += 1
-                } else if newPhase == .background {
-                    wasBackgrounded = true
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertScanLabel)) { _ in
-                retryRequest = nil
-                openCameraForNutritionLabel()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertRetry)) { _ in
-                retryLastRequest()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .fudBarcodeAlertCancel)) { _ in
-                retryRequest = nil
-            }
-        }
-    }
-
-    @MainActor
-    private func presentQuickActionIfPossible() {
-        guard let request = quickActionRequest, activeSheet == nil else { return }
-
-        let hadOpenDestination = showCamera || showBarcodeScanner || showPhotoPicker
-            || showVoicePopover || showTextPopover || showManualPopover
-            || savedMealsMode != nil || showContextSheet || showMultiPhotoCaptureSheet
-            || showFastingStart || editingFastingSession != nil
-
-        showCamera = false
-        showBarcodeScanner = false
-        showPhotoPicker = false
-        showVoicePopover = false
-        showTextPopover = false
-        showManualPopover = false
-        savedMealsMode = nil
-        showContextSheet = false
-        showMultiPhotoCaptureSheet = false
-        showCopyFromDaySheet = false
-        showNutritionDetail = false
-        showCustomWaterLog = false
-        showError = false
-        showFastingStart = false
-        editingFastingSession = nil
-        selectedDate = .now
-
-        if request.action == .fasting {
-            onQuickActionHandled(request.id)
-            let launchFasting: @MainActor @Sendable () -> Void = {
-                if !fastingTrackingEnabled {
-                    showFastingQuickActionDisabled = true
-                } else if let active = fastingStore.activeSession {
-                    editingFastingSession = active
-                } else {
-                    showFastingStart = true
-                }
-            }
-            if hadOpenDestination {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: launchFasting)
-            } else {
-                launchFasting()
-            }
-            return
-        }
-
-        guard fastingStore.activeSession == nil else {
-            onQuickActionHandled(request.id)
-            showFoodLoggingBlocked = true
-            return
-        }
-
-        onQuickActionHandled(request.id)
-        let launch: @MainActor @Sendable () -> Void = {
-            presentFoodDestination {
-                switch request.action {
-                case .camera:
-                    cameraMode = .snapFoodWithContext
-                    isImportingPhotos = false
-                    captureImages = []
-                    contextDescription = ""
-                    showCamera = true
-                case .photos:
-                    cameraMode = .snapFoodWithContext
-                    isImportingPhotos = true
-                    captureImages = []
-                    contextDescription = ""
-                    selectedPhotoItems = []
-                    showPhotoPicker = true
-                case .voice:
-                    showVoicePopover = true
-                case .text:
-                    showTextPopover = true
-                case .barcode:
-                    showBarcodeScanner = true
-                case .favorites:
-                    savedMealsMode = .favorites
-                case .frequent:
-                    savedMealsMode = .frequent
-                case .recent:
-                    savedMealsMode = .recent
-                case .manual:
-                    showManualPopover = true
-                case .fasting:
-                    break
-                }
-            }
-        }
-
-        if hadOpenDestination {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: launch)
-        } else {
-            launch()
-        }
-    }
-
-    @MainActor
-    private func presentFoodLogMethodIfPossible() {
-        guard let request = foodLogMethodRequest, activeSheet == nil else { return }
-
-        let hadOpenDestination = showCamera || showBarcodeScanner || showPhotoPicker
-            || showVoicePopover || showTextPopover || showManualPopover
-            || savedMealsMode != nil || showContextSheet || showMultiPhotoCaptureSheet
-            || showCopyFromDaySheet || showFastingStart || editingFastingSession != nil
-
-        showCamera = false
-        showBarcodeScanner = false
-        showPhotoPicker = false
-        showVoicePopover = false
-        showTextPopover = false
-        showManualPopover = false
-        savedMealsMode = nil
-        showContextSheet = false
-        showMultiPhotoCaptureSheet = false
-        showCopyFromDaySheet = false
-        showNutritionDetail = false
-        showCustomWaterLog = false
-        showError = false
-        showFastingStart = false
-        editingFastingSession = nil
-        selectedDate = .now
-
-        guard fastingStore.activeSession == nil else {
-            onFoodLogMethodHandled(request.id)
-            showFoodLoggingBlocked = true
-            return
-        }
-
-        onFoodLogMethodHandled(request.id)
-        let launch: @MainActor @Sendable () -> Void = {
-            presentFoodDestination {
-                performFoodLogMethod(request.method)
-            }
-        }
-
-        if hadOpenDestination {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: launch)
-        } else {
-            launch()
-        }
-    }
-    
-    private func checkAndConsumeSharedImage() {
-        guard ShareImportManager.hasSharedImage() else { return }
-        guard canBeginFoodLogging() else { return }
-        guard let image = ShareImportManager.consumeSharedImage() else { return }
-        
-        // Force dismiss any currently open sheets to prevent SwiftUI from swallowing the new presentation
-        activeSheet = nil
-        
-        currentImage = image
-        currentImages = [image]
-        currentEmoji = nil
-        currentFoodSource = .snapFood
-
-        // A slight delay ensures the view hierarchy is clear before presenting
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            pendingContextImage = image
-            contextDescription = ""
-            showContextSheet = true
-        }
-    }
-
-    private func startAnalysis(image: UIImage, mode: CameraMode, description: String? = nil) {
-        startAnalysis(images: [image], mode: mode, description: description, progressiveMeal: false)
-    }
-
-    private func startAnalysis(
-        images: [UIImage],
-        mode: CameraMode,
-        description: String? = nil,
-        progressiveMeal: Bool = false
-    ) {
-        retryRequest = .analysis(
-            images: images,
-            mode: mode,
-            description: description,
-            progressiveMeal: progressiveMeal
-        )
-        presentFoodLogLoading(.analyzing)
-
-        analysisTask?.cancel()
-        analysisTask = Task {
-            do {
-                switch mode {
-                case .snapFood:
-                    let result = try await GeminiService.analyzeFood(
-                        images: images,
-                        progressiveMeal: progressiveMeal
-                    )
-                    try Task.checkCancellation()
-                    currentFoodSource = .snapFood
-                    retryRequest = nil
-                    presentFoodResult(result)
-
-                case .snapFoodWithContext:
-                    let result = try await GeminiService.analyzeFood(
-                        images: images,
-                        description: description,
-                        progressiveMeal: progressiveMeal
-                    )
-                    try Task.checkCancellation()
-                    currentFoodSource = .snapFood
-                    retryRequest = nil
-                    presentFoodResult(result)
-
-                }
-            } catch is CancellationError {
-                // User tapped Cancel on the analyzing sheet; cancelAnalysis already reset the UI.
-            } catch {
-                if Task.isCancelled { return }
-                presentAnalysisError(error)
-            }
-        }
-    }
-
-    /// Cancel button on the analyzing sheet. Cancels the task (which also cancels the underlying
-    /// URLSession request), dismisses the sheet, and drops the retry request so no error alert follows.
-    private func cancelAnalysis() {
-        analysisTask?.cancel()
-        analysisTask = nil
-        retryRequest = nil
-        if foodLogPhase.isLoading {
-            activeSheet = nil
-        }
-        foodLogPhase = .result
-    }
-
-    @MainActor
-    private func presentFoodLogLoading(_ phase: FoodLogPhase) {
-        currentFoodResult = nil
-        foodLogPhase = phase
-        switch phase {
-        case .analyzing:
-            activeSheet = .analyzing
-        case .analyzingText:
-            activeSheet = .analyzingText
-        case .lookingUpBarcode:
-            activeSheet = .lookingUpBarcode
-        case .result:
-            activeSheet = .foodResult
-        }
-    }
-
-    @MainActor
-    private func presentFoodResult(_ result: GeminiService.FoodAnalysis) {
-        currentFoodResult = result
-        foodLogPhase = .result
-        activeSheet = .foodResult
-    }
-
-    private func startBarcodeLookup(_ barcode: String) {
-        let trimmedBarcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedBarcode.isEmpty else { return }
-        retryRequest = .barcode(trimmedBarcode)
-
-        currentImage = nil
-        currentImages = []
-        currentEmoji = nil
-        currentFoodSource = .barcode
-        presentFoodLogLoading(.lookingUpBarcode)
-
-        analysisTask?.cancel()
-        analysisTask = Task {
-            do {
-                let lookup = try await OpenFoodFactsService.lookupWithImage(barcode: trimmedBarcode)
-                try Task.checkCancellation()
-                let result = lookup.analysis
-                currentEmoji = result.emoji
-                if let imageData = lookup.productImageData,
-                   let image = UIImage(data: imageData) {
-                    currentImage = image
-                    currentImages = [image]
-                }
-                retryRequest = nil
-                presentFoodResult(result)
-            } catch is CancellationError {
-                // User tapped Cancel on the analyzing sheet; cancelAnalysis already reset the UI.
-            } catch {
-                if Task.isCancelled { return }
-                presentBarcodeLookupError(error)
-            }
-        }
-    }
-
-    private func startTextAnalysis(_ description: String) {
-        retryRequest = .text(description)
-        presentFoodLogLoading(.analyzingText)
-        analysisTask?.cancel()
-        analysisTask = Task {
-            do {
-                let result = try await GeminiService.analyzeTextInput(description: description)
-                try Task.checkCancellation()
-                currentEmoji = result.emoji
-                retryRequest = nil
-                presentFoodResult(result)
-            } catch is CancellationError {
-                // User tapped Cancel on the analyzing sheet; cancelAnalysis already reset the UI.
-            } catch {
-                if Task.isCancelled { return }
-                presentAnalysisError(error)
-            }
-        }
-    }
-
-    /// Dismiss the loading sheet first, then present the alert after the sheet
-    /// animation finishes. Presenting both in the same turn makes SwiftUI flash
-    /// or drop the alert.
-    @MainActor
-    private func presentAnalysisError(_ error: Error) {
-        foodLogPhase = .result
-        activeSheet = nil
-        if let quotaError = error as? HostedAIQuotaError {
-            switch quotaError {
-            case .quotaExceeded:
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                    showHostedQuotaPaywall = true
-                }
-                return
-            case .noActiveSubscription:
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                    showHostedPaywall = true
-                }
-                return
-            case .notHostedMode, .rateLimited:
-                break
-            }
-        }
-        errorMessage = GeminiService.analysisErrorMessage(error)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            showError = true
-        }
-    }
-
-    @MainActor
-    private func presentBarcodeLookupError(_ error: Error) {
-        let offersScanLabel: Bool
-        if let lookupError = error as? OpenFoodFactsService.LookupError {
-            switch lookupError {
-            case .missingNutrition, .productNotFound:
-                offersScanLabel = true
-            default:
-                offersScanLabel = false
-            }
-        } else {
-            offersScanLabel = false
-        }
-
-        let message = (error as? OpenFoodFactsService.LookupError)?.localizedDescription
-            ?? OpenFoodFactsService.LookupError.invalidResponse.localizedDescription
-        errorMessage = message
-        // End the loading sheet first, then show only the system popup.
-        foodLogPhase = .result
-        activeSheet = nil
-        BarcodeLookupAlertPresenter.present(
-            message: message,
-            offersScanLabel: offersScanLabel
-        )
-    }
-
-    @MainActor
-    private func openCameraForNutritionLabel() {
-        guard canBeginFoodLogging() else { return }
-        cameraMode = .snapFoodWithContext
-        isImportingPhotos = false
-        captureImages = []
-        contextDescription = ""
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            showCamera = true
-        }
-    }
-
-    private func retryLastRequest() {
-        guard let retryRequest else { return }
-        switch retryRequest {
-        case let .analysis(images, mode, description, progressiveMeal):
-            startAnalysis(
-                images: images,
-                mode: mode,
-                description: description,
-                progressiveMeal: progressiveMeal
-            )
-        case let .text(description):
-            startTextAnalysis(description)
-        case let .barcode(barcode):
-            startBarcodeLookup(barcode)
-        }
-    }
-
-}
-
-// Configurable + menu helpers (same file as HomeView so private state is accessible).
-extension HomeView {
-    @ViewBuilder
-    var configuredFoodAddMenuContent: some View {
-        let config = AddMenuSettings.load()
-        if config.usesFlatLayout {
-            Section {
-                ForEach(config.flatMethods) { method in
-                    addMenuButton(for: method)
-                }
-            }
-        } else {
-            ForEach(config.groups.filter { !$0.methods.isEmpty }) { group in
-                Section {
-                    Menu {
-                        ForEach(group.methods) { method in
-                            addMenuButton(for: method)
-                        }
-                    } label: {
-                        Label(group.name, systemImage: addMenuGroupIcon(for: group))
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    func addMenuButton(for method: FoodLogMethod) -> some View {
-        Button {
-            presentFoodDestination {
-                performFoodLogMethod(method)
-            }
-        } label: {
-            Label(method.title, systemImage: method.systemImageName)
-        }
-    }
-
-    func performFoodLogMethod(_ method: FoodLogMethod) {
-        switch method {
-        case .camera:
-            cameraMode = .snapFoodWithContext
-            isImportingPhotos = false
-            captureImages = []
-            contextDescription = ""
-            showCamera = true
-        case .photos:
-            cameraMode = .snapFoodWithContext
-            isImportingPhotos = true
-            captureImages = []
-            contextDescription = ""
-            selectedPhotoItems = []
-            showPhotoPicker = true
-        case .barcode:
-            showBarcodeScanner = true
-        case .voice:
-            showVoicePopover = true
-        case .text:
-            showTextPopover = true
-        case .manual:
-            showManualPopover = true
-        case .siriPhrases:
-            showSiriPhrases = true
-        case .favorites:
-            savedMealsMode = .favorites
-        case .frequent:
-            savedMealsMode = .frequent
-        case .recent:
-            savedMealsMode = .recent
-        case .copyFromDay:
-            showCopyFromDaySheet = true
-        }
-    }
-
-    private func addMenuGroupIcon(for group: AddMenuGroupConfig) -> String {
-        group.methods.first?.systemImageName ?? "folder.fill"
-    }
-}
-
-private extension Notification.Name {
-    static let fudBarcodeAlertScanLabel = Notification.Name("fudBarcodeAlertScanLabel")
-    static let fudBarcodeAlertRetry = Notification.Name("fudBarcodeAlertRetry")
-    static let fudBarcodeAlertCancel = Notification.Name("fudBarcodeAlertCancel")
-}
-
-/// UIKit alert so the barcode error popup survives SwiftUI sheet dismissal.
-@MainActor
-private enum BarcodeLookupAlertPresenter {
-    static func present(message: String, offersScanLabel: Bool, attempt: Int = 0) {
-        guard let root = keyRootViewController() else { return }
-
-        // Wait until the "Looking up barcode..." sheet has fully dismissed.
-        if root.presentedViewController != nil, attempt < 30 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                present(message: message, offersScanLabel: offersScanLabel, attempt: attempt + 1)
-            }
-            return
-        }
-
-        let alert = UIAlertController(
-            title: "Couldn't use this barcode",
-            message: message,
-            preferredStyle: .alert
-        )
-        if offersScanLabel {
-            alert.addAction(UIAlertAction(title: "Scan Label", style: .default) { _ in
-                NotificationCenter.default.post(name: .fudBarcodeAlertScanLabel, object: nil)
-            })
-        } else {
-            alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
-                NotificationCenter.default.post(name: .fudBarcodeAlertRetry, object: nil)
-            })
-        }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-            NotificationCenter.default.post(name: .fudBarcodeAlertCancel, object: nil)
-        })
-        root.present(alert, animated: true)
-    }
-
-    private static func keyRootViewController() -> UIViewController? {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .rootViewController
-    }
-}
-
-// MARK: - Siri Phrases
-private struct SiriPhrasesSettingsView: View {
-    private let groups: [SiriPhraseGroup] = [
-        SiriPhraseGroup(
-            title: "Log Food",
-            icon: "fork.knife",
-            phrases: [
-                "Log food in Fud AI",
-                "Add food in Fud AI",
-                "Track food in Fud AI",
-            ]
-        ),
-        SiriPhraseGroup(
-            title: "Today's Calories",
-            icon: "chart.bar.fill",
-            phrases: [
-                "Calories today in Fud AI",
-                "How many calories in Fud AI",
-                "Today's nutrition in Fud AI",
-            ]
-        ),
-        SiriPhraseGroup(
-            title: "Log Weight",
-            icon: "scalemass.fill",
-            phrases: [
-                "Log my weight in Fud AI",
-                "Record weight in Fud AI",
-            ]
-        ),
-    ]
-
-    var body: some View {
-        List {
-            Section {
-                Label {
-                    Text("Say these phrases to Siri to use Fud AI hands-free.")
-                        .foregroundStyle(.secondary)
-                } icon: {
-                    Image(systemName: "waveform.circle.fill")
-                        .foregroundStyle(AppColors.calorie)
-                }
-            }
-            .listRowBackground(AppColors.appCard)
-
-            ForEach(groups) { group in
-                Section(group.title) {
-                    ForEach(group.phrases, id: \.self) { phrase in
-                        Text("Hey Siri, \(phrase)")
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .listRowBackground(AppColors.appCard)
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(AppColors.appBackground)
-        .navigationTitle("Siri Phrases")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct SiriPhraseGroup: Identifiable {
-    let title: String
-    let icon: String
-    let phrases: [String]
-
-    var id: String { title }
-}
-
-// MARK: - Copy From Day
-private struct CopyFromDaySheet: View {
-    let targetDate: Date
-
-    @Environment(FoodStore.self) private var foodStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var sourceDate: Date
-    @State private var showFoodLoggingBlocked = false
-
-    init(targetDate: Date) {
-        self.targetDate = targetDate
-        let previousDay = Calendar.current.date(byAdding: .day, value: -1, to: targetDate) ?? targetDate
-        _sourceDate = State(initialValue: previousDay)
-    }
-
-    private var mealGroups: [FoodLogMealGroup] {
-        foodStore.entriesByMeal(for: sourceDate)
-    }
-
-    private var sourceEntries: [FoodEntry] {
-        mealGroups.flatMap(\.entries)
-    }
-
-    private var targetDateText: String {
-        if Calendar.current.isDateInToday(targetDate) {
-            return "today"
-        }
-        return targetDate.formatted(.dateTime.month(.abbreviated).day())
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    DatePicker("Copy From", selection: $sourceDate, displayedComponents: .date)
-                        .tint(AppColors.calorie)
-                } footer: {
-                    Text("Foods will be copied to \(targetDateText). The original entries stay unchanged.")
-                }
-                .listRowBackground(AppColors.appCard)
-
-                if sourceEntries.isEmpty {
-                    Section {
-                        VStack(spacing: 12) {
-                            Image(systemName: "calendar.badge.exclamationmark")
-                                .font(.system(size: 32))
-                                .foregroundStyle(AppColors.calorie.opacity(0.45))
-                            Text("No foods logged on this day")
-                                .font(.system(.subheadline, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                    }
-                    .listRowBackground(AppColors.appCard)
-                } else {
-                    Section {
-                        Button {
-                            copy(sourceEntries)
-                        } label: {
-                            Label("Copy All Foods", systemImage: "plus.circle.fill")
-                                .font(.system(.body, design: .rounded, weight: .semibold))
-                        }
-                        .tint(AppColors.calorie)
-                    } footer: {
-                        Text("\(sourceEntries.count) food\(sourceEntries.count == 1 ? "" : "s") will be added to \(targetDateText).")
-                    }
-                    .listRowBackground(AppColors.appCard)
-
-                    ForEach(mealGroups) { group in
-                        Section {
-                            Button {
-                                copy(group.entries)
-                            } label: {
-                                Label("Copy \(group.meal.displayName)", systemImage: "plus.circle")
-                                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            }
-                            .tint(AppColors.calorie)
-
-                            ForEach(group.entries) { entry in
-                                Button {
-                                    copy([entry])
-                                } label: {
-                                    FoodRow(entry: entry)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        } header: {
-                            Label(group.meal.displayName, systemImage: group.meal.icon)
-                        }
-                        .listRowBackground(AppColors.appCard)
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(AppColors.appBackground)
-            .navigationTitle("Copy from Day")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-            .alert("Food logging paused", isPresented: $showFoodLoggingBlocked) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("End or cancel your active fast before logging food.")
-            }
-        }
-    }
-
-    private func copy(_ entries: [FoodEntry]) {
-        guard !entries.isEmpty else { return }
-        let copiedTimestamp = timestamp(on: targetDate, usingTimeFrom: .now)
-        for entry in entries {
-            let copiedEntry = entry.duplicatedForLogging(at: copiedTimestamp)
-            if !foodStore.addEntry(copiedEntry) {
-                showFoodLoggingBlocked = true
-                return
-            }
-        }
-        dismiss()
-    }
-
-    private func timestamp(on day: Date, usingTimeFrom timeSource: Date) -> Date {
-        let calendar = Calendar.current
-        let dayComponents = calendar.dateComponents([.year, .month, .day], from: day)
-        let timeComponents = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: timeSource)
-        var components = DateComponents()
-        components.year = dayComponents.year
-        components.month = dayComponents.month
-        components.day = dayComponents.day
-        components.hour = timeComponents.hour
-        components.minute = timeComponents.minute
-        components.second = timeComponents.second
-        components.nanosecond = timeComponents.nanosecond
-        return calendar.date(from: components) ?? day
-    }
-}
-
 // MARK: - Nutrition Detail View
 struct NutritionDetailView: View {
     let date: Date
@@ -3176,7 +1197,7 @@ struct MultiPhotoCaptureSheet: View {
             .alert("How Progressive Meal works", isPresented: $showProgressiveInfo) {
                 Button("Done", role: .cancel) {}
             } message: {
-                Text("Use this when every photo shows the same plate after another ingredient is added. Keep the photos in order and make the scale display visible. Fud AI uses the difference between consecutive scale totals to estimate each new ingredient. Leave this off when the photos are only different angles of the same meal.")
+                Text("Use this when every photo shows the same plate after another ingredient is added. Keep the photos in order and make the scale display visible. JL Physical uses the difference between consecutive scale totals to estimate each new ingredient. Leave this off when the photos are only different angles of the same meal.")
             }
         }
     }
@@ -3847,301 +1868,6 @@ struct MacroPill: View {
     }
 }
 
-// MARK: - Progress Tab
-struct ProgressTabView: View {
-    @Environment(FoodStore.self) private var foodStore
-    @Environment(WeightStore.self) private var weightStore
-    @Environment(BodyFatStore.self) private var bodyFatStore
-    @Environment(ProfileStore.self) private var profileStore
-    @Environment(StrengthWorkoutStore.self) private var strengthWorkoutStore
-    @Environment(ImportedHealthWorkoutStore.self) private var importedHealthWorkoutStore
-    @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
-    @State private var timeRange: TimeRange = .week
-    @State private var showLogWeight = false
-    @State private var showLogBodyFat = false
-    @State private var showGoalReached = false
-    @State private var showAllWeights = false
-    @State private var showAllBodyFat = false
-    @State private var showWorkoutHistory = false
-    @State private var showImportedHealthWorkoutHistory = false
-    @State private var progressMetric: ProgressMetric = .weight
-    @State private var progressOverviewMode: ProgressOverviewMode = .myProgress
-    @State private var foodRangeStats: ProgressFoodRangeStats?
-    @State private var isLoadingFoodRangeStats = false
-
-    private var userProfile: UserProfile { profileStore.profile }
-
-    private var foodRangeStatsTaskKey: String {
-        let latest = foodStore.entries.first?.id.uuidString ?? "none"
-        return "\(timeRange.rawValue)|\(foodStore.entries.count)|\(latest)"
-    }
-
-    private var dateRange: ClosedRange<Date> { timeRange.dateRange() }
-
-    private var filteredWeightEntries: [WeightEntry] {
-        weightStore.entries(in: dateRange)
-    }
-
-    private var filteredBodyFatEntries: [BodyFatEntry] {
-        bodyFatStore.entries(in: dateRange)
-    }
-
-    private var workoutCalorieSessions: [StrengthWorkoutSession] {
-        strengthWorkoutStore.completedSessions.filter {
-            WorkoutBurnAggregation.isReliable($0.caloriesBurned)
-        }
-    }
-
-    private var importedHealthWorkouts: [ImportedHealthWorkout] {
-        importedHealthWorkoutStore.sortedWorkouts
-    }
-
-    private var filteredImportedHealthWorkouts: [ImportedHealthWorkout] {
-        importedHealthWorkoutStore.workouts(from: dateRange.lowerBound, through: dateRange.upperBound)
-    }
-
-    private var availableProgressMetrics: [ProgressMetric] {
-        ProgressMetric.available(
-            bodyFatAvailable: showsBodyFatSection,
-            workoutBurnAvailable: !workoutCalorieSessions.isEmpty,
-            importedWorkoutsAvailable: !importedHealthWorkouts.isEmpty
-        )
-    }
-
-    /// Show the Body Fat section to anyone who has either logged a reading,
-    /// set a current value (legacy users from before BodyFatStore existed —
-    /// they won't have any entries yet but we still want to show the tracker
-    /// + Log button so they can start), or set a goal. Hidden entirely for
-    /// users who skipped the body-fat track in onboarding.
-    private var showsBodyFatSection: Bool {
-        !bodyFatStore.entries.isEmpty
-            || userProfile.bodyFatPercentage != nil
-            || userProfile.goalBodyFatPercentage != nil
-    }
-
-    var body: some View {
-        let _ = profileStore.profile
-        return NavigationStack {
-            VStack(spacing: 0) {
-                ProgressOverviewModeSelector(selection: $progressOverviewMode)
-                .padding(.horizontal)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
-
-                if progressOverviewMode == .myProgress {
-                    ScrollView {
-                        VStack(spacing: 18) {
-                    // Segmented Picker
-                    Picker("Time Range", selection: $timeRange) {
-                        ForEach(TimeRange.allCases, id: \.self) { range in
-                            Text(range.rawValue).tag(range)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .tint(AppColors.calorie)
-                    .padding(.horizontal)
-
-                    ProgressMetricSelector(
-                        metrics: availableProgressMetrics,
-                        selection: $progressMetric
-                    )
-                    .padding(.horizontal)
-
-                    Group {
-                        switch progressMetric {
-                        case .weight:
-                            WeightChartSection(
-                                weightEntries: filteredWeightEntries,
-                                goalWeightKg: userProfile.goalWeightKg,
-                                currentWeightKg: weightStore.latestEntry?.weightKg,
-                                onLogWeight: { showLogWeight = true }
-                            )
-                        case .bodyFat:
-                            BodyFatChartSection(
-                                entries: filteredBodyFatEntries,
-                                goalBodyFatFraction: userProfile.goalBodyFatPercentage,
-                                currentBodyFatFraction: bodyFatStore.latestEntry?.bodyFatFraction
-                                    ?? userProfile.bodyFatPercentage,
-                                onLogBodyFat: { showLogBodyFat = true }
-                            )
-                        case .workouts:
-                            if !workoutCalorieSessions.isEmpty {
-                                WorkoutBurnChartSection(
-                                    sessions: workoutCalorieSessions,
-                                    dateRange: dateRange
-                                )
-                            }
-                            if !importedHealthWorkouts.isEmpty {
-                                ImportedHealthWorkoutChartSection(
-                                    workouts: filteredImportedHealthWorkouts,
-                                    dateRange: dateRange
-                                )
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-
-                    Group {
-                        switch progressMetric {
-                        case .weight:
-                            if !weightStore.entries.isEmpty {
-                                WeightHistoryLink(
-                                    totalCount: weightStore.entries.count,
-                                    onTap: { showAllWeights = true }
-                                )
-                            }
-                        case .bodyFat:
-                            if !bodyFatStore.entries.isEmpty {
-                                BodyFatHistoryLink(
-                                    totalCount: bodyFatStore.entries.count,
-                                    onTap: { showAllBodyFat = true }
-                                )
-                            }
-                        case .workouts:
-                            if !workoutCalorieSessions.isEmpty {
-                                WorkoutHistoryLink(
-                                    sessions: workoutCalorieSessions,
-                                    onTap: { showWorkoutHistory = true }
-                                )
-                            }
-                            if !importedHealthWorkouts.isEmpty {
-                                ImportedHealthWorkoutHistoryLink(
-                                    workouts: importedHealthWorkouts,
-                                    onTap: { showImportedHealthWorkoutHistory = true }
-                                )
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-
-                    // Calorie / macro / nutrient stats load asynchronously so the
-                    // range picker stays instant and interruptible mid-load.
-                    if isLoadingFoodRangeStats && foodRangeStats == nil {
-                        ProgressNutritionLoadingCard()
-                            .padding(.horizontal)
-                    } else if let foodRangeStats {
-                        CalorieChartSection(
-                            dailyCalories: foodRangeStats.dailyCalories,
-                            calorieGoal: userProfile.effectiveCalories
-                        )
-                        .padding(.horizontal)
-                        .opacity(isLoadingFoodRangeStats ? 0.45 : 1)
-                        .overlay(alignment: .topTrailing) {
-                            if isLoadingFoodRangeStats {
-                                ProgressView()
-                                    .tint(AppColors.calorie)
-                                    .padding(12)
-                            }
-                        }
-
-                        MacroAveragesSection(
-                            avgProtein: foodRangeStats.avgProtein,
-                            avgCarbs: foodRangeStats.avgCarbs,
-                            avgFat: foodRangeStats.avgFat,
-                            proteinGoal: userProfile.effectiveProtein,
-                            carbsGoal: userProfile.effectiveCarbs,
-                            fatGoal: userProfile.effectiveFat
-                        )
-                        .padding(.horizontal)
-                        .opacity(isLoadingFoodRangeStats ? 0.45 : 1)
-
-                        if !foodRangeStats.nutrientItems.isEmpty {
-                            NutrientAveragesSection(items: foodRangeStats.nutrientItems)
-                                .padding(.horizontal)
-                                .opacity(isLoadingFoodRangeStats ? 0.45 : 1)
-                        }
-                    } else {
-                        ProgressNutritionLoadingCard()
-                            .padding(.horizontal)
-                    }
-
-                        }
-                        .padding(.vertical)
-                    }
-                    .background(AppColors.appBackground)
-                } else {
-                    WeeklyChallengeView()
-                }
-            }
-            .background(AppColors.appBackground)
-            .navigationBarHidden(true)
-            .task(id: foodRangeStatsTaskKey) {
-                isLoadingFoodRangeStats = true
-                // Drop stale nutrition for a different range so charts don't lie
-                // while a longer window is still computing. Switching ranges
-                // cancels this task immediately via task(id:).
-                foodRangeStats = nil
-                // Let the picker / loading card paint before the (now single-pass) work.
-                await Task.yield()
-                let stats = ProgressFoodRangeStats.compute(
-                    entries: foodStore.entries,
-                    dayCount: timeRange.days,
-                    profile: userProfile,
-                    optionalGoals: .current
-                )
-                guard !Task.isCancelled else { return }
-                foodRangeStats = stats
-                isLoadingFoodRangeStats = false
-            }
-            .onChange(of: availableProgressMetrics, initial: true) { _, metrics in
-                if !metrics.contains(progressMetric) {
-                    progressMetric = .weight
-                }
-            }
-            .sheet(isPresented: $showLogWeight) {
-                LogWeightSheet(
-                    currentWeightKg: weightStore.latestEntry?.weightKg ?? userProfile.weightKg
-                ) { weightKg in
-                    weightStore.addEntry(WeightEntry(weightKg: weightKg))
-                }
-            }
-            .sheet(isPresented: $showLogBodyFat) {
-                // Seed from latest entry → profile current → sane default,
-                // mirroring the LogWeightSheet seeding chain.
-                let seed = bodyFatStore.latestEntry?.bodyFatFraction
-                    ?? userProfile.bodyFatPercentage
-                    ?? 0.20
-                LogBodyFatSheet(currentFraction: seed) { fraction in
-                    bodyFatStore.addEntry(BodyFatEntry(bodyFatFraction: fraction))
-                }
-            }
-            .alert("Congratulations!", isPresented: $showGoalReached) {
-                Button("Keep Going", role: .cancel) { }
-            } message: {
-                Text("You've reached your goal weight! Head to Settings to switch your goal (Maintain, Lose, or Gain) and tap Recalculate Goals to refresh your targets.")
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .weightGoalReached)) { _ in
-                showGoalReached = true
-            }
-            .sheet(isPresented: $showAllWeights) {
-                AllWeightHistoryView(
-                    entries: weightStore.entries.sorted { $0.date > $1.date },
-                    useMetric: weightUnitRaw == "kg",
-                    onDelete: { entry in weightStore.deleteEntry(entry) }
-                )
-            }
-            .sheet(isPresented: $showAllBodyFat) {
-                AllBodyFatHistoryView(
-                    entries: bodyFatStore.entries.sorted { $0.date > $1.date },
-                    onDelete: { entry in bodyFatStore.deleteEntry(entry) }
-                )
-            }
-            .sheet(isPresented: $showWorkoutHistory) {
-                WorkoutHistoryView(
-                    sessions: workoutCalorieSessions,
-                    onDelete: { session in
-                        strengthWorkoutStore.deleteSession(session.id)
-                    }
-                )
-            }
-            .sheet(isPresented: $showImportedHealthWorkoutHistory) {
-                ImportedHealthWorkoutHistoryView(workouts: importedHealthWorkouts)
-            }
-        }
-    }
-
-}
-
 
 private struct SettingsKeyboardDismissalModifier: ViewModifier {
     func body(content: Content) -> some View {
@@ -4169,15 +1895,19 @@ enum AISettingsInfoTopic {
     case imageFallback
     case speechToText
     case speechFallback
+    case estimateCheck
+    case jevRouter
 
     var title: String {
         switch self {
         case .primaryAI: "Primary AI"
         case .textAI: "Text AI"
-        case .textFallback: "Text AI Fallback"
+        case .textFallback: "Text Fallback"
         case .imageFallback: "Image AI Fallback"
         case .speechToText: "Speech-to-Text"
-        case .speechFallback: "STT Fallback"
+        case .speechFallback: "Voice Fallback"
+        case .estimateCheck: "Estimate Check"
+        case .jevRouter: "Jev Router"
         }
     }
 
@@ -4195,11 +1925,49 @@ enum AISettingsInfoTopic {
             "Converts microphone audio into text only. The transcript then follows the normal text route: Text AI when enabled, otherwise Primary AI. Matching provider API keys are reused unless you save a separate STT key."
         case .speechFallback:
             "Retries transcription when the selected remote STT provider fails. It only produces a transcript; that transcript still follows the normal text AI route. Native iOS speech already uses Apple's offline and online recognition recovery, so a separate STT fallback is available only for remote providers."
+        case .estimateCheck:
+            "Jev makes quick yes/no and multiple-choice decisions so the app can skip or shrink AI calls. It only receives text (never photos). Nothing is logged without your review. Estimate Check still only sends the food name, item names, and portion sizes."
+        case .jevRouter:
+            "The router asks Jev short questions before a bigger AI call. It is off until you turn it on, and it does nothing without a TypeSafe or AI Gateway key. Plausibility checks can flag typos on this iPhone without a key. The optional tie-break sends relative facts as text, never photos or your absolute body weight."
         }
     }
 }
 
-private struct AISettingsSubsectionHeader: View {
+struct IronInfoSectionHeader: View {
+    let title: String
+    let infoTopic: AISettingsInfoTopic
+    @State private var isShowingInfo = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.textSecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            Button {
+                isShowingInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(IronTheme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About \(title)")
+            Spacer(minLength: 0)
+        }
+        .alert(infoTopic.title, isPresented: $isShowingInfo) {
+            Button("Got it", role: .cancel) { }
+        } message: {
+            Text(infoTopic.message)
+        }
+    }
+}
+
+struct AISettingsSubsectionHeader: View {
     let title: String
     let systemImage: String
     let infoTopic: AISettingsInfoTopic
@@ -4209,12 +1977,12 @@ private struct AISettingsSubsectionHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Label {
-                Text(title)
-                    .textCase(.uppercase)
+                subsectionTitle(title)
             } icon: {
                 Image(systemName: systemImage)
             }
             .accessibilityAddTraits(.isHeader)
+            .layoutPriority(1)
 
             Spacer(minLength: 8)
 
@@ -4238,119 +2006,28 @@ private struct AISettingsSubsectionHeader: View {
             Text(infoTopic.message)
         }
     }
-}
 
-enum ProfileSettingsCategory: String, CaseIterable, Identifiable, Hashable {
-    case personalInfo
-    case goalsNutrition
-    case trackingReminders
-    case notifications
-    case aiAccess
-    case aiProviders
-    case speechToText
-    case appPreferences
-    case workout
-    case healthData
-    case dataManagement
-    case appUpdates
-    case support
-    case helpFeedback
-    case community
-    case legal
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    static let preferenceCases: [Self] = [
-        .personalInfo,
-        .goalsNutrition,
-        .trackingReminders,
-        .notifications,
-        .aiAccess,
-        .aiProviders,
-        .speechToText,
-        .appPreferences,
-        .workout,
-        .healthData,
-        .dataManagement
-    ]
-
-    static let appInfoCases: [Self] = [
-        .appUpdates,
-        .support,
-        .helpFeedback,
-        .community,
-        .legal
-    ]
-
-    var id: Self { self }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .personalInfo: "Personal Info"
-        case .goalsNutrition: "Goals & Nutrition"
-        case .trackingReminders: "Tracking & Reminders"
-        case .notifications: "Notifications"
-        case .aiAccess: "AI Access"
-        case .aiProviders: "AI Providers & Fallbacks"
-        case .speechToText: "Speech-to-Text"
-        case .appPreferences: "App Settings"
-        case .workout: "Workout"
-        case .healthData: "Health & Data"
-        case .dataManagement: "Data Management"
-        case .appUpdates: "App & Updates"
-        case .support: "Support Fud AI"
-        case .helpFeedback: "Help & Feedback"
-        case .community: "Community"
-        case .legal: "Legal"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .personalInfo: "person.crop.circle"
-        case .goalsNutrition: "target"
-        case .trackingReminders: "timer"
-        case .notifications: "bell"
-        case .aiAccess: "key.horizontal"
-        case .aiProviders: "sparkles"
-        case .speechToText: "waveform"
-        case .appPreferences: "slider.horizontal.3"
-        case .workout: "dumbbell"
-        case .healthData: "heart"
-        case .dataManagement: "externaldrive"
-        case .appUpdates: "arrow.triangle.2.circlepath.circle.fill"
-        case .support: "heart.fill"
-        case .helpFeedback: "exclamationmark.bubble.fill"
-        case .community: "person.3.fill"
-        case .legal: "lock.shield.fill"
-        }
-    }
-
-    var aboutCategory: AboutSettingsCategory? {
-        switch self {
-        case .appUpdates: .appUpdates
-        case .support: .support
-        case .helpFeedback: .helpFeedback
-        case .community: .community
-        case .legal: .legal
-        default: nil
-        }
-    }
-}
-
-private struct ProfileSettingsCategoryRow: View {
-    let category: ProfileSettingsCategory
-
-    var body: some View {
-        NavigationLink(value: category) {
-            Label {
-                Text(category.title)
-                    .font(.system(.body, design: .rounded, weight: .medium))
-            } icon: {
-                Image(systemName: category.systemImage)
-                    .foregroundStyle(AppColors.calorie)
-                    .frame(width: 24)
+    /// One uppercase word per line at accessibility sizes, so "TYPESAFE" is not hyphenated.
+    @ViewBuilder
+    private func subsectionTitle(_ title: String) -> some View {
+        let words = title.split(separator: " ").map { String($0).uppercased() }
+        if dynamicTypeSize.isAccessibilitySize {
+            // Capped so a long single word ("TYPESAFE") fits beside the icon and info button.
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(words, id: \.self) { word in
+                    Text(word)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
             }
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        } else {
+            Text(words.joined(separator: " "))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .accessibilityIdentifier("settings.category.\(category.rawValue)")
     }
 }
 
@@ -4375,7 +2052,6 @@ struct ProfileView: View {
     private var profileBinding: Binding<UserProfile> {
         Binding(get: { profileStore.profile }, set: { profileStore.profile = $0 })
     }
-    @AppStorage("appearanceMode") private var appearanceMode = "system"
     @AppStorage("heightUnit") private var heightUnitRaw = "ftin"
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
@@ -4400,6 +2076,14 @@ struct ProfileView: View {
     @Binding private var updateState: AppUpdateState
     private let refreshUpdateState: () async -> Void
     private let settingsCategory: ProfileSettingsCategory?
+
+    init(settingsCategory: ProfileSettingsCategory? = nil) {
+        self.init(
+            updateState: .constant(.idle),
+            refreshUpdateState: {},
+            settingsCategory: settingsCategory
+        )
+    }
 
     fileprivate init(
         updateState: Binding<AppUpdateState>,
@@ -4475,6 +2159,10 @@ struct ProfileView: View {
     @State private var selectedSpeechFallbackLanguage: SpeechLanguage = SpeechSettings.selectedLanguage(for: SpeechSettings.selectedFallbackProvider)
     @State private var speechFallbackApiKeyText: String = SpeechSettings.apiKey(for: SpeechSettings.selectedFallbackProvider) ?? ""
     @State private var showSpeechFallbackAPIKey = false
+    @State private var showExerciseLibrary = false
+    @State private var showLegacyLogger = false
+    @State private var restSoundPreview = RestTimerService()
+    @Environment(CloudBackupService.self) private var cloudBackup
 
     private var heightMetric: Bool { heightUnitRaw == "cm" }
     private var weightMetric: Bool { weightUnitRaw == "kg" }
@@ -4541,11 +2229,24 @@ struct ProfileView: View {
                 NavigationStack {
                     settingsHub
                         .navigationDestination(for: ProfileSettingsCategory.self) { category in
-                            if category == .notifications {
+                            switch category {
+                            case .notifications:
                                 NotificationSettingsView()
-                            } else if category == .aiAccess {
-                                HostedAISettingsView()
-                            } else {
+                            case .mealTimes:
+                                MealTimeSettingsView()
+                            case .homeMenu:
+                                AddMenuSettingsView()
+                            case .shortcutsSiri:
+                                ShortcutsAndSiriSettingsView()
+                            case .about:
+                                AboutView()
+                            case .acknowledgements:
+                                AcknowledgementsView()
+                            case .aiAccess:
+                                if JLFeatureFlags.fudHostedAI {
+                                    HostedAISettingsView()
+                                }
+                            default:
                                 ProfileView(
                                     updateState: $updateState,
                                     refreshUpdateState: refreshUpdateState,
@@ -4559,37 +2260,140 @@ struct ProfileView: View {
     }
 
     private var settingsHub: some View {
-        List {
-            Section {
-                ForEach(ProfileSettingsCategory.preferenceCases) { category in
-                    ProfileSettingsCategoryRow(category: category)
-                }
+        MoreHubView(inputs: hubInputs)
+            .sheet(isPresented: $showExerciseLibrary) {
+                WorkoutsView(presentedAsSheet: true, libraryOnly: true)
             }
-            .listRowBackground(AppColors.appCard)
-
-            Section {
-                ForEach(ProfileSettingsCategory.appInfoCases) { category in
-                    ProfileSettingsCategoryRow(category: category)
-                }
+            .sheet(isPresented: $showLegacyLogger) {
+                WorkoutsView(presentedAsSheet: true, forcedMode: .log)
             }
-            .listRowBackground(AppColors.appCard)
+    }
 
-            AboutFooterSection()
+    private var hubInputs: MoreHubInputs {
+        MoreHubInputs(
+            programName: ActiveProgramCache.load()?.name,
+            defaultRestLabel: RestTimerSettings.defaultRestLabel,
+            foodModelName: AIProvider.friendlyModelName(AIProviderSettings.selectedModel),
+            gemmaStatus: gemmaStatusLabel,
+            healthKitEnabled: healthKitEnabled,
+            weightUnitRaw: weightUnitRaw,
+            bridgeConfigured: !NeonBridgeSettings.load().baseURL.isEmpty,
+            iCloudEnabled: cloudBackup.enabled,
+            iCloudLastBackupISO: cloudBackup.lastAt,
+            notificationsMasterEnabled: UserDefaults.standard.bool(forKey: "notificationsEnabled"),
+            enabledReminderCount: enabledReminderCount,
+            appVersion: JLAppVersion.shortAndBuild,
+            now: Date()
+        )
+    }
 
-            Color.clear
-                .frame(height: 72)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+    private var gemmaStatusLabel: String {
+        Gemma4LocalModelManager.shared.settingsSubtitle
+    }
+
+    private var bridgeStatusLabel: String {
+        MoreHubSubtitles.bridgeStatus(configured: !NeonBridgeSettings.load().baseURL.isEmpty)
+    }
+
+    private var profileHubSubtitle: String {
+        let gender = profile.gender.displayName
+        return "\(gender) · \(profile.age) · \(heightDisplay)"
+    }
+
+    private var dailyTargetsSubtitle: String {
+        "\(profile.effectiveCalories.formatted()) kcal · \(profile.effectiveProtein) g P"
+    }
+
+    private var waterFastingSubtitle: String {
+        let water = waterTrackingEnabled ? "Water on" : "Water off"
+        let fasting = fastingTrackingEnabled ? "Fasting on" : "Fasting off"
+        return "\(water) · \(fasting)"
+    }
+
+    private var aiProvidersSubtitle: String {
+        let model = AIProvider.friendlyModelName(AIProviderSettings.selectedModel)
+        return "\(AIProviderSettings.selectedProvider.displayName) · \(model)"
+    }
+
+    private var otherNutrientsSubtitle: String {
+        let count = OptionalNutrient.allCases.filter { OptionalNutrientGoals.current.goal(for: $0) > 0 }.count
+        return "\(count) set"
+    }
+
+    private func autosaveCustomInstructions() {
+        guard customAIInstructions != AIProviderSettings.userContext else { return }
+        AIProviderSettings.userContext = customAIInstructions
+        savedAIInstructions = AIProviderSettings.userContext
+        customAIInstructions = savedAIInstructions
+    }
+
+    private var enabledReminderCount: Int {
+        let keys: [(String, Bool)] = [
+            ("breakfastReminderEnabled", true),
+            ("lunchReminderEnabled", true),
+            ("dinnerReminderEnabled", true),
+            ("streakReminderEnabled", true),
+            ("dailySummaryEnabled", true),
+            ("weightLogReminderEnabled", true),
+            ("bodyFatLogReminderEnabled", false),
+        ]
+        return keys.reduce(into: 0) { count, item in
+            let on = UserDefaults.standard.object(forKey: item.0) == nil
+                ? item.1
+                : UserDefaults.standard.bool(forKey: item.0)
+            if on { count += 1 }
         }
-        .scrollContentBackground(.hidden)
-        .background(AppColors.appBackground)
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     private var settingsList: some View {
             List {
+                if settingsCategory == .training {
+                    TrainingProgramSettingsSection(onExerciseLibrary: { showExerciseLibrary = true })
+
+                    Section {
+                        Stepper(value: Binding(
+                            get: { RestTimerSettings.defaultSeconds },
+                            set: { RestTimerSettings.defaultSeconds = $0 }
+                        ), in: 15...300, step: 15) {
+                            AdaptiveLabelValue {
+                                UnbrokenText("Default Rest")
+                            } value: {
+                                UnbrokenText(RestTimerSettings.defaultRestLabel)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Toggle("10-Second Clack", isOn: Binding(
+                            get: { RestTimerSettings.clackEnabled },
+                            set: { RestTimerSettings.clackEnabled = $0 }
+                        ))
+                        Toggle("Bell at Zero", isOn: Binding(
+                            get: { RestTimerSettings.bellEnabled },
+                            set: { RestTimerSettings.bellEnabled = $0 }
+                        ))
+                        Toggle("Haptic at Zero", isOn: Binding(
+                            get: { RestTimerSettings.hapticEnabled },
+                            set: { RestTimerSettings.hapticEnabled = $0 }
+                        ))
+                        Button("Test Sounds") {
+                            restSoundPreview.testSounds()
+                        }
+                    } header: {
+                        IronSectionTitle(title: "Rest Timer")
+                    } footer: {
+                        Text("Cues play over your music without pausing it. Per-exercise rest still overrides Default Rest.")
+                    }
+                    .listRowBackground(AppColors.appCard)
+
+                    if JLFeatureFlags.legacyWorkoutLogger {
+                        NavigationLink(value: ProfileSettingsCategory.trainingAdvanced) {
+                            SettingsHubRowLabel(title: "Advanced", systemImage: "wrench.and.screwdriver", subtitle: "Legacy Fud logger")
+                        }
+                        .listRowBackground(AppColors.appCard)
+                    }
+                }
+
                 // Section 1: Personal Info
-                if settingsCategory == .personalInfo {
+                if settingsCategory == .profile {
                 Section {
                     Picker(selection: profileBinding.gender) {
                         Text("Male").tag(Gender.male)
@@ -4627,20 +2431,6 @@ struct ProfileView: View {
                         activeSheet = .editBodyFat
                     }
 
-                    // Only surface the goal row to users who have a current
-                    // body-fat value — feature was scoped to "skippable, no
-                    // math impact, only visible if the user opted in to the
-                    // body-fat track in onboarding (or set one later here)."
-                    if profile.bodyFatPercentage != nil {
-                        ProfileInfoRow(
-                            icon: "target",
-                            label: "Goal Body Fat",
-                            value: profile.goalBodyFatPercentage != nil ? "\(Int(profile.goalBodyFatPercentage! * 100))%" : "Not set"
-                        ) {
-                            activeSheet = .editGoalBodyFat
-                        }
-                    }
-
                     // Optional tape-measure circumferences. Extra signal for the AI goal calc +
                     // Coach (waist-to-hip, waist-to-height, Navy body-fat %, frame). Never edits BMR.
                     NavigationLink {
@@ -4667,7 +2457,7 @@ struct ProfileView: View {
                     } label: {
                         Label {
                             HStack {
-                                Text("Allergen sensitivities")
+                                Text("Allergen Sensitivities")
                                 Spacer()
                                 Text(allergenSummary.isEmpty ? "Not set" : allergenSummary)
                                     .foregroundStyle(.secondary)
@@ -4684,7 +2474,55 @@ struct ProfileView: View {
 
                 // Section 2: Goal plan and automation. Daily nutrition targets live in a
                 // separate card below so this section stays easy to scan.
-                if settingsCategory == .goalsNutrition {
+                if settingsCategory == .bodyHealth {
+                Section {
+                    NavigationLink(value: ProfileSettingsCategory.profile) {
+                        SettingsHubRowLabel(
+                            title: "Profile",
+                            systemImage: "person.crop.circle",
+                            subtitle: profileHubSubtitle
+                        )
+                    }
+                } header: {
+                    IronSectionTitle(title: "You")
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Weight")
+                            .avoidsMidWordBreak()
+                        Picker("Weight", selection: $weightUnitRaw) {
+                            Text("lb").tag("lbs")
+                            Text("kg").tag("kg")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                    .accessibilityElement(children: .contain)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Height & Length")
+                            .avoidsMidWordBreak()
+                        Picker("Height & Length", selection: $heightUnitRaw) {
+                            Text("ft-in").tag("ftin")
+                            Text("cm").tag("cm")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                    .accessibilityElement(children: .contain)
+                    Picker(selection: $weekStartsOnMonday) {
+                        Text("Sunday").tag(false)
+                        Text("Monday").tag(true)
+                    } label: {
+                        Text("Week Starts On")
+                    }
+                    .pickerStyle(.menu)
+                } header: {
+                    IronSectionTitle(title: "Units")
+                }
+                .listRowBackground(AppColors.appCard)
+
                 Section {
                     Picker(selection: profileBinding.goal) {
                         ForEach(WeightGoal.allCases, id: \.self) { goal in
@@ -4692,7 +2530,7 @@ struct ProfileView: View {
                         }
                     } label: {
                         Label {
-                            Text("Weight Goal")
+                            Text("Goal")
                         } icon: {
                             Image(systemName: profile.goal.icon)
                                 .foregroundStyle(AppColors.calorie)
@@ -4772,6 +2610,92 @@ struct ProfileView: View {
                         }
                     }
 
+                    if profile.bodyFatPercentage != nil {
+                        ProfileInfoRow(
+                            icon: "target",
+                            label: "Goal Body Fat",
+                            value: profile.goalBodyFatPercentage != nil ? "\(Int(profile.goalBodyFatPercentage! * 100))%" : "Not set"
+                        ) {
+                            activeSheet = .editGoalBodyFat
+                        }
+                    }
+                } header: {
+                    IronSectionTitle(title: "Goal")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .dailyTargets {
+                Section {
+                    lockableGoalRow(
+                        icon: "flame",
+                        label: "Calories",
+                        valueText: "\(profile.effectiveCalories.formatted()) kcal",
+                        macro: nil,
+                        sheet: .editCalories
+                    )
+
+                    lockableGoalRow(icon: "p.circle", label: "Protein", valueText: "\(profile.effectiveProtein)g", macro: .protein, sheet: .editProtein)
+                    lockableGoalRow(icon: "c.circle", label: "Carbs", valueText: "\(profile.effectiveCarbs)g", macro: .carbs, sheet: .editCarbs)
+                    lockableGoalRow(icon: "f.circle", label: "Fat", valueText: "\(profile.effectiveFat)g", macro: .fat, sheet: .editFat)
+
+                    NavigationLink {
+                        OptionalNutrientGoalsSettingsView(profile: profile)
+                    } label: {
+                        Label {
+                            HStack {
+                                Text("Other Nutrients")
+                                Spacer()
+                                Text(otherNutrientsSubtitle)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "list.bullet.clipboard")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    }
+
+                    Button {
+                        recalculateGoalsNow()
+                    } label: {
+                        Label {
+                            HStack {
+                                Text("Recalculate Goals")
+                                Spacer()
+                                if isRecalculatingGoals {
+                                    ProgressView()
+                                } else if goalsNeedRecalc {
+                                    // Soft nudge: a goal input changed since the last recalc. A CTA
+                                    // on the row's right edge, not a wrapped line below it.
+                                    Text("Tap to update")
+                                        .font(.caption)
+                                        .foregroundStyle(AppColors.calorie)
+                                }
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    }
+                    .tint(.primary)
+                    .disabled(isRecalculatingGoals)
+
+                    Button {
+                        showCalculationMethods = true
+                    } label: {
+                        Label {
+                            Text("How Targets Are Calculated")
+                        } icon: {
+                            Image(systemName: "book")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    }
+                    .tint(.primary)
+                } header: {
+                    IronSectionTitle(title: "Targets")
+                }
+                .listRowBackground(AppColors.appCard)
+                Section {
                     HStack {
                         Label {
                             Text("Adaptive Goals")
@@ -4834,97 +2758,20 @@ struct ProfileView: View {
                             }
                     }
 
-                }
-                .listRowBackground(AppColors.appCard)
-
-                Section("Daily Targets") {
-                    lockableGoalRow(
-                        icon: "flame",
-                        label: "Calories",
-                        valueText: "\(profile.effectiveCalories.formatted()) kcal",
-                        macro: nil,
-                        sheet: .editCalories
-                    )
-
-                    lockableGoalRow(icon: "p.circle", label: "Protein", valueText: "\(profile.effectiveProtein)g", macro: .protein, sheet: .editProtein)
-                    lockableGoalRow(icon: "c.circle", label: "Carbs", valueText: "\(profile.effectiveCarbs)g", macro: .carbs, sheet: .editCarbs)
-                    lockableGoalRow(icon: "f.circle", label: "Fat", valueText: "\(profile.effectiveFat)g", macro: .fat, sheet: .editFat)
-
-                    NavigationLink {
-                        OptionalNutrientGoalsSettingsView(profile: profile)
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Other Nutrients")
-                                Spacer()
-                                Text("Sugar, Fiber, Sodium")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "list.bullet.clipboard")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-
-                    Button {
-                        recalculateGoalsNow()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Recalculate Goals")
-                                Spacer()
-                                if isRecalculatingGoals {
-                                    ProgressView()
-                                } else if goalsNeedRecalc {
-                                    // Soft nudge: a goal input changed since the last recalc. A CTA
-                                    // on the row's right edge, not a wrapped line below it.
-                                    Text("Tap to update")
-                                        .font(.caption)
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-                    .tint(.primary)
-                    .disabled(isRecalculatingGoals)
-
-                    Button {
-                        showCalculationMethods = true
-                    } label: {
-                        Label {
-                            Text("Calculation Methods")
-                        } icon: {
-                            Image(systemName: "book")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-                    .tint(.primary)
+                } header: {
+                    IronSectionTitle(title: "Adaptive")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
                 // Section 3: Display and input preferences. Tracking features are grouped
                 // separately below so the card does not read as one long control wall.
-                if settingsCategory == .appPreferences {
+                if settingsCategory == .foodAI {
                 Section {
-                    Picker(selection: $appearanceMode) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    } label: {
-                        Label {
-                            Text("Appearance")
-                        } icon: {
-                            Image(systemName: "circle.lefthalf.filled")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.dailyTargets) {
+                        SettingsHubRowLabel(title: "Daily Targets", systemImage: "target", subtitle: dailyTargetsSubtitle)
                     }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
-
+                    if JLFeatureFlags.themeColorPicker {
                     Picker(selection: $appThemeColorRaw) {
                         ForEach(AppThemeColor.allCases) { themeColor in
                             Label {
@@ -4944,11 +2791,13 @@ struct ProfileView: View {
                     }
                     .pickerStyle(.menu)
                     .tint(.secondary)
+                    }
 
-                    HStack {
+                    AdaptiveLabelValue(alignment: .center) {
                         Label {
                             HStack(spacing: 6) {
                                 Text("Default to Grams")
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Button {
                                     showDefaultGramsInfo = true
                                 } label: {
@@ -4962,7 +2811,7 @@ struct ProfileView: View {
                             Image(systemName: "scalemass")
                                 .foregroundStyle(AppColors.calorie)
                         }
-                        Spacer()
+                    } value: {
                         Toggle("Default to Grams", isOn: $preferGramsByDefault)
                             .labelsHidden()
                             .tint(AppColors.calorie)
@@ -4971,13 +2820,13 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Label {
-                                Text("Save to Photos")
+                                Text("Save Meal Photos")
                             } icon: {
                                 Image(systemName: "square.and.arrow.down")
                                     .foregroundStyle(AppColors.calorie)
                             }
                             Spacer()
-                            Toggle("Save to Photos", isOn: $saveMealPhotosToGallery)
+                            Toggle("Save Meal Photos", isOn: $saveMealPhotosToGallery)
                                 .labelsHidden()
                                 .tint(AppColors.calorie)
                         }
@@ -4987,76 +2836,42 @@ struct ProfileView: View {
                             .padding(.leading, 32)
                     }
 
-                    Picker(selection: $weekStartsOnMonday) {
-                        Text("Sunday").tag(false)
-                        Text("Monday").tag(true)
-                    } label: {
-                        Label {
-                            Text("Week Starts On")
-                        } icon: {
-                            Image(systemName: "calendar")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.mealTimes) {
+                        SettingsHubRowLabel(title: "Meal Times", systemImage: "clock", subtitle: "Breakfast, lunch, dinner")
                     }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
-
-                    NavigationLink {
-                        QuickActionsSettingsView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Quick Actions")
-                                Spacer()
-                                Text("Customize")
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        } icon: {
-                            Image(systemName: "bolt.fill")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.waterFasting) {
+                        SettingsHubRowLabel(title: "Water & Fasting", systemImage: "drop", subtitle: waterFastingSubtitle)
                     }
-
-                    NavigationLink {
-                        AddMenuSettingsView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("+ Menu")
-                                Spacer()
-                                Text("Customize")
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        } icon: {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(AppColors.calorie)
-                        }
+                    NavigationLink(value: ProfileSettingsCategory.homeMenu) {
+                        SettingsHubRowLabel(title: "Home + Menu", systemImage: "plus.circle", subtitle: "Home + button")
                     }
+                    NavigationLink(value: ProfileSettingsCategory.shortcutsSiri) {
+                        SettingsHubRowLabel(title: "Shortcuts & Siri", systemImage: "bolt.fill", subtitle: "App icon and Siri")
+                    }
+                } header: {
+                    IronSectionTitle(title: "Food Logging")
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
+                    NavigationLink(value: ProfileSettingsCategory.aiProviders) {
+                        SettingsHubRowLabel(title: "AI Providers", systemImage: "sparkles", subtitle: aiProvidersSubtitle)
+                    }
+                    OnDeviceModelHubRow()
+                    NavigationLink(value: ProfileSettingsCategory.onDeviceModels) {
+                        SettingsHubRowLabel(title: "On-Device Models", systemImage: "iphone.gen3", subtitle: gemmaStatusLabel)
+                    }
+                    NavigationLink(value: ProfileSettingsCategory.advancedAI) {
+                        SettingsHubRowLabel(title: "Advanced AI", systemImage: "slider.horizontal.3", subtitle: "Fallbacks, timeout, instructions")
+                    }
+                } header: {
+                    IronSectionTitle(title: "AI")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .trackingReminders {
+                if settingsCategory == .waterFasting {
                 Section {
-                    NavigationLink {
-                        MealTimeSettingsView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Meal Times")
-                                Spacer()
-                                Text("Customize")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "clock")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-
                     HStack {
                         Label {
                             Text("Water Tracking")
@@ -5146,14 +2961,14 @@ struct ProfileView: View {
                         } label: {
                             HStack {
                                 Label {
-                                    Text("Default Fasting Goal")
+                                    UnbrokenText("Default Fasting Goal")
                                 } icon: {
                                     Image(systemName: "target")
                                         .foregroundStyle(AppColors.calorie)
                                 }
                                 .foregroundStyle(.primary)
-                                Spacer()
-                                Text(FastingDurationFormatter.goal(minutes: fastingDefaultGoalMinutes))
+                                Spacer(minLength: 8)
+                                UnbrokenText(FastingDurationFormatter.goal(minutes: fastingDefaultGoalMinutes))
                                     .foregroundStyle(.secondary)
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
@@ -5163,14 +2978,17 @@ struct ProfileView: View {
                         .buttonStyle(.plain)
                     }
 
+                } footer: {
+                    Text("Water and fasting reminders: Notifications")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .aiProviders {
+                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels {
                 Section {
+                    if settingsCategory == .aiProviders {
                         AISettingsSubsectionHeader(
-                            title: "Primary AI",
+                            title: "Photo & Text",
                             systemImage: "sparkles",
                             infoTopic: .primaryAI
                         )
@@ -5202,107 +3020,31 @@ struct ProfileView: View {
                             customBaseURL = AIProviderSettings.customBaseURL(for: newProvider) ?? ""
                         }
 
-                        if selectedProvider.supportsCustomModelName {
-                            // Free-form TextField for any model ID, with optional preset suggestions menu
-                            // (e.g., OpenRouter has presets but lets user type any of openrouter.ai/models).
-                            HStack {
-                                Label {
-                                    Text("Model")
-                                } icon: {
-                                    Image(systemName: "brain")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                TextField(
-                                    primaryModelPlaceholder,
-                                    text: $selectedModel
-                                )
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: selectedModel) { _, newModel in
-                                        AIProviderSettings.selectedModel = newModel
-                                    }
-                                if !selectedProvider.models.isEmpty {
-                                    Menu {
-                                        ForEach(selectedProvider.models, id: \.self) { model in
-                                            Button(model) {
-                                                selectedModel = model
-                                                AIProviderSettings.selectedModel = model
-                                            }
-                                        }
-                                    } label: {
-                                        Image(systemName: "list.bullet.circle")
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                }
-                            }
-                        } else {
-                            Picker(selection: $selectedModel) {
-                                ForEach(selectedProvider.models, id: \.self) { model in
-                                    Text(model).tag(model)
-                                }
-                            } label: {
-                                Label {
-                                    Text("Model")
-                                } icon: {
-                                    Image(systemName: "brain")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(.secondary)
-                            .onAppear {
-                                if !selectedProvider.models.contains(selectedModel) {
-                                    selectedModel = selectedProvider.defaultModel
-                                    AIProviderSettings.selectedModel = selectedModel
-                                }
-                            }
-                            .onChange(of: selectedModel) { _, newModel in
-                                AIProviderSettings.selectedModel = newModel
-                            }
+                        AIModelPickerRow(
+                            provider: selectedProvider,
+                            presets: selectedProvider.models,
+                            model: $selectedModel,
+                            baseURL: resolvedPrimaryBaseURL,
+                            apiKey: apiKeyText,
+                            visionOnly: true
+                        )
+                        .onChange(of: selectedModel) { _, newModel in
+                            AIProviderSettings.selectedModel = newModel
                         }
 
                         if selectedProvider.requiresAPIKey {
-                            HStack {
-                                Label {
-                                    Text("API Key")
-                                } icon: {
-                                    Image(systemName: "key.fill")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                Group {
-                                    if showAPIKey {
-                                        TextField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
-                                    } else {
-                                        SecureField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
-                                    }
-                                }
-                                .textFieldStyle(.plain)
-                                .multilineTextAlignment(.trailing)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .onChange(of: apiKeyText) { _, newValue in
-                                    let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
-                                }
-                                Button {
-                                    showAPIKey.toggle()
-                                } label: {
-                                    Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
-                                        .foregroundStyle(.secondary)
-                                        .font(.system(size: 14))
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            AIProviderAPIKeyRow(
+                                provider: selectedProvider,
+                                baseURL: resolvedPrimaryBaseURL,
+                                apiKeyText: $apiKeyText,
+                                showAPIKey: $showAPIKey
+                            )
                         }
 
                         if selectedProvider == .ollama || selectedProvider.requiresCustomEndpoint {
                             HStack {
                                 Label {
-                                    Text(selectedProvider.requiresCustomEndpoint ? "Base URL" : "Server URL")
+                                    Text("Server URL")
                                 } icon: {
                                     Image(systemName: "link")
                                         .foregroundStyle(AppColors.calorie)
@@ -5324,64 +3066,21 @@ struct ProfileView: View {
                                         AIProviderSettings.setCustomBaseURL(t.isEmpty ? nil : t, for: selectedProvider)
                                         reconcileImageFallbackModelIfDuplicate()
                                         reconcileTextFallbackModelIfDuplicate()
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedProvider,
+                                            baseURL: t.isEmpty ? selectedProvider.baseURL : t,
+                                            apiKey: apiKeyText
+                                        )
                                     }
                             }
-
-                            HStack {
-                                Label {
-                                    Text("Request Timeout")
-                                } icon: {
-                                    Image(systemName: "timer")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                requestTimeoutInput
-                                Text("sec")
-                                    .foregroundStyle(.secondary)
-                            }
                         }
 
-                        if selectedProvider == .openrouter
-                            || (separateTextProviderEnabled && selectedTextProvider == .openrouter)
-                            || (fallbackEnabled && selectedFallbackProvider == .openrouter)
-                            || (textFallbackEnabled && selectedTextFallbackProvider == .openrouter) {
-                            Picker("OpenRouter Reasoning Effort", selection: $openRouterReasoningEffort) {
-                                ForEach(OpenRouterReasoningEffort.allCases) { effort in
-                                    Text(effort.title).tag(effort)
-                                }
-                            }
-                            Text("Applies to all OpenRouter requests. Supported levels vary by model. Higher effort may take longer and cost more. Auto keeps the model default; incomplete responses retry with Low.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Handles photos and text. Separate text AI and fallbacks: Advanced AI")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
 
-                        // Only OpenAI-compatible + Anthropic send a token cap; Gemini is
-                        // left uncapped, so hide this for Gemini.
-                        if selectedProvider.apiFormat != .gemini {
-                            HStack {
-                                Label {
-                                    Text("Max Response Tokens")
-                                } icon: {
-                                    Image(systemName: "text.append")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                                Spacer()
-                                maxResponseTokensInput
-                            }
-                        }
-
-                        Label(
-                            LocalModelStrings.text(
-                                "settings.onDeviceModel",
-                                defaultValue: "On-Device Model"
-                            ),
-                            systemImage: "iphone.gen3.radiowaves.left.and.right"
-                        )
-                            .font(.system(.subheadline, design: .rounded, weight: .bold))
-                            .foregroundStyle(AppColors.calorie)
-                            .textCase(.uppercase)
-                            .accessibilityAddTraits(.isHeader)
-
+                    if settingsCategory == .onDeviceModels {
                         Gemma4ModelSettingsView {
                             selectedProvider = AIProviderSettings.selectedProvider
                             selectedModel = AIProviderSettings.selectedModel
@@ -5396,13 +3095,27 @@ struct ProfileView: View {
                             textFallbackEnabled = AIProviderSettings.textFallbackEnabled
                             localModelAvailabilityRevision += 1
                         }
+                    }
 
-                        AISettingsSubsectionHeader(
-                            title: "Text AI",
-                            systemImage: "text.bubble.fill",
-                            infoTopic: .textAI
-                        )
+                }
+                .listRowBackground(AppColors.appCard)
+                }
 
+                if settingsCategory == .aiProviders {
+                AIDiagnosticsSection()
+                }
+
+                if settingsCategory == .aiProviders {
+                Section {
+                    TypeSafeEstimateCheckSection()
+                } footer: {
+                    TypeSafeEstimateCheckFooter()
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .advancedAI {
+                Section {
                     Toggle(isOn: $separateTextProviderEnabled) {
                         Label {
                             Text("Use Separate Text Provider")
@@ -5453,54 +3166,23 @@ struct ProfileView: View {
                             }
 
                             appleIntelligenceAvailabilityRow
-                        } else if selectedTextProvider.supportsCustomModelName {
-                            HStack {
-                                Label("Model", systemImage: "brain")
-                                Spacer()
-                                TextField(textModelPlaceholder, text: $selectedTextModel)
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: selectedTextModel) { _, newModel in
-                                        AIProviderSettings.selectedTextModel = newModel
-                                    }
-                                if !selectedTextProvider.textModels.isEmpty {
-                                    Menu {
-                                        ForEach(selectedTextProvider.textModels, id: \.self) { model in
-                                            Button(model) {
-                                                selectedTextModel = model
-                                                AIProviderSettings.selectedTextModel = model
-                                            }
-                                        }
-                                    } label: {
-                                        Image(systemName: "list.bullet.circle")
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                }
-                            }
                         } else {
-                            Picker(selection: $selectedTextModel) {
-                                ForEach(selectedTextProvider.textModels, id: \.self) { model in
-                                    Text(model).tag(model)
-                                }
-                            } label: {
-                                Label("Model", systemImage: "brain")
-                            }
-                            .pickerStyle(.menu)
-                            .tint(.secondary)
-                            .onAppear {
-                                if !selectedTextProvider.textModels.contains(selectedTextModel) {
-                                    selectedTextModel = selectedTextProvider.defaultTextModel
-                                    AIProviderSettings.selectedTextModel = selectedTextModel
-                                }
-                            }
+                            AIModelPickerRow(
+                                provider: selectedTextProvider,
+                                presets: selectedTextProvider.textModels,
+                                model: $selectedTextModel,
+                                baseURL: textBaseURL.isEmpty ? selectedTextProvider.baseURL : textBaseURL,
+                                apiKey: textApiKeyText,
+                                visionOnly: false
+                            )
                             .onChange(of: selectedTextModel) { _, newModel in
                                 AIProviderSettings.selectedTextModel = newModel
                             }
                         }
 
-                        if selectedTextProvider.requiresAPIKey {
+                        if selectedTextProvider.requiresAPIKey && selectedTextProvider == selectedProvider {
+                            LabeledContent("API Key", value: "Uses key from AI Providers")
+                        } else if selectedTextProvider.requiresAPIKey {
                             HStack {
                                 Label("API Key", systemImage: "key.fill")
                                 Spacer()
@@ -5518,6 +3200,11 @@ struct ProfileView: View {
                                 .onChange(of: textApiKeyText) { _, newValue in
                                     let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                     AIProviderSettings.setAPIKey(trimmed.isEmpty ? nil : trimmed, for: selectedTextProvider)
+                                    ModelCatalogService.shared.scheduleRefresh(
+                                        provider: selectedTextProvider,
+                                        baseURL: textBaseURL.isEmpty ? selectedTextProvider.baseURL : textBaseURL,
+                                        apiKey: trimmed
+                                    )
                                 }
                                 Button {
                                     showTextAPIKey.toggle()
@@ -5531,10 +3218,7 @@ struct ProfileView: View {
 
                         if selectedTextProvider == .ollama || selectedTextProvider.requiresCustomEndpoint {
                             HStack {
-                                Label(
-                                    selectedTextProvider.requiresCustomEndpoint ? "Base URL" : "Server URL",
-                                    systemImage: "link"
-                                )
+                                Label("Server URL", systemImage: "link")
                                 Spacer()
                                 TextField(
                                     selectedTextProvider.requiresCustomEndpoint
@@ -5551,36 +3235,25 @@ struct ProfileView: View {
                                     let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                     AIProviderSettings.setCustomBaseURL(trimmed.isEmpty ? nil : trimmed, for: selectedTextProvider)
                                     reconcileTextFallbackModelIfDuplicate()
-                                }
-                            }
-
-                            if !selectedProvider.usesConfigurableRequestTimeout {
-                                HStack {
-                                    Label("Request Timeout", systemImage: "timer")
-                                    Spacer()
-                                    requestTimeoutInput
-                                    Text("sec").foregroundStyle(.secondary)
+                                    ModelCatalogService.shared.scheduleRefresh(
+                                        provider: selectedTextProvider,
+                                        baseURL: trimmed.isEmpty ? selectedTextProvider.baseURL : trimmed,
+                                        apiKey: textApiKeyText
+                                    )
                                 }
                             }
                         }
                     }
 
-                        AISettingsSubsectionHeader(
-                            title: "Text AI Fallback",
-                            systemImage: "text.bubble.fill",
-                            infoTopic: .textFallback
-                        )
-                        textFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Text AI", infoTopic: .textAI)
+                }
+                .listRowBackground(AppColors.appCard)
 
-                        AISettingsSubsectionHeader(
-                            title: "Image AI Fallback",
-                            systemImage: "photo.badge.arrow.down",
-                            infoTopic: .imageFallback
-                        )
-
+                Section {
                         Toggle(isOn: $fallbackEnabled) {
                             Label {
-                                Text("Enable Image Fallback")
+                                Text("Photo Fallback")
                             } icon: {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .foregroundStyle(AppColors.calorie)
@@ -5620,80 +3293,22 @@ struct ProfileView: View {
                                 selectFallbackProvider(newProvider)
                             }
 
-                            if selectedFallbackProvider.supportsCustomModelName {
-                                // Free-form TextField + preset Menu, mirrors primary AI Provider section.
-                                // When fallback provider == primary, the preset menu hides the primary's model.
-                                HStack {
-                                    Label {
-                                        Text("Model")
-                                    } icon: {
-                                        Image(systemName: "brain")
-                                            .foregroundStyle(AppColors.calorie)
-                                    }
-                                    Spacer()
-                                    TextField(
-                                        fallbackModelPlaceholder,
-                                        text: $selectedFallbackModel
-                                    )
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: selectedFallbackModel) { _, newModel in
-                                        AIProviderSettings.selectedFallbackModel = newModel
-                                    }
-                                    if !fallbackModelPresetOptions.isEmpty {
-                                        Menu {
-                                            ForEach(fallbackModelPresetOptions, id: \.self) { model in
-                                                Button(model) {
-                                                    selectedFallbackModel = model
-                                                    AIProviderSettings.selectedFallbackModel = model
-                                                }
-                                            }
-                                        } label: {
-                                            Image(systemName: "list.bullet.circle")
-                                                .foregroundStyle(AppColors.calorie)
-                                        }
-                                    }
-                                }
-                            } else {
-                                // Same provider + same server → exclude the primary's model so
-                                // user can't accidentally pick an identical config.
-                                let modelOptions: [String] = {
-                                    if fallbackSharesPrimaryServer {
-                                        return selectedFallbackProvider.models.filter { $0 != selectedModel }
-                                    }
-                                    return selectedFallbackProvider.models
-                                }()
-                                if !modelOptions.isEmpty {
-                                    Picker(selection: $selectedFallbackModel) {
-                                        ForEach(modelOptions, id: \.self) { model in
-                                            Text(model).tag(model)
-                                        }
-                                    } label: {
-                                        Label {
-                                            Text("Model")
-                                        } icon: {
-                                            Image(systemName: "brain")
-                                                .foregroundStyle(AppColors.calorie)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .tint(.secondary)
-                                    .onChange(of: selectedFallbackModel) { _, newModel in
-                                        AIProviderSettings.selectedFallbackModel = newModel
-                                    }
-                                    .onAppear {
-                                        if !modelOptions.contains(selectedFallbackModel),
-                                           let first = modelOptions.first {
-                                            selectedFallbackModel = first
-                                            AIProviderSettings.selectedFallbackModel = first
-                                        }
-                                    }
-                                }
+                            AIModelPickerRow(
+                                provider: selectedFallbackProvider,
+                                presets: selectedFallbackProvider.models,
+                                model: $selectedFallbackModel,
+                                baseURL: resolvedFallbackBaseURL,
+                                apiKey: fallbackApiKeyText,
+                                visionOnly: true,
+                                excludedModelIDs: fallbackSharesPrimaryServer ? [selectedModel] : []
+                            )
+                            .onChange(of: selectedFallbackModel) { _, newModel in
+                                AIProviderSettings.selectedFallbackModel = newModel
                             }
 
-                            if selectedFallbackProvider.requiresAPIKey {
+                            if selectedFallbackProvider.requiresAPIKey && selectedFallbackProvider == selectedProvider {
+                                LabeledContent("API Key", value: "Uses key from AI Providers")
+                            } else if selectedFallbackProvider.requiresAPIKey {
                                 HStack {
                                     Label {
                                         Text("API Key")
@@ -5714,7 +3329,13 @@ struct ProfileView: View {
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
                                     .onChange(of: fallbackApiKeyText) { _, newValue in
-                                        AIProviderSettings.setAPIKey(newValue.isEmpty ? nil : newValue, for: selectedFallbackProvider)
+                                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        AIProviderSettings.setAPIKey(trimmed.isEmpty ? nil : trimmed, for: selectedFallbackProvider)
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedFallbackProvider,
+                                            baseURL: resolvedFallbackBaseURL,
+                                            apiKey: trimmed
+                                        )
                                     }
                                     Button {
                                         showFallbackAPIKey.toggle()
@@ -5730,7 +3351,7 @@ struct ProfileView: View {
                             if selectedFallbackProvider == .ollama || selectedFallbackProvider.requiresCustomEndpoint {
                                 HStack {
                                     Label {
-                                        Text(selectedFallbackProvider.requiresCustomEndpoint ? "Base URL" : "Server URL")
+                                        Text("Server URL")
                                     } icon: {
                                         Image(systemName: "link")
                                             .foregroundStyle(AppColors.calorie)
@@ -5751,33 +3372,109 @@ struct ProfileView: View {
                                         let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                         AIProviderSettings.setFallbackCustomBaseURL(t.isEmpty ? nil : t, for: selectedFallbackProvider)
                                         reconcileImageFallbackModelIfDuplicate()
-                                    }
-                                }
-
-                                if !selectedProvider.usesConfigurableRequestTimeout {
-                                    HStack {
-                                        Label {
-                                            Text("Request Timeout")
-                                        } icon: {
-                                            Image(systemName: "timer")
-                                                .foregroundStyle(AppColors.calorie)
-                                        }
-                                        Spacer()
-                                        requestTimeoutInput
-                                        Text("sec")
-                                            .foregroundStyle(.secondary)
+                                        ModelCatalogService.shared.scheduleRefresh(
+                                            provider: selectedFallbackProvider,
+                                            baseURL: t.isEmpty ? selectedFallbackProvider.baseURL : t,
+                                            apiKey: fallbackApiKeyText
+                                        )
                                     }
                                 }
                             }
                         }
+                } header: {
+                    IronInfoSectionHeader(title: "Photo Fallback", infoTopic: .imageFallback)
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                        textFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Text Fallback", infoTopic: .textFallback)
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .speechToText {
+                if settingsCategory == .onDeviceModels {
                 Section {
+                    appleIntelligenceAvailabilityRow
+                    Button("Use for text") {
+                        separateTextProviderEnabled = true
+                        AIProviderSettings.separateTextProviderEnabled = true
+                        selectedTextProvider = .appleIntelligence
+                        AIProviderSettings.selectedTextProvider = .appleIntelligence
+                        selectedTextModel = AIProvider.appleIntelligence.defaultTextModel
+                        AIProviderSettings.selectedTextModel = selectedTextModel
+                    }
+                    .disabled(!appleIntelligenceIsAvailable)
+                    .opacity(appleIntelligenceIsAvailable ? 1 : 0.45)
+                } header: {
+                    IronSectionTitle(title: "Apple Intelligence")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .advancedAI {
+                Section {
+                    speechFallbackSettingsRows
+                } header: {
+                    IronInfoSectionHeader(title: "Voice Fallback", infoTopic: .speechFallback)
+                }
+                .listRowBackground(AppColors.appCard)
+
+                Section {
+                    AdaptiveLabelValue(alignment: .center) {
+                        Label {
+                            Text("Request Timeout")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
+                        } icon: {
+                            Image(systemName: "timer")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    } value: {
+                        HStack(spacing: 6) {
+                            requestTimeoutInput
+                            Text("sec")
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
+                    AdaptiveLabelValue(alignment: .center) {
+                        Label {
+                            Text("Max Response Tokens")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
+                        } icon: {
+                            Image(systemName: "text.append")
+                                .foregroundStyle(AppColors.calorie)
+                        }
+                    } value: {
+                        maxResponseTokensInput
+                    }
+                    if selectedProvider == .openrouter
+                        || (separateTextProviderEnabled && selectedTextProvider == .openrouter)
+                        || (fallbackEnabled && selectedFallbackProvider == .openrouter)
+                        || (textFallbackEnabled && selectedTextFallbackProvider == .openrouter) {
+                        Picker("OpenRouter Reasoning Effort", selection: $openRouterReasoningEffort) {
+                            ForEach(OpenRouterReasoningEffort.allCases) { effort in
+                                Text(effort.title).tag(effort)
+                            }
+                        }
+                        Text("Applies to all OpenRouter requests. Supported levels vary by model. Higher effort may take longer and cost more. Auto keeps the model default; incomplete responses retry with Low.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    IronSectionTitle(title: "Requests")
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .aiProviders || settingsCategory == .onDeviceModels {
+                Section {
+                    if settingsCategory == .aiProviders {
                         AISettingsSubsectionHeader(
-                            title: "Speech-to-Text",
+                            title: "Voice Input",
                             systemImage: "waveform",
                             infoTopic: .speechToText
                         )
@@ -5793,7 +3490,7 @@ struct ProfileView: View {
                             }
                         } label: {
                             Label {
-                                Text("Provider")
+                                Text("Voice Provider")
                             } icon: {
                                 SpeechProviderBrandIcon(provider: selectedSpeechProvider)
                             }
@@ -5811,7 +3508,9 @@ struct ProfileView: View {
                                 selectSpeechFallbackProvider(alternate)
                             }
                         }
+                    }
 
+                    if settingsCategory == .onDeviceModels {
                         WhisperBaseModelSettingsView(selectedProvider: $selectedSpeechProvider) {
                             selectedSpeechProvider = SpeechSettings.selectedProvider
                             selectedSpeechFallbackProvider = SpeechSettings.selectedFallbackProvider
@@ -5820,7 +3519,9 @@ struct ProfileView: View {
                             selectedSpeechFallbackLanguage = SpeechSettings.selectedLanguage(for: selectedSpeechFallbackProvider)
                             localModelAvailabilityRevision += 1
                         }
+                    }
 
+                    if settingsCategory == .aiProviders {
                         Picker(selection: $selectedSpeechLanguage) {
                             ForEach(SpeechLanguage.allCases) { language in
                                 Text(language.displayName).tag(language)
@@ -5872,14 +3573,14 @@ struct ProfileView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                    }
 
-                        speechFallbackSettingsRows
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
                 // Custom AI Instructions (User Context) — prepended to every AI request when non-empty
-                if settingsCategory == .aiProviders {
+                if settingsCategory == .advancedAI {
                 Section {
                     TextField(
                         "I live in Germany, assume European portion sizes. I'm on a bodybuilding cut.",
@@ -5889,38 +3590,40 @@ struct ProfileView: View {
                     .lineLimit(3...6)
                     .autocorrectionDisabled(false)
                     .focused($customInstructionsFocused)
-
-                    Button {
-                        AIProviderSettings.userContext = customAIInstructions
-                        let canonical = AIProviderSettings.userContext
-                        customAIInstructions = canonical
-                        savedAIInstructions = canonical
-                        customInstructionsFocused = false
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Label("Save", systemImage: "checkmark.circle.fill")
-                                .font(.system(.body, design: .rounded, weight: .semibold))
-                                .foregroundStyle(customAIInstructions == savedAIInstructions ? .secondary : AppColors.calorie)
-                            Spacer()
-                        }
+                    .onSubmit { autosaveCustomInstructions() }
+                    .onChange(of: customInstructionsFocused) { _, focused in
+                        if !focused { autosaveCustomInstructions() }
                     }
-                    .disabled(customAIInstructions == savedAIInstructions)
                 } header: {
-                    Text("Custom AI Instructions")
+                    IronSectionTitle(title: "Instructions")
                 } footer: {
                     Text("Optional context sent with every AI request — region, diet, athletic goals, anything you'd otherwise repeat each time. Leave empty to disable.")
                 }
                 .listRowBackground(AppColors.appCard)
+                .onDisappear { autosaveCustomInstructions() }
                 }
 
-                if settingsCategory == .workout {
+                if settingsCategory == .advancedAI,
+                   JevRouterSettings.visualPreview || (TypeSafeSettings.hasCredentials && (JevRouterSettings.enabled || TypeSafeSettings.enabled)) {
+                Section {
+                    JevRouterAdvancedSection()
+                } header: {
+                    IronInfoSectionHeader(title: "Jev Router", infoTopic: .jevRouter)
+                }
+                .listRowBackground(AppColors.appCard)
+                }
+
+                if settingsCategory == .trainingAdvanced, JLFeatureFlags.legacyWorkoutLogger {
                 WorkoutLoggingSettingsSection()
+                Section {
+                    Button("Open Legacy Logger") { showLegacyLogger = true }
+                }
+                .listRowBackground(AppColors.appCard)
                 }
 
                 // Section 5: Health integration. Destructive and transfer actions are kept
                 // in their own card below so they cannot be mistaken for sync preferences.
-                if settingsCategory == .healthData {
+                if settingsCategory == .bodyHealth {
                 Section {
                     // Apple Health
                     HStack {
@@ -5938,14 +3641,42 @@ struct ProfileView: View {
                             }
                     }
 
+                    LabeledContent("Daily Steps Goal", value: StepsGoal.current.formatted())
+                    NavigationLink {
+                        ProgramLibraryView()
+                    } label: {
+                        Text("Edit in Programs")
+                            .font(.footnote)
+                    }
+                } header: {
+                    IronSectionTitle(title: "Apple Health")
                 } footer: {
-                    Text("Reads weight, nutrition, energy, and workouts from Apple Health. Apple Watch and iPhone workouts appear read-only in Workouts and Progress. Fud AI’s calculated diary burns are written separately and excluded from Energy Burn goals.")
+                    Text("Weight and body fat from your scale (e.g. Withings) arrive through Apple Health. Steps feed the steps goal and your bridge.")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if settingsCategory == .dataManagement {
+                if settingsCategory == .dataSync {
+                Section {
+                    NavigationLink {
+                        BridgeSettingsView()
+                    } label: {
+                        SettingsHubRowLabel(
+                            title: "Neon Bridge",
+                            systemImage: "server.rack",
+                            subtitle: bridgeStatusLabel
+                        )
+                    }
+                } header: {
+                    IronSectionTitle(title: "Neon Bridge")
+                }
+                .listRowBackground(AppColors.appCard)
+
                 CloudBackupSettingsSection()
+
+                if let outcome = weeklyChallengeStore.autoDeleteOutcome {
+                    WeeklyChallengeAutoDeleteSection(outcome: outcome)
+                }
 
                 Section {
                     // Export Food Diary
@@ -5972,7 +3703,12 @@ struct ProfileView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                } header: {
+                    IronSectionTitle(title: "Food Diary")
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
                     // Clear Food Log
                     Button(role: .destructive) {
                         showClearFoodLogConfirmation = true
@@ -5998,11 +3734,15 @@ struct ProfileView: View {
                         .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
+                } header: {
+                    IronSectionTitle(title: "Danger Zone")
                 }
                 .listRowBackground(AppColors.appCard)
                 }
 
-                if let aboutCategory = settingsCategory?.aboutCategory {
+                if let aboutCategory = settingsCategory?.aboutCategory,
+                   (aboutCategory == .appUpdates && JLFeatureFlags.fudUpdateCheck)
+                    || (aboutCategory != .appUpdates && JLFeatureFlags.fudMarketing) {
                     if aboutCategory == .appUpdates {
                         AboutAppHeaderSection()
                     }
@@ -6026,6 +3766,12 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showImportDiary) {
                 ImportDiaryView()
+            }
+            .sheet(isPresented: $showExerciseLibrary) {
+                WorkoutsView(presentedAsSheet: true, libraryOnly: true)
+            }
+            .sheet(isPresented: $showLegacyLogger) {
+                WorkoutsView(presentedAsSheet: true, forcedMode: .log)
             }
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
@@ -6081,7 +3827,8 @@ struct ProfileView: View {
 
                 case .editWeight:
                     WeightPickerSheet(
-                        currentWeightKg: profile.weightKg
+                        currentWeightKg: profile.weightKg,
+                        previous: weightStore.latestEntry
                     ) { newWeight in
                         profile.weightKg = newWeight
                         // Invalidate goal weight if the new current weight makes the direction impossible.
@@ -6173,6 +3920,7 @@ struct ProfileView: View {
 
                 }
             }
+            .settingsFloatingTabClearance()
             .alert("Clear Food Log", isPresented: $showClearFoodLogConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Clear All Logs", role: .destructive) {
@@ -6189,12 +3937,12 @@ struct ProfileView: View {
             .alert("Adaptive Goals", isPresented: $showAdaptiveGoalsInfo) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("About once a week when you open the app, Fud AI automatically re-runs the full goal calculation — the same one the Recalculate button uses — from your profile, recent logged food, and weight trend. If Energy Burn is on, it uses your measured burn as the maintenance anchor. It skips silently if the AI is unavailable. Turning this off restores the targets from before Adaptive Goals first changed them. This is not medical advice.")
+                Text("About once a week when you open the app, JL Physical automatically re-runs the full goal calculation — the same one the Recalculate button uses — from your profile, recent logged food, and weight trend. If Energy Burn is on, it uses your measured burn as the maintenance anchor. It skips silently if the AI is unavailable. Turning this off restores the targets from before Adaptive Goals first changed them. This is not medical advice.")
             }
             .alert("Energy Burn", isPresented: $showEnergyBurnInfo) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("When on, Fud AI uses Apple Health’s recent measured-energy window as your maintenance anchor when calculating goals instead of the formula estimate: measured total energy when enough days are available; otherwise, average measured active energy + formula BMR. No AI is used to read your burn. Requires Apple Health. Works with the Recalculate button and with Adaptive Goals.")
+                Text("When on, JL Physical uses Apple Health’s recent measured-energy window as your maintenance anchor when calculating goals instead of the formula estimate: measured total energy when enough days are available; otherwise, average measured active energy + formula BMR. No AI is used to read your burn. Requires Apple Health. Works with the Recalculate button and with Adaptive Goals.")
             }
             .alert(adaptiveGoalAlertTitle, isPresented: $showAdaptiveGoalAlert) {
                 Button("OK", role: .cancel) { }
@@ -6247,7 +3995,7 @@ struct ProfileView: View {
                         await weeklyChallengeStore.deleteRemoteProfileForFullReset()
 
                         // Apple Health samples remain untouched; users manage those
-                        // from the Health app's Sources > Fud AI screen.
+                        // from the Health app's Sources > JL Physical screen.
                         foodStore.replaceAllEntries([])
                         weightStore.replaceAllEntries([])
                         waterStore.clear()
@@ -6260,6 +4008,9 @@ struct ProfileView: View {
                         UserDefaults.standard.removePersistentDomain(forName: domain)
                         AIProviderSettings.deleteAllData()
                         SpeechSettings.deleteAllData()
+                        TypeSafeSettings.deleteAllData()
+                        JevRouterSettings.deleteAllData()
+                        OnDeviceModelSettings.deleteAllData()
                         chatStore.reset()
                         WidgetSnapshot.clear()
                         WidgetCenter.shared.reloadAllTimelines()
@@ -6292,7 +4043,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var textFallbackSettingsRows: some View {
         Toggle(isOn: $textFallbackEnabled) {
-            Label("Enable Text Fallback", systemImage: "arrow.triangle.2.circlepath")
+            Label("Text Fallback", systemImage: "arrow.triangle.2.circlepath")
         }
         .tint(AppColors.calorie)
         .onChange(of: textFallbackEnabled) { _, newValue in
@@ -6331,55 +4082,24 @@ struct ProfileView: View {
                         .foregroundStyle(.secondary)
                 }
                 appleIntelligenceAvailabilityRow
-            } else if selectedTextFallbackProvider.supportsCustomModelName {
-                HStack {
-                    Label("Model", systemImage: "brain")
-                    Spacer()
-                    TextField(textFallbackModelPlaceholder, text: $selectedTextFallbackModel)
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.trailing)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: selectedTextFallbackModel) { _, newModel in
-                            AIProviderSettings.selectedTextFallbackModel = newModel
-                        }
-                    if !textFallbackModelPresetOptions.isEmpty {
-                        Menu {
-                            ForEach(textFallbackModelPresetOptions, id: \.self) { model in
-                                Button(model) {
-                                    selectedTextFallbackModel = model
-                                    AIProviderSettings.selectedTextFallbackModel = model
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "list.bullet.circle")
-                                .foregroundStyle(AppColors.calorie)
-                        }
-                    }
-                }
-            } else if !textFallbackModelPresetOptions.isEmpty {
-                Picker(selection: $selectedTextFallbackModel) {
-                    ForEach(textFallbackModelPresetOptions, id: \.self) { model in
-                        Text(model).tag(model)
-                    }
-                } label: {
-                    Label("Model", systemImage: "brain")
-                }
-                .pickerStyle(.menu)
-                .tint(.secondary)
+            } else {
+                AIModelPickerRow(
+                    provider: selectedTextFallbackProvider,
+                    presets: selectedTextFallbackProvider.textModels,
+                    model: $selectedTextFallbackModel,
+                    baseURL: resolvedTextFallbackBaseURL,
+                    apiKey: textFallbackApiKeyText,
+                    visionOnly: false,
+                    excludedModelIDs: textFallbackSharesPrimaryServer ? [separateTextProviderEnabled ? selectedTextModel : selectedModel] : []
+                )
                 .onChange(of: selectedTextFallbackModel) { _, newModel in
                     AIProviderSettings.selectedTextFallbackModel = newModel
                 }
-                .onAppear {
-                    if !textFallbackModelPresetOptions.contains(selectedTextFallbackModel),
-                       let first = textFallbackModelPresetOptions.first {
-                        selectedTextFallbackModel = first
-                        AIProviderSettings.selectedTextFallbackModel = first
-                    }
-                }
             }
 
-            if selectedTextFallbackProvider.requiresAPIKey {
+            if selectedTextFallbackProvider.requiresAPIKey && selectedTextFallbackProvider == selectedProvider {
+                LabeledContent("API Key", value: "Uses key from AI Providers")
+            } else if selectedTextFallbackProvider.requiresAPIKey {
                 HStack {
                     Label("API Key", systemImage: "key.fill")
                     Spacer()
@@ -6395,7 +4115,13 @@ struct ProfileView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .onChange(of: textFallbackApiKeyText) { _, newValue in
-                        AIProviderSettings.setAPIKey(newValue.isEmpty ? nil : newValue, for: selectedTextFallbackProvider)
+                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        AIProviderSettings.setAPIKey(trimmed.isEmpty ? nil : trimmed, for: selectedTextFallbackProvider)
+                        ModelCatalogService.shared.scheduleRefresh(
+                            provider: selectedTextFallbackProvider,
+                            baseURL: resolvedTextFallbackBaseURL,
+                            apiKey: trimmed
+                        )
                     }
                     Button {
                         showTextFallbackAPIKey.toggle()
@@ -6409,7 +4135,7 @@ struct ProfileView: View {
 
             if selectedTextFallbackProvider == .ollama || selectedTextFallbackProvider.requiresCustomEndpoint {
                 HStack {
-                    Label(selectedTextFallbackProvider.requiresCustomEndpoint ? "Base URL" : "Server URL", systemImage: "link")
+                    Label("Server URL", systemImage: "link")
                     Spacer()
                     TextField(
                         selectedTextFallbackProvider.requiresCustomEndpoint
@@ -6426,6 +4152,11 @@ struct ProfileView: View {
                         let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                         AIProviderSettings.setFallbackCustomBaseURL(t.isEmpty ? nil : t, for: selectedTextFallbackProvider)
                         reconcileTextFallbackModelIfDuplicate()
+                        ModelCatalogService.shared.scheduleRefresh(
+                            provider: selectedTextFallbackProvider,
+                            baseURL: t.isEmpty ? selectedTextFallbackProvider.baseURL : t,
+                            apiKey: textFallbackApiKeyText
+                        )
                     }
                 }
             }
@@ -6434,15 +4165,13 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var speechFallbackSettingsRows: some View {
-        AISettingsSubsectionHeader(
-            title: "STT Fallback",
-            systemImage: "waveform.badge.plus",
-            infoTopic: .speechFallback
-        )
-
-        if selectedSpeechProvider != .nativeIOS {
+        if selectedSpeechProvider == .nativeIOS || speechFallbackProviderOptions.isEmpty {
+            Text("Native iOS speech already recovers on this iPhone, so there is no separate voice fallback.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if selectedSpeechProvider != .nativeIOS {
             Toggle(isOn: $speechFallbackEnabled) {
-                Label("Enable STT Fallback", systemImage: "arrow.triangle.2.circlepath")
+                Label("Voice Fallback", systemImage: "arrow.triangle.2.circlepath")
             }
             .tint(AppColors.calorie)
             .onChange(of: speechFallbackEnabled) { _, newValue in
@@ -6527,6 +4256,17 @@ struct ProfileView: View {
         }
     }
 
+    private var appleIntelligenceIsAvailable: Bool {
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            return OnDeviceAIService.isAvailable
+            #else
+            return false
+            #endif
+        }
+        return false
+    }
+
     @ViewBuilder
     private var appleIntelligenceAvailabilityRow: some View {
         if #available(iOS 26.0, *) {
@@ -6583,13 +4323,6 @@ struct ProfileView: View {
         selectedFallbackProvider == selectedProvider && resolvedPrimaryBaseURL == resolvedFallbackBaseURL
     }
 
-    private var fallbackModelPresetOptions: [String] {
-        guard fallbackSharesPrimaryServer else {
-            return selectedFallbackProvider.models
-        }
-        return selectedFallbackProvider.models.filter { $0 != selectedModel }
-    }
-
     private var resolvedTextPrimaryBaseURL: String {
         let provider = separateTextProviderEnabled ? selectedTextProvider : selectedProvider
         let url = separateTextProviderEnabled ? textBaseURL : customBaseURL
@@ -6608,40 +4341,8 @@ struct ProfileView: View {
             resolvedTextPrimaryBaseURL == resolvedTextFallbackBaseURL
     }
 
-    private var textFallbackModelPresetOptions: [String] {
-        guard textFallbackSharesPrimaryServer else {
-            return selectedTextFallbackProvider.textModels
-        }
-        let primaryModel = separateTextProviderEnabled ? selectedTextModel : selectedModel
-        return selectedTextFallbackProvider.textModels.filter { $0 != primaryModel }
-    }
-
     private var speechFallbackProviderOptions: [SpeechProvider] {
         SpeechProvider.availableBatchProviders.filter { $0 != selectedSpeechProvider }
-    }
-
-    private var primaryModelPlaceholder: String {
-        selectedProvider == .openrouter
-            ? "e.g. anthropic/claude-sonnet-4"
-            : "e.g. gpt-4o-mini"
-    }
-
-    private var textModelPlaceholder: String {
-        selectedTextProvider == .openrouter
-            ? "e.g. openai/gpt-oss-120b"
-            : "e.g. llama3.2"
-    }
-
-    private var fallbackModelPlaceholder: String {
-        selectedFallbackProvider == .openrouter
-            ? "e.g. anthropic/claude-sonnet-4"
-            : "e.g. gpt-4o-mini"
-    }
-
-    private var textFallbackModelPlaceholder: String {
-        selectedTextFallbackProvider == .openrouter
-            ? "e.g. openai/gpt-oss-120b"
-            : "e.g. llama3.2"
     }
 
     private func saveProfile() {
@@ -6650,8 +4351,7 @@ struct ProfileView: View {
 
     private func selectFallbackProvider(_ newProvider: AIProvider) {
         AIProviderSettings.selectedFallbackProvider = newProvider
-        if !newProvider.supportsCustomModelName,
-           !newProvider.models.contains(selectedFallbackModel) {
+        if !newProvider.models.contains(selectedFallbackModel) {
             selectedFallbackModel = newProvider.defaultModel
             AIProviderSettings.selectedFallbackModel = selectedFallbackModel
         }
@@ -6672,8 +4372,7 @@ struct ProfileView: View {
     private func selectTextFallbackProvider(_ newProvider: AIProvider) {
         AIProviderSettings.selectedTextFallbackProvider = newProvider
         let options = newProvider.textModels
-        if !newProvider.supportsCustomModelName,
-           !options.contains(selectedTextFallbackModel) {
+        if !options.contains(selectedTextFallbackModel) {
             selectedTextFallbackModel = newProvider.defaultTextModel
             AIProviderSettings.selectedTextFallbackModel = selectedTextFallbackModel
         }
@@ -6756,11 +4455,15 @@ struct ProfileView: View {
                 Image(systemName: icon)
                     .foregroundStyle(AppColors.calorie)
                     .frame(width: 22)
-                Text(LocalizedDisplayText.text(label))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(valueText)
-                    .foregroundStyle(.secondary)
+                AdaptiveLabelValue {
+                    Text(LocalizedDisplayText.text(label))
+                        .foregroundStyle(.primary)
+                        .avoidsMidWordBreak()
+                } value: {
+                    Text(valueText)
+                        .foregroundStyle(.secondary)
+                        .avoidsMidWordBreak()
+                }
                 Image(systemName: locked ? "lock.fill" : "lock.open")
                     .font(.footnote)
                     .foregroundStyle(locked ? AppColors.calorie : .secondary)
@@ -6775,7 +4478,7 @@ struct ProfileView: View {
     private func showAdaptiveGoalsLockHint() {
         showAdaptiveGoalAlert(
             title: "Adaptive Goals Is On",
-            message: "Turn off Adaptive Goals to lock or set your own calories and macros. While it's on, Fud AI recalculates them for you each week."
+            message: "Turn off Adaptive Goals to lock or set your own calories and macros. While it's on, JL Physical recalculates them for you each week."
         )
     }
 
@@ -6885,7 +4588,7 @@ struct ProfileView: View {
             // untouched and tell the user so they can fix their provider/key and retry.
             showAdaptiveGoalAlert(
                 title: "Couldn't Recalculate",
-                message: "Fud AI couldn't reach your AI provider, so your goals are unchanged. Check your AI provider and API key in Settings, then try Recalculate again."
+                message: "JL Physical couldn't reach your AI provider, so your goals are unchanged. Check your AI provider and API key in Settings, then try Recalculate again."
             )
             return
         }
@@ -7004,7 +4707,7 @@ struct ProfileView: View {
                 if await healthKitManager.fetchRecentEnergySummary(days: 14) == nil {
                     energyBurnToggleReverting = true
                     energyBurnEnabled = false
-                    showAdaptiveGoalAlert(title: "Not Enough Health Data", message: "Fud AI needs at least 3 recent days of Apple Health energy data before it can use your measured burn.")
+                    showAdaptiveGoalAlert(title: "Not Enough Health Data", message: "JL Physical needs at least 3 recent days of Apple Health energy data before it can use your measured burn.")
                     return
                 }
                 await recalculateGoalsWithAI()
@@ -7029,7 +4732,7 @@ struct ProfileView: View {
     }
 
     /// Daily measured energy is only included while Energy Burn and Apple Health are enabled.
-    /// HealthKitManager removes Fud AI's own estimated workout samples before aggregation.
+    /// HealthKitManager removes JL Physical's own estimated workout samples before aggregation.
     private func measuredEnergyHistory() async -> [HealthEnergyDay] {
         guard energyBurnEnabled, healthKitEnabled else { return [] }
         let history = await healthKitManager.fetchRecentEnergyHistory(days: 14)
@@ -7042,7 +4745,7 @@ struct ProfileView: View {
     private func makeGoalEvidence(profile: UserProfile, healthEnergy: [HealthEnergyDay]) -> GoalEvidence {
         GoalEvidence.build(
             foods: foodStore.entries,
-            weights: weightStore.entries,
+            weights: weightStore.bodyWeightEntries,
             bodyFatEntries: bodyFatStore.entries,
             workoutSessions: strengthWorkoutStore.completedSessions,
             bodyMeasurements: bodyMeasurementStore.entries,
@@ -7475,4 +5178,5 @@ private struct LabReportAllergenConfirmationSheet: View {
     ContentView()
         .environment(FoodStore())
         .environment(WeightStore())
+        .environment(WorkoutDraftStore())
 }

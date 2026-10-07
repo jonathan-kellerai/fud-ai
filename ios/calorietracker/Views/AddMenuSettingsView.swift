@@ -23,9 +23,9 @@ struct AddMenuSettingsView: View {
                     }
                 }
             } header: {
-                Text("Food Add Menu")
+                IronSectionTitle(title: "Food Add Menu")
             } footer: {
-                Text("Customize the Home + button food menu. Water and fasting stay separate when enabled. This does not change app-icon Quick Actions.")
+                Text("Customize the Home + button food menu. Water and fasting stay separate when enabled. This does not change App Icon Shortcuts.")
             }
 
             if config.usesFlatLayout {
@@ -44,7 +44,7 @@ struct AddMenuSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("Hidden Methods")
+                    IronSectionTitle(title: "Hidden Methods")
                 } footer: {
                     Text("These logging methods are not shown on the Home + menu.")
                 }
@@ -58,7 +58,8 @@ struct AddMenuSettingsView: View {
             }
         }
         .environment(\.editMode, $editMode)
-        .navigationTitle("+ Menu")
+        .settingsFloatingTabClearance()
+        .navigationTitle("Home + Menu")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: config) { _, newValue in
             AddMenuSettings.save(newValue)
@@ -91,13 +92,13 @@ struct AddMenuSettingsView: View {
                 config.groups.move(fromOffsets: from, toOffset: to)
             }
         } header: {
-            Text("Group Order")
+            IronSectionTitle(title: "Group Order")
         }
     }
 
     private var flatMethodsSection: some View {
         Section {
-            ForEach(config.flatMethods) { method in
+            ForEach(config.flatMethods.filter { $0 != .siriPhrases }) { method in
                 Label(method.title, systemImage: method.systemImageName)
             }
             .onMove { from, to in
@@ -117,7 +118,7 @@ struct AddMenuSettingsView: View {
                 }
             }
         } header: {
-            Text("Flat Menu")
+            IronSectionTitle(title: "Flat Menu")
         } footer: {
             Text("With no groups, enabled methods appear directly under +.")
         }
@@ -128,7 +129,7 @@ struct AddMenuSettingsView: View {
         Section {
             TextField("Group Name", text: group.name)
 
-            ForEach(group.wrappedValue.methods) { method in
+            ForEach(group.wrappedValue.methods.filter { $0 != .siriPhrases }) { method in
                 Label(method.title, systemImage: method.systemImageName)
             }
             .onMove { from, to in
@@ -146,13 +147,13 @@ struct AddMenuSettingsView: View {
                 }
             }
         } header: {
-            Text(group.name.wrappedValue)
+            IronSectionTitle(title: group.name.wrappedValue)
         }
     }
 
     private var hiddenMethods: [FoodLogMethod] {
         let visible = Set(config.visibleMethods)
-        return FoodLogMethod.addMenuCases.filter { !visible.contains($0) }
+        return FoodLogMethod.addMenuCases.filter { $0 != .siriPhrases && !visible.contains($0) }
     }
 
     private func addMenuGroupIcon(for group: AddMenuGroupConfig) -> String {

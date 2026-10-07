@@ -1,0 +1,218 @@
+import Foundation
+import Testing
+@testable import calorietracker
+
+/// Peptides make no network request at all, with no bridge key configured.
+///
+/// Why a stub transport: the app reaches the network through URLSession.shared,
+/// so a URLProtocol registered for the test's duration is the only way to
+/// prove "no request" without adding hooks to production code. It records
+/// every request (no host exemptions) and fails it. A control request proves
+/// it is in the path before the flows run. Swift Testing runs suites
+/// concurrently in one process even with -parallel-testing-enabled NO, so CI
+/// skips this suite in the shared run and runs it alone in its own xcodebuild
+/// invocation (ios-build.yml); `.serialized` keeps its own tests one at a
+/// time. No other suite's requests can land in the log while it is registered.
+@MainActor
+@Suite(.serialized)
+struct PeptideNoNetworkTests {
+    private func draft(compound: String = "BPC-157", draw: String = "50") -> PeptideLogDraft {
+        var draft = PeptideLogDraft.new(compound: compound, now: Date(timeIntervalSince1970: 1_790_000_000))
+        draft.drawText = draw
+        draft.drawUnit = .units
+        return draft
+    }
+
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("peptide-no-network-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("peptide_log_v1.json")
+    }
+
+    /// Registers the tripwire with no bridge key, proves it intercepts, runs
+    /// `flows`, lets stray tasks run, then returns every request it saw.
+    private func requests(during flows: () async throws -> Void) async throws -> [String] {
+        let service = NeonBridgeService.shared
+        let savedSettings = service.settings
+        service.settings = NeonBridgeSettings(baseURL: NeonBridgeSettings.defaultBaseURL, apiKey: nil)
+        URLProtocol.registerClass(PeptideNetworkTripwire.self)
+        defer {
+            URLProtocol.unregisterClass(PeptideNetworkTripwire.self)
+            service.settings = savedSettings
+            PeptideNetworkTripwire.log.reset()
+        }
+        PeptideNetworkTripwire.log.reset()
+
+        let control = try #require(URL(string: "https://peptide-tripwire-control.invalid/ping"))
+        await #expect(throws: (any Error).self) {
+            _ = try await URLSession.shared.data(from: control)
+        }
+        #expect(PeptideNetworkTripwire.log.snapshot() == ["GET peptide-tripwire-control.invalid/ping"])
+        PeptideNetworkTripwire.log.reset()
+
+        try await flows()
+        // Anything a flow left running in the background gets its chance to call out.
+        try await Task.sleep(for: .milliseconds(500))
+        await Task.yield()
+        return PeptideNetworkTripwire.log.snapshot()
+    }
+
+    @Test func loggingEditingAndVoidingStayOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .file(url))
+            let vial = PeptideVial(
+                id: "v1",
+                compound: "BPC-157",
+                components: [PeptideVialComponent(name: "BPC-157", amount: 10, unit: "mg")],
+                diluentML: 2,
+                concentrationConfirmed: true
+            )
+            store.saveVial(vial)
+            store.setSyringeScale(.u100)
+            var typed = draft()
+            typed.vialID = vial.id
+            let id = try #require(store.log(typed))
+            let entry = try #require(store.entry(id: id))
+            #expect(store.correct(entry, reason: "Typo", changes: PeptideCorrectionChanges(draw: 25)) == nil)
+            _ = PeptideMath.milligramDerivation(for: try #require(store.entry(id: id)))
+            #expect(store.void(try #require(store.entry(id: id)), reason: "Duplicate") == nil)
+            _ = store.log(draft(compound: "MT2", draw: "25"))
+            #expect(store.remaining(for: vial).calculable)
+            store.finishVial(id: vial.id)
+            store.deleteVial(id: vial.id)
+            let schedule = PeptideUserSchedule(id: "s1", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01")
+            store.saveSchedule(schedule)
+            store.setScheduleActive(id: "s1", active: false)
+            store.deleteSchedule(id: "s1")
+            #expect(store.persistError == nil)
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
+
+    @Test func homeCardInputsAndTheSecondProfileChoiceStayOnThePhone() async throws {
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .inMemory)
+            store.saveSchedule(PeptideUserSchedule(id: "s1", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01"))
+            _ = store.log(draft())
+            let day = PeptideMath.civilDate(Date(timeIntervalSince1970: 1_790_000_000))
+            #expect(store.hasLocalActivity(today: day))
+            #expect(store.takenEntries(on: day).count == 1)
+            _ = store.lowStockVials()
+            #expect(!PeptideMath.dueItems(date: day, schedules: store.schedules, entries: store.entries).isEmpty)
+
+            let held = PeptideArchive(
+                exportedAt: nil, vials: [], schedules: [], entries: [],
+                heldAside: PeptideRecordSet(vials: [PeptideVial(id: "held", compound: "MT2")])
+            )
+            #expect(store.replaceAll(with: held) == nil)
+            #expect(store.heldAsideCount == 1)
+            store.keepHeldAside()
+            #expect(store.vial(id: "held") != nil)
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
+
+    @Test func migratingAVersion1LogStaysOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let version1 = """
+        {"version":1,"rows":[{"id":"r1","datetime":"2026-09-20T07:30:00-04:00","compound":"BPC-157","dose":500,"units":"mcg",
+          "status":"COMPLETED","recorded_via":"app","client_request_id":"c1","voided":false}],
+         "pendingOps":[{"id":"c2","kind":"create","create":{"clientRequestID":"c2","datetime":"2026-09-21T07:30:00-04:00",
+          "dose":250,"units":"mcg","compound":"MT2"},"attempts":4,"failed":false,"createdAt":800000000}],
+         "meta":[],"vials":[],"schedules":[]}
+        """
+        try Data(version1.utf8).write(to: url)
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .file(url))
+            #expect(store.entries.map(\.id) == ["r1", "c2"])
+            let relaunched = PeptideLogStore(persistence: .file(url))
+            #expect(relaunched.entries == store.entries)
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
+
+    @Test func exportAndImportStayOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .inMemory)
+            store.saveVial(PeptideVial(id: "v1", compound: "MT2"))
+            _ = store.log(draft())
+            let file = url.deletingLastPathComponent().appendingPathComponent(PeptideArchive.fileName(exportedOn: Date()))
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try store.archive(exportedAt: Date()).encoded().write(to: file)
+            let archive = try PeptideArchive.load(from: file)
+            let other = PeptideLogStore(persistence: .file(url))
+            #expect(other.importSummary(of: archive).added == 2)
+            #expect(other.importArchive(archive).added == 2)
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
+
+    @Test func reconstitutingAVialStaysOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .file(url))
+            #expect(PeptideMath.reconstituteIssue(compound: "BPC-157", amountText: "10", unit: "mg", diluentText: "2") == nil)
+            #expect(PeptideMath.reconstituteArithmetic(amount: 10, unit: "mg", diluentML: 2) != nil)
+            let vial = PeptideVial.reconstituted(
+                id: "v1", compound: "BPC-157", amount: 10, unit: "mg", diluentML: 2,
+                mixedOn: "2026-09-26", confirmedAt: Date(timeIntervalSince1970: 1_790_000_000), existing: nil,
+                now: Date(timeIntervalSince1970: 1_790_000_000)
+            )
+            store.saveVial(vial)
+            store.setSyringeScale(.u100)
+            #expect(store.remaining(for: vial).calculable)
+            ReconBenchStore.deleteSavedData()
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
+}
+
+/// Lock-protected record of what the tripwire saw (URLSession calls
+/// `startLoading` off the main actor).
+nonisolated final class PeptideNetworkRequestLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: [String] = []
+
+    func record(_ request: URLRequest) {
+        lock.lock()
+        defer { lock.unlock() }
+        requests.append("\(request.httpMethod ?? "GET") \(request.url?.host ?? "")\(request.url?.path ?? "")")
+    }
+
+    func snapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests
+    }
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        requests = []
+    }
+}
+
+/// Intercepts every request while registered, records it and fails it.
+/// URLProtocol requires restating inherited unchecked Sendable: this subclass
+/// adds no mutable instance state, and its shared log is lock-protected above.
+nonisolated final class PeptideNetworkTripwire: URLProtocol, @unchecked Sendable {
+    static let log = PeptideNetworkRequestLog()
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.log.record(request)
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+
+    override func stopLoading() {}
+}

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import calorietracker
 
+@MainActor
 struct MealShareTests {
     private var entries: [FoodEntry] {
         [FoodEntry(name: "🥚 Eggs", calories: 124, protein: 10, carbs: 1, fat: 8, source: .manual)]

@@ -37,7 +37,15 @@ enum HostedAIService {
         return URLSession(configuration: config)
     }()
 
-    static func generate(prompt: String, imageDataList: [Data], systemInstruction: String?) async throws -> String {
+    /// `session` and `userID` are for tests; nil means the app's session and RevenueCat id.
+    static func generate(
+        prompt: String,
+        imageDataList: [Data],
+        systemInstruction: String?,
+        trace: AIRequestTrace? = nil,
+        session: URLSession? = nil,
+        userID: String? = nil
+    ) async throws -> String {
         let cappedImages = Array(imageDataList.prefix(HostedAIConstants.maxHostedImages))
         let body: [String: Any] = [
             "prompt": prompt,
@@ -45,7 +53,14 @@ enum HostedAIService {
             "systemInstruction": systemInstruction as Any,
         ].compactMapValues { $0 }
 
-        let data = try await post(path: "generate", jsonBody: body)
+        let data = try await send(
+            method: "POST",
+            path: "generate",
+            jsonBody: body,
+            trace: trace,
+            session: session,
+            userID: userID
+        )
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let text = json["text"] as? String else {
             throw HostedAIServiceError.invalidResponse
@@ -93,12 +108,25 @@ enum HostedAIService {
         try await send(method: "POST", path: path, jsonBody: jsonBody)
     }
 
-    private static func send(method: String, path: String, jsonBody: [String: Any]?) async throws -> Data {
+    private static func send(
+        method: String,
+        path: String,
+        jsonBody: [String: Any]?,
+        trace: AIRequestTrace? = nil,
+        session sessionOverride: URLSession? = nil,
+        userID userIDOverride: String? = nil
+    ) async throws -> Data {
         guard let url = URL(string: "\(HostedAIConstants.hostedAIBaseURL)/\(path)") else {
             throw HostedAIServiceError.invalidURL
         }
 
-        let userID = await RevenueCatManager.shared.appUserID()
+        let session = sessionOverride ?? Self.session
+        let userID: String
+        if let userIDOverride {
+            userID = userIDOverride
+        } else {
+            userID = await RevenueCatManager.shared.appUserID()
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -109,10 +137,22 @@ enum HostedAIService {
             request.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError where error.code == .cancelled {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            trace?.recordTransportError(provider: AIRequestTrace.hostedProviderName, error)
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else {
             throw HostedAIServiceError.invalidResponse
         }
+        // Redacted by the trace; this is what the request log shows for a hosted request.
+        trace?.recordResponse(provider: AIRequestTrace.hostedProviderName, status: http.statusCode, body: data)
 
         if let snapshot = HostedAIQuotaManager.snapshot(fromHeaders: http.allHeaderFields) {
             await HostedAIQuotaManager.shared.apply(snapshot)

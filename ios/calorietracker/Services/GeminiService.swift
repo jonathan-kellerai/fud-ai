@@ -209,10 +209,6 @@ struct GeminiService {
     {"name":"...","calories":0,"protein":0.0,"carbs":0.0,"fat":0.0,"serving_size_grams":0.0,"sugar":0.0,"added_sugar":0.0,"fiber":0.0,"saturated_fat":0.0,"monounsaturated_fat":0.0,"polyunsaturated_fat":0.0,"trans_fat":0.0,"cholesterol":0.0,"caffeine":0.0,"creatine":0.0,"beta_alanine":0.0,"l_citrulline":0.0,"l_carnitine":0.0,"l_arginine":0.0,"taurine":0.0,"betaine":0.0,"hmb":0.0,"sodium":0.0,"potassium":0.0,"calcium":0.0,"iron":0.0,"magnesium":0.0,"zinc":0.0,"vitamin_a":0.0,"vitamin_c":0.0,"vitamin_d":0.0,"vitamin_b12":0.0,"vitamin_e":0.0,"vitamin_k":0.0,"folate":0.0,"omega_3":0.0,"ingredients":[],"unit_options":[]}
     """
 
-    private static let nutritionLabelJSONShape = """
-    {"name":"Product Name","calories_per_100g":0.0,"protein_per_100g":0.0,"carbs_per_100g":0.0,"fat_per_100g":0.0,"serving_size_grams":0.0,"sugar_per_100g":0.0,"added_sugar_per_100g":0.0,"fiber_per_100g":0.0,"saturated_fat_per_100g":0.0,"monounsaturated_fat_per_100g":0.0,"polyunsaturated_fat_per_100g":0.0,"trans_fat_per_100g":0.0,"cholesterol_per_100g":0.0,"caffeine_per_100g":0.0,"creatine_per_100g":0.0,"beta_alanine_per_100g":0.0,"l_citrulline_per_100g":0.0,"l_carnitine_per_100g":0.0,"l_arginine_per_100g":0.0,"taurine_per_100g":0.0,"betaine_per_100g":0.0,"hmb_per_100g":0.0,"sodium_per_100g":0.0,"potassium_per_100g":0.0,"calcium_per_100g":0.0,"iron_per_100g":0.0,"magnesium_per_100g":0.0,"zinc_per_100g":0.0,"vitamin_a_per_100g":0.0,"vitamin_c_per_100g":0.0,"vitamin_d_per_100g":0.0,"vitamin_b12_per_100g":0.0,"vitamin_e_per_100g":0.0,"vitamin_k_per_100g":0.0,"folate_per_100g":0.0,"omega_3_per_100g":0.0,"unit_options":[]}
-    """
-
     private static let nutrientUnitsInstruction = "Calories are integers. Protein/carbs/fat are decimal gram values when needed. serving_size_grams is the estimated weight in grams. Nutrients are numbers: sugar/fiber/fats/omega_3/creatine/beta_alanine/l_citrulline/l_carnitine/l_arginine/taurine/betaine/hmb in grams; cholesterol/caffeine/sodium/potassium/calcium/iron/magnesium/zinc/vitamin_c/vitamin_e in milligrams; vitamin_a/vitamin_d/vitamin_b12/vitamin_k/folate in micrograms. Only report sports-nutrition compounds when explicitly present in a label or description; otherwise use 0."
 
     private static let servingUnitOptionsInstruction = """
@@ -263,7 +259,7 @@ struct GeminiService {
         let bodyFat = profile.bodyFatPercentage.map { "\(Int(($0 * 100).rounded()))%" } ?? "not set"
 
         let prompt = """
-        You are a concise nutrition coach inside Fud AI. The user is reviewing a meal before logging it.
+        You are a concise nutrition coach inside JL Physical. The user is reviewing a meal before logging it.
         Analyze this what-if scenario only. Do not say the meal has already been logged. Do not change the user's goals.
 
         Return 2-4 short plain-English sentences, no markdown and no bullets.
@@ -294,7 +290,7 @@ struct GeminiService {
         \(existingMeals)
         """
 
-        let text = try await callAI(prompt: prompt, image: nil, jsonResponse: false)
+        let text = try await callAI(prompt: prompt, image: nil, jsonResponse: false, route: .mealWhatIf(entry.name))
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
@@ -304,15 +300,44 @@ struct GeminiService {
         guard !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, description.count <= 16000 else {
             throw WorkoutTextError.invalid("The workout conversation is too long. Please start over.")
         }
+        if !description.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{"),
+           let draft = await WorkoutFastPath.draft(description: description, date: date, unit: unit, library: library) {
+            return draft
+        }
         return try await runWithHostedQuota(.workoutAI) {
-            let searchResponse = try await callAI(prompt: WorkoutTextDraft.searchPrompt(description: description), image: nil)
-            let queries = WorkoutTextDraft.searchQueries(searchResponse, fallback: description)
-            let prompt = WorkoutTextDraft.prompt(description: description, selectedDate: date, unit: unit, library: library, searchQueries: queries)
-            return try WorkoutTextDraft.parse(try await callAI(prompt: prompt, image: nil), library: library)
+            try await callWorkoutAnalysis(description: description, date: date, unit: unit, library: library)
         }
     }
 
-    static func analyzeTextInput(description: String, skipHostedMetering: Bool = false) async throws -> FoodAnalysis {
+    /// Same prompts and parser for every provider, including Apple Foundation Models and Gemma.
+    private static func callWorkoutAnalysis(description: String, date: Date, unit: WeightUnit,
+                                            library: [ExerciseLibraryItem]) async throws -> WorkoutTextDraft {
+        /// A clarifying question is a valid answer: it ends routing instead of escalating.
+        func analyze(_ ask: (String) async throws -> String) async throws -> Result<WorkoutTextDraft, WorkoutClarification> {
+            let searchResponse = try await ask(WorkoutTextDraft.searchPrompt(description: description))
+            let queries = WorkoutTextDraft.searchQueries(searchResponse, fallback: description)
+            let prompt = WorkoutTextDraft.prompt(description: description, selectedDate: date, unit: unit, library: library, searchQueries: queries)
+            let response = try await ask(prompt)
+            do {
+                return .success(try WorkoutTextDraft.parse(response, library: library))
+            } catch let clarification as WorkoutClarification {
+                return .failure(clarification)
+            }
+        }
+
+        // Unreadable drafts surface as before; only request failures use the text fallback.
+        // A cheaper or on-device tier that fails, including unreadable JSON, retries once on the strong config.
+        let result = try await routed(.workoutParse(description), terminal: { $0 is WorkoutTextError }) { attempt in
+            try await analyze { prompt in try await attempt.send(prompt, true) }
+        }
+        return try result.get()
+    }
+
+    static func analyzeTextInput(
+        description: String,
+        skipHostedMetering: Bool = false,
+        trace: AIRequestTrace? = nil
+    ) async throws -> FoodAnalysis {
         let prompt = """
         Estimate the nutritional content for: \(description)
         Parse any quantities, brands, and multiple items from the text. If a brand is mentioned, use that brand's known nutritional data. If multiple items are described, sum up the total nutrition.
@@ -324,13 +349,15 @@ struct GeminiService {
         When supported by the text, use slice/piece for discrete foods, ml/cup/fl oz for liquids, tbsp/tsp for spooned foods, and can/packet for packaged foods.
         Include a single food emoji that best represents the food. Use null for any nutrient you cannot estimate.
         """
-        return try await runWithHostedQuota(.textFood, skip: skipHostedMetering) {
-            let analysis = try await callTextFoodAnalysis(prompt: prompt, description: description)
-            return await addingFallbackServingUnits(to: analysis, image: nil, description: description)
+        return try await logged(.textFood, trace: trace) { active in
+            try await runWithHostedQuota(.textFood, skip: skipHostedMetering) {
+                let analysis = try await callTextFoodAnalysis(prompt: prompt, description: description, trace: active)
+                return await addingFallbackServingUnits(to: analysis, image: nil, description: description)
+            }
         }
     }
 
-    static func autoAnalyze(image: UIImage) async throws -> FoodAnalysis {
+    static func autoAnalyze(image: UIImage, trace: AIRequestTrace? = nil) async throws -> FoodAnalysis {
         let prompt = """
         Analyze this image. It could be either a photo of food OR a nutrition facts label.
 
@@ -345,14 +372,21 @@ struct GeminiService {
         When supported by the image or label, use slice/piece for discrete foods, ml/cup/fl oz for liquids, tbsp/tsp for spooned foods, and can/packet for packaged foods. For a whole or mostly-whole divisible food, count only clearly visible pieces or slices and derive grams_per_unit from serving_size_grams / quantity.
         Use null for any nutrient you cannot estimate.
         """
-        return try await runWithHostedQuota(.photoFood) {
-            let text = try await callAI(prompt: prompt, image: image)
-            let analysis = try parseFoodAnalysis(from: text)
-            return await addingFallbackServingUnits(to: analysis, image: image, description: nil)
+        return try await logged(.mealPhoto, trace: trace) { active in
+            try await runWithHostedQuota(.photoFood) {
+                let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: ""), trace: active)
+                let analysis = try parseFoodAnalysis(from: text)
+                return await addingFallbackServingUnits(to: analysis, image: image, description: nil)
+            }
         }
     }
 
-    static func analyzeFood(image: UIImage, description: String? = nil, skipHostedMetering: Bool = false) async throws -> FoodAnalysis {
+    static func analyzeFood(
+        image: UIImage,
+        description: String? = nil,
+        skipHostedMetering: Bool = false,
+        trace: AIRequestTrace? = nil
+    ) async throws -> FoodAnalysis {
         var prompt = """
         Analyze this food image. Identify the food and estimate its nutritional content.
 
@@ -370,10 +404,12 @@ struct GeminiService {
             prompt += "\n\nAdditional context from the user about this meal: \(description)\nUse this context to improve accuracy of identification, portion size, and nutrition estimates."
         }
 
-        return try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
-            let text = try await callAI(prompt: prompt, image: image)
-            let analysis = try parseFoodAnalysis(from: text)
-            return await addingFallbackServingUnits(to: analysis, image: image, description: description)
+        return try await logged(.mealPhoto, trace: trace) { active in
+            try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
+                let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: description ?? ""), trace: active)
+                let analysis = try parseFoodAnalysis(from: text)
+                return await addingFallbackServingUnits(to: analysis, image: image, description: description)
+            }
         }
     }
 
@@ -421,48 +457,26 @@ struct GeminiService {
         images: [UIImage],
         description: String? = nil,
         progressiveMeal: Bool = false,
-        skipHostedMetering: Bool = false
+        skipHostedMetering: Bool = false,
+        trace: AIRequestTrace? = nil
     ) async throws -> FoodAnalysis {
         guard !images.isEmpty else { throw AnalysisError.imageConversionFailed }
 
         let prompt = multiPhotoAnalysisPrompt(progressiveMeal: progressiveMeal, description: description)
 
-        return try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
-            let text = try await callAI(prompt: prompt, images: images)
-            let analysis = try parseFoodAnalysis(from: text)
-            var result = await addingFallbackServingUnits(to: analysis, image: images[0], description: description)
-            result.progressiveMeal = progressiveMeal
-            return result
+        return try await logged(.mealPhoto, trace: trace) { active in
+            try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
+                let text = try await callAI(prompt: prompt, images: images, route: .foodPhoto(caption: description ?? ""), trace: active)
+                let analysis = try parseFoodAnalysis(from: text)
+                var result = await addingFallbackServingUnits(to: analysis, image: images[0], description: description)
+                result.progressiveMeal = progressiveMeal
+                return result
+            }
         }
     }
 
-    static func analyzeNutritionLabel(image: UIImage) async throws -> NutritionLabelAnalysis {
-        let prompt = """
-        Read this nutrition label image. Extract the nutritional values per 100g (or per 100ml).
-        If the label shows per-serving values, convert them to per-100g using the serving size.
-
-        For the name, identify the product or brand name visible on the packaging or label.
-        If no name is visible, describe the food type (e.g. "Protein Bar", "Yogurt", "Cereal").
-
-        Respond ONLY with JSON:
-        \(Self.nutritionLabelJSONShape)
-
-        \(Self.servingUnitOptionsInstruction)
-        All nutrient and serving-size values should be numbers. If serving size or any nutrient is not available, use null. Only include a label serving unit such as slice, piece, tbsp, cup, ml, fl oz, can, or packet when its quantity is actually printed or otherwise visible on the label.
-        """
-        return try await runWithHostedQuota(.photoFood) {
-            let text = try await callAI(prompt: prompt, image: image)
-            let analysis = try parseNutritionLabel(from: text)
-            return await addingFallbackServingUnits(to: analysis, image: image)
-        }
-    }
-
-    /// Extracts clearly positive/elevated sensitizations from an ISAC/ALEX-style allergy lab report image.
+    /// Extracts clearly positive/elevated sensitizations from ISAC/ALEX-style allergy lab report images.
     /// Returns plain common food/allergen names (not component codes). Empty if none found.
-    static func extractAllergensFromLabReport(image: UIImage) async throws -> [String] {
-        try await extractAllergensFromLabReport(images: [image])
-    }
-
     static func extractAllergensFromLabReport(images: [UIImage]) async throws -> [String] {
         guard !images.isEmpty else { throw AnalysisError.imageConversionFailed }
         let prompt = """
@@ -475,7 +489,7 @@ struct GeminiService {
         {"allergens":["milk","peanut"]}
         """
         return try await runWithHostedQuota(.allergensLab) {
-            let text = try await callAI(prompt: prompt, images: images)
+            let text = try await callAI(prompt: prompt, images: images, route: .allergenReport)
             return try parseAllergensFromLabReport(from: text)
         }
     }
@@ -536,7 +550,7 @@ struct GeminiService {
         \(currentGoalLines)
         """
 
-        let text = try await callAI(prompt: prompt, image: nil)
+        let text = try await callAI(prompt: prompt, image: nil, route: .nutrientGoals)
         return try parseOptionalNutrientGoals(from: text, fallback: currentGoals)
     }
 
@@ -649,7 +663,7 @@ struct GeminiService {
         \(evidenceSection)
         """
 
-        let text = try await callAI(prompt: prompt, image: nil)
+        let text = try await callAI(prompt: prompt, image: nil, route: .goalCalculation)
         return try parseGoalCalculation(from: text, profile: profile)
         }
 
@@ -659,75 +673,6 @@ struct GeminiService {
             }
         }
         return try await compute()
-    }
-
-    // MARK: - Weight Forecast Insight
-
-    /// Asks the user's selected LLM to summarize their weight trend and suggest 2–3 adjustments
-    /// in plain English. Caller provides an already-computed WeightForecast so the LLM gets hard
-    /// numbers instead of guessing.
-    static func analyzeWeightTrend(
-        profile: UserProfile,
-        forecast: WeightForecast,
-        recentAvgMacros: (protein: Int, carbs: Int, fat: Int)?,
-        heightMetric: Bool,
-        weightMetric: Bool
-    ) async throws -> String {
-        let unit = weightMetric ? "kg" : "lbs"
-        let wUnit: (Double) -> String = { kg in
-            weightMetric ? String(format: "%.1f kg", kg) : String(format: "%.1f lbs", kg * 2.20462)
-        }
-        let weekly: (Double) -> String = { kg in
-            weightMetric ? String(format: "%+.2f kg/week", kg) : String(format: "%+.2f lbs/week", kg * 2.20462)
-        }
-
-        var lines: [String] = []
-        lines.append("User profile:")
-        lines.append("- Gender: \(profile.gender.rawValue)")
-        lines.append("- Age: \(profile.age)")
-        lines.append("- Height: \(heightMetric ? String(format: "%.0f cm", profile.heightCm) : String(format: "%.1f in", profile.heightCm / 2.54))")
-        lines.append("- Current weight: \(wUnit(forecast.currentWeightKg))")
-        lines.append("- Activity level: \(profile.activityLevel.displayName)")
-        lines.append("- Goal: \(profile.goal.displayName)")
-        if let goal = profile.goalWeightKg {
-            lines.append("- Goal weight: \(wUnit(goal))")
-        }
-        if let bf = profile.bodyFatPercentage {
-            lines.append("- Body fat: \(Int(bf * 100))%")
-        }
-        lines.append("")
-        lines.append("Energy balance (from \(forecast.daysOfFoodData) days of logged food):")
-        lines.append("- Avg daily intake: \(forecast.avgDailyCalories) kcal")
-        lines.append("- TDEE estimate: \(forecast.tdee) kcal")
-        lines.append("- Daily balance: \(forecast.dailyEnergyBalance >= 0 ? "+" : "")\(forecast.dailyEnergyBalance) kcal")
-        if let macros = recentAvgMacros {
-            lines.append("- Avg macros: \(macros.protein)g protein, \(macros.carbs)g carbs, \(macros.fat)g fat")
-        }
-        lines.append("")
-        lines.append("Projection:")
-        lines.append("- Predicted (from diet): \(weekly(forecast.predictedWeeklyChangeKg))")
-        if let observed = forecast.observedWeeklyChangeKg {
-            lines.append("- Observed (from \(forecast.weightEntriesUsed) weight entries): \(weekly(observed))")
-        }
-        lines.append("- Expected weight in 30 days: \(wUnit(forecast.predictedWeight30dKg))")
-        lines.append("- Expected weight in 90 days: \(wUnit(forecast.predictedWeight90dKg))")
-        if let days = forecast.daysToGoal {
-            lines.append("- At current pace, reach goal in ~\(days) days")
-        }
-        if forecast.trendsDisagree {
-            lines.append("- NOTE: predicted and observed trends differ by >0.3 kg/week (possibly under-logging food).")
-        }
-
-        let prompt = """
-        You are a nutrition coach analyzing a user's weight trend. Write 3–4 short sentences (plain English, no bullets, no markdown, no bold) that:
-        1. State the predicted weight in \(unit) 30 days out and whether they're on track for their goal.
-        2. Give one or two specific, actionable suggestions (e.g. calorie target, protein amount, activity change) grounded in the numbers below.
-        3. If predicted and observed trends disagree, mention possible under-logging briefly.
-        Be direct, factual, and encouraging. Do not exceed 100 words.
-
-        \(lines.joined(separator: "\n"))
-        """
-        return try await callAI(prompt: prompt, image: nil, jsonResponse: false)
     }
 
     private static func macroTotals(for entries: [FoodEntry]) -> MacroTotals {
@@ -761,89 +706,62 @@ struct GeminiService {
     /// - Parameter jsonResponse: true (default) for prompts that demand a JSON object; providers with
     ///   structured output are asked for `application/json` so they cannot wander off into prose.
     ///   Pass false for the few plain-English prompts.
-    private static func callAI(prompt: String, image: UIImage?, jsonResponse: Bool = true) async throws -> String {
-        try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse)
+    private static func callAI(
+        prompt: String,
+        image: UIImage?,
+        jsonResponse: Bool = true,
+        route: JevTierRequest,
+        trace: AIRequestTrace? = nil
+    ) async throws -> String {
+        try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse, route: route, trace: trace)
     }
 
-    private static func callTextFoodAnalysis(prompt: String, description: String) async throws -> FoodAnalysis {
-        if AIModeSettings.isHosted {
-            let text = try await HostedAIService.generate(
-                prompt: prompt,
-                imageDataList: [],
-                systemInstruction: AIProviderSettings.currentUserContext
-            )
+    /// Apple Foundation Models answers text food with its own structured on-device generation.
+    private static func callTextFoodAnalysis(
+        prompt: String,
+        description: String,
+        trace: AIRequestTrace? = nil
+    ) async throws -> FoodAnalysis {
+        try await routed(.textFood(description), trace: trace) { attempt -> FoodAnalysis in
+            if attempt.provider == .appleIntelligence {
+                #if canImport(FoundationModels)
+                if #available(iOS 26.0, *) {
+                    return try await OnDeviceFoodService.analyzeTextInput(description: description)
+                }
+                #endif
+                throw AnalysisError.requestFailed(.unsupportedDevice)
+            }
+            let text = try await attempt.send(prompt, true)
             return try parseFoodAnalysis(from: text)
         }
-        let primary = AIProviderSettings.currentConfig(requiresVision: false)
-        if primary.provider.requiresAPIKey, primary.apiKey == nil {
-            throw AnalysisError.noAPIKey
-        }
+    }
 
+    /// Runs one meal identification request with a trace and writes the trace to the
+    /// on-device request log. A caller that passes its own trace (Settings → AI Providers
+    /// tests) owns it and writes it, so a test request is logged once, as a test.
+    private static func logged<T>(
+        _ kind: AIRequestLogEntry.Kind,
+        trace callerTrace: AIRequestTrace?,
+        _ work: (AIRequestTrace) async throws -> T
+    ) async throws -> T {
+        if let callerTrace {
+            return try await work(callerTrace)
+        }
+        let trace = AIRequestTrace(kind: kind)
         do {
-            return try await dispatchFoodAnalysis(
-                provider: primary.provider,
-                model: primary.model,
-                baseURL: primary.baseURL,
-                apiKey: primary.apiKey,
-                prompt: prompt,
-                description: description
-            )
+            let value = try await work(trace)
+            AIRequestLogStore.shared.append(trace.entries(outcome: .parsed))
+            return value
         } catch {
-            if error is CancellationError { throw error }
-            guard let fallback = AIProviderSettings.currentTextFallbackConfig(
-                excludingPrimary: primary.provider,
-                model: primary.model
-            ) else {
-                throw error
-            }
-            do {
-                return try await dispatchFoodAnalysis(
-                    provider: fallback.provider,
-                    model: fallback.model,
-                    baseURL: fallback.baseURL,
-                    apiKey: fallback.apiKey,
-                    prompt: prompt,
-                    description: description
-                )
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
-                let chosenError = AIRequestErrorPolicy.errorToSurface(
-                    primaryProvider: primary.provider, primaryError: error, fallbackError: fallbackError
-                )
-                let detail = (chosenError as? AnalysisError)?.localizedDescription
-                    ?? (primary.provider == .gemma4Local ? chosenError.localizedDescription : AIErrorKind.generic.message)
-                throw AnalysisFallbackError(primaryName: primary.provider.displayName,
-                    fallbackName: fallback.provider.displayName, detail: detail)
-            }
+            AIRequestLogStore.shared.append(trace.entries(outcome: .failed(requestLogMessage(for: error))))
+            throw error
         }
     }
 
-    private static func dispatchFoodAnalysis(
-        provider: AIProvider,
-        model: String,
-        baseURL: String,
-        apiKey: String?,
-        prompt: String,
-        description: String
-    ) async throws -> FoodAnalysis {
-        if provider == .appleIntelligence {
-            #if canImport(FoundationModels)
-            if #available(iOS 26.0, *) {
-                return try await OnDeviceFoodService.analyzeTextInput(description: description)
-            }
-            #endif
-            throw AnalysisError.requestFailed(.unsupportedDevice)
-        }
-
-        let text = try await dispatch(
-            provider: provider,
-            model: model,
-            baseURL: baseURL,
-            apiKey: apiKey,
-            prompt: prompt,
-            imageDataList: []
-        )
-        return try parseFoodAnalysis(from: text)
+    /// The line the request log shows for a request that produced no usable answer.
+    static func requestLogMessage(for error: Error) -> String {
+        if error is CancellationError { return "Cancelled before an answer arrived." }
+        return analysisErrorMessage(error)
     }
 
     private static func runWithHostedQuota<T>(
@@ -857,18 +775,58 @@ struct GeminiService {
         return try await AIGate.runWithHostedQuota(action, work)
     }
 
-    private static func callAI(prompt: String, images: [UIImage], jsonResponse: Bool = true) async throws -> String {
-        if AIModeSettings.isHosted {
+    /// - Parameter route: what the request is, so JevTierRouter can apply its policy and record it.
+    private static func callAI(
+        prompt: String,
+        images: [UIImage],
+        jsonResponse: Bool = true,
+        route: JevTierRequest,
+        trace: AIRequestTrace? = nil
+    ) async throws -> String {
+        // imageConversionFailed is local — fallback won't help, rethrow.
+        // For everything else (network / 5xx / 4xx / parser failure) try fallback.
+        let isLocalImageFailure: (Error) -> Bool = { error in
+            if case AnalysisError.imageConversionFailed = error { return true }
+            return false
+        }
+        return try await routed(route, images: images, terminal: isLocalImageFailure, trace: trace) { attempt in
+            try await attempt.send(prompt, jsonResponse)
+        }
+    }
+
+    /// One provider attempt. `provider` is nil for hosted mode, where the Worker picks the model.
+    private struct AIAttempt {
+        let provider: AIProvider?
+        let send: (_ prompt: String, _ jsonResponse: Bool) async throws -> String
+    }
+
+    /// The one pipeline every GeminiService AI request runs through:
+    /// hosted → plan → key check → JPEG encoding → JevTierRouter.run → configured fallback → error.
+    /// Hosted mode skips the router (D7): the Worker picks the model and meters the call.
+    /// `route` is required, so no request can reach a provider without the router seeing it.
+    /// `terminal` errors surface as is, from either attempt, without trying the fallback.
+    /// `trace`, when given, is handed to every provider request so the request log can record it.
+    private static func routed<T>(
+        _ route: JevTierRequest,
+        images: [UIImage] = [],
+        terminal: (Error) -> Bool = { _ in false },
+        trace: AIRequestTrace? = nil,
+        _ perform: (AIAttempt) async throws -> T
+    ) async throws -> T {
+        let environment = AIRouteEnvironment.current
+        if environment.isHosted() {
             let capped = Array(images.prefix(HostedAIConstants.maxHostedImages))
             let imageDataList = try capped.map { try encodedJPEGData(for: $0) }
-            return try await HostedAIService.generate(
-                prompt: prompt,
-                imageDataList: imageDataList,
-                systemInstruction: AIProviderSettings.currentUserContext
-            )
+            trace?.beginAttempt(provider: AIRequestTrace.hostedProviderName, model: nil)
+            return try await perform(AIAttempt(provider: nil) { prompt, _ in
+                try await environment.hosted(prompt, imageDataList, trace)
+            })
         }
-        let primary = AIProviderSettings.currentConfig(requiresVision: !images.isEmpty)
+        let base = environment.base(!images.isEmpty)
+        let plan = await environment.plan(route, base)
+        let primary = plan.primary
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
+            trace?.beginAttempt(provider: primary.provider.displayName, model: primary.model)
             throw AnalysisError.noAPIKey
         }
 
@@ -876,52 +834,29 @@ struct GeminiService {
             try encodedJPEGData(for: $0)
         }
 
-        do {
-            return try await dispatch(
-                provider: primary.provider,
-                model: primary.model,
-                baseURL: primary.baseURL,
-                apiKey: primary.apiKey,
-                prompt: prompt,
-                imageDataList: imageDataList,
-                jsonResponse: jsonResponse
-            )
-        } catch {
-            if error is CancellationError { throw error }
-            // imageConversionFailed is local — fallback won't help, rethrow.
-            // For everything else (network / 5xx / 4xx / parser failure) try fallback.
-            if case AnalysisError.imageConversionFailed = error { throw error }
-            let fallback = images.isEmpty
-                ? AIProviderSettings.currentTextFallbackConfig(
-                    excludingPrimary: primary.provider,
-                    model: primary.model
-                )
-                : AIProviderSettings.currentImageFallbackConfig(
-                    excludingPrimary: primary.provider,
-                    model: primary.model
-                )
-            guard let fallback else {
-                throw error
-            }
-            do {
-                return try await dispatch(
-                    provider: fallback.provider,
-                    model: fallback.model,
-                    baseURL: fallback.baseURL,
-                    apiKey: fallback.apiKey,
-                    prompt: prompt,
-                    imageDataList: imageDataList,
-                    jsonResponse: jsonResponse
-                )
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
+        return try await JevTierRouter.runWithFallback(
+            plan,
+            fallback: { images.isEmpty ? environment.textFallback($0) : environment.imageFallback($0) },
+            terminal: terminal,
+            surface: { primaryError, fallback, fallbackError in
                 let chosenError = AIRequestErrorPolicy.errorToSurface(
-                    primaryProvider: primary.provider, primaryError: error, fallbackError: fallbackError
+                    primaryProvider: primary.provider, primaryError: primaryError, fallbackError: fallbackError
                 )
                 let detail = (chosenError as? AnalysisError)?.localizedDescription
                     ?? (primary.provider == .gemma4Local ? chosenError.localizedDescription : AIErrorKind.generic.message)
-                throw AnalysisFallbackError(primaryName: primary.provider.displayName,
+                return AnalysisFallbackError(primaryName: primary.provider.displayName,
                     fallbackName: fallback.provider.displayName, detail: detail)
+            },
+            recordFallback: environment.recordFallback
+        ) { (config: AIProviderSettings.RequestConfig) async throws -> T in
+            trace?.beginAttempt(provider: config.provider.displayName, model: config.model)
+            do {
+                return try await perform(AIAttempt(provider: config.provider) { prompt, jsonResponse in
+                    try await environment.dispatch(config, prompt, imageDataList, jsonResponse, trace)
+                })
+            } catch {
+                trace?.recordAttemptFailure(analysisErrorMessage(error))
+                throw error
             }
         }
     }
@@ -952,7 +887,7 @@ struct GeminiService {
         return data
     }
 
-    private static func dispatch(provider: AIProvider, model: String, baseURL: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool = true) async throws -> String {
+    fileprivate static func dispatch(provider: AIProvider, model: String, baseURL: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool = true, trace: AIRequestTrace? = nil) async throws -> String {
         switch provider.apiFormat {
         case .onDevice:
             guard imageDataList.isEmpty else {
@@ -976,18 +911,18 @@ struct GeminiService {
             )
         case .gemini:
             guard let key = apiKey else { throw AnalysisError.noAPIKey }
-            return try await callGemini(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList, jsonResponse: jsonResponse)
+            return try await callGemini(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList, jsonResponse: jsonResponse, trace: trace)
         case .openaiCompatible:
-            return try await callOpenAICompatible(baseURL: baseURL, model: model, apiKey: apiKey, provider: provider, prompt: prompt, imageDataList: imageDataList)
+            return try await callOpenAICompatible(baseURL: baseURL, model: model, apiKey: apiKey, provider: provider, prompt: prompt, imageDataList: imageDataList, trace: trace)
         case .anthropic:
             guard let key = apiKey else { throw AnalysisError.noAPIKey }
-            return try await callAnthropic(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList)
+            return try await callAnthropic(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList, trace: trace)
         }
     }
 
     // MARK: - Gemini Format
 
-    private static func callGemini(baseURL: String, model: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool) async throws -> String {
+    private static func callGemini(baseURL: String, model: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool, trace: AIRequestTrace?) async throws -> String {
         // Send the API key in the X-goog-api-key header, not the URL query string,
         // so it doesn't end up in server logs / proxies (CodeQL: cleartext transmission).
         guard let apiKey else { throw AnalysisError.noAPIKey }
@@ -1028,7 +963,8 @@ struct GeminiService {
                 headers: ["Content-Type": "application/json", "X-goog-api-key": apiKey],
                 body: body,
                 provider: .gemini,
-                retryDelaysNs: GeminiRequestConfiguration.interactiveRetryDelaysNs
+                retryDelaysNs: GeminiRequestConfiguration.interactiveRetryDelaysNs,
+                trace: trace
             )
             return try GeminiRequestConfiguration.parseTextResponse(from: data)
         }
@@ -1106,7 +1042,7 @@ struct GeminiService {
         """
     }
 
-    private static func callOpenAICompatible(baseURL: String, model: String, apiKey: String?, provider: AIProvider, prompt: String, imageDataList: [Data]) async throws -> String {
+    private static func callOpenAICompatible(baseURL: String, model: String, apiKey: String?, provider: AIProvider, prompt: String, imageDataList: [Data], trace: AIRequestTrace?) async throws -> String {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
             throw AnalysisError.requestFailed(.invalidURL)
         }
@@ -1117,7 +1053,7 @@ struct GeminiService {
         }
         if provider == .openrouter {
             headers["HTTP-Referer"] = "https://github.com/apoorvdarshan/fud-ai"
-            headers["X-Title"] = "Fud AI"
+            headers["X-Title"] = "JL Physical"
         }
 
         func request(_ requestPrompt: String, compactRetry: Bool) async throws -> OpenAITextResponse {
@@ -1143,7 +1079,7 @@ struct GeminiService {
             if provider == .openrouter {
                 body["reasoning"] = AIProviderSettings.openRouterReasoningEffort.requestOptions(compactRetry: compactRetry, exclude: true)
             }
-            let data = try await makeRequest(url: url, headers: headers, body: body, provider: provider)
+            let data = try await makeRequest(url: url, headers: headers, body: body, provider: provider, trace: trace)
             return try parseOpenAITextResponse(from: data)
         }
 
@@ -1192,7 +1128,7 @@ struct GeminiService {
         """
     }
 
-    private static func callAnthropic(baseURL: String, model: String, apiKey: String, prompt: String, imageDataList: [Data]) async throws -> String {
+    private static func callAnthropic(baseURL: String, model: String, apiKey: String, prompt: String, imageDataList: [Data], trace: AIRequestTrace?) async throws -> String {
         guard let url = URL(string: "\(baseURL)/messages") else {
             throw AnalysisError.requestFailed(.invalidURL)
         }
@@ -1224,7 +1160,7 @@ struct GeminiService {
             if let userContext = AIProviderSettings.currentUserContext {
                 body["system"] = userContext
             }
-            let data = try await makeRequest(url: url, headers: headers, body: body, provider: .anthropic)
+            let data = try await makeRequest(url: url, headers: headers, body: body, provider: .anthropic, trace: trace)
             return try parseAnthropicTextResponse(from: data)
         }
 
@@ -1249,7 +1185,8 @@ struct GeminiService {
         body: [String: Any],
         provider: AIProvider,
         session: URLSession = .shared,
-        retryDelaysNs: [UInt64] = GeminiService.defaultRetryDelaysNs
+        retryDelaysNs: [UInt64] = GeminiService.defaultRetryDelaysNs,
+        trace: AIRequestTrace? = nil
     ) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1260,6 +1197,7 @@ struct GeminiService {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        trace?.registerCredentials(AIRequestLogRedactor.credentials(headers: headers, url: url))
 
         // Retry transient overload responses (503/429/529) with exponential backoff (default 1s, 2s, 4s).
         // The "model is currently experiencing high demand" message is Google's global throttle on
@@ -1275,10 +1213,12 @@ struct GeminiService {
             } catch let error as URLError where error.code == .cancelled {
                 throw CancellationError()
             } catch {
+                trace?.recordTransportError(provider: provider.displayName, error)
                 throw AnalysisError.networkError(error)
             }
 
             guard let httpResponse = response as? HTTPURLResponse else { return data }
+            trace?.recordResponse(provider: provider.displayName, status: httpResponse.statusCode, body: data)
 
             if httpResponse.statusCode == 200 {
                 return data
@@ -1644,27 +1584,6 @@ struct GeminiService {
         return updated
     }
 
-    private static func addingFallbackServingUnits(
-        to analysis: NutritionLabelAnalysis,
-        image: UIImage
-    ) async -> NutritionLabelAnalysis {
-        var updated = analysis
-        updated.requiresServingUnitFallback = false
-        guard ServingUnitRepairPolicy.shouldRepair(analysis) else { return updated }
-        guard let servingSizeGrams = analysis.servingSizeGrams,
-              let options = try? await inferServingUnitOptions(
-                name: analysis.name,
-                servingSizeGrams: servingSizeGrams,
-                image: image,
-                description: nil
-              ), !options.isEmpty else {
-            return updated
-        }
-
-        updated.servingUnitOptions = options
-        return updated
-    }
-
     private static func inferServingUnitOptions(
         name: String,
         servingSizeGrams: Double,
@@ -1694,7 +1613,8 @@ struct GeminiService {
         - Return [] when the evidence does not support a reliable non-gram option.
         """
 
-        let text = try await callAI(prompt: prompt, image: image)
+        let route = image == nil ? JevTierRequest.servingUnits(name) : JevTierRequest.servingUnitsPhoto(name)
+        let text = try await callAI(prompt: prompt, image: image, route: route)
         return try parseServingUnitOptions(from: text, servingSizeGrams: servingSizeGrams)
     }
 
@@ -1787,5 +1707,59 @@ struct GeminiService {
             servingSizeGrams: servingSizeGrams
         )
         return parsed.requiresFallback ? [] : parsed.options
+    }
+}
+
+/// Where GeminiService's AI requests get their config, plan, fallbacks and transport. `live` reads
+/// Settings and calls the providers. Tests swap `current` (their suite is serialized): CI can't reach
+/// providers, Keychain keys or on-device models, while prompts and parsers still run for real.
+struct AIRouteEnvironment {
+    typealias Config = AIProviderSettings.RequestConfig
+
+    var isHosted: () -> Bool
+    var base: (_ requiresVision: Bool) -> Config
+    var plan: (JevTierRequest, Config) async -> JevTierPlan
+    /// Settings → AI fallback for the given primary, or nil when there is none.
+    var textFallback: (_ primary: Config) -> Config?
+    var imageFallback: (_ primary: Config) -> Config?
+    var recordFallback: (OnDeviceFallbackNotice?) -> Void
+    var dispatch: (Config, _ prompt: String, _ imageDataList: [Data], _ jsonResponse: Bool, _ trace: AIRequestTrace?) async throws -> String
+    var hosted: (_ prompt: String, _ imageDataList: [Data], _ trace: AIRequestTrace?) async throws -> String
+
+    static var current = AIRouteEnvironment.live
+
+    static var live: AIRouteEnvironment {
+        AIRouteEnvironment(
+            isHosted: { AIModeSettings.isHosted },
+            base: { requiresVision in AIProviderSettings.currentConfig(requiresVision: requiresVision) },
+            plan: { request, base in await JevTierRouter.plan(request, base: base) },
+            textFallback: { primary in
+                AIProviderSettings.currentTextFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+            },
+            imageFallback: { primary in
+                AIProviderSettings.currentImageFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+            },
+            recordFallback: { notice in OnDeviceModelSettings.lastFallback = notice },
+            dispatch: { config, prompt, imageDataList, jsonResponse, trace in
+                try await GeminiService.dispatch(
+                    provider: config.provider,
+                    model: config.model,
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    prompt: prompt,
+                    imageDataList: imageDataList,
+                    jsonResponse: jsonResponse,
+                    trace: trace
+                )
+            },
+            hosted: { prompt, imageDataList, trace in
+                try await HostedAIService.generate(
+                    prompt: prompt,
+                    imageDataList: imageDataList,
+                    systemInstruction: AIProviderSettings.currentUserContext,
+                    trace: trace
+                )
+            }
+        )
     }
 }

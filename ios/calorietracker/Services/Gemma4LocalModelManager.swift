@@ -138,6 +138,11 @@ final class Gemma4LocalModelManager {
     }
 
     private(set) var state: InstallState = .notDownloaded
+
+    /// Visual QA only. Does not download, verify, or touch files.
+    func applySnapshotState(_ state: InstallState) {
+        self.state = state
+    }
     private(set) var installedByteCount: Int64 = 0
 
     @ObservationIgnored private let fileManager: FileManager
@@ -159,6 +164,20 @@ final class Gemma4LocalModelManager {
 
     var isEligible: Bool {
         Self.isEligible(physicalMemoryBytes: physicalMemoryBytes)
+    }
+
+    /// Hub and Food & AI subtitles use the same gate as the Gemma card.
+    var settingsSubtitle: String {
+        guard isEligible else { return "Needs 8 GB RAM" }
+        switch state {
+        case .notDownloaded: return "Not downloaded"
+        case .downloaded: return "Downloaded"
+        case .downloading: return "Downloading"
+        case .verifying: return "Verifying"
+        case .preparing: return "Preparing"
+        case .ready, .generating: return "Gemma ready"
+        case .failed: return "Needs attention"
+        }
     }
 
     var isDownloaded: Bool {

@@ -36,7 +36,11 @@ struct ManualEntryView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     Text("Manual Entry")
-                        .font(.headline)
+                        .font(.headline.weight(.heavy))
+                        .fontWidth(.condensed)
+                        .tracking(1.0)
+                        .textCase(.uppercase)
+                        .foregroundStyle(IronTheme.textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     field(label: "Name", text: $name, placeholder: "e.g. Homemade salad", keyboard: .default, focus: .name)
@@ -62,22 +66,27 @@ struct ManualEntryView: View {
                     // (defaults to whatever currentMeal returns for the time of day).
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Meal")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .manualEntryFieldLabel()
                         HStack {
                             Text("Meal Type")
-                            Spacer()
+                                .foregroundStyle(IronTheme.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            Spacer(minLength: 8)
                             Picker("Meal Type", selection: $mealType) {
                                 ForEach(MealType.allCases, id: \.self) { meal in
                                     Label(meal.displayName, systemImage: meal.icon).tag(meal)
                                 }
                             }
                             .pickerStyle(.menu)
-                            .tint(AppColors.calorie)
+                            .tint(IronTheme.bloodText)
                             .labelsHidden()
+                            // Keep the selected meal on one line; it was
+                            // hyphen-wrapping to "Break-/fast" in the narrow popover.
+                            .fixedSize()
                         }
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(.quaternarySystemFill)))
+                        .modifier(ManualEntryInputChrome(isFocused: false))
                     }
 
                     Button {
@@ -96,19 +105,16 @@ struct ManualEntryView: View {
                         onSave(entry)
                     } label: {
                         Text("Save")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppColors.calorie)
-                    .controlSize(.large)
+                    .buttonStyle(IronPrimaryButtonStyle(enabled: canSave && !submissionGate.isSubmitting))
                     .disabled(!canSave || submissionGate.isSubmitting)
 
                     Button("Cancel") { onCancel() }
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(IronTheme.textSecondary)
                 }
                 .padding(20)
             }
+            .background(IronTheme.surfaceRaised)
             .scrollDismissesKeyboard(.interactively)
             .scrollBounceBehavior(.basedOnSize)
             .toolbar(.hidden, for: .navigationBar)
@@ -123,6 +129,7 @@ struct ManualEntryView: View {
         }
         .frame(width: 340)
         .frame(maxHeight: 460)
+        .presentationBackground(IronTheme.surfaceRaised)
         .presentationBackgroundInteraction(.disabled)
         .interactiveDismissDisabled()
     }
@@ -131,15 +138,16 @@ struct ManualEntryView: View {
     private func field(label: String, text: Binding<String>, placeholder: String, keyboard: UIKeyboardType, focus: Field) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(LocalizedDisplayText.text(label))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField(placeholder, text: text)
+                .manualEntryFieldLabel()
+            TextField(placeholder, text: text, prompt: Text(placeholder).foregroundStyle(IronTheme.textTertiary))
                 .keyboardType(keyboard)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
                 .focused($focused, equals: focus)
+                .foregroundStyle(IronTheme.textPrimary)
+                .tint(IronTheme.bloodText)
                 .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(.quaternarySystemFill)))
+                .modifier(ManualEntryInputChrome(isFocused: focused == focus))
         }
     }
 
@@ -147,14 +155,42 @@ struct ManualEntryView: View {
     private func numberField(label: String, text: Binding<String>, focus: Field) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(LocalizedDisplayText.text(label))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField("0", text: text)
+                .manualEntryFieldLabel()
+            TextField("0", text: text, prompt: Text(verbatim: "0").foregroundStyle(IronTheme.textTertiary))
                 .keyboardType(focus == .calories ? .numberPad : .decimalPad)
                 .textFieldStyle(.plain)
                 .focused($focused, equals: focus)
+                .foregroundStyle(IronTheme.textPrimary)
+                .monospacedDigit()
+                .tint(IronTheme.bloodText)
                 .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(.quaternarySystemFill)))
+                .modifier(ManualEntryInputChrome(isFocused: focused == focus))
         }
+    }
+}
+
+/// Iron input well: squared corners, hairline border that turns red while the field has focus.
+private struct ManualEntryInputChrome: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let isFocused: Bool
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+        content
+            .background(IronTheme.surface, in: shape)
+            .overlay {
+                shape.strokeBorder(isFocused ? IronTheme.bloodText : IronTheme.hairline, lineWidth: 1)
+            }
+            .animation(reduceMotion ? nil : IronTheme.motion, value: isFocused)
+    }
+}
+
+private extension View {
+    /// Small uppercase monospaced caption above each Manual Entry input.
+    func manualEntryFieldLabel() -> some View {
+        font(.system(.caption, design: .monospaced, weight: .semibold))
+            .tracking(0.8)
+            .textCase(.uppercase)
+            .foregroundStyle(IronTheme.textSecondary)
     }
 }

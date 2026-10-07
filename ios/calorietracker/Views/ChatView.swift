@@ -14,6 +14,9 @@ struct ChatView: View {
     @Environment(FoodStore.self) private var foodStore
     @Environment(FastingStore.self) private var fastingStore
     @Environment(StrengthWorkoutStore.self) private var strengthWorkoutStore
+    /// Optional so hosts without the draft store (previews) still render; the
+    /// Coach's "today's session" answer resumes an unsaved session when present.
+    @Environment(WorkoutDraftStore.self) private var workoutDraftStore: WorkoutDraftStore?
     @AppStorage("heightUnit") private var heightUnitRaw = "ftin"
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
 
@@ -33,6 +36,7 @@ struct ChatView: View {
     @State private var voicePressStart: Date?
     @State private var voicePulse = false
     @FocusState private var isInputFocused: Bool
+    private let routerHandoff = RouterHandoff.shared
     @ScaledMetric(relativeTo: .title2) private var coachHeroSize = 92.0
     @ScaledMetric(relativeTo: .title2) private var coachHeroIconSize = 38.0
     @ScaledMetric(relativeTo: .body) private var composerControlSize = 40.0
@@ -194,8 +198,19 @@ struct ChatView: View {
             ScrollView {
                 VStack(spacing: 14) {
                     ForEach(messages) { msg in
-                        MessageBubble(message: msg)
-                            .id(msg.id)
+                        MessageBubble(
+                            message: msg,
+                            onLogFood: { text in
+                                routerHandoff.pendingFoodText = text
+                            },
+                            onOpenWorkout: {
+                                routerHandoff.pendingOpenTodayWorkout = true
+                            },
+                            onAskCoach: {
+                                askCoachInstead(before: msg.id)
+                            }
+                        )
+                        .id(msg.id)
                     }
                     if isSending {
                         HStack(alignment: .top, spacing: 8) {
@@ -688,42 +703,71 @@ struct ChatView: View {
         attachedImage = nil
         errorMessage = nil
         isSending = true
-        let historyForCall = chatStore.contextMessages().dropLast()  // exclude the user msg we just appended
+        let historyForCall = Array(chatStore.contextMessages().dropLast())
 
         Task {
             defer { isSending = false }
-            do {
-                let reply = try await ChatService.sendMessage(
-                    history: Array(historyForCall),
-                    newUserMessage: text,
-                    imageData: imageDataForAI,
-                    profile: userProfile,
-                    weights: weightStore.entries,
-                    bodyFats: bodyFatStore.entries,
-                    measurements: bodyMeasurementStore.entries,
-                    foods: foodStore.entries,
-                    fastingSessions: fastingStore.sessions,
-                    heightMetric: heightUnitRaw == "cm",
-                    weightMetric: weightUnitRaw == "kg",
-                    workoutSessions: strengthWorkoutStore.completedSessions,
-                    workoutPlans: Array(strengthWorkoutStore.dayPlans.values),
-                    workoutPreferences: strengthWorkoutStore.preferences,
-                    workoutAccessEnabled: true
-                )
-                chatStore.append(ChatMessage(role: .assistant, content: reply))
-            } catch {
-                if let quotaError = error as? HostedAIQuotaError {
-                    switch quotaError {
-                    case .quotaExceeded:
-                        showHostedQuotaPaywall = true
-                    case .noActiveSubscription:
-                        showHostedPaywall = true
-                    case .notHostedMode, .rateLimited:
-                        errorMessage = quotaError.errorDescription
-                    }
-                } else {
-                    errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            if image == nil,
+               let handled = await CoachIntentRouter.route(text, hasImage: false, trainingContext: {
+                   TrainProgressStore.shared.context(
+                       draft: workoutDraftStore?.draft,
+                       days: ActiveProgramCache.load()?.body?.days ?? []
+                   )
+               }) {
+                chatStore.append(handled)
+                return
+            }
+            await completeCoachTurn(history: historyForCall, text: text, imageData: imageDataForAI)
+        }
+    }
+
+    private func askCoachInstead(before assistantID: UUID) {
+        guard !isSending,
+              let index = chatStore.messages.firstIndex(where: { $0.id == assistantID }),
+              let user = chatStore.messages[..<index].last(where: { $0.role == .user }) else { return }
+        let history = Array(chatStore.messages[..<index].prefix { $0.id != user.id })
+        let text = user.content
+        isSending = true
+        errorMessage = nil
+        Task {
+            defer { isSending = false }
+            await JevRouter.shared.report(.coachIntent, .userOverride, preview: text)
+            await completeCoachTurn(history: history, text: text, imageData: nil)
+        }
+    }
+
+    private func completeCoachTurn(history: [ChatMessage], text: String, imageData: Data?) async {
+        do {
+            let reply = try await ChatService.sendMessage(
+                history: history,
+                newUserMessage: text,
+                imageData: imageData,
+                profile: userProfile,
+                weights: weightStore.bodyWeightEntries,
+                bodyFats: bodyFatStore.entries,
+                measurements: bodyMeasurementStore.entries,
+                foods: foodStore.entries,
+                fastingSessions: fastingStore.sessions,
+                heightMetric: heightUnitRaw == "cm",
+                weightMetric: weightUnitRaw == "kg",
+                workoutSessions: strengthWorkoutStore.completedSessions,
+                workoutPlans: Array(strengthWorkoutStore.dayPlans.values),
+                workoutPreferences: strengthWorkoutStore.preferences,
+                workoutAccessEnabled: true
+            )
+            chatStore.append(ChatMessage(role: .assistant, content: reply))
+        } catch {
+            if let quotaError = error as? HostedAIQuotaError {
+                switch quotaError {
+                case .quotaExceeded:
+                    showHostedQuotaPaywall = true
+                case .noActiveSubscription:
+                    showHostedPaywall = true
+                case .notHostedMode, .rateLimited:
+                    errorMessage = quotaError.errorDescription
                 }
+            } else {
+                errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
     }
@@ -890,8 +934,57 @@ private enum MarkdownMessageBlockCache {
     }
 }
 
+private struct CoachLocalCaption: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var onAskCoach: () -> Void
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            stacked
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    answered
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    askButton
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                stacked
+            }
+        }
+    }
+
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            answered
+            askButton
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var answered: some View {
+        Text("Answered on device")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var askButton: some View {
+        Button("Ask Coach instead", action: onAskCoach)
+            .font(.caption.weight(.semibold))
+            .multilineTextAlignment(.leading)
+            .foregroundStyle(AppColors.calorie)
+            .accessibilityIdentifier("coach.router.askCoach")
+    }
+}
+
 private struct MessageBubble: View {
     let message: ChatMessage
+    var onLogFood: (String) -> Void = { _ in }
+    var onOpenWorkout: () -> Void = {}
+    var onAskCoach: () -> Void = {}
 
     private var isUser: Bool { message.role == .user }
     private var bubbleShape: UnevenRoundedRectangle {
@@ -951,6 +1044,23 @@ private struct MessageBubble: View {
                 MarkdownMessageText(text: message.content)
                     .textSelection(.enabled)
                     .foregroundStyle(.primary)
+                if let action = message.routerAction {
+                    switch action {
+                    case .logFood(let text):
+                        Button("Log food") { onLogFood(text) }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppColors.calorie)
+                            .accessibilityIdentifier("coach.router.logFood")
+                    case .logWorkout:
+                        Button("Open today's workout") { onOpenWorkout() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppColors.calorie)
+                            .accessibilityIdentifier("coach.router.openWorkout")
+                    case .localAnswer:
+                        EmptyView()
+                    }
+                    CoachLocalCaption(onAskCoach: onAskCoach)
+                }
             }
         }
             .padding(.horizontal, 16)

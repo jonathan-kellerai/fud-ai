@@ -1,0 +1,569 @@
+name: iOS Build CI
+
+on:
+  push:
+    branches: [ main, 'cursor/**', 'feat/**', 'integ/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build iOS App
+    runs-on: macos-15  # Latest macOS runner for Xcode 26
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: List available Xcode versions
+      run: ls -la /Applications/ | grep Xcode
+      
+    - name: Select latest Xcode 26
+      run: |
+        # Find and select the latest Xcode 26.x
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          echo "Available Xcode versions:"
+          ls -d /Applications/Xcode*.app
+          exit 1
+        fi
+        echo "Selected: $LATEST_XCODE"
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+      
+    - name: Show Xcode version
+      run: |
+        xcodebuild -version
+        swift --version
+      
+    - name: Build for iOS Simulator
+      run: |
+        cd ios
+        xcodebuild clean build \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -configuration Debug \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty && exit ${PIPESTATUS[0]}
+      
+    - name: Build for Generic iOS Device (Release)
+      run: |
+        cd ios
+        xcodebuild clean build \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'generic/platform=iOS' \
+          -configuration Release \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty && exit ${PIPESTATUS[0]}
+
+  recon-math-tests:
+    name: Recon math tests
+    runs-on: macos-15
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select latest Xcode 26
+      run: |
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          exit 1
+        fi
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+
+    - name: Run ReconMath tests
+      # PeptideNoNetworkTests and WorkoutNoNetworkTests are skipped here and each
+      # runs alone in its own step below.
+      run: |
+        cd ios
+        xcodebuild test \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          -only-testing:calorietrackerTests/ReconMathTests \
+          -only-testing:calorietrackerTests/SettingsKeyPreservationTests \
+          -only-testing:calorietrackerTests/TypeSafeEstimateCheckTests \
+          -only-testing:calorietrackerTests/JevRouterCoreTests \
+          -only-testing:calorietrackerTests/JevMealMatchTests \
+          -only-testing:calorietrackerTests/JevCoachIntentTests \
+          -only-testing:calorietrackerTests/JevExerciseMatchTests \
+          -only-testing:calorietrackerTests/JevTierRoutingTests \
+          -only-testing:calorietrackerTests/PlausibilityRulesTests \
+          -only-testing:calorietrackerTests/JevPlausibilityTests \
+          -only-testing:calorietrackerTests/WorkoutDraftStoreTests \
+          -only-testing:calorietrackerTests/WorkoutLoggerLogicTests \
+          -only-testing:calorietrackerTests/CCLadderTests \
+          -only-testing:calorietrackerTests/BridgeKeyStorageTests \
+          -only-testing:calorietrackerTests/ProgressV2MathTests \
+          -only-testing:calorietrackerTests/PeptideMathTests \
+          -only-testing:calorietrackerTests/PeptideLogStoreTests \
+          -only-testing:calorietrackerTests/PeptideLegacyMigrationTests \
+          -skip-testing:calorietrackerTests/PeptideNoNetworkTests \
+          -only-testing:calorietrackerTests/PeptideArchiveTests \
+          -only-testing:calorietrackerTests/PeptideBackupAndResetTests \
+          -only-testing:calorietrackerTests/PeptideSecondProfileTests \
+          -only-testing:calorietrackerTests/PeptideDerivedMilligramsTests \
+          -only-testing:calorietrackerTests/ReconBenchMigrationTests \
+          -only-testing:calorietrackerTests/PeptideChipLayoutTests \
+          -only-testing:calorietrackerTests/PeptideUnreadableLogTests \
+          -only-testing:calorietrackerTests/MoreHubSubtitlesTests \
+          -only-testing:calorietrackerTests/JLFeatureFlagsTests \
+          -only-testing:calorietrackerTests/ChallengeEngineTests \
+          -only-testing:calorietrackerTests/ChallengeRewardEvaluatorTests \
+          -only-testing:calorietrackerTests/ChallengeReminderPlannerTests \
+          -only-testing:calorietrackerTests/ChallengeStoreTests \
+          -only-testing:calorietrackerTests/ChallengeMetricProviderTests \
+          -only-testing:calorietrackerTests/ChallengePresentationTests \
+          -only-testing:calorietrackerTests/IronThemeTests \
+          -only-testing:calorietrackerTests/HomeV2Tests \
+          -only-testing:calorietrackerTests/TrainingProgramTests \
+          -only-testing:calorietrackerTests/ProgramCycleTests \
+          -only-testing:calorietrackerTests/TrainProgressStoreTests \
+          -only-testing:calorietrackerTests/AIRequestLogRedactorTests \
+          -only-testing:calorietrackerTests/AIRequestLogStoreTests \
+          -only-testing:calorietrackerTests/AIRequestTraceTests \
+          -only-testing:calorietrackerTests/AIDiagnosticResultTests \
+          -only-testing:calorietrackerTests/OpenRouterOAuthTests \
+          -only-testing:calorietrackerTests/HostedAIServiceTraceTests \
+          -only-testing:calorietrackerTests/OpenRouterSignInTests \
+          -only-testing:calorietrackerTests/WorkoutLogStoreTests \
+          -only-testing:calorietrackerTests/WorkoutImportTests \
+          -only-testing:calorietrackerTests/WorkoutBackupAndResetTests \
+          -skip-testing:calorietrackerTests/WorkoutNoNetworkTests \
+          -parallel-testing-enabled NO \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
+        STATUS=${PIPESTATUS[0]}
+        echo "---- Swift Testing results (raw log) ----"
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|PeptideChipLayoutTests|PeptideUnreadableLogTests|ReconBenchMigrationTests|PeptideSecondProfileTests|PeptideDerivedMilligramsTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|AIRequestLogRedactorTests|AIRequestLogStoreTests|AIRequestTraceTests|AIDiagnosticResultTests|OpenRouterOAuthTests|HostedAIServiceTraceTests|OpenRouterSignInTests|WorkoutLogStoreTests|WorkoutImportTests|WorkoutBackupAndResetTests|WorkoutNoNetworkTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        if [ "$STATUS" -ne 0 ]; then
+          echo "---- raw compiler errors ----"
+          grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
+        fi
+        # runSelfTest asserts all 41 recon-bench self-test rows pass (42 before build 68
+        # removed the per-person roster row with the people).
+        if ! grep -qE "runSelfTest\(\).*passed" "$RUNNER_TEMP/recon-tests.log"; then
+          echo "runSelfTest() did not report a pass; treating as failure."
+          exit 1
+        fi
+        exit $STATUS
+
+    - name: Run PeptideNoNetworkTests alone
+      # The tripwire registers a URLProtocol for the whole test process and
+      # changes the bridge settings. Swift Testing runs suites concurrently in
+      # one process even with -parallel-testing-enabled NO, so other suites'
+      # requests and settings changes could overlap it. It runs here in its own
+      # xcodebuild invocation and test process, on the products built above.
+      run: |
+        cd ios
+        LOG="$RUNNER_TEMP/peptide-no-network-tests.log"
+        RESULT="$RUNNER_TEMP/peptide-no-network-tests.xcresult"
+        rm -rf "$RESULT"
+        xcodebuild test-without-building \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          -resultBundlePath "$RESULT" \
+          -only-testing:calorietrackerTests/PeptideNoNetworkTests \
+          -parallel-testing-enabled NO \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          2>&1 | tee "$LOG" | xcpretty
+        STATUS=${PIPESTATUS[0]}
+        echo "---- Swift Testing results (raw log) ----"
+        grep -E "PeptideNoNetworkTests|Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|\*\* TEST" "$LOG" || true
+        exit $STATUS
+
+    - name: Fail unless PeptideNoNetworkTests passed on its own
+      # Same guard as the listed-suite check below, on the separate run's log,
+      # plus its result bundle (at least one test, none failed), plus proof it
+      # did not also run in the shared process.
+      run: |
+        LOG="$RUNNER_TEMP/peptide-no-network-tests.log"
+        RESULT="$RUNNER_TEMP/peptide-no-network-tests.xcresult"
+        SUMMARY="$RUNNER_TEMP/peptide-no-network-tests-summary.json"
+        fail=0
+        if grep -qE "Suite PeptideNoNetworkTests passed after [0-9.]+ seconds" "$LOG"; then
+          echo "ok: PeptideNoNetworkTests (log)"
+        else
+          echo "::error::PeptideNoNetworkTests did not report a passing run in its own invocation"
+          fail=1
+        fi
+        if grep -qE "Suite PeptideNoNetworkTests " "$RUNNER_TEMP/recon-tests.log"; then
+          echo "::error::PeptideNoNetworkTests also ran in the shared test process"
+          fail=1
+        fi
+        if xcrun xcresulttool get test-results summary --path "$RESULT" > "$SUMMARY"; then
+          python3 - "$SUMMARY" <<'PY' || fail=1
+        import json, sys
+        s = json.load(open(sys.argv[1]))
+        print("result bundle: result=%s total=%s passed=%s failed=%s" % (
+            s.get("result"), s.get("totalTestCount"), s.get("passedTests"), s.get("failedTests")))
+        ok = s.get("result") == "Passed" and (s.get("passedTests") or 0) >= 1 and (s.get("failedTests") or 0) == 0
+        if not ok:
+            print("::error::PeptideNoNetworkTests result bundle does not show a passing run")
+        sys.exit(0 if ok else 1)
+        PY
+        else
+          echo "::error::Couldn't read the PeptideNoNetworkTests result bundle"
+          fail=1
+        fi
+        exit $fail
+
+    - name: Run WorkoutNoNetworkTests alone
+      # Same isolation as PeptideNoNetworkTests: the workout tripwire registers
+      # its own URLProtocol for the whole test process, and two tripwires in one
+      # process catch each other's requests. Own invocation, products built above.
+      run: |
+        cd ios
+        LOG="$RUNNER_TEMP/workout-no-network-tests.log"
+        RESULT="$RUNNER_TEMP/workout-no-network-tests.xcresult"
+        rm -rf "$RESULT"
+        xcodebuild test-without-building \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          -resultBundlePath "$RESULT" \
+          -only-testing:calorietrackerTests/WorkoutNoNetworkTests \
+          -parallel-testing-enabled NO \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          2>&1 | tee "$LOG" | xcpretty
+        STATUS=${PIPESTATUS[0]}
+        echo "---- Swift Testing results (raw log) ----"
+        grep -E "WorkoutNoNetworkTests|Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|\*\* TEST" "$LOG" || true
+        exit $STATUS
+
+    - name: Fail unless WorkoutNoNetworkTests passed on its own
+      # The PeptideNoNetworkTests guard, for the workout tripwire: its own log,
+      # its result bundle (at least one test, none failed), and not in the shared run.
+      run: |
+        LOG="$RUNNER_TEMP/workout-no-network-tests.log"
+        RESULT="$RUNNER_TEMP/workout-no-network-tests.xcresult"
+        SUMMARY="$RUNNER_TEMP/workout-no-network-tests-summary.json"
+        fail=0
+        if grep -qE "Suite WorkoutNoNetworkTests passed after [0-9.]+ seconds" "$LOG"; then
+          echo "ok: WorkoutNoNetworkTests (log)"
+        else
+          echo "::error::WorkoutNoNetworkTests did not report a passing run in its own invocation"
+          fail=1
+        fi
+        if grep -qE "Suite WorkoutNoNetworkTests " "$RUNNER_TEMP/recon-tests.log"; then
+          echo "::error::WorkoutNoNetworkTests also ran in the shared test process"
+          fail=1
+        fi
+        if xcrun xcresulttool get test-results summary --path "$RESULT" > "$SUMMARY"; then
+          python3 - "$SUMMARY" <<'PY' || fail=1
+        import json, sys
+        s = json.load(open(sys.argv[1]))
+        print("result bundle: result=%s total=%s passed=%s failed=%s" % (
+            s.get("result"), s.get("totalTestCount"), s.get("passedTests"), s.get("failedTests")))
+        ok = s.get("result") == "Passed" and (s.get("passedTests") or 0) >= 1 and (s.get("failedTests") or 0) == 0
+        if not ok:
+            print("::error::WorkoutNoNetworkTests result bundle does not show a passing run")
+        sys.exit(0 if ok else 1)
+        PY
+        else
+          echo "::error::Couldn't read the WorkoutNoNetworkTests result bundle"
+          fail=1
+        fi
+        exit $fail
+
+    - name: Fail if a listed suite ran no tests
+      # A misspelled -only-testing identifier selects nothing and still exits 0.
+      # Swift Testing prints one line per finished suite, e.g. (raw log):
+      #   "􁁛  Suite ChallengeEngineTests passed after 0.021 seconds."
+      # The leading glyph varies by Xcode version, so only the text after it is matched:
+      #   echo '􁁛  Suite ChallengeEngineTests passed after 0.021 seconds.' \
+      #     | grep -qE "Suite ChallengeEngineTests passed after [0-9.]+ seconds" && echo match
+      #   -> match
+      # A suite only reports "passed" after running at least one test.
+      # PeptideNoNetworkTests and WorkoutNoNetworkTests report in their own runs'
+      # logs, so all three logs are read.
+      run: |
+        missing=0
+        for suite in MoreHubSubtitlesTests JLFeatureFlagsTests ChallengeEngineTests \
+          ChallengeRewardEvaluatorTests ChallengeReminderPlannerTests ChallengeStoreTests \
+          ChallengeMetricProviderTests ChallengePresentationTests IronThemeTests HomeV2Tests \
+          TrainingProgramTests ProgramCycleTests TrainProgressStoreTests \
+          PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests PeptideArchiveTests \
+          PeptideBackupAndResetTests AIRequestLogRedactorTests AIRequestLogStoreTests AIRequestTraceTests \
+          AIDiagnosticResultTests OpenRouterOAuthTests JevTierRoutingTests HostedAIServiceTraceTests \
+          OpenRouterSignInTests PeptideSecondProfileTests PeptideDerivedMilligramsTests ReconBenchMigrationTests PeptideChipLayoutTests \
+          PeptideUnreadableLogTests WorkoutLogStoreTests WorkoutImportTests WorkoutBackupAndResetTests \
+          WorkoutNoNetworkTests WorkoutDraftStoreTests WorkoutLoggerLogicTests ProgressV2MathTests; do
+          if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log" \
+            "$RUNNER_TEMP/peptide-no-network-tests.log" "$RUNNER_TEMP/workout-no-network-tests.log"; then
+            echo "ok: ${suite}"
+          else
+            echo "::error::${suite} did not report a passing run (0 tests executed or not selected)"
+            missing=1
+          fi
+        done
+        exit $missing
+
+  peptide-local-lint:
+    name: Peptides stay on device
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: No bridge or network code in peptide paths
+      # Peptides are on-device only (build 67). Fails on a match or on a scan
+      # error (a missing path or unreadable file), never silently passes.
+      shell: bash
+      run: |
+        set -euo pipefail
+        src=ios/calorietracker
+        test -d "$src"
+        fail=0
+        # grep exits 0 on a match, 1 on none, 2 on an error (unreadable path, bad glob).
+        scan() {
+          local pattern="$1" what="$2"
+          shift 2
+          local out status
+          set +e
+          out=$(grep -rnE "$pattern" "$@" 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::$what"
+            echo "$out"
+            fail=1
+          elif [ "$status" -ne 1 ]; then
+            echo "::error::Scan failed (grep exit $status): $out"
+            fail=1
+          fi
+        }
+        scan '/api/peptides' "Peptide bridge route in app sources" "$src"
+        scan 'PeptideBridge' "Peptide bridge type in app sources" "$src"
+        scan '[Pp]eptide' "Peptide code in NeonBridgeService" "$src/Services/NeonBridgeService.swift"
+        scan 'URLSession|URLRequest|NeonBridgeService' "Network code in peptide sources" \
+          "$src"/Stores/Peptide*.swift "$src"/Models/Peptide*.swift "$src/Views/Peptides" \
+          "$src/Views/ReconView.swift" "$src/Stores/ReconStore.swift"
+        if [ "$fail" -eq 0 ]; then echo "Peptides stay on device: ok"; fi
+        exit "$fail"
+
+    - name: No personal names in app or test sources
+      # Build 68: peptides track one person per phone, and no personal name is
+      # hard-coded anywhere. The only allowed hits are the two legacy raw values
+      # PeptideLegacyProfile decodes (migration only), plus the bundle and
+      # app-group ids and the repo URL, which are signing/identity material.
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -d ios/calorietracker && test -d ios/calorietrackerTests
+        set +e
+        out=$(grep -rniE 'jonathan|victoria' ios/calorietracker ios/calorietrackerTests \
+          ios/calorietrackerShare ios/FudAIWidgets ios/FudAIWatchApp ios/FudAIWatchWidgets --include='*.swift' 2>&1)
+        status=$?
+        set -e
+        if [ "$status" -gt 1 ]; then echo "::error::Scan failed (grep exit $status): $out"; exit 1; fi
+        left=$(printf '%s\n' "$out" | grep -vE 'jonathanbowe\.jlphysical|jonathan-kellerai/fud-ai' \
+          | grep -vE '^ios/calorietracker/Models/PeptideTrackingModels\.swift:[0-9]+:    static let (first|second)ProfileRawValue = ' \
+          | grep -v '^$' || true)
+        if [ -n "$left" ]; then
+          echo "::error::Personal name in sources"
+          echo "$left"
+          exit 1
+        fi
+        echo "No personal names: ok"
+
+  workout-local-lint:
+    name: Workouts stay on device
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: No bridge or network code in workout paths
+      # Workouts are on-device only (build 70). Fails on a match or on a scan
+      # error (a missing path or unreadable file), never silently passes.
+      shell: bash
+      run: |
+        set -euo pipefail
+        src=ios/calorietracker
+        test -d "$src"
+        fail=0
+        # grep exits 0 on a match, 1 on none, 2 on an error (unreadable path, bad glob).
+        scan() {
+          local pattern="$1" what="$2"
+          shift 2
+          local out status
+          set +e
+          out=$(grep -rnE "$pattern" "$@" 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::$what"
+            echo "$out"
+            fail=1
+          elif [ "$status" -ne 1 ]; then
+            echo "::error::Scan failed (grep exit $status): $out"
+            fail=1
+          fi
+        }
+        scan '/api/workouts' "Workout bridge route in app sources" "$src"
+        scan 'func (listWorkouts|getWorkout|postWorkout|updateWorkout|deleteWorkout)\b' \
+          "Workout method in NeonBridgeService" "$src/Services/NeonBridgeService.swift"
+        scan '(bridge|neonBridge|NeonBridgeService\.shared)\.(listWorkouts|getWorkout|postWorkout|updateWorkout|deleteWorkout)\b' \
+          "Workout bridge call in app sources" "$src"
+        scan 'WorkoutSyncService|ProgressTrainingAPI' "Workout sync or Progress bridge client in app sources" "$src"
+        # The workout log, its records, import and readers: no network or bridge at all.
+        scan 'URLSession|URLRequest|NeonBridgeService' "Network code in workout storage" \
+          "$src"/Stores/WorkoutLog*.swift "$src/Stores/WorkoutDraftStore.swift" "$src/Stores/DeviceLogFile.swift" \
+          "$src/Stores/TrainProgressStore.swift" "$src/Models/WorkoutRecords.swift" "$src/Models/WorkoutImportFile.swift" \
+          "$src/Services/ExerciseHistoryLoader.swift" "$src/Models/ProgressV2/ProgressTrainingLoader.swift" \
+          "$src/Models/ProgressV2/ProgressV2Training.swift" "$src/Views/WorkoutHistoryEditView.swift" \
+          "$src/Views/WorkoutsSettingsView.swift"
+        # The logger and Train keep the bridge for programs and CC ladders, never URLSession.
+        scan 'URLSession|URLRequest' "Network code in the workout logger or Train" \
+          "$src/Views/ProgramV2WorkoutLogView.swift" "$src/Views/JLPhysicalTabView.swift"
+        if [ "$fail" -eq 0 ]; then echo "Workouts stay on device: ok"; fi
+        exit "$fail"
+
+  visual-qa:
+    name: Visual QA screenshots
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select latest Xcode 26
+      run: |
+        LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+        if [ -z "$LATEST_XCODE" ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          exit 1
+        fi
+        sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+
+    - name: Pick simulators (Pro size + small size)
+      id: sims
+      run: |
+        set -euo pipefail
+        RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x.get('platform')=='iOS' and x.get('isAvailable')]; r.sort(key=lambda x:[int(p) for p in x['version'].split('.')]); print(r[-1]['identifier'])")
+        echo "Runtime: $RUNTIME"
+        create() {
+          xcrun simctl create "$1" "$2" "$RUNTIME" 2>/dev/null || true
+        }
+        PRO=""
+        for type in iPhone-17-Pro iPhone-16-Pro; do
+          PRO=$(create "QA Pro" "com.apple.CoreSimulator.SimDeviceType.$type")
+          if [ -n "$PRO" ]; then PRO_LABEL=$(echo "$type" | tr -d '-'); break; fi
+        done
+        SMALL=""
+        for type in iPhone-SE-3rd-generation iPhone-SE-2nd-generation iPhone-13-mini iPhone-12-mini; do
+          SMALL=$(create "QA Small" "com.apple.CoreSimulator.SimDeviceType.$type")
+          if [ -n "$SMALL" ]; then SMALL_LABEL=$(echo "$type" | tr -d '-'); break; fi
+        done
+        if [ -z "$PRO" ] || [ -z "$SMALL" ]; then
+          echo "Could not create simulators. Available device types:"
+          xcrun simctl list devicetypes
+          exit 1
+        fi
+        echo "Pro: $PRO_LABEL $PRO"
+        echo "Small: $SMALL_LABEL $SMALL"
+        echo "pro=$PRO" >> "$GITHUB_OUTPUT"
+        echo "pro_label=$PRO_LABEL" >> "$GITHUB_OUTPUT"
+        echo "small=$SMALL" >> "$GITHUB_OUTPUT"
+        echo "small_label=$SMALL_LABEL" >> "$GITHUB_OUTPUT"
+
+    - name: Build for testing
+      run: |
+        set -o pipefail
+        cd ios
+        xcodebuild build-for-testing \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -destination "id=${{ steps.sims.outputs.pro }}" \
+          -derivedDataPath "$RUNNER_TEMP/dd" \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          | xcpretty
+
+    - name: Capture screenshots
+      id: capture
+      run: |
+        set -o pipefail
+        cd ios
+        STATUS=0
+        run_device() {
+          local udid="$1" label="$2"
+          local out="$GITHUB_WORKSPACE/visual-qa/$label"
+          local result="$RUNNER_TEMP/visual-qa-$label.xcresult"
+          local log="$GITHUB_WORKSPACE/visual-qa/logs/xcodebuild-$label.log"
+          mkdir -p "$out" "$(dirname "$log")"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b || true
+          TEST_RUNNER_VISUAL_QA_DIR="$out" TEST_RUNNER_VISUAL_QA_DEVICE="$label" \
+          xcodebuild test-without-building \
+            -project calorietracker.xcodeproj \
+            -scheme calorietracker \
+            -destination "id=$udid" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$result" \
+            -only-testing:calorietrackerTests/VisualQASnapshotTests \
+            -only-testing:calorietrackerTests/ProgressV2VisualQATests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$log" | xcpretty || STATUS=1
+          grep -E "Test Case .*(passed|failed)|error:|Executed [0-9]+ tests" "$log" | tail -60 || true
+          if ! ls "$out"/*.png >/dev/null 2>&1; then
+            echo "No PNGs written directly; exporting attachments from $result"
+            xcrun xcresulttool export attachments --path "$result" --output-path "$out" || true
+          fi
+          echo "$label: $(ls "$out" | grep -c '\.png$' || true) PNGs"
+        }
+        run_device "${{ steps.sims.outputs.pro }}" "${{ steps.sims.outputs.pro_label }}"
+        run_device "${{ steps.sims.outputs.small }}" "${{ steps.sims.outputs.small_label }}"
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Visual QA screenshots"
+          find "$GITHUB_WORKSPACE/visual-qa" -name '*.png' | sed "s|$GITHUB_WORKSPACE/||" | sort
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-qa-screenshots
+        path: visual-qa/
+        if-no-files-found: warn
+        retention-days: 14
+
+    - name: Upload result bundles
+      if: failure() || steps.capture.outputs.status == '1'
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-qa-xcresult
+        path: ${{ runner.temp }}/visual-qa-*.xcresult
+        retention-days: 7
+
+    - name: Fail if snapshot tests failed
+      if: steps.capture.outputs.status == '1'
+      run: |
+        echo "VisualQASnapshotTests reported failures; see the xcresult artifact."
+        exit 1
