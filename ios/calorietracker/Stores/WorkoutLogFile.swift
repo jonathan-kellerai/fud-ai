@@ -51,7 +51,9 @@ struct WorkoutLogFile {
         return file.read()
     }
 
-    func keepUnreadable(_ data: Data) {
+    /// True only when the copy is on disk and reads back the same.
+    @discardableResult
+    func keepUnreadable(_ data: Data) -> Bool {
         file.keepUnreadable(data)
     }
 
