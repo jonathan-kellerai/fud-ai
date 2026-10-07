@@ -30,7 +30,6 @@ extension VisualQAFixtures {
     static func peptideBPCVial() -> PeptideVial {
         PeptideVial(
             id: peptideBPCVialID,
-            person: "jonathan",
             compound: "BPC-157",
             components: [PeptideVialComponent(id: "qa-c-bpc", name: "BPC-157", amount: 10, unit: "mg")],
             diluentML: 2,
@@ -43,7 +42,6 @@ extension VisualQAFixtures {
     static func peptideTesaVial() -> PeptideVial {
         PeptideVial(
             id: peptideTesaVialID,
-            person: "jonathan",
             compound: "Tesamorelin",
             components: [PeptideVialComponent(id: "qa-c-tesa", name: "Tesamorelin", amount: 5, unit: "mg")],
             diluentML: 0.5,
@@ -56,7 +54,6 @@ extension VisualQAFixtures {
     static func peptideGlowVial() -> PeptideVial {
         PeptideVial(
             id: peptideGlowVialID,
-            person: "victoria",
             compound: "Glow",
             isBlend: true,
             components: [
@@ -76,7 +73,6 @@ extension VisualQAFixtures {
     /// Values the Visual QA test "typed" for the confirm step.
     static func peptideReviewDraft() -> PeptideLogDraft {
         var draft = PeptideLogDraft.new(
-            person: "jonathan",
             compound: "BPC-157",
             now: PeptideMath.date(civil: peptideToday, minutes: 7 * 60 + 30) ?? peptideReferenceDate
         )
@@ -93,7 +89,6 @@ extension VisualQAFixtures {
         store.saveVial(peptideGlowVial())
         store.saveSchedule(PeptideUserSchedule(
             id: "qa-sched-bpc",
-            person: "jonathan",
             compound: "BPC-157",
             frequency: ReconMath.Frequency(type: "daily"),
             startDate: ReconMath.addDays(peptideToday, -20),
@@ -102,7 +97,6 @@ extension VisualQAFixtures {
         ))
         store.saveSchedule(PeptideUserSchedule(
             id: "qa-sched-mt2",
-            person: "victoria",
             compound: "MT2",
             frequency: ReconMath.Frequency(type: "weekdays", days: [1, 3, 5]),
             startDate: ReconMath.addDays(peptideToday, -20),
@@ -110,34 +104,34 @@ extension VisualQAFixtures {
         ))
         for offset in bpcOffsets {
             seedDose(
-                "qa-adm-bpc-\(offset)", store: store, person: "jonathan", compound: "BPC-157", amount: "500", units: "mcg",
+                "qa-adm-bpc-\(offset)", store: store, compound: "BPC-157", amount: "500", units: "mcg",
                 offset: offset, minutes: 7 * 60 + 30, site: offset % 2 == 0 ? "Abdomen L" : "Abdomen R",
                 vialID: offset <= 4 ? peptideBPCVialID : nil
             )
         }
         for offset in tesaOffsets {
             seedDose(
-                "qa-adm-tesa-\(offset)", store: store, person: "jonathan", compound: "Tesamorelin", amount: "1.4", units: "mg",
+                "qa-adm-tesa-\(offset)", store: store, compound: "Tesamorelin", amount: "1.4", units: "mg",
                 offset: offset, minutes: 21 * 60 + 30, site: "Thigh L", vialID: peptideTesaVialID
             )
         }
-        seedDose("qa-adm-agent-1", store: store, person: "jonathan", compound: "Tesamorelin", amount: "1.4", units: "mg", offset: 2, minutes: 21 * 60 + 30)
+        seedDose("qa-adm-agent-1", store: store, compound: "Tesamorelin", amount: "1.4", units: "mg", offset: 2, minutes: 21 * 60 + 30)
         for offset in mt2Offsets {
             seedDose(
-                "qa-adm-mt2-\(offset)", store: store, person: "victoria", compound: "MT2", amount: "250", units: "mcg",
+                "qa-adm-mt2-\(offset)", store: store, compound: "MT2", amount: "250", units: "mcg",
                 offset: offset, minutes: 7 * 60 + 15, site: "Abdomen R"
             )
         }
         for offset in glowOffsets {
             seedDose(
-                "qa-adm-glow-\(offset)", store: store, person: "victoria", compound: "Glow", amount: "10", units: "units",
+                "qa-adm-glow-\(offset)", store: store, compound: "Glow", amount: "10", units: "units",
                 offset: offset, minutes: 20 * 60, site: "Thigh R", vialID: peptideGlowVialID
             )
         }
-        seedDose("qa-adm-tesa-today", store: store, person: "jonathan", compound: "Tesamorelin", amount: "1.4", units: "mg", offset: 0, minutes: 6 * 60 + 45, site: "Abdomen R", vialID: peptideTesaVialID)
+        seedDose("qa-adm-tesa-today", store: store, compound: "Tesamorelin", amount: "1.4", units: "mg", offset: 0, minutes: 6 * 60 + 45, site: "Abdomen R", vialID: peptideTesaVialID)
         // Corrected, then voided: the detail screen shows the reason and the trail.
         seedDose(
-            peptideVoidedRowID, store: store, person: "jonathan", compound: "BPC-157", amount: "250", units: "mcg",
+            peptideVoidedRowID, store: store, compound: "BPC-157", amount: "250", units: "mcg",
             offset: 3, minutes: 7 * 60 + 40, site: "Abdomen L", notes: "Same dose as the 7:30 entry."
         )
         if let entry = store.entry(id: peptideVoidedRowID) {
@@ -155,7 +149,6 @@ extension VisualQAFixtures {
     private static func seedDose(
         _ id: String,
         store: PeptideLogStore,
-        person: String,
         compound: String,
         amount: String,
         units: String,
@@ -167,7 +160,7 @@ extension VisualQAFixtures {
     ) {
         if offset == 0 && skipsTodaysPeptideDoses { return }
         let takenAt = peptideDate(offset: offset, minutes: minutes)
-        var draft = PeptideLogDraft.new(person: person, compound: compound, now: takenAt)
+        var draft = PeptideLogDraft.new(compound: compound, now: takenAt)
         draft.amountText = amount
         draft.units = units
         draft.site = site
@@ -178,21 +171,21 @@ extension VisualQAFixtures {
 }
 
 extension VisualQAFixtures {
-    /// A synthetic peptides file for the import preview: two vials with no
-    /// person, one vial already on the phone, and one dose. Made-up records only.
+    /// A synthetic peptides file for the import preview: two new vials, one
+    /// vial already on the phone, and one dose. Made-up records only.
     static func peptideImportArchive() -> PeptideArchive {
         let json = """
         {"format":"jl-peptides","format_version":1,"exported_at":"2026-10-06T18:00:00-04:00",
          "vials":[
-          {"id":"qa-import-vial-1","person":null,"compound":"Tesamorelin","components":[],
+          {"id":"qa-import-vial-1","compound":"Tesamorelin","components":[],
            "concentration_confirmed":false,"status":"active","notes":"labeled_amount: 5 mg\\nsource: QA-SYNTHETIC"},
-          {"id":"qa-import-vial-2","person":null,"compound":"MT2","components":[],
+          {"id":"qa-import-vial-2","compound":"MT2","components":[],
            "concentration_confirmed":false,"status":"active","notes":"source: QA-SYNTHETIC"},
-          {"id":"\(peptideBPCVialID)","person":"jonathan","compound":"BPC-157","components":[],"status":"active"}
+          {"id":"\(peptideBPCVialID)","compound":"BPC-157","components":[],"status":"active"}
          ],
          "schedules":[],
          "entries":[
-          {"id":"qa-import-dose-1","person":"victoria","compound":"MT2","dose":250,"units":"mcg",
+          {"id":"qa-import-dose-1","compound":"MT2","dose":250,"units":"mcg",
            "datetime":"2026-10-05T07:15:00-04:00","voided":false,"corrections":[]}
          ]}
         """

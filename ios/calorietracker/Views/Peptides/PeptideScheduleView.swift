@@ -11,12 +11,10 @@ import SwiftUI
 struct PeptideScheduleEditorTarget: Identifiable {
     let id = UUID().uuidString
     var schedule: PeptideUserSchedule?
-    var person: String
 }
 
 struct PeptideScheduleView: View {
     @Environment(PeptideLogStore.self) private var store
-    @State private var person: String
     @State private var editorTarget: PeptideScheduleEditorTarget?
 
     /// Fixed "now" for adherence (Visual QA). Nil uses the live date,
@@ -24,8 +22,7 @@ struct PeptideScheduleView: View {
     private let referenceDate: Date?
     @State private var now: Date
 
-    init(person: String = PeptidePerson.jonathan, referenceDate: Date? = nil) {
-        _person = State(initialValue: PeptidePerson.normalized(person))
+    init(referenceDate: Date? = nil) {
         _now = State(initialValue: referenceDate ?? Date())
         self.referenceDate = referenceDate
     }
@@ -36,9 +33,8 @@ struct PeptideScheduleView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 PeptideScreenTitle(title: "Schedule", subtitle: "You enter these. The app doesn't suggest doses or protocols.")
-                PeptidePersonToggle(person: $person)
                 Button {
-                    editorTarget = PeptideScheduleEditorTarget(schedule: nil, person: person)
+                    editorTarget = PeptideScheduleEditorTarget(schedule: nil)
                 } label: {
                     Label("Add schedule", systemImage: "plus")
                 }
@@ -53,24 +49,24 @@ struct PeptideScheduleView: View {
         .navigationBarTitleDisplayMode(.inline)
         .peptideLiveDate($now, fixed: referenceDate != nil)
         .sheet(item: $editorTarget) { target in
-            PeptideScheduleEditor(schedule: target.schedule, person: target.person)
+            PeptideScheduleEditor(schedule: target.schedule)
         }
     }
 
     @ViewBuilder
     private var schedulesSection: some View {
-        let schedules = store.personSchedules(person: person)
+        let schedules = store.schedules
         VStack(alignment: .leading, spacing: 12) {
             IronSectionTitle(title: "Your schedules")
             if schedules.isEmpty {
-                Text("No schedules for \(PeptidePerson.name(person)). Add one to see what's due and track adherence.")
+                Text("No schedules yet. Add one to see what's due and track adherence.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             ForEach(schedules) { schedule in
                 PeptideScheduleCard(schedule: schedule, today: today) {
-                    editorTarget = PeptideScheduleEditorTarget(schedule: schedule, person: person)
+                    editorTarget = PeptideScheduleEditorTarget(schedule: schedule)
                 }
             }
         }
@@ -187,7 +183,6 @@ struct PeptideScheduleEditor: View {
     @Environment(PeptideLogStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     private let existing: PeptideUserSchedule?
-    @State private var person: String
     @State private var compound: String
     @State private var amountText: String
     @State private var units: String?
@@ -213,9 +208,8 @@ struct PeptideScheduleEditor: View {
         ("weekly", "Weekly"),
     ]
 
-    init(schedule: PeptideUserSchedule?, person: String) {
+    init(schedule: PeptideUserSchedule?) {
         existing = schedule
-        _person = State(initialValue: PeptidePerson.normalized(schedule?.person ?? person))
         _compound = State(initialValue: schedule?.compound ?? "")
         _amountText = State(initialValue: schedule?.amount.map(PeptideMath.number) ?? "")
         _units = State(initialValue: schedule?.units)
@@ -239,7 +233,6 @@ struct PeptideScheduleEditor: View {
                         .font(.system(.subheadline, design: .rounded, weight: .semibold))
                         .foregroundStyle(IronTheme.brass)
                         .fixedSize(horizontal: false, vertical: true)
-                    PeptidePersonToggle(person: $person)
                     compoundSection
                     amountSection
                     frequencySection
@@ -301,7 +294,7 @@ struct PeptideScheduleEditor: View {
     }
 
     private var compoundSection: some View {
-        let options = PeptideMath.compoundOptions(person: person, loggedCompounds: store.loggedCompounds(person: person))
+        let options = PeptideMath.compoundOptions(vialCompounds: store.vialList().map(\.compound), loggedCompounds: store.loggedCompounds())
         return VStack(alignment: .leading, spacing: 8) {
             PeptideFieldLabel("Compound")
             PeptideFlowLayout(spacing: 8) {
@@ -442,7 +435,6 @@ struct PeptideScheduleEditor: View {
         }
         let schedule = PeptideUserSchedule(
             id: existing?.id ?? UUID().uuidString,
-            person: person,
             compound: name,
             amount: amount,
             units: amount == nil ? nil : units,

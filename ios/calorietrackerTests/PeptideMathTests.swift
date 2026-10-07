@@ -21,7 +21,6 @@ struct PeptideMathTests {
     ) -> PeptideVial {
         PeptideVial(
             id: id,
-            person: "jonathan",
             compound: compound,
             components: [PeptideVialComponent(name: compound, amount: amount, unit: unit)],
             diluentML: diluent,
@@ -33,7 +32,6 @@ struct PeptideMathTests {
     private func glowVial(diluent: Double? = 2, confirmed: Bool = true, threshold: Double? = nil) -> PeptideVial {
         PeptideVial(
             id: "glow",
-            person: "victoria",
             compound: "Glow",
             isBlend: true,
             components: [
@@ -49,7 +47,6 @@ struct PeptideMathTests {
 
     private func entry(
         _ id: String,
-        person: String = "jonathan",
         compound: String = "BPC-157",
         dose: Double? = 500,
         units: String? = "mcg",
@@ -62,7 +59,6 @@ struct PeptideMathTests {
     ) -> PeptideLogEntry {
         PeptideLogEntry(
             id: id,
-            person: person,
             compound: compound,
             dose: dose,
             units: units,
@@ -76,12 +72,11 @@ struct PeptideMathTests {
 
     private func schedule(
         compound: String = "BPC-157",
-        person: String = "jonathan",
         frequency: ReconMath.Frequency,
         start: String = "2026-09-01",
         end: String? = nil
     ) -> PeptideUserSchedule {
-        PeptideUserSchedule(id: "s-" + compound, person: person, compound: compound, frequency: frequency, startDate: start, endDate: end)
+        PeptideUserSchedule(id: "s-" + compound, compound: compound, frequency: frequency, startDate: start, endDate: end)
     }
 
     // MARK: Compound matching
@@ -98,18 +93,17 @@ struct PeptideMathTests {
         #expect(!PeptideMath.sameCompound("", ""))
     }
 
-    @Test func victoriaDefaultsAreExactlyMT2AndGlow() {
-        #expect(PeptideMath.defaultCompounds(person: "victoria") == ["MT2", "Glow"])
-        #expect(PeptideMath.compoundOptions(person: "victoria", loggedCompounds: []) == ["MT2", "Glow"])
+    @Test func compoundOptionsAreOnlyTheUsersOwn() {
+        #expect(PeptideMath.compoundOptions(vialCompounds: [], loggedCompounds: []).isEmpty)
+        #expect(PeptideMath.compoundOptions(vialCompounds: ["MT2"], loggedCompounds: ["BPC-157"]) == ["MT2", "BPC-157"])
     }
 
     @Test func loggedCompoundsAreAddedOncePerKey() {
-        let defaults = PeptideMath.defaultCompounds(person: "jonathan")
         let options = PeptideMath.compoundOptions(
-            person: "jonathan",
+            vialCompounds: ["BPC-157", "MT2"],
             loggedCompounds: ["bpc-157", "Melanotan II", "Ipamorelin", "ipamorelin"]
         )
-        #expect(Array(options.prefix(defaults.count)) == defaults)
+        #expect(Array(options.prefix(2)) == ["BPC-157", "MT2"])
         #expect(options.contains("Ipamorelin"))
         #expect(!options.contains("ipamorelin"))
         #expect(options.filter { PeptideMath.compoundKey($0) == "mt2" }.count == 1)
@@ -117,21 +111,19 @@ struct PeptideMathTests {
     }
 
     @Test func logDraftsNeverPrefillAnAmount() {
-        for person in PeptidePerson.order {
-            let names = PeptideMath.compoundOptions(person: person, loggedCompounds: ["BPC-157", "Tesamorelin"]) + [""]
-            for name in names {
-                let draft = PeptideLogDraft.new(person: person, compound: name)
-                #expect(draft.amount == nil, "\(person) \(name)")
-                #expect(draft.amountText.isEmpty)
-                #expect(draft.units == nil)
-                #expect(draft.drawnVolume == nil)
-                #expect(PeptideMath.validate(draft)[.amount] != nil)
-            }
+        let names = PeptideMath.compoundOptions(vialCompounds: ["MT2"], loggedCompounds: ["BPC-157", "Tesamorelin"]) + [""]
+        for name in names {
+            let draft = PeptideLogDraft.new(compound: name)
+            #expect(draft.amount == nil, "\(name)")
+            #expect(draft.amountText.isEmpty)
+            #expect(draft.units == nil)
+            #expect(draft.drawnVolume == nil)
+            #expect(PeptideMath.validate(draft)[.amount] != nil)
         }
     }
 
     @Test func validationNeedsPositiveAmountAndUnits() {
-        var draft = PeptideLogDraft.new(person: "jonathan", compound: "BPC-157")
+        var draft = PeptideLogDraft.new(compound: "BPC-157")
         draft.amountText = "0"
         draft.units = "mcg"
         #expect(PeptideMath.validate(draft)[.amount] != nil)
@@ -204,14 +196,14 @@ struct PeptideMathTests {
 
     @Test func blendNeedsUnitsOrTypedDraw() {
         let glow = glowVial()
-        let byUnits = entry("g1", person: "victoria", compound: "Glow", dose: 10, units: "units", vialID: "glow")
-        let byML = entry("g2", person: "victoria", compound: "Glow", dose: 0.1, units: "mL", civil: "2026-09-21", vialID: "glow")
+        let byUnits = entry("g1", compound: "Glow", dose: 10, units: "units", vialID: "glow")
+        let byML = entry("g2", compound: "Glow", dose: 0.1, units: "mL", civil: "2026-09-21", vialID: "glow")
         let ok = PeptideMath.remaining(vial: glow, entries: [byUnits, byML])
         #expect(ok.calculable)
         #expect(ok.remainingML == 1.8)
-        let typedDraw = entry("g3", person: "victoria", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-22", vialID: "glow", drawn: 20, drawnUnit: "units")
+        let typedDraw = entry("g3", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-22", vialID: "glow", drawn: 20, drawnUnit: "units")
         #expect(PeptideMath.remaining(vial: glow, entries: [typedDraw]).remainingML == 1.8)
-        let mcgOnly = entry("g4", person: "victoria", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-23", vialID: "glow")
+        let mcgOnly = entry("g4", compound: "Glow", dose: 500, units: "mcg", civil: "2026-09-23", vialID: "glow")
         let blocked = PeptideMath.remaining(vial: glow, entries: [byUnits, mcgOnly])
         #expect(!blocked.calculable)
         #expect(blocked.reason != nil)
@@ -275,11 +267,11 @@ struct PeptideMathTests {
         #expect(result.todayDue && !result.todayTaken)
     }
 
-    @Test func adherenceMatchesPersonAndCompoundKey() {
-        let mt2 = schedule(compound: "MT2", person: "victoria", frequency: ReconMath.Frequency(type: "daily"), start: "2026-09-20")
+    @Test func adherenceMatchesCompoundKey() {
+        let mt2 = schedule(compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), start: "2026-09-20")
         let entries = [
-            entry("v", person: "victoria", compound: "Melanotan II", civil: "2026-09-20"),
-            entry("j", person: "jonathan", compound: "MT2", civil: "2026-09-21"),
+            entry("a", compound: "Melanotan II", civil: "2026-09-20"),
+            entry("b", compound: "TB-500", civil: "2026-09-21"),
         ]
         let result = PeptideMath.adherence(mt2, entries: entries, from: "2026-09-20", to: "2026-09-21", today: "2026-09-22")
         #expect(result.taken == 1)
@@ -316,7 +308,7 @@ struct PeptideMathTests {
         #expect(result.todayDue)
         #expect(!result.todayTaken)
         // The due list uses the same counter.
-        let due = PeptideMath.dueItems(date: "2026-09-30", person: "jonathan", schedules: [threeAWeek], entries: entries)
+        let due = PeptideMath.dueItems(date: "2026-09-30", schedules: [threeAWeek], entries: entries)
         #expect(due.first?.weekCount == 2)
         #expect(due.first?.taken == false)
     }
@@ -376,9 +368,9 @@ struct PeptideMathTests {
             entry("2", compound: "Tesamorelin", dose: 400, units: "mcg", hour: 9),
             entry("3", compound: "tesamorelin", dose: 0.5, units: "mg", hour: 20),
             entry("4", compound: "Tesamorelin", dose: 9, units: "mg", hour: 21, voided: true),
-            entry("5", person: "victoria", compound: "MT2", dose: 250, units: "mcg"),
+            entry("5", compound: "MT2", dose: 250, units: "mcg", civil: "2026-09-21"),
         ]
-        let summary = PeptideMath.dailySummary(entries: entries, date: "2026-09-20", person: "jonathan")
+        let summary = PeptideMath.dailySummary(entries: entries, date: "2026-09-20")
         #expect(summary.count == 3)
         #expect(summary.totals.count == 2)
         let mg = summary.totals.first { $0.units == "mg" }
@@ -396,10 +388,10 @@ struct PeptideMathTests {
             entry("3", civil: "2026-09-28"),
             entry("4", compound: "TB-500", civil: "2026-09-28"),
         ]
-        let all = PeptideMath.weeklyCounts(entries: entries, compound: nil, person: "jonathan", weeks: 3, today: "2026-09-30")
+        let all = PeptideMath.weeklyCounts(entries: entries, compound: nil, weeks: 3, today: "2026-09-30")
         #expect(all.map(\.weekStart) == ["2026-09-14", "2026-09-21", "2026-09-28"])
         #expect(all.map(\.count) == [0, 2, 2])
-        let bpc = PeptideMath.weeklyCounts(entries: entries, compound: "bpc 157", person: "jonathan", weeks: 3, today: "2026-09-30")
+        let bpc = PeptideMath.weeklyCounts(entries: entries, compound: "bpc 157", weeks: 3, today: "2026-09-30")
         #expect(bpc.map(\.count) == [0, 2, 1])
     }
 

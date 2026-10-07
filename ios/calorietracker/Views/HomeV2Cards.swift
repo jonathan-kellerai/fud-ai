@@ -156,7 +156,7 @@ struct HomeV2Cards: View {
             }
         }
         .sheet(isPresented: $showingPeptideLog) {
-            PeptideLogSheet(person: PeptidePersonMemory.load())
+            PeptideLogSheet()
         }
     }
 

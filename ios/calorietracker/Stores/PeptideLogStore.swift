@@ -13,14 +13,17 @@ import Foundation
 @MainActor
 final class PeptideLogStore {
     static let defaultsKey = "peptide.log.v1"
-    static let personKey = "peptides.selectedPerson"
-    /// Version of the saved file. Version 1 was the bridge-era cache and queue.
-    static let fileVersion = 2
+    /// Version of the saved file. Version 1 was the bridge-era cache and queue;
+    /// version 2 tagged every record with one of two profiles.
+    static let fileVersion = 3
 
     private(set) var vials: [PeptideVial] = []
     private(set) var schedules: [PeptideUserSchedule] = []
     /// Every logged dose, oldest first.
     private(set) var entries: [PeptideLogEntry] = []
+    /// Records an earlier build kept under a second profile. Saved, backed up
+    /// and never shown in the log until the user keeps or deletes them.
+    private(set) var heldAside = PeptideRecordSet()
     private(set) var persistError: String?
     /// Plain-text note when the saved log couldn't be read in full.
     private(set) var storageNote: String?
@@ -49,19 +52,14 @@ final class PeptideLogStore {
         entries.first { $0.id == id }
     }
 
-    /// Entries for one person on one civil date, by time.
-    func dayEntries(_ civil: String, person: String, includeVoided: Bool) -> [PeptideLogEntry] {
-        let owner = PeptidePerson.normalized(person)
-        return entries.filter {
-            $0.civilDate == civil && PeptidePerson.normalized($0.person) == owner && (includeVoided || !$0.voided)
-        }
+    /// Entries on one civil date, by time.
+    func dayEntries(_ civil: String, includeVoided: Bool) -> [PeptideLogEntry] {
+        entries.filter { $0.civilDate == civil && (includeVoided || !$0.voided) }
     }
 
-    func personVials(person: String, includeFinished: Bool = false) -> [PeptideVial] {
-        let owner = PeptidePerson.normalized(person)
-        return vials.filter {
-            PeptidePerson.normalized($0.person) == owner && (includeFinished || $0.status == .active)
-        }
+    /// Active vials, plus finished ones when asked.
+    func vialList(includeFinished: Bool = false) -> [PeptideVial] {
+        vials.filter { includeFinished || $0.status == .active }
     }
 
     func vial(id: String?) -> PeptideVial? {
@@ -78,25 +76,15 @@ final class PeptideLogStore {
         PeptideMath.remaining(vial: vial, entries: entries + [extra])
     }
 
-    func lowStockVials(person: String?) -> [PeptideVial] {
-        vials.filter { vial in
-            vial.status == .active
-                && (person == nil || PeptidePerson.normalized(vial.person) == PeptidePerson.normalized(person))
-                && remaining(for: vial).isLow
-        }
+    func lowStockVials() -> [PeptideVial] {
+        vials.filter { $0.status == .active && remaining(for: $0).isLow }
     }
 
-    func personSchedules(person: String) -> [PeptideUserSchedule] {
-        let owner = PeptidePerson.normalized(person)
-        return schedules.filter { PeptidePerson.normalized($0.person) == owner }
-    }
-
-    /// Compounds this person has logged before, newest first, one per compound key.
-    func loggedCompounds(person: String) -> [String] {
-        let owner = PeptidePerson.normalized(person)
+    /// Compounds logged before, newest first, one per compound key.
+    func loggedCompounds() -> [String] {
         var seen = Set<String>()
         var names: [String] = []
-        for entry in entries.reversed() where PeptidePerson.normalized(entry.person) == owner {
+        for entry in entries.reversed() {
             let key = PeptideMath.compoundKey(entry.compound)
             guard !key.isEmpty, seen.insert(key).inserted else { continue }
             names.append(entry.compound)
@@ -104,7 +92,7 @@ final class PeptideLogStore {
         return names
     }
 
-    /// Doses logged on `civil` that count, both people, by time.
+    /// Doses logged on `civil` that count, by time.
     func takenEntries(on civil: String) -> [PeptideLogEntry] {
         entries.filter { $0.countsAsTaken && $0.civilDate == civil }
     }
@@ -127,7 +115,6 @@ final class PeptideLogStore {
         let datetime = PeptideMath.iso8601NewYork(draft.takenAt)
         let entry = PeptideLogEntry(
             id: entryID,
-            person: PeptidePerson.normalized(draft.person),
             compound: draft.trimmedCompound,
             dose: dose,
             units: units,
@@ -224,78 +211,95 @@ final class PeptideLogStore {
         didChange()
     }
 
+    // MARK: Second profile
+
+    /// Records an earlier build kept under a second profile, still waiting
+    /// for the user's choice.
+    var heldAsideCount: Int { heldAside.count }
+
+    /// "Keep them in my log": the held-aside records join this log (a record
+    /// whose id is already here is left as it is) and the choice is saved.
+    func keepHeldAside() {
+        guard !heldAside.isEmpty else { return }
+        let merged = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules).adding(heldAside)
+        entries = Self.sorted(merged.entries)
+        vials = merged.vials
+        schedules = merged.schedules
+        heldAside = PeptideRecordSet()
+        didChange()
+    }
+
+    /// "Delete them": the held-aside records are removed and the choice is saved.
+    func deleteHeldAside() {
+        guard !heldAside.isEmpty else { return }
+        heldAside = PeptideRecordSet()
+        didChange()
+    }
+
     // MARK: Archive
 
-    /// Everything on this phone in the archive format.
+    /// Everything on this phone in the archive format, held-aside records included.
     func archive(exportedAt: Date?) -> PeptideArchive {
         PeptideArchive(
             exportedAt: exportedAt.map(PeptideMath.iso8601NewYork),
             vials: vials,
             schedules: schedules,
-            entries: entries
+            entries: entries,
+            heldAside: heldAside
         )
     }
 
     /// What importing `archive` would add. A record whose id is already here
     /// (or earlier in the file) is left alone, so importing twice adds nothing.
+    /// Records an older file tagged with a profile are added like any other.
     func importSummary(of archive: PeptideArchive) -> PeptideImportSummary {
         var summary = PeptideImportSummary(skipped: archive.skipped)
         var vialIDs = Set(vials.map(\.id))
-        for vial in archive.vials {
-            if vialIDs.insert(vial.id).inserted {
-                summary.newVials += 1
-                if vial.person == nil { summary.newVialsWithoutPerson += 1 }
-            } else {
-                summary.alreadyHere += 1
-            }
+        for vial in archive.vials + archive.heldAside.vials {
+            if vialIDs.insert(vial.id).inserted { summary.newVials += 1 } else { summary.alreadyHere += 1 }
         }
         var scheduleIDs = Set(schedules.map(\.id))
-        for schedule in archive.schedules {
+        for schedule in archive.schedules + archive.heldAside.schedules {
             if scheduleIDs.insert(schedule.id).inserted { summary.newSchedules += 1 } else { summary.alreadyHere += 1 }
         }
         var entryIDs = Set(entries.map(\.id))
-        for entry in archive.entries {
+        for entry in archive.entries + archive.heldAside.entries {
             if entryIDs.insert(entry.id).inserted { summary.newEntries += 1 } else { summary.alreadyHere += 1 }
         }
         return summary
     }
 
-    /// Adds what `archive` has that this phone doesn't. Records with no
-    /// person go to `person`. Nothing already here is changed.
+    /// Adds what `archive` has that this phone doesn't, all to this log.
+    /// Nothing already here is changed.
     @discardableResult
-    func importArchive(_ archive: PeptideArchive, person: String, now: Date = Date()) -> PeptideImportSummary {
+    func importArchive(_ archive: PeptideArchive, now: Date = Date()) -> PeptideImportSummary {
         let summary = importSummary(of: archive)
         guard summary.added > 0 else { return summary }
-        for vial in archive.vials where !vials.contains(where: { $0.id == vial.id }) {
-            vials.append(vial.vial(defaultPerson: person, now: now))
-        }
-        for schedule in archive.schedules where !schedules.contains(where: { $0.id == schedule.id }) {
-            schedules.append(schedule.schedule(defaultPerson: person, now: now))
-        }
-        for entry in archive.entries where !entries.contains(where: { $0.id == entry.id }) {
-            entries.append(entry)
-        }
+        let file = archive.records(now: now)
+        let merged = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules)
+            .adding(file.own)
+            .adding(file.heldAside)
+        entries = merged.entries
+        vials = merged.vials
+        schedules = merged.schedules
         didChangeEntries()
         return summary
     }
 
-    /// Replaces everything with `archive` (iCloud restore). A vial or schedule
-    /// with no person is Jonathan's, as on any record without one. Saved
-    /// first: when it can't be saved, nothing in memory or saved changes and the
-    /// reason is returned.
+    /// Replaces everything with `archive` (iCloud restore). Records the
+    /// backup holds aside stay held aside. Saved first: when it can't be
+    /// saved, nothing in memory or saved changes and the reason is returned.
     func replaceAll(with archive: PeptideArchive, now: Date = Date()) -> String? {
-        let replacement = PeptideRecordSet(
-            entries: Self.sorted(archive.entries),
-            vials: archive.vials.map { $0.vial(defaultPerson: PeptidePerson.jonathan, now: now) },
-            schedules: archive.schedules.map { $0.schedule(defaultPerson: PeptidePerson.jonathan, now: now) }
-        )
+        var replacement = archive.records(now: now)
+        replacement.own.entries = Self.sorted(replacement.own.entries)
         if savingBlocked { return persistError ?? "Peptides can't be saved on this phone right now." }
         if !file.isInMemory, case .failure(let error)? = save(replacement, fallbackOnFailure: false) {
             return error.localizedDescription
         }
-        vials = replacement.vials
-        schedules = replacement.schedules
-        entries = replacement.entries
+        vials = replacement.own.vials
+        schedules = replacement.own.schedules
+        entries = replacement.own.entries
+        heldAside = replacement.heldAside
         persistError = nil
         return nil
     }
@@ -307,6 +311,7 @@ final class PeptideLogStore {
         entries = []
         vials = []
         schedules = []
+        heldAside = PeptideRecordSet()
         persistError = nil
         storageNote = nil
         omitted = 0
@@ -341,13 +346,17 @@ final class PeptideLogStore {
             file.keepUnreadable(data)
             return
         }
-        if version == Self.fileVersion {
+        if version == Self.fileVersion || version == 2 {
             guard let snapshot = try? JSONDecoder().decode(PeptideLogSnapshot.self, from: data) else {
                 file.keepUnreadable(data)
                 return
             }
             // Records skipped now are dropped by the next save, so they join the count saved with it.
             apply(snapshot.records, omitted: snapshot.omitted + snapshot.skipped)
+            if version == 2 {
+                // Version 2 tagged records with a profile: keep its bytes, then save version 3.
+                keepAsideThenSave(data, label: "pre-v3")
+            }
         } else if version == 1 {
             upgrade(data)
         } else {
@@ -366,7 +375,13 @@ final class PeptideLogStore {
             return
         }
         apply(migrated.records, omitted: migrated.skipped)
-        guard file.keepBeforeUpgrade(data, label: "pre-local") else {
+        keepAsideThenSave(data, label: "pre-local")
+    }
+
+    /// Writes the untouched bytes of an older save next to it, then saves in
+    /// the current version. If the copy can't be made, nothing is saved.
+    private func keepAsideThenSave(_ data: Data, label: String) {
+        guard file.keepBeforeUpgrade(data, label: label) else {
             savingBlocked = true
             persistError = "Peptides from the earlier version couldn't be backed up on this phone, so changes aren't saved yet."
             return
@@ -374,10 +389,11 @@ final class PeptideLogStore {
         persist()
     }
 
-    private func apply(_ records: PeptideRecordSet, omitted: Int) {
-        entries = Self.sorted(records.entries)
-        vials = records.vials
-        schedules = records.schedules
+    private func apply(_ records: PeptideRecordsByProfile, omitted: Int) {
+        entries = Self.sorted(records.own.entries)
+        vials = records.own.vials
+        schedules = records.own.schedules
+        heldAside = records.heldAside
         self.omitted = omitted
         if omitted > 0 {
             let records = omitted == 1 ? "1 saved peptide record" : "\(omitted) saved peptide records"
@@ -387,7 +403,11 @@ final class PeptideLogStore {
 
     private func persist() {
         if file.isInMemory || savingBlocked { return }
-        switch save(PeptideRecordSet(entries: entries, vials: vials, schedules: schedules)) {
+        let records = PeptideRecordsByProfile(
+            own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules),
+            heldAside: heldAside
+        )
+        switch save(records) {
         case .success?:
             persistError = nil
         case .failure(let error)?:
@@ -398,12 +418,13 @@ final class PeptideLogStore {
     }
 
     /// Writes these records as the saved log. Nil when there is no file to write.
-    private func save(_ records: PeptideRecordSet, fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
+    private func save(_ records: PeptideRecordsByProfile, fallbackOnFailure: Bool = true) -> Result<Void, Error>? {
         let snapshot = PeptideLogSnapshot(
             version: Self.fileVersion,
-            entries: records.entries,
-            vials: records.vials,
-            schedules: records.schedules,
+            entries: records.own.entries,
+            vials: records.own.vials,
+            schedules: records.own.schedules,
+            heldAside: records.heldAside,
             omitted: omitted
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return .failure(SaveError.encoding) }
@@ -417,12 +438,16 @@ final class PeptideLogStore {
     }
 }
 
-/// The saved file (version 2). One unreadable record never drops the rest.
+/// The saved file (version 3; version 2 reads the same way). One unreadable
+/// record never drops the rest. Records a version-2 save tagged with the
+/// second profile, and those in `held_aside`, are held aside.
 struct PeptideLogSnapshot: Codable {
     var version: Int
     var entries: [PeptideLogEntry]
     var vials: [PeptideVial]
     var schedules: [PeptideUserSchedule]
+    /// Waiting for the user to keep or delete them. Saved only when there are some.
+    var heldAside = PeptideRecordSet()
     /// Records that were left out of an earlier save because they couldn't
     /// be read (an upgrade, or a damaged save). Saved only when above 0;
     /// older saves without it read as 0.
@@ -430,32 +455,63 @@ struct PeptideLogSnapshot: Codable {
     /// Records in this save that couldn't be read. Not saved.
     var skipped = 0
 
-    var records: PeptideRecordSet {
-        PeptideRecordSet(entries: entries, vials: vials, schedules: schedules)
+    var records: PeptideRecordsByProfile {
+        PeptideRecordsByProfile(own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules), heldAside: heldAside)
     }
 
     enum CodingKeys: String, CodingKey {
         case version, entries, vials, schedules, omitted
+        case heldAside = "held_aside"
     }
 
-    init(version: Int, entries: [PeptideLogEntry], vials: [PeptideVial], schedules: [PeptideUserSchedule], omitted: Int = 0) {
+    private enum HeldAsideKeys: String, CodingKey {
+        case entries, vials, schedules
+    }
+
+    init(
+        version: Int,
+        entries: [PeptideLogEntry],
+        vials: [PeptideVial],
+        schedules: [PeptideUserSchedule],
+        heldAside: PeptideRecordSet = PeptideRecordSet(),
+        omitted: Int = 0
+    ) {
         self.version = version
         self.entries = entries
         self.vials = vials
         self.schedules = schedules
+        self.heldAside = heldAside
         self.omitted = omitted
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         version = try container.decode(Int.self, forKey: .version)
-        let lossyEntries = (try? container.decode([PeptideLossy<PeptideLogEntry>].self, forKey: .entries)) ?? []
-        entries = lossyEntries.compactMap(\.value)
-        let lossyVials = (try? container.decode([PeptideLossy<PeptideVial>].self, forKey: .vials)) ?? []
-        vials = lossyVials.compactMap(\.value)
-        let lossySchedules = (try? container.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
-        schedules = lossySchedules.compactMap(\.value)
-        skipped = (lossyEntries.count - entries.count) + (lossyVials.count - vials.count) + (lossySchedules.count - schedules.count)
+        let lossyEntries = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideLogEntry>>].self, forKey: .entries)) ?? []
+        let lossyVials = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideVial>>].self, forKey: .vials)) ?? []
+        let lossySchedules = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideUserSchedule>>].self, forKey: .schedules)) ?? []
+        let sorted = PeptideRecordsByProfile(
+            entries: lossyEntries.compactMap(\.value),
+            vials: lossyVials.compactMap(\.value),
+            schedules: lossySchedules.compactMap(\.value)
+        )
+        entries = sorted.own.entries
+        vials = sorted.own.vials
+        schedules = sorted.own.schedules
+        var held = sorted.heldAside
+        var heldLossy = 0
+        if let nested = try? container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside) {
+            let heldEntries = (try? nested.decode([PeptideLossy<PeptideLogEntry>].self, forKey: .entries)) ?? []
+            let heldVials = (try? nested.decode([PeptideLossy<PeptideVial>].self, forKey: .vials)) ?? []
+            let heldSchedules = (try? nested.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
+            held.entries += heldEntries.compactMap(\.value)
+            held.vials += heldVials.compactMap(\.value)
+            held.schedules += heldSchedules.compactMap(\.value)
+            heldLossy = heldEntries.count + heldVials.count + heldSchedules.count
+        }
+        heldAside = held
+        let read = sorted.own.count + held.count
+        skipped = lossyEntries.count + lossyVials.count + lossySchedules.count + heldLossy - read
         omitted = max((try? container.decodeIfPresent(Int.self, forKey: .omitted)) ?? 0, 0)
     }
 
@@ -465,6 +521,12 @@ struct PeptideLogSnapshot: Codable {
         try container.encode(entries, forKey: .entries)
         try container.encode(vials, forKey: .vials)
         try container.encode(schedules, forKey: .schedules)
+        if !heldAside.isEmpty {
+            var held = container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside)
+            try held.encode(heldAside.entries, forKey: .entries)
+            try held.encode(heldAside.vials, forKey: .vials)
+            try held.encode(heldAside.schedules, forKey: .schedules)
+        }
         if omitted > 0 { try container.encode(omitted, forKey: .omitted) }
     }
 

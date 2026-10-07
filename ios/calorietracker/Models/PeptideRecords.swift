@@ -30,7 +30,7 @@ struct PeptideAdministration: Decodable, Equatable, Identifiable {
     var calcGate: String?
     var concentrationBasis: String?
     var badges: [String]
-    /// v1.1: nil means Jonathan (legacy rows).
+    /// v1.1 profile tag; read only through `PeptideLegacyProfile`.
     var person: String? = nil
     /// "app" or "peptide-agent".
     var recordedVia: String? = nil

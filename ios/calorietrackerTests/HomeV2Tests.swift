@@ -60,13 +60,13 @@ struct HomeV2Tests {
         let store = PeptideLogStore(persistence: .inMemory)
         let today = "2026-09-27"
         #expect(!store.hasLocalActivity(today: today))
-        var draft = PeptideLogDraft.new(person: "jonathan", compound: "BPC-157", now: try #require(PeptideMath.date(civil: today)))
+        var draft = PeptideLogDraft.new(compound: "BPC-157", now: try #require(PeptideMath.date(civil: today)))
         draft.amountText = "500"
         draft.units = "mcg"
         _ = try #require(store.log(draft))
         #expect(store.hasLocalActivity(today: today))
         #expect(!store.hasLocalActivity(today: "2026-09-28"))
-        store.saveSchedule(PeptideUserSchedule(id: "s", person: "victoria", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: today, active: false))
+        store.saveSchedule(PeptideUserSchedule(id: "s", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: today, active: false))
         #expect(!store.hasLocalActivity(today: "2026-09-28"))
         store.setScheduleActive(id: "s", active: true)
         #expect(store.hasLocalActivity(today: "2026-09-28"))

@@ -12,12 +12,10 @@ import UniformTypeIdentifiers
 struct PeptideVialEditorTarget: Identifiable {
     let id = UUID().uuidString
     var vial: PeptideVial?
-    var person: String
 }
 
 struct PeptideVialsView: View {
     @Environment(PeptideLogStore.self) private var store
-    @State private var person: String
     @State private var editorTarget: PeptideVialEditorTarget?
     @State private var showFinished = false
     @State private var finishTarget: PeptideVial?
@@ -25,17 +23,14 @@ struct PeptideVialsView: View {
     @State private var importRequest: PeptideImportRequest?
     @State private var importError: String?
 
-    init(person: String = PeptidePerson.jonathan) {
-        _person = State(initialValue: PeptidePerson.normalized(person))
-    }
+    init() {}
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 PeptideScreenTitle(title: "Vials", subtitle: "Vials you mixed. Remaining is worked out only from your own numbers.")
-                PeptidePersonToggle(person: $person)
                 Button {
-                    editorTarget = PeptideVialEditorTarget(vial: nil, person: person)
+                    editorTarget = PeptideVialEditorTarget(vial: nil)
                 } label: {
                     Label("Add vial", systemImage: "plus")
                 }
@@ -57,7 +52,7 @@ struct PeptideVialsView: View {
         .navigationTitle("Vials")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editorTarget) { target in
-            PeptideVialEditor(vial: target.vial, person: target.person)
+            PeptideVialEditor(vial: target.vial)
         }
         .fileImporter(
             isPresented: $isPickingFile,
@@ -66,7 +61,7 @@ struct PeptideVialsView: View {
             onCompletion: loadFile
         )
         .sheet(item: $importRequest) { request in
-            PeptideImportPreviewSheet(archive: request.archive, person: person)
+            PeptideImportPreviewSheet(archive: request.archive)
         }
         .alert("Unable to Import", isPresented: importErrorBinding) {
             Button("OK", role: .cancel) { importError = nil }
@@ -112,18 +107,18 @@ struct PeptideVialsView: View {
 
     @ViewBuilder
     private var activeSection: some View {
-        let vials = store.personVials(person: person)
+        let vials = store.vialList()
         VStack(alignment: .leading, spacing: 12) {
             IronSectionTitle(title: "Active")
             if vials.isEmpty {
-                Text("No active vials for \(PeptidePerson.name(person)).")
+                Text("No active vials.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
             }
             ForEach(vials) { vial in
                 PeptideVialCard(
                     vial: vial,
-                    onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial, person: person) },
+                    onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial) },
                     onFinish: { finishTarget = vial }
                 )
             }
@@ -132,7 +127,7 @@ struct PeptideVialsView: View {
 
     @ViewBuilder
     private var finishedSection: some View {
-        let finished = store.personVials(person: person, includeFinished: true).filter { $0.status == .finished }
+        let finished = store.vialList(includeFinished: true).filter { $0.status == .finished }
         if !finished.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle(showFinished ? "Finished vials (\(finished.count))" : "Show finished vials (\(finished.count))", isOn: $showFinished)
@@ -143,7 +138,7 @@ struct PeptideVialsView: View {
                     ForEach(finished) { vial in
                         PeptideVialCard(
                             vial: vial,
-                            onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial, person: person) },
+                            onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial) },
                             onFinish: nil
                         )
                     }
@@ -293,7 +288,6 @@ struct PeptideVialEditor: View {
     @Environment(PeptideLogStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     private let existing: PeptideVial?
-    @State private var person: String
     @State private var compound: String
     @State private var isBlend: Bool
     @State private var components: [ComponentDraft]
@@ -314,9 +308,8 @@ struct PeptideVialEditor: View {
         var unit: String?
     }
 
-    init(vial: PeptideVial?, person: String) {
+    init(vial: PeptideVial?) {
         existing = vial
-        _person = State(initialValue: PeptidePerson.normalized(vial?.person ?? person))
         _compound = State(initialValue: vial?.compound ?? "")
         _isBlend = State(initialValue: vial?.isBlend ?? false)
         let drafts = (vial?.components ?? []).map {
@@ -340,7 +333,6 @@ struct PeptideVialEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    PeptidePersonToggle(person: $person)
                     compoundSection
                     componentsSection
                     PeptideInputField(title: "Diluent (mL)", text: $diluentText, prompt: "mL of water you added", keyboard: .decimalPad, monospaced: true)
@@ -395,7 +387,7 @@ struct PeptideVialEditor: View {
     }
 
     private var compoundSection: some View {
-        let options = PeptideMath.compoundOptions(person: person, loggedCompounds: store.loggedCompounds(person: person))
+        let options = PeptideMath.compoundOptions(vialCompounds: store.vialList().map(\.compound), loggedCompounds: store.loggedCompounds())
         return VStack(alignment: .leading, spacing: 8) {
             PeptideFieldLabel("Compound")
             PeptideFlowLayout(spacing: 8) {
@@ -573,7 +565,6 @@ struct PeptideVialEditor: View {
         }
         let vial = PeptideVial(
             id: existing?.id ?? UUID().uuidString,
-            person: person,
             compound: name,
             isBlend: isBlend,
             components: built,

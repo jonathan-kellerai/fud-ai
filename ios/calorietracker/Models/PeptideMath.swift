@@ -55,19 +55,11 @@ nonisolated enum PeptideMath {
         return !left.isEmpty && left == compoundKey(rhs)
     }
 
-    /// Victoria's starting list: exactly MT2 and Glow.
-    static func defaultCompounds(person: String) -> [String] {
-        if PeptidePerson.normalized(person) == PeptidePerson.victoria {
-            return ["MT2", glowName]
-        }
-        return (ReconMath.roster[PeptidePerson.jonathan] ?? []).compactMap { ReconMath.compounds[$0]?.name }
-    }
-
-    /// Compound chips for the log sheet: the person's starting list, then
-    /// compounds they've logged. De-duplicated by key.
-    static func compoundOptions(person: String, loggedCompounds: [String]) -> [String] {
-        var options = defaultCompounds(person: person)
-        for name in loggedCompounds {
+    /// Compound chips for the log sheet: the user's own vials, then compounds
+    /// they've logged. De-duplicated by key. Nothing is pre-loaded.
+    static func compoundOptions(vialCompounds: [String], loggedCompounds: [String]) -> [String] {
+        var options: [String] = []
+        for name in vialCompounds + loggedCompounds {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, !options.contains(where: { sameCompound($0, trimmed) }) else { continue }
             options.append(trimmed)
@@ -431,13 +423,10 @@ nonisolated enum PeptideMath {
         }
     }
 
-    static func takenDates(person: String, compound: String, entries: [PeptideLogEntry]) -> Set<String> {
+    static func takenDates(compound: String, entries: [PeptideLogEntry]) -> Set<String> {
         let key = compoundKey(compound)
-        let owner = PeptidePerson.normalized(person)
         var dates = Set<String>()
-        for entry in entries where entry.countsAsTaken
-            && PeptidePerson.normalized(entry.person) == owner
-            && compoundKey(entry.compound) == key {
+        for entry in entries where entry.countsAsTaken && compoundKey(entry.compound) == key {
             if let civil = entry.civilDate { dates.insert(civil) }
         }
         return dates
@@ -470,7 +459,7 @@ nonisolated enum PeptideMath {
         to: String,
         today: String
     ) -> Adherence {
-        let taken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries)
+        let taken = takenDates(compound: schedule.compound, entries: entries)
         if schedule.frequency.type == "perWeek" {
             var weekly = perWeekAdherence(schedule, entries: entries, from: from, to: min(to, today), today: today)
             weekly.streak = currentStreak(schedule, entries: entries, today: today)
@@ -533,7 +522,7 @@ nonisolated enum PeptideMath {
             }
             return streak
         }
-        let taken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries)
+        let taken = takenDates(compound: schedule.compound, entries: entries)
         var streak = 0
         for date in occurrences(schedule, from: floor, to: today).reversed() {
             if taken.contains(date) {
@@ -576,11 +565,8 @@ nonisolated enum PeptideMath {
         let perWeek = Int(schedule.frequency.n ?? 0)
         guard perWeek > 0, let span = perWeekSpan(schedule, weekStart: weekStart, from: lower, to: upper) else { return 0 }
         let key = compoundKey(schedule.compound)
-        let owner = PeptidePerson.normalized(schedule.person)
         var count = 0
-        for entry in entries where entry.countsAsTaken
-            && PeptidePerson.normalized(entry.person) == owner
-            && compoundKey(entry.compound) == key {
+        for entry in entries where entry.countsAsTaken && compoundKey(entry.compound) == key {
             guard let civil = entry.civilDate, civil >= span.first, civil <= span.last else { continue }
             count += 1
         }
@@ -624,7 +610,7 @@ nonisolated enum PeptideMath {
                 if today >= lower && today <= upper {
                     let soFar = perWeekCount(schedule, entries: entries, weekStart: week, from: schedule.startDate, to: today)
                     result.todayDue = soFar < perWeek
-                    result.todayTaken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries).contains(today)
+                    result.todayTaken = takenDates(compound: schedule.compound, entries: entries).contains(today)
                 }
             } else {
                 let due = perWeekDue(schedule, weekStart: week, from: lower, to: upper)
@@ -647,11 +633,10 @@ nonisolated enum PeptideMath {
     }
 
     /// Items the user's own schedules name for `date`.
-    static func dueItems(date: String, person: String, schedules: [PeptideUserSchedule], entries: [PeptideLogEntry]) -> [DueItem] {
-        let owner = PeptidePerson.normalized(person)
+    static func dueItems(date: String, schedules: [PeptideUserSchedule], entries: [PeptideLogEntry]) -> [DueItem] {
         var items: [DueItem] = []
-        for schedule in schedules where schedule.active && PeptidePerson.normalized(schedule.person) == owner {
-            let taken = takenDates(person: schedule.person, compound: schedule.compound, entries: entries)
+        for schedule in schedules where schedule.active {
+            let taken = takenDates(compound: schedule.compound, entries: entries)
             if schedule.frequency.type == "perWeek" {
                 guard date >= schedule.startDate, schedule.endDate.map({ date <= $0 }) ?? true else { continue }
                 let monday = ReconMath.mondayOf(date)
@@ -717,11 +702,8 @@ nonisolated enum PeptideMath {
         return order.compactMap { totals[$0] }
     }
 
-    static func dailySummary(entries: [PeptideLogEntry], date: String, person: String) -> DailySummary {
-        let owner = PeptidePerson.normalized(person)
-        let day = entries.filter {
-            $0.countsAsTaken && PeptidePerson.normalized($0.person) == owner && $0.civilDate == date
-        }
+    static func dailySummary(entries: [PeptideLogEntry], date: String) -> DailySummary {
+        let day = entries.filter { $0.countsAsTaken && $0.civilDate == date }
         let times = day.compactMap(\.date).sorted()
         return DailySummary(count: day.count, totals: totals(day), first: times.first, last: times.last)
     }
@@ -733,14 +715,13 @@ nonisolated enum PeptideMath {
         var id: String { weekStart }
     }
 
-    static func weeklyCounts(entries: [PeptideLogEntry], compound: String?, person: String, weeks: Int, today: String) -> [WeekCount] {
-        let owner = PeptidePerson.normalized(person)
+    static func weeklyCounts(entries: [PeptideLogEntry], compound: String?, weeks: Int, today: String) -> [WeekCount] {
         let key = compound.map(compoundKey)
         let lastMonday = ReconMath.mondayOf(today)
         let count = max(weeks, 1)
         let starts = (0..<count).map { ReconMath.addDays(lastMonday, -7 * (count - 1 - $0)) }
         var counts: [String: Int] = [:]
-        for entry in entries where entry.countsAsTaken && PeptidePerson.normalized(entry.person) == owner {
+        for entry in entries where entry.countsAsTaken {
             if let key, compoundKey(entry.compound) != key { continue }
             guard let civil = entry.civilDate else { continue }
             counts[ReconMath.mondayOf(civil), default: 0] += 1
@@ -758,9 +739,8 @@ nonisolated enum PeptideMath {
         var id: String { PeptideMath.compoundKey(compound) }
     }
 
-    static func compoundSummaries(entries: [PeptideLogEntry], person: String, today: String) -> [CompoundWindowSummary] {
-        let owner = PeptidePerson.normalized(person)
-        let mine = entries.filter { $0.countsAsTaken && PeptidePerson.normalized($0.person) == owner }
+    static func compoundSummaries(entries: [PeptideLogEntry], today: String) -> [CompoundWindowSummary] {
+        let mine = entries.filter(\.countsAsTaken)
         var order: [String] = []
         var names: [String: String] = [:]
         for entry in mine.sorted(by: { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }) {
@@ -799,29 +779,24 @@ nonisolated enum PeptideMath {
 
     static func dayMarker(
         date: String,
-        person: String,
         compound: String?,
         schedules: [PeptideUserSchedule],
         entries: [PeptideLogEntry],
         today: String
     ) -> DayMarker {
-        let owner = PeptidePerson.normalized(person)
         let key = compound.map(compoundKey)
         let relevant = schedules.filter {
-            $0.active && $0.frequency.type != "perWeek"
-                && PeptidePerson.normalized($0.person) == owner
-                && (key == nil || compoundKey($0.compound) == key)
+            $0.active && $0.frequency.type != "perWeek" && (key == nil || compoundKey($0.compound) == key)
         }
         let scheduled = relevant.filter { !occurrences($0, from: date, to: date).isEmpty }
         let logged = entries.contains {
-            $0.countsAsTaken && PeptidePerson.normalized($0.person) == owner && $0.civilDate == date
-                && (key == nil || compoundKey($0.compound) == key)
+            $0.countsAsTaken && $0.civilDate == date && (key == nil || compoundKey($0.compound) == key)
         }
         if scheduled.isEmpty {
             return logged ? .unscheduledOnly : .none
         }
         let allTaken = scheduled.allSatisfy {
-            takenDates(person: $0.person, compound: $0.compound, entries: entries).contains(date)
+            takenDates(compound: $0.compound, entries: entries).contains(date)
         }
         if allTaken { return .allTaken }
         return date < today ? .missed : (logged ? .unscheduledOnly : .none)

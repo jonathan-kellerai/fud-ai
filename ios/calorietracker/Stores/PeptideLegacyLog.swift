@@ -12,7 +12,7 @@ import Foundation
 
 enum PeptideLegacyLog {
     struct Migrated {
-        var records: PeptideRecordSet
+        var records: PeptideRecordsByProfile
         /// Saved records that couldn't be read and were left out.
         var skipped: Int
     }
@@ -26,16 +26,16 @@ enum PeptideLegacyLog {
         )
         let meta = Dictionary(snapshot.meta.map { ($0.key, $0) }, uniquingKeysWith: { _, latest in latest })
         var seen = Set<String>()
-        var entries: [PeptideLogEntry] = []
+        var entries: [PeptideProfiled<PeptideLogEntry>] = []
         // The assistant's PLANNED rows were its plans, not doses taken.
         for merged in merge(rows: rows, pendingOps: snapshot.pendingOps, meta: meta) where merged.status == "COMPLETED" {
             let local = merged.local
             guard seen.insert(local.id).inserted else { continue }
-            entries.append(local)
+            entries.append(PeptideProfiled(value: local, profile: merged.profile))
         }
         let rowsWithoutID = snapshot.rows.count - rows.count
         return Migrated(
-            records: PeptideRecordSet(entries: entries, vials: snapshot.vials, schedules: snapshot.schedules),
+            records: PeptideRecordsByProfile(entries: entries, vials: snapshot.vials, schedules: snapshot.schedules),
             skipped: snapshot.skipped + max(rowsWithoutID, 0)
         )
     }
@@ -47,7 +47,7 @@ enum PeptideLegacyLog {
         var id: String
         var rowID: String?
         var clientRequestID: String?
-        var person: String
+        var profile: PeptideLegacyProfile
         var compound: String
         var dose: Double?
         var units: String?
@@ -70,7 +70,6 @@ enum PeptideLegacyLog {
         var local: PeptideLogEntry {
             PeptideLogEntry(
                 id: rowID ?? clientRequestID ?? id,
-                person: person,
                 compound: compound,
                 dose: dose,
                 units: units,
@@ -143,7 +142,7 @@ enum PeptideLegacyLog {
             id: row.id,
             rowID: row.id,
             clientRequestID: row.clientRequestID,
-            person: PeptidePerson.normalized(row.person),
+            profile: PeptideLegacyProfile(raw: row.person),
             compound: row.compound,
             dose: row.dose,
             units: row.units,
@@ -175,7 +174,7 @@ enum PeptideLegacyLog {
             id: "pending-" + payload.clientRequestID,
             rowID: nil,
             clientRequestID: payload.clientRequestID,
-            person: PeptidePerson.normalized(payload.person ?? planned?.person),
+            profile: PeptideLegacyProfile(raw: payload.person ?? planned?.person),
             compound: payload.compound ?? planned?.compound ?? "Planned dose",
             dose: payload.dose ?? planned?.dose,
             units: payload.units ?? planned?.units,
@@ -235,8 +234,8 @@ enum PeptideLegacyLog {
         var rows: [PeptideAdministration]
         var pendingOps: [PeptidePendingOp]
         var meta: [PeptideLocalMeta]
-        var vials: [PeptideVial]
-        var schedules: [PeptideUserSchedule]
+        var vials: [PeptideProfiled<PeptideVial>]
+        var schedules: [PeptideProfiled<PeptideUserSchedule>]
         /// List elements that couldn't be read.
         var skipped: Int
 
@@ -253,9 +252,9 @@ enum PeptideLegacyLog {
             pendingOps = lossyOps.compactMap(\.value)
             let lossyMeta = (try? container.decode([PeptideLossy<PeptideLocalMeta>].self, forKey: .meta)) ?? []
             meta = lossyMeta.compactMap(\.value)
-            let lossyVials = (try? container.decode([PeptideLossy<PeptideVial>].self, forKey: .vials)) ?? []
+            let lossyVials = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideVial>>].self, forKey: .vials)) ?? []
             vials = lossyVials.compactMap(\.value)
-            let lossySchedules = (try? container.decode([PeptideLossy<PeptideUserSchedule>].self, forKey: .schedules)) ?? []
+            let lossySchedules = (try? container.decode([PeptideLossy<PeptideProfiled<PeptideUserSchedule>>].self, forKey: .schedules)) ?? []
             schedules = lossySchedules.compactMap(\.value)
             skipped = (lossyRows.count - rows.count) + (lossyOps.count - pendingOps.count)
                 + (lossyMeta.count - meta.count) + (lossyVials.count - vials.count)
