@@ -233,7 +233,7 @@ struct ReconBenchMigrationTests {
         let store = phone.store()
         phone.moveMixes(into: store, now: now)
         let restored = PeptideLogStore(persistence: .inMemory)
-        #expect(restored.restoreArchiveData(try #require(store.backupArchiveData())) == nil)
+        #expect(restored.restoreArchiveData(try #require(store.backupArchiveData().data)) == nil)
         #expect(restored.vials == store.vials)
         #expect(restored.heldAside == store.heldAside)
     }

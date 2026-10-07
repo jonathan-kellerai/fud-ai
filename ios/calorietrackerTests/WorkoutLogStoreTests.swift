@@ -191,10 +191,10 @@ struct WorkoutLogStoreTests {
         #expect(throws: WorkoutLogError.unreadableNotKept) { try save(store, draft().payload(now: finished)) }
         #expect(store.persistError == WorkoutLogError.unreadableNotKept.localizedDescription)
         #expect(store.workouts.isEmpty)
-        #expect(store.backupData() == nil)
+        #expect(store.backupData().data == nil)
         let source = WorkoutLogStore(persistence: .inMemory)
         try save(source, draft().payload(now: finished))
-        let backup = try #require(source.backupData())
+        let backup = try #require(source.backupData().data)
         #expect(store.restoreBackupData(backup) != nil)
         #expect(store.workouts.isEmpty)
         #expect(try Data(contentsOf: url) == garbage)
@@ -228,10 +228,10 @@ struct WorkoutLogStoreTests {
         #expect(throws: WorkoutLogError.notOpened) {
             try store.importFile(WorkoutImportFile.load(from: WorkoutImportFixture.url), now: finished)
         }
-        #expect(store.backupData() == nil)
+        #expect(store.backupData().data == nil)
         let source = WorkoutLogStore(persistence: .inMemory)
         try save(source, draft().payload(now: finished))
-        #expect(store.restoreBackupData(try #require(source.backupData())) != nil)
+        #expect(store.restoreBackupData(try #require(source.backupData().data)) != nil)
         // Nothing was set aside or started in its place.
         #expect(files(beside: url) == [WorkoutLogFile.fileName])
 

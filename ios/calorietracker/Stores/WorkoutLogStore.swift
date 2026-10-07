@@ -193,11 +193,21 @@ final class WorkoutLogStore {
 
     // MARK: Backup and reset
 
-    /// The log for the iCloud backup: the saved file's format. Nil while the
+    /// The log for the iCloud backup: the saved file's format. Blocked while the
     /// log is read-only, so workouts this app can't read are never backed up over.
-    func backupData() -> Data? {
-        if readOnly != nil { return nil }
-        return snapshot(of: records, importedAt: importedAt).encoded()
+    func backupData() -> CloudBackupPart {
+        if let readOnly {
+            let reason = switch readOnly {
+            case .newerVersion: "Workouts were saved by a newer version of the app"
+            case .notOpened: "Workouts couldn't be read on this phone"
+            default: "Workouts couldn't be read in full on this phone"
+            }
+            return .blocked(reason: reason)
+        }
+        guard let data = snapshot(of: records, importedAt: importedAt).encoded() else {
+            return .blocked(reason: "Workouts couldn't be packed for the backup")
+        }
+        return .include(data)
     }
 
     /// iCloud restore replaces every workout. Strict: the whole log must read,

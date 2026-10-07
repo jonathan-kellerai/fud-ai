@@ -104,7 +104,7 @@ struct PeptideSecondProfileTests {
         #expect(snapshot.heldAside == store.heldAside)
 
         // In the backup and the export too.
-        let archive = try PeptideArchive.decode(try #require(store.backupArchiveData()), complete: true)
+        let archive = try PeptideArchive.decode(try #require(store.backupArchiveData().data), complete: true)
         #expect(archive.heldAside.entries.map(\.id) == ["second-1"])
         #expect(archive.heldAside.vials.map(\.id) == ["second-vial"])
         #expect(archive.heldAside.schedules.map(\.id) == ["second-sched"])
@@ -314,7 +314,7 @@ struct PeptideSecondProfileTests {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = PeptideLogStore(persistence: .file(url))
         let held = store.heldAside
-        let file = try PeptideArchive.decode(try #require(store.backupArchiveData()))
+        let file = try PeptideArchive.decode(try #require(store.backupArchiveData().data))
         let fresh = PeptideLogStore(persistence: .inMemory)
         _ = fresh.importArchive(file)
         #expect(fresh.heldAside == held)
@@ -329,7 +329,7 @@ struct PeptideSecondProfileTests {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = PeptideLogStore(persistence: .file(url))
         _ = try importMixedArchive(into: store)
-        let backup = try #require(store.backupArchiveData())
+        let backup = try #require(store.backupArchiveData().data)
 
         let otherURL = try emptyStoreURL()
         defer { try? FileManager.default.removeItem(at: otherURL.deletingLastPathComponent()) }

@@ -562,6 +562,16 @@ enum PeptideLogReadOnly: Equatable {
         case .unreadableNotKept: "Peptides can't be changed until the saved log can be copied aside."
         }
     }
+
+    /// Why the iCloud backup can't carry the peptides, as a clause.
+    var backupBlock: String {
+        switch self {
+        case .newerVersion: "Peptides were saved by a newer version of the app"
+        case .upgradeNotKept: "Peptides from the earlier version couldn't be copied aside on this phone"
+        case .notOpened: "Peptides couldn't be read on this phone"
+        case .unreadableNotKept: "Peptides couldn't be read in full on this phone"
+        }
+    }
 }
 
 /// The saved file (version 3; version 2 reads the same way). One unreadable
@@ -687,11 +697,14 @@ struct PeptideLogSnapshot: Codable {
 
 extension PeptideLogStore: CloudBackupPeptides {
     /// The archive without an export time, so unchanged peptides back up to the same bytes.
-    /// Nil while a change would be refused, so peptides this app couldn't read
+    /// Blocked while a change would be refused, so peptides this app couldn't read
     /// are never backed up as an empty log.
-    func backupArchiveData() -> Data? {
-        if readOnly?.refusal != nil { return nil }
-        return try? archive(exportedAt: nil).encoded()
+    func backupArchiveData() -> CloudBackupPart {
+        if let readOnly, readOnly.refusal != nil { return .blocked(reason: readOnly.backupBlock) }
+        guard let data = try? archive(exportedAt: nil).encoded() else {
+            return .blocked(reason: "Peptides couldn't be packed for the backup")
+        }
+        return .include(data)
     }
 
     /// Replaces the peptides only with a whole backup that was saved; otherwise

@@ -3,11 +3,23 @@ import Foundation
 import Observation
 import os
 
+/// What a store gives the iCloud backup: its bytes, or why it can't give them.
+enum CloudBackupPart: Equatable {
+    case include(Data)
+    /// The store's data couldn't be read in full here (or packed), so the
+    /// backup can't carry it. `reason` is a clause, e.g. "Peptides couldn't be read on this phone".
+    case blocked(reason: String)
+
+    var data: Data? {
+        if case .include(let data) = self { data } else { nil }
+    }
+}
+
 /// Peptides live in their own file, not UserDefaults. The backup carries
 /// them as one peptides archive (the same format as export/import).
 @MainActor
 protocol CloudBackupPeptides: AnyObject {
-    func backupArchiveData() -> Data?
+    func backupArchiveData() -> CloudBackupPart
     /// Validates before replacing anything. An error message, or nil when restored.
     func restoreArchiveData(_ data: Data) -> String?
 }
@@ -16,7 +28,7 @@ protocol CloudBackupPeptides: AnyObject {
 /// whole workout log (the saved file's format).
 @MainActor
 protocol CloudBackupWorkouts: AnyObject {
-    func backupData() -> Data?
+    func backupData() -> CloudBackupPart
     /// Validates before replacing anything. An error message, or nil when restored.
     func restoreBackupData(_ data: Data) -> String?
 }
@@ -84,10 +96,10 @@ final class CloudBackupService {
                 }
             }
         }
-        if let archive = peptides?.backupArchiveData() {
+        if let archive = peptides?.backupArchiveData().data {
             out[Self.peptidesKey] = .data(archive)
         }
-        if let log = workouts?.backupData() {
+        if let log = workouts?.backupData().data {
             out[Self.workoutsKey] = .data(log)
         }
         return out

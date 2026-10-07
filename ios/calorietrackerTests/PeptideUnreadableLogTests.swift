@@ -87,7 +87,7 @@ struct PeptideUnreadableLogTests {
     private func otherArchive() throws -> Data {
         let source = PeptideLogStore(persistence: .inMemory)
         _ = source.log(draft(compound: "TB-500"), id: "from-backup", now: takenAt)
-        return try #require(source.backupArchiveData())
+        return try #require(source.backupArchiveData().data)
     }
 
     @Test func aLogThatCantBeOpenedRefusesEveryChangeAndIsNeverWrittenOver() throws {
@@ -121,7 +121,7 @@ struct PeptideUnreadableLogTests {
         #expect(store.entries.isEmpty)
 
         // No backup of the empty log, and no restore over the file.
-        #expect(store.backupArchiveData() == nil)
+        #expect(store.backupArchiveData().data == nil)
         #expect(store.restoreArchiveData(try otherArchive()) != nil)
         #expect(store.entries.isEmpty)
         // Nothing was set aside or started in its place.
@@ -256,7 +256,7 @@ struct PeptideUnreadableLogTests {
         #expect(store.persistError == refusal)
         store.saveVial(PeptideVial(id: "v-new", compound: "TB-500", diluentML: 1))
         #expect(store.entries.isEmpty && store.vials.isEmpty)
-        #expect(store.backupArchiveData() == nil)
+        #expect(store.backupArchiveData().data == nil)
         #expect(store.restoreArchiveData(try otherArchive()) != nil)
         #expect(store.entries.isEmpty)
         #expect(try Data(contentsOf: url) == garbage)
@@ -302,7 +302,7 @@ struct PeptideUnreadableLogTests {
         #expect(store.entries.map(\.id) == ["ok"])
         #expect(store.entry(id: "ok")?.voided == false)
         #expect(store.syringeScale == nil)
-        #expect(store.backupArchiveData() == nil)
+        #expect(store.backupArchiveData().data == nil)
         #expect(try Data(contentsOf: url) == saved)
     }
 
