@@ -281,7 +281,7 @@ struct PeptideChoiceChip: View {
             .foregroundStyle(selected ? IronTheme.textPrimary : IronTheme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, verticalPadding)
-            .frame(minHeight: 44)
+            .frame(minWidth: 44, minHeight: 44)
             .background(
                 selected ? IronTheme.blood : IronTheme.surfaceRaised,
                 in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
