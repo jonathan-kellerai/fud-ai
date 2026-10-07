@@ -108,6 +108,8 @@ jobs:
           -skip-testing:calorietrackerTests/PeptideNoNetworkTests \
           -only-testing:calorietrackerTests/PeptideArchiveTests \
           -only-testing:calorietrackerTests/PeptideBackupAndResetTests \
+          -only-testing:calorietrackerTests/PeptideSecondProfileTests \
+          -only-testing:calorietrackerTests/PeptideDerivedMilligramsTests \
           -only-testing:calorietrackerTests/MoreHubSubtitlesTests \
           -only-testing:calorietrackerTests/JLFeatureFlagsTests \
           -only-testing:calorietrackerTests/ChallengeEngineTests \
@@ -135,12 +137,13 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|AIRequestLogRedactorTests|AIRequestLogStoreTests|AIRequestTraceTests|AIDiagnosticResultTests|OpenRouterOAuthTests|HostedAIServiceTraceTests|OpenRouterSignInTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|PeptideSecondProfileTests|PeptideDerivedMilligramsTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|AIRequestLogRedactorTests|AIRequestLogStoreTests|AIRequestTraceTests|AIDiagnosticResultTests|OpenRouterOAuthTests|HostedAIServiceTraceTests|OpenRouterSignInTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
         fi
-        # runSelfTest asserts all 42 recon-bench self-test rows pass.
+        # runSelfTest asserts all 41 recon-bench self-test rows pass (42 before build 68
+        # removed the per-person roster row with the people).
         if ! grep -qE "runSelfTest\(\).*passed" "$RUNNER_TEMP/recon-tests.log"; then
           echo "runSelfTest() did not report a pass; treating as failure."
           exit 1
@@ -230,7 +233,7 @@ jobs:
           PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests PeptideArchiveTests \
           PeptideBackupAndResetTests AIRequestLogRedactorTests AIRequestLogStoreTests AIRequestTraceTests \
           AIDiagnosticResultTests OpenRouterOAuthTests JevTierRoutingTests HostedAIServiceTraceTests \
-          OpenRouterSignInTests; do
+          OpenRouterSignInTests PeptideSecondProfileTests PeptideDerivedMilligramsTests; do
           if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log" "$RUNNER_TEMP/peptide-no-network-tests.log"; then
             echo "ok: ${suite}"
           else
@@ -278,9 +281,35 @@ jobs:
         scan 'PeptideBridge' "Peptide bridge type in app sources" "$src"
         scan '[Pp]eptide' "Peptide code in NeonBridgeService" "$src/Services/NeonBridgeService.swift"
         scan 'URLSession|URLRequest|NeonBridgeService' "Network code in peptide sources" \
-          "$src"/Stores/Peptide*.swift "$src"/Models/Peptide*.swift "$src/Views/Peptides"
+          "$src"/Stores/Peptide*.swift "$src"/Models/Peptide*.swift "$src/Views/Peptides" \
+          "$src/Views/ReconView.swift" "$src/Stores/ReconStore.swift"
         if [ "$fail" -eq 0 ]; then echo "Peptides stay on device: ok"; fi
         exit "$fail"
+
+    - name: No personal names in app or test sources
+      # Build 68: peptides track one person per phone, and no personal name is
+      # hard-coded anywhere. The only allowed hits are the two legacy raw values
+      # PeptideLegacyProfile decodes (migration only), plus the bundle and
+      # app-group ids and the repo URL, which are signing/identity material.
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -d ios/calorietracker && test -d ios/calorietrackerTests
+        set +e
+        out=$(grep -rniE 'jonathan|victoria' ios/calorietracker ios/calorietrackerTests \
+          ios/calorietrackerShare ios/FudAIWidgets ios/FudAIWatchApp ios/FudAIWatchWidgets --include='*.swift' 2>&1)
+        status=$?
+        set -e
+        if [ "$status" -gt 1 ]; then echo "::error::Scan failed (grep exit $status): $out"; exit 1; fi
+        left=$(printf '%s\n' "$out" | grep -vE 'jonathanbowe\.jlphysical|jonathan-kellerai/fud-ai' \
+          | grep -vE '^ios/calorietracker/Models/PeptideTrackingModels\.swift:[0-9]+:    static let (first|second)ProfileRawValue = ' \
+          | grep -v '^$' || true)
+        if [ -n "$left" ]; then
+          echo "::error::Personal name in sources"
+          echo "$left"
+          exit 1
+        fi
+        echo "No personal names: ok"
 
   visual-qa:
     name: Visual QA screenshots
