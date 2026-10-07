@@ -134,6 +134,52 @@ final class WorkoutLogStore {
         try commit(next)
     }
 
+    // MARK: Import
+
+    /// What importing `file` would add, without changing anything.
+    func importSummary(of file: WorkoutImportFile) -> WorkoutImportSummary {
+        let (new, duplicates) = newWorkouts(in: file)
+        return WorkoutImportSummary(added: new.count, duplicates: duplicates, skipped: file.skipped)
+    }
+
+    /// Adds the file's workouts that aren't on this phone yet; nothing already
+    /// here changes, so importing the same file again adds nothing. The saved
+    /// log is copied aside first (`pre-import`). Throws, changing nothing,
+    /// when that copy or the save fails or the log is read-only.
+    @discardableResult
+    func importFile(_ file: WorkoutImportFile, now: Date = Date()) throws -> WorkoutImportSummary {
+        if savingBlocked { throw WorkoutLogError.newerVersion }
+        let (new, duplicates) = newWorkouts(in: file)
+        let summary = WorkoutImportSummary(added: new.count, duplicates: duplicates, skipped: file.skipped)
+        guard !new.isEmpty else { return summary }
+        if let saved = self.file.read(), !self.file.keepBeforeImport(saved, now: now) {
+            throw WorkoutLogError.copyBeforeImport
+        }
+        try commit(records + new, importedAt: Self.timestamp(now))
+        return summary
+    }
+
+    /// The file's workouts whose id and content hash aren't already in the log
+    /// (deleted ones included) or earlier in the file, and how many were.
+    private func newWorkouts(in file: WorkoutImportFile) -> (new: [StoredWorkout], duplicates: Int) {
+        var ids = Set(records.map(\.workout.id))
+        var hashes = Set(records.flatMap(\.contentHashes))
+        var new: [StoredWorkout] = []
+        var duplicates = 0
+        for detail in file.workouts {
+            let hash = detail.workout.contentHash
+            let knownHash = hash.map { hashes.contains($0) } ?? false
+            if ids.contains(detail.workout.id) || knownHash {
+                duplicates += 1
+                continue
+            }
+            ids.insert(detail.workout.id)
+            if let hash { hashes.insert(hash) }
+            new.append(StoredWorkout(workout: detail.workout, sets: detail.sets))
+        }
+        return (new, duplicates)
+    }
+
     // MARK: Private
 
     /// Saves `next` first; memory changes only once it is saved.
@@ -223,6 +269,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
     case newerVersion
     case encoding
     case noLocation
+    case copyBeforeImport
 
     var errorDescription: String? {
         switch self {
@@ -230,6 +277,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
         case .newerVersion: "Workouts can't be saved until the app is updated."
         case .encoding: "The workout log couldn't be encoded."
         case .noLocation: "There's no place on this phone to save workouts."
+        case .copyBeforeImport: "The workout log couldn't be copied before the import, so nothing was imported."
         }
     }
 }
@@ -282,15 +330,6 @@ struct WorkoutLogSnapshot: Codable {
     static func savedVersion(of data: Data) -> Int? {
         struct Probe: Decodable { let version: Int }
         return (try? JSONDecoder().decode(Probe.self, from: data))?.version
-    }
-}
-
-/// Decodes one element, turning a malformed one into nil instead of failing the list.
-struct WorkoutLossy<Value: Decodable>: Decodable {
-    var value: Value?
-
-    init(from decoder: Decoder) throws {
-        value = try? Value(from: decoder)
     }
 }
 

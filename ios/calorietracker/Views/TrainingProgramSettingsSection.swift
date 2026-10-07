@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// More › Training's "Program" section: the program library and the exercise
-/// library. ProfileView owns the exercise library sheet.
+/// More › Training's "Program" section: the program library, the exercise
+/// library and the workouts saved on this phone. ProfileView owns the
+/// exercise library sheet.
 struct TrainingProgramSettingsSection: View {
     let onExerciseLibrary: () -> Void
 
@@ -33,6 +34,16 @@ struct TrainingProgramSettingsSection: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(IronTheme.textPrimary)
+            NavigationLink {
+                WorkoutsSettingsView()
+            } label: {
+                SettingsHubRowLabel(
+                    title: "Workouts",
+                    systemImage: "clock.arrow.circlepath",
+                    subtitle: "History, import from a file"
+                )
+            }
+            .accessibilityIdentifier("settings.training.workouts")
         } header: {
             IronSectionTitle(title: "Program")
         }
