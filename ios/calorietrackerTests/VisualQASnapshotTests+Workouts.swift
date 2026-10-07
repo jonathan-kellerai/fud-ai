@@ -4,7 +4,7 @@ import XCTest
 
 /// Shots 106-109: workouts on this phone only (build 70). History (13) and
 /// workout detail (14) already read the on-device log. Synthetic workouts
-/// only: Jonathan's export is a unit-test fixture and never shown here.
+/// only: the real export is a unit-test fixture and never shown here.
 extension VisualQASnapshotTests {
     /// More › Training › Workouts before the one-time import: nothing on this phone yet.
     func test106WorkoutsSettingsBeforeImport() async throws {
