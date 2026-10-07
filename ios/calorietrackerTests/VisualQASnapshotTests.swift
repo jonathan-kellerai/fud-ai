@@ -230,33 +230,6 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - Recon Bench
-
-    func test20ReconCalculator() async throws {
-        try await eachSize("20-recon-calculator") { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { ReconView(initialSection: .calculator) }
-            }
-        }
-    }
-
-    func test21ReconDosingDraw() async throws {
-        try await eachSize("21-recon-dosing-draw") { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { ReconView(initialSection: .draw) }
-            }
-        }
-    }
-
-    func test22ReconCalendar() async throws {
-        VisualQAFixtures.seedReconCalendar()
-        try await eachSize("22-recon-calendar") { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { ReconView(initialSection: .calendar) }
-            }
-        }
-    }
-
     // MARK: - AI providers
 
     func test23AIProvidersOnDeviceModel() async throws {
@@ -353,13 +326,6 @@ final class VisualQASnapshotTests: XCTestCase {
             VisualQATabShell(selected: .train) {
                 JLPhysicalTabView(referenceDate: VisualQAFixtures.trainingDate(rest: false))
             }
-        }
-    }
-
-    func test41ReconCalendarSyncStatus() async throws {
-        VisualQAFixtures.seedReconCalendar()
-        try await settingsScreen("41-recon-calendar-sync-status", heightMultiplier: 3) {
-            ReconView(initialSection: .calendar)
         }
     }
 
@@ -1656,25 +1622,6 @@ enum VisualQAFixtures {
         chat.append(ChatMessage(role: .user, content: "What should I eat after lifting?"))
     }
 
-    static func seedReconCalendar() {
-        let store = ReconBenchStore()
-        VisualQAGraveyard.keep(store)
-        for entry in store.entries {
-            store.delete(id: entry.id)
-        }
-        let start = ReconMath.todayISO()
-        // Existing presets only: Tesamorelin 1.4 mg/day (LABEL), Retatrutide 2 mg/week (TRIAL).
-        store.add(ReconMath.ScheduleEntry(
-            id: "qa-tesa", person: "jonathan", compound: "tesamorelin",
-            dose: 1.4, doseUnit: "mg", draw: nil,
-            freq: ReconMath.Frequency(type: "daily"), start: start, weeks: 4
-        ))
-        store.add(ReconMath.ScheduleEntry(
-            id: "qa-reta", person: "jonathan", compound: "retatrutide",
-            dose: 2, doseUnit: "mg", draw: nil,
-            freq: ReconMath.Frequency(type: "weekly"), start: start, weeks: 8
-        ))
-    }
 
     static func sampleFoodEntries() -> [FoodEntry] {
         let calendar = Calendar.current

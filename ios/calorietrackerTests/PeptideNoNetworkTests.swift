@@ -153,23 +153,22 @@ struct PeptideNoNetworkTests {
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }
 
-    @Test func reconBenchTakenMarkStaysOnThePhone() async throws {
+    @Test func reconstitutingAVialStaysOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let seen = try await requests {
-            let store = ReconBenchStore()
-            let entry = ReconMath.ScheduleEntry(
-                id: "tripwire-\(UUID().uuidString)", person: "jonathan", compound: "tesamorelin",
-                dose: 1.4, doseUnit: "mg", draw: nil,
-                freq: ReconMath.Frequency(type: "daily"), start: "2026-09-01", weeks: 1
+            let store = PeptideLogStore(persistence: .file(url))
+            #expect(PeptideMath.reconstituteIssue(compound: "BPC-157", amountText: "10", unit: "mg", diluentText: "2") == nil)
+            #expect(PeptideMath.reconstituteArithmetic(amount: 10, unit: "mg", diluentML: 2) != nil)
+            let vial = PeptideVial.reconstituted(
+                id: "v1", compound: "BPC-157", amount: 10, unit: "mg", diluentML: 2,
+                mixedOn: "2026-09-26", confirmedAt: Date(timeIntervalSince1970: 1_790_000_000), existing: nil,
+                now: Date(timeIntervalSince1970: 1_790_000_000)
             )
-            let occurrence = ReconMath.Occurrence(
-                date: "2026-09-01", dayNumber: 1, index: 0, entry: entry, entryIndex: 0,
-                info: ReconMath.DoseInfo(), poolKey: "", status: "", flags: [], duplicate: false, cumulativeN: 0
-            )
-            store.toggleTaken(occurrence)
-            #expect(store.isTaken(occurrence))
-            // Unmark so the bench is left as it was.
-            store.toggleTaken(occurrence)
-            #expect(!store.isTaken(occurrence))
+            store.saveVial(vial)
+            store.setSyringeScale(.u100)
+            #expect(store.remaining(for: vial).calculable)
+            ReconBenchStore.deleteSavedData()
         }
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }

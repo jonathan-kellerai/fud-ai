@@ -9,7 +9,9 @@ import Testing
 struct ReconMathTests {
     @Test func runSelfTest() {
         let rows = ReconBenchSelfTest.rows()
-        #expect(rows.count == 42)
+        // 42 in recon-bench.html, less its "second roster is exactly Glow + MT2"
+        // row: build 68 removed per-person rosters along with the people.
+        #expect(rows.count == 41)
         for row in rows {
             #expect(row.pass, "\(row.name) | expected \(row.expected) | got \(row.got)")
         }
@@ -18,7 +20,7 @@ struct ReconMathTests {
     @Test func scheduleEntryDoesNotStoreSyringeUnits() throws {
         let entry = ReconMath.ScheduleEntry(
             id: "st1",
-            person: "jonathan",
+            person: "p1",
             compound: "retatrutide",
             dose: 2,
             doseUnit: "mg",
@@ -116,13 +118,11 @@ private enum ReconBenchSelfTest {
         let reversed = ReconMath.reverseCompute(vialAmount: 5, vialUnit: "mg", waterML: 0.5, units: twenty.units)
         record("Reverse check: 20 units at 5 mg/0.5 mL = 2 mg", reversed.ok && abs(reversed.amountN - 2000) < 1e-9 && ReconMath.fmtAmountIn(reversed.amountN, unit: "mg") == "2 mg", "2 mg", ReconMath.fmtAmountIn(reversed.amountN, unit: "mg"))
 
-        let emptyDose = ["nad", "kisspeptin", "aod9604", "cjc1295"].allSatisfy { ReconMath.defaultCard(person: "jonathan", key: $0).dose == nil }
+        let emptyDose = ["nad", "kisspeptin", "aod9604", "cjc1295"].allSatisfy { ReconMath.defaultCard(key: $0).dose == nil }
         record("NONE / no-preset compounds ship with empty dose", emptyDose, "empty", emptyDose ? "empty" : "NOT EMPTY")
 
-        let roster = (ReconMath.roster["jonathan"] ?? []) + (ReconMath.roster["victoria"] ?? [])
-        let absent = ReconMath.compounds["aod9604"]?.water == nil && ReconMath.compounds["cjc1295"]?.water == nil && roster.allSatisfy { $0 != "aod9604" && $0 != "cjc1295" }
-        record("AOD-9604 / CJC-1295 have no water volume and are not on any roster", absent, "true", "checked")
-        record("Victoria roster is exactly Glow + MT2", (ReconMath.roster["victoria"] ?? []).joined(separator: ",") == "glow,mt2", "glow,mt2", (ReconMath.roster["victoria"] ?? []).joined(separator: ","))
+        let absent = ReconMath.compounds["aod9604"]?.water == nil && ReconMath.compounds["cjc1295"]?.water == nil
+        record("AOD-9604 / CJC-1295 have no water volume", absent, "true", "checked")
 
         var roundTrip = true
         var roundTripGot: [String] = []
@@ -147,46 +147,50 @@ private enum ReconBenchSelfTest {
         for pair in pairs {
             let compound = ReconMath.compounds[pair.0]
             let calculatorText = ReconMath.fmtUnits(ReconMath.compute(vialAmount: compound?.vial ?? .nan, vialUnit: compound?.vialUnit ?? "", waterML: compound?.water ?? .nan, dose: pair.1, doseUnit: pair.2).units)
-            let entry = ReconMath.ScheduleEntry(id: "cal", person: "jonathan", compound: pair.0, dose: pair.1, doseUnit: pair.2, draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 1)
+            let entry = ReconMath.ScheduleEntry(id: "cal", person: "p1", compound: pair.0, dose: pair.1, doseUnit: pair.2, draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 1)
             let calendarText = ReconMath.entryUnitsText(entry: entry, config: defaultConfig)
             record("Calendar = calculator: \(compound?.name ?? pair.0) \(js(pair.1)) \(pair.2)", calculatorText == calendarText && calculatorText != "—", calculatorText, calendarText)
         }
-        let glowEntry = ReconMath.ScheduleEntry(id: "glow", person: "victoria", compound: "glow", dose: nil, doseUnit: nil, draw: 10, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 1)
+        let glowEntry = ReconMath.ScheduleEntry(id: "glow", person: "p2", compound: "glow", dose: nil, doseUnit: nil, draw: 10, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 1)
         let glowCalendar = ReconMath.entryUnitsText(entry: glowEntry, config: defaultConfig)
         record("Calendar = calculator: Glow 10-unit draw", glowCalendar == "10", "10", glowCalendar)
 
-        let retatrutide = [ReconMath.ScheduleEntry(id: "st1", person: "jonathan", compound: "retatrutide", dose: 2, doseUnit: "mg", draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 8)]
+        let retatrutide = [ReconMath.ScheduleEntry(id: "st1", person: "p1", compound: "retatrutide", dose: 2, doseUnit: "mg", draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 8)]
         let simulation = ReconMath.simulateSupply(entries: retatrutide, config: defaultConfig, onHand: defaultOnHand)
         let statuses = simulation.occurrences.map(\.status).joined(separator: ",")
         record("Retatrutide 2 mg weekly x 8 wk, 10 mg on hand: doses 1–5 ok, 6–8 red", statuses == "ok,ok,ok,ok,ok,short,short,short", "ok×5, short×3", statuses)
-        let pool = simulation.pools["jonathan|retatrutide"]
+        let pool = simulation.pools["p1|retatrutide"]
         record("Retatrutide run-out date = 6th dose", pool?.runOut == "2026-02-09" && pool?.lastCovered == "2026-02-02", "2026-02-09", pool?.runOut ?? "")
 
-        let coveredTwo = ReconMath.coverage(entry: retatrutide[0], config: defaultConfig("jonathan", "retatrutide"), onHand: 10)
-        let four = ReconMath.ScheduleEntry(id: "st4", person: "jonathan", compound: "retatrutide", dose: 4, doseUnit: "mg", draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 8)
-        let coveredFour = ReconMath.coverage(entry: four, config: defaultConfig("jonathan", "retatrutide"), onHand: 10)
+        let coveredTwo = ReconMath.coverage(entry: retatrutide[0], config: defaultConfig("p1", "retatrutide"), onHand: 10)
+        let four = ReconMath.ScheduleEntry(id: "st4", person: "p1", compound: "retatrutide", dose: 4, doseUnit: "mg", draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-05", weeks: 8)
+        let coveredFour = ReconMath.coverage(entry: four, config: defaultConfig("p1", "retatrutide"), onHand: 10)
         let coverageGot = js(coveredTwo.weeksCovered) + " / " + js(coveredFour.weeksCovered)
         record("Retatrutide coverage: 2 mg/wk -> 5 weeks; 4 mg/wk -> 2.5 weeks", coveredTwo.weeksCovered == 5 && coveredFour.weeksCovered == 2.5 && coverageGot == "5 / 2.5", "5 / 2.5", coverageGot)
 
-        let victoria = [ReconMath.ScheduleEntry(id: "st2", person: "victoria", compound: "mt2", dose: 250, doseUnit: "mcg", draw: nil, freq: ReconMath.Frequency(type: "daily"), start: "2026-01-05", weeks: 1)]
-        let victoriaSimulation = ReconMath.simulateSupply(entries: victoria, config: defaultConfig, onHand: defaultOnHand)
-        let flagged = victoriaSimulation.occurrences.filter { $0.status == "noonhand" }.count
-        record("Unknown on-hand: every dose flagged \"on-hand not set\"", victoriaSimulation.occurrences.count == 7 && victoriaSimulation.occurrences.allSatisfy { $0.status == "noonhand" }, "7 flagged", "\(flagged) flagged")
+        let unknown = [ReconMath.ScheduleEntry(id: "st2", person: "p2", compound: "mt2", dose: 250, doseUnit: "mcg", draw: nil, freq: ReconMath.Frequency(type: "daily"), start: "2026-01-05", weeks: 1)]
+        let unknownSimulation = ReconMath.simulateSupply(entries: unknown, config: defaultConfig, onHand: defaultOnHand)
+        let flagged = unknownSimulation.occurrences.filter { $0.status == "noonhand" }.count
+        record("Unknown on-hand: every dose flagged \"on-hand not set\"", unknownSimulation.occurrences.count == 7 && unknownSimulation.occurrences.allSatisfy { $0.status == "noonhand" }, "7 flagged", "\(flagged) flagged")
 
         let duplicates = ReconMath.simulateSupply(entries: [
-            ReconMath.ScheduleEntry(id: "a", person: "jonathan", compound: "bpc157", dose: 500, doseUnit: "mcg", draw: nil, freq: ReconMath.Frequency(type: "daily"), start: "2026-01-05", weeks: 1),
-            ReconMath.ScheduleEntry(id: "b", person: "jonathan", compound: "bpc157", dose: 250, doseUnit: "mcg", draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-07", weeks: 1)
+            ReconMath.ScheduleEntry(id: "a", person: "p1", compound: "bpc157", dose: 500, doseUnit: "mcg", draw: nil, freq: ReconMath.Frequency(type: "daily"), start: "2026-01-05", weeks: 1),
+            ReconMath.ScheduleEntry(id: "b", person: "p1", compound: "bpc157", dose: 250, doseUnit: "mcg", draw: nil, freq: ReconMath.Frequency(type: "weekly"), start: "2026-01-07", weeks: 1)
         ], config: defaultConfig, onHand: defaultOnHand)
         record("Same compound twice on one day is warned", duplicates.duplicates.count == 1 && duplicates.duplicates.first?.date == "2026-01-07", "1 dup on 2026-01-07", "\(duplicates.duplicates.count) dup(s)")
         return rows
     }
 
     private static func defaultConfig(_ person: String, _ key: String) -> ReconMath.VialConfig {
-        ReconMath.config(for: ReconMath.defaultCard(person: person, key: key), key: key)
+        ReconMath.config(for: ReconMath.defaultCard(key: key), key: key)
     }
 
+    /// On-hand figures for the self-test only (recon-bench.html's numbers for
+    /// these two compounds). The app ships no on-hand amounts.
+    private static let testOnHand: [String: [String: Double]] = ["p1": ["retatrutide": 10, "bpc157": 50]]
+
     private static func defaultOnHand(_ person: String, _ key: String) -> Double? {
-        ReconMath.onHandDefault[person]?[key]
+        testOnHand[person]?[key]
     }
 
     private static func js(_ value: Double) -> String {

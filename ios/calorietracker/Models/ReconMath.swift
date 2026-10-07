@@ -6,30 +6,7 @@ nonisolated enum ReconMath {
     static let epsilon = 1e-9
     static let footerText = "This app converts doses to syringe units and tracks supply. It sets no doses and recommends no protocol. Research compounds; not medical advice."
     static let massToMicrograms: [String: Double] = ["mcg": 1, "mg": 1000]
-    static let peopleOrder = ["jonathan", "victoria"]
-    static let peopleNames = ["jonathan": "Jonathan", "victoria": "Victoria"]
     static let calculatorOrder = ["tesamorelin", "retatrutide", "hcg", "mt2", "bpc157", "tb500", "glow", "nad", "kisspeptin", "aod9604", "cjc1295"]
-    static let roster: [String: [String]] = [
-        "jonathan": ["tesamorelin", "retatrutide", "bpc157", "tb500", "mt2", "hcg", "kisspeptin"],
-        "victoria": ["glow", "mt2"]
-    ]
-    /// On-hand amounts in the vial's unit. Missing means the operator did not specify one.
-    static let onHandDefault: [String: [String: Double]] = [
-        "jonathan": [
-            "tesamorelin": 35,
-            "retatrutide": 10,
-            "bpc157": 50,
-            "tb500": 10,
-            "mt2": 40,
-            "hcg": 15000,
-            "kisspeptin": 20
-        ],
-        "victoria": [:],
-        "calc": [
-            "aod9604": 10,
-            "cjc1295": 5
-        ]
-    ]
     static let provenanceDescription = [
         "LABEL": "FDA prescribing info",
         "TRIAL": "published clinical trial",
@@ -498,10 +475,10 @@ nonisolated enum ReconMath {
         compounds[key]?.presets.first { $0.isDefault }
     }
 
-    static func defaultCard(person: String, key: String) -> Card {
+    /// A card with the catalog's vial and water. On hand is never preset.
+    static func defaultCard(key: String) -> Card {
         let compound = compounds[key]
         let preset = defaultPreset(for: key)
-        let onHand = onHandDefault[person]?[key]
         let doseUnit: String
         if let unit = preset?.unit, !unit.isEmpty {
             doseUnit = unit
@@ -515,20 +492,8 @@ nonisolated enum ReconMath {
             doseUnit: doseUnit,
             draw: preset?.draw,
             perWeek: preset?.perWeek,
-            onHand: onHand
+            onHand: nil
         )
-    }
-
-    static func defaultCards() -> [String: [String: Card]] {
-        var cards: [String: [String: Card]] = [:]
-        for person in peopleOrder {
-            var personCards: [String: Card] = [:]
-            for key in roster[person] ?? [] {
-                personCards[key] = defaultCard(person: person, key: key)
-            }
-            cards[person] = personCards
-        }
-        return cards
     }
 
     static func config(for card: Card, key: String) -> VialConfig {
@@ -947,7 +912,6 @@ nonisolated enum ReconMath {
         }
         for key in simulation.poolOrder {
             guard let pool = simulation.pools[key], let compound = compounds[pool.compound] else { continue }
-            let person = peopleNames[pool.person] ?? pool.person
             var text: String
             var level = ""
             if !pool.known {
@@ -967,15 +931,14 @@ nonisolated enum ReconMath {
             if pool.errors > 0 {
                 text += " \(pool.errors) dose(s) unusable (unit error)."
             }
-            lines.append(SupplyLine(id: "pool-" + key, level: level, text: "\(person) · \(compound.name) — \(text)"))
+            lines.append(SupplyLine(id: "pool-" + key, level: level, text: "\(compound.name) — \(text)"))
         }
         for duplicate in simulation.duplicates {
-            let person = peopleNames[duplicate.person] ?? duplicate.person
             let name = compounds[duplicate.compound]?.name ?? duplicate.compound
             lines.append(SupplyLine(
                 id: "dup-\(duplicate.person)-\(duplicate.compound)-\(duplicate.date)",
                 level: "amber",
-                text: "Same-day duplicate: \(person) · \(name) is scheduled \(duplicate.count)× on \(formatDate(duplicate.date))."
+                text: "Same-day duplicate: \(name) is scheduled \(duplicate.count)× on \(formatDate(duplicate.date))."
             ))
         }
         return lines
