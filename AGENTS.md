@@ -70,7 +70,7 @@ The principles:
 10. Also: Law of Demeter, fail fast, make illegal states unrepresentable, optimize for deletion.
 
 Hard invariants:
-- **One owning module per domain.** Workout logging lives in `StrengthWorkoutStore` and its models. Nutrition math, peptide math, the bridge client, and recon math each have one owner. Consolidate a scattered domain before you add to it.
+- **One owning module per domain.** JL program workout logging lives in `WorkoutLogStore` (the saved log, on this phone only, via `WorkoutLogFile` and `DeviceLogFile`) and `WorkoutDraftStore` (the unsaved session), with their models. `StrengthWorkoutStore` is only the legacy Fud strength diary (Training → Advanced, `JLFeatureFlags.legacyWorkoutLogger`). Nutrition math, peptide math, the bridge client, and recon math each have one owner. Consolidate a scattered domain before you add to it.
 - **Never duplicate logic.** On the second use of some logic:
   1. Move it to the owner.
   2. Switch the original callers, with tests green and no behavior change.
@@ -107,6 +107,7 @@ Hard invariants:
 - No backwards-compat shims for code that has no external users.
 - New code must be Swift 6 concurrency clean: no new `@unchecked Sendable` or `nonisolated(unsafe)` without a comment explaining why.
 - Treat compiler warnings as errors in new code.
+- `Services/WorkoutSyncService.swift` was deleted on purpose (build 70): Jonathan asked for every workout network call to go, and workouts live only on the phone. Don't restore it; the "Workouts stay on device" CI lint fails on it.
 - God files (e.g. `ContentView.swift`, about 338 KB on main) only shrink. Extract code isomorphically, never add new features into them.
 
 ## Git
