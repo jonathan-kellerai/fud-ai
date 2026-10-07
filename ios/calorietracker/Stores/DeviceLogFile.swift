@@ -46,6 +46,9 @@ struct DeviceLogFile {
         } catch CocoaError.fileReadNoSuchFile {
             return .missing
         } catch {
+            // Nothing at the path (a folder on it is a plain file) is no file, not an
+            // unreadable one; a locked file is still there, so it stays `.failed`.
+            if !FileManager.default.fileExists(atPath: url.path) { return .missing }
             return .failed(error)
         }
     }
