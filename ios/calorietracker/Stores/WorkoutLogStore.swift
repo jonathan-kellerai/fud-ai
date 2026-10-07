@@ -70,13 +70,14 @@ final class WorkoutLogStore {
 
     /// Saves a finished session under `id` (the draft's record id). Saving the
     /// same id again replaces that workout instead of adding a second one, so a
-    /// save repeated after a crash can't duplicate it; a deleted one stays deleted.
+    /// save repeated after a crash can't duplicate it. A workout deleted since
+    /// stays deleted and the save throws, so the draft is kept, not lost silently.
     /// Throws, changing nothing, when the log can't be written.
     func save(_ payload: WorkoutPayload, id: String) throws {
         let record = StoredWorkout(id: id, payload: payload)
         var next = records
         if let index = next.firstIndex(where: { $0.workout.id == id }) {
-            if next[index].isDeleted { return }
+            if next[index].isDeleted { throw WorkoutLogError.deletedSinceSaved }
             next[index].workout = record.workout
             next[index].sets = record.sets
         } else {
@@ -325,6 +326,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
     case encoding
     case noLocation
     case copyBeforeImport
+    case deletedSinceSaved
 
     var errorDescription: String? {
         switch self {
@@ -333,6 +335,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
         case .encoding: "The workout log couldn't be encoded."
         case .noLocation: "There's no place on this phone to save workouts."
         case .copyBeforeImport: "The workout log couldn't be copied before the import, so nothing was imported."
+        case .deletedSinceSaved: "This workout was saved and then deleted in Workout History. Discard it to start fresh."
         }
     }
 }
