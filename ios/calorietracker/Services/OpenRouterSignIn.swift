@@ -36,7 +36,12 @@ final class OpenRouterSignIn {
     private let saveKey: @MainActor (String) -> Bool
 
     /// Posts the key exchange and returns the body and HTTP status.
-    typealias ExchangeTransport = @Sendable (URLRequest) async throws -> (Data, Int)
+    /// `@concurrent`: without it, approachable concurrency makes this type nonisolated(nonsending),
+    /// and Swift 6.2 miscompiles calls to such a closure stored in a default-MainActor class: an
+    /// ABI-changing convert_function drops the implicit actor argument, so the closure reads the
+    /// actor where the URLRequest should be and crashes (OpenRouterSignInTests, CI run 37604526004).
+    /// Running the network call off the main actor is what it should do anyway.
+    typealias ExchangeTransport = @concurrent @Sendable (URLRequest) async throws -> (Data, Int)
 
     nonisolated static let urlSessionTransport: ExchangeTransport = { request in
         let (data, response) = try await URLSession.shared.data(for: request)
