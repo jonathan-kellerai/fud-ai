@@ -277,6 +277,8 @@ struct PeptideArchive: Equatable {
         /// yyyy-MM-dd, or nil.
         var mixedOn: String?
         var concentrationConfirmed: Bool
+        /// ISO-8601, when the user ticked "I mixed this vial...". Absent before build 68.
+        var concentrationConfirmedAt: String?
         var lowStockThresholdML: Double?
         var status: PeptideVialStatus
         var notes: String
@@ -288,6 +290,7 @@ struct PeptideArchive: Equatable {
             case diluentML = "diluent_ml"
             case mixedOn = "mixed_on"
             case concentrationConfirmed = "concentration_confirmed"
+            case concentrationConfirmedAt = "concentration_confirmed_at"
             case lowStockThresholdML = "low_stock_threshold_ml"
             case createdAt = "created_at"
         }
@@ -307,6 +310,7 @@ struct PeptideArchive: Equatable {
             diluentML = vial.diluentML
             mixedOn = vial.mixedOn
             concentrationConfirmed = vial.concentrationConfirmed
+            concentrationConfirmedAt = vial.concentrationConfirmedAt.map(PeptideMath.iso8601NewYork)
             lowStockThresholdML = vial.lowStockThresholdML
             status = vial.status
             notes = vial.notes
@@ -327,6 +331,7 @@ struct PeptideArchive: Equatable {
             let mixed = try container.decodeIfPresent(String.self, forKey: .mixedOn)
             mixedOn = mixed.flatMap { $0.count == 10 && ReconMath.parseISO($0) != nil ? $0 : nil }
             concentrationConfirmed = (try container.decodeIfPresent(Bool.self, forKey: .concentrationConfirmed)) ?? false
+            concentrationConfirmedAt = try container.decodeIfPresent(String.self, forKey: .concentrationConfirmedAt)
             lowStockThresholdML = try container.decodeIfPresent(Double.self, forKey: .lowStockThresholdML)
             status = (try? container.decodeIfPresent(PeptideVialStatus.self, forKey: .status)) ?? .active
             notes = (try container.decodeIfPresent(String.self, forKey: .notes)) ?? ""
@@ -345,6 +350,7 @@ struct PeptideArchive: Equatable {
                 diluentML: diluentML,
                 mixedOn: mixedOn,
                 concentrationConfirmed: concentrationConfirmed,
+                concentrationConfirmedAt: concentrationConfirmedAt.flatMap(PeptideMath.parseISO8601),
                 lowStockThresholdML: lowStockThresholdML,
                 status: status,
                 notes: notes,

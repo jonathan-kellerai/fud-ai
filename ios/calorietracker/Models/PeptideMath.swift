@@ -194,6 +194,37 @@ nonisolated enum PeptideMath {
         return ReconMath.clean(amount / diluentML)
     }
 
+    /// Step 2 of Reconstitute, as a line and its spoken form:
+    /// "10 mg ÷ 2 mL = 5 mg/mL". Nil until both numbers and the unit are typed.
+    static func reconstituteArithmetic(amount: Double?, unit: String?, diluentML: Double?) -> DerivationStep? {
+        guard let amount, let unit, let diluentML, vialUnitOptions.contains(unit),
+              let perML = reconstitutedConcentration(amount: amount, diluentML: diluentML) else { return nil }
+        let spokenUnits = ["mg": "milligrams", "mcg": "micrograms", "IU": "international units"]
+        let spokenUnit = spokenUnits[unit] ?? unit
+        return DerivationStep(
+            text: "\(number(amount)) \(unit) ÷ \(number(diluentML)) mL = \(number(perML)) \(unit)/mL",
+            spoken: "\(number(amount)) \(spokenUnit) divided by \(number(diluentML)) millilitres equals \(number(perML)) \(spokenUnit) per millilitre. Arithmetic on your numbers, not advice."
+        )
+    }
+
+    /// Why Reconstitute can't save yet, or nil. Every number is the user's.
+    static func reconstituteIssue(compound: String, amountText: String, unit: String?, diluentText: String) -> String? {
+        if compound.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Pick or type the compound." }
+        let amount = ReconMath.toNumber(amountText)
+        guard amount.isFinite, amount > 0 else { return "Type the amount from the vial label (more than 0)." }
+        guard let unit, vialUnitOptions.contains(unit) else { return "Pick mg, mcg or IU for the vial amount." }
+        let diluent = ReconMath.toNumber(diluentText)
+        guard diluent.isFinite, diluent > 0 else { return "Type the diluent you added, in mL (more than 0)." }
+        return nil
+    }
+
+    /// "You · Sat 26 Sep 9:02 AM": who confirmed a vial (this phone's user) and when.
+    static func confirmedText(_ vial: PeptideVial) -> String? {
+        guard vial.concentrationConfirmed else { return nil }
+        guard let at = vial.concentrationConfirmedAt else { return "You" }
+        return "You · " + shortDateTime(at)
+    }
+
     /// A single-compound vial's mg/mL from its typed numbers (mcg converted
     /// to mg; IU and blends never). Nil when any number is missing.
     static func milligramsPerML(_ vial: PeptideVial) -> Double? {

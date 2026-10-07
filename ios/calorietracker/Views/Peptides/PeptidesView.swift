@@ -284,12 +284,6 @@ struct PeptidesView: View {
                 )
             }
             .listRowBackground(IronTheme.surface)
-            NavigationLink {
-                ReconView()
-            } label: {
-                linkLabel("Recon Bench", systemImage: "cross.vial.fill", detail: "Reconstitution calculator", warning: nil)
-            }
-            .listRowBackground(IronTheme.surface)
         } header: {
             IronSectionTitle(title: "More")
         }

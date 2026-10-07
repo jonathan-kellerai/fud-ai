@@ -213,8 +213,9 @@ struct PeptideBackupAndResetTests {
         #expect(fresh.storageNote == nil)
     }
 
-    /// The Recon Bench saves to the app group and standard defaults; whatever
-    /// was there before the test is put back afterwards.
+    /// Recon Bench (folded into Reconstitute in build 68) left a save in the
+    /// app group and standard defaults. Nothing reads it, and Delete Everything
+    /// still removes it. Whatever was there before the test is put back.
     @Test func reconBenchDataIsWiped() throws {
         let savedDefaults = UserDefaults.standard.data(forKey: ReconBenchStore.defaultsKey)
         let savedFile = ReconBenchStore.fileURL.flatMap { try? Data(contentsOf: $0) }
@@ -228,11 +229,12 @@ struct PeptideBackupAndResetTests {
                 try? savedFile.write(to: url, options: .atomic)
             }
         }
-        let store = ReconBenchStore()
-        store.add(ReconMath.ScheduleEntry(
-            id: "wipe-\(UUID().uuidString)", person: "jonathan", compound: "tesamorelin",
-            dose: 1.4, doseUnit: "mg", draw: nil, freq: ReconMath.Frequency(type: "daily"), start: "2026-09-01", weeks: 1
-        ))
+        let old = Data(#"{"cards":{},"entries":[],"taken":{}}"#.utf8)
+        UserDefaults.standard.set(old, forKey: ReconBenchStore.defaultsKey)
+        if let url = ReconBenchStore.fileURL {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try old.write(to: url, options: .atomic)
+        }
         #expect(UserDefaults.standard.data(forKey: ReconBenchStore.defaultsKey) != nil)
 
         ReconBenchStore.deleteSavedData()
@@ -240,6 +242,5 @@ struct PeptideBackupAndResetTests {
         if let url = ReconBenchStore.fileURL {
             #expect(!FileManager.default.fileExists(atPath: url.path))
         }
-        #expect(ReconBenchStore().entries.isEmpty)
     }
 }

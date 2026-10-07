@@ -90,6 +90,9 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
     var mixedOn: String?
     /// The user ticked "I mixed this vial with exactly this diluent volume".
     var concentrationConfirmed: Bool
+    /// When they ticked it (Reconstitute, step 3). Who: this phone's user.
+    /// Nil for vials confirmed before build 68, and whenever not confirmed.
+    var concentrationConfirmedAt: Date?
     var lowStockThresholdML: Double?
     var status: PeptideVialStatus
     var notes: String
@@ -103,6 +106,7 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         diluentML: Double? = nil,
         mixedOn: String? = nil,
         concentrationConfirmed: Bool = false,
+        concentrationConfirmedAt: Date? = nil,
         lowStockThresholdML: Double? = nil,
         status: PeptideVialStatus = .active,
         notes: String = "",
@@ -115,6 +119,7 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         self.diluentML = diluentML
         self.mixedOn = mixedOn
         self.concentrationConfirmed = concentrationConfirmed
+        self.concentrationConfirmedAt = concentrationConfirmed ? concentrationConfirmedAt : nil
         self.lowStockThresholdML = lowStockThresholdML
         self.status = status
         self.notes = notes
@@ -124,6 +129,56 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
     var displayName: String {
         let trimmed = compound.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Vial" : trimmed
+    }
+
+    /// A single-compound vial from Reconstitute: the amount and diluent as
+    /// typed, confirmed only when the user ticked step 3, stamped with when.
+    /// Re-confirming an existing vial keeps its other details.
+    static func reconstituted(
+        id: String,
+        compound: String,
+        amount: Double,
+        unit: String,
+        diluentML: Double,
+        mixedOn: String?,
+        confirmedAt: Date?,
+        existing: PeptideVial?,
+        now: Date
+    ) -> PeptideVial {
+        let componentID = existing?.components.first?.id ?? UUID().uuidString
+        return PeptideVial(
+            id: id,
+            compound: compound.trimmingCharacters(in: .whitespacesAndNewlines),
+            components: [PeptideVialComponent(id: componentID, name: compound.trimmingCharacters(in: .whitespacesAndNewlines), amount: amount, unit: unit)],
+            diluentML: diluentML,
+            mixedOn: mixedOn,
+            concentrationConfirmed: confirmedAt != nil,
+            concentrationConfirmedAt: confirmedAt,
+            lowStockThresholdML: existing?.lowStockThresholdML,
+            status: existing?.status ?? .active,
+            notes: existing?.notes ?? "",
+            createdAt: existing?.createdAt ?? now
+        )
+    }
+
+    /// The amounts and diluent as typed differ from `other`'s.
+    func numbersDiffer(from other: PeptideVial) -> Bool {
+        diluentML != other.diluentML
+            || components.map(\.amount) != other.components.map(\.amount)
+            || components.map(\.unit) != other.components.map(\.unit)
+    }
+
+    /// `edited` saved over this vial. A confirmation was for exactly these
+    /// numbers, so changing the amount or diluent clears it, unless the user
+    /// ticked "I mixed this vial..." again in the same edit (a new stamp).
+    func applyingEdit(_ edited: PeptideVial) -> PeptideVial {
+        var result = edited
+        let restamped = edited.concentrationConfirmedAt != nil && edited.concentrationConfirmedAt != concentrationConfirmedAt
+        if numbersDiffer(from: edited) && !restamped {
+            result.concentrationConfirmed = false
+            result.concentrationConfirmedAt = nil
+        }
+        return result
     }
 }
 

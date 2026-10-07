@@ -26,6 +26,7 @@ struct PeptideArchiveTests {
             diluentML: 2,
             mixedOn: "2026-09-10",
             concentrationConfirmed: true,
+            concentrationConfirmedAt: now,
             lowStockThresholdML: 0.4,
             notes: "Fridge door",
             createdAt: now
@@ -76,6 +77,7 @@ struct PeptideArchiveTests {
         #expect(snapped.vialConcentrationAtSave == nil)
         #expect(snapped.concentrationConfirmedAtSave)
         #expect(archive.syringeScale == .u100)
+        #expect(restored.vial(id: "v1")?.concentrationConfirmedAt == now)
     }
 
     /// Files from build 67 have no snapshot fields: their entries read as

@@ -235,16 +235,6 @@ struct HomeV2Cards: View {
         case .peptides:
             if peptideStore.hasLocalActivity(today: peptideDay) {
                 Section {
-                    NavigationLink {
-                        ReconView()
-                    } label: {
-                        HStack {
-                            Text("Recon")
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            Spacer()
-                        }
-                    }
-                    .listRowBackground(IronTheme.surface)
                     HomePeptideSummary(day: peptideDay).listRowBackground(IronTheme.surface)
                     Button("Log a dose") {
                         showingPeptideLog = true

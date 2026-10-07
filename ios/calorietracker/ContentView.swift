@@ -2162,7 +2162,6 @@ struct ProfileView: View {
     @State private var showExerciseLibrary = false
     @State private var showLegacyLogger = false
     @State private var restSoundPreview = RestTimerService()
-    @State private var reconBenchStore = ReconBenchStore()
     @Environment(CloudBackupService.self) private var cloudBackup
 
     private var heightMetric: Bool { heightUnitRaw == "cm" }
@@ -2268,14 +2267,6 @@ struct ProfileView: View {
             .sheet(isPresented: $showLegacyLogger) {
                 WorkoutsView(presentedAsSheet: true, forcedMode: .log)
             }
-    }
-
-    private var reconHubSubtitle: String {
-        let today = ReconMath.todayISO()
-        let count = reconBenchStore.entries.reduce(into: 0) { partial, entry in
-            partial += ReconMath.expandEntry(entry).filter { $0.date == today }.count
-        }
-        return count == 1 ? "1 dose today" : "\(count) doses today"
     }
 
     private var hubInputs: MoreHubInputs {

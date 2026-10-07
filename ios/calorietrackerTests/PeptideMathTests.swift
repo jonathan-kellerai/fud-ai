@@ -402,6 +402,75 @@ struct PeptideMathTests {
         #expect(bpc.map(\.count) == [0, 2, 1])
     }
 
+    // MARK: Reconstitute
+
+    @Test func reconstituteArithmeticIsThePlainDivisionAsTyped() {
+        let line = PeptideMath.reconstituteArithmetic(amount: 10, unit: "mg", diluentML: 2)
+        #expect(line?.text == "10 mg ÷ 2 mL = 5 mg/mL")
+        #expect(line?.spoken == "10 milligrams divided by 2 millilitres equals 5 milligrams per millilitre. Arithmetic on your numbers, not advice.")
+        #expect(PeptideMath.reconstituteArithmetic(amount: 5000, unit: "IU", diluentML: 1)?.text == "5000 IU ÷ 1 mL = 5000 IU/mL")
+        #expect(PeptideMath.reconstituteArithmetic(amount: 10, unit: nil, diluentML: 2) == nil)
+        #expect(PeptideMath.reconstituteArithmetic(amount: 10, unit: "mg", diluentML: nil) == nil)
+        #expect(PeptideMath.reconstituteArithmetic(amount: 10, unit: "units", diluentML: 2) == nil)
+    }
+
+    @Test func reconstituteNeedsEveryTypedNumber() {
+        #expect(PeptideMath.reconstituteIssue(compound: " ", amountText: "10", unit: "mg", diluentText: "2") != nil)
+        #expect(PeptideMath.reconstituteIssue(compound: "BPC-157", amountText: "", unit: "mg", diluentText: "2") != nil)
+        #expect(PeptideMath.reconstituteIssue(compound: "BPC-157", amountText: "10", unit: nil, diluentText: "2") != nil)
+        #expect(PeptideMath.reconstituteIssue(compound: "BPC-157", amountText: "10", unit: "mg", diluentText: "0") != nil)
+        #expect(PeptideMath.reconstituteIssue(compound: "BPC-157", amountText: "10", unit: "mg", diluentText: "2") == nil)
+    }
+
+    @Test func reconstitutedVialIsConfirmedOnlyWhenTickedAndStampsWhen() {
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        let ticked = PeptideVial.reconstituted(
+            id: "v", compound: " BPC-157 ", amount: 10, unit: "mg", diluentML: 2,
+            mixedOn: "2026-09-26", confirmedAt: at, existing: nil, now: at
+        )
+        #expect(ticked.compound == "BPC-157")
+        #expect(ticked.components.first?.amount == 10)
+        #expect(ticked.diluentML == 2)
+        #expect(ticked.concentrationConfirmed)
+        #expect(ticked.concentrationConfirmedAt == at)
+        #expect(PeptideMath.confirmedText(ticked) == "You · " + PeptideMath.shortDateTime(at))
+        #expect(PeptideMath.milligramsPerML(ticked) == 5)
+        #expect(PeptideMath.concentration(ticked).components.first?.perML == 5)
+
+        let unticked = PeptideVial.reconstituted(
+            id: "v", compound: "BPC-157", amount: 10, unit: "mg", diluentML: 2,
+            mixedOn: nil, confirmedAt: nil, existing: ticked, now: at
+        )
+        #expect(!unticked.concentrationConfirmed)
+        #expect(unticked.concentrationConfirmedAt == nil)
+        #expect(PeptideMath.confirmedText(unticked) == nil)
+        #expect(!PeptideMath.remaining(vial: unticked, entries: []).calculable)
+    }
+
+    @Test func editingTheNumbersClearsTheConfirmationUnlessTickedAgain() {
+        let first = Date(timeIntervalSince1970: 1_790_000_000)
+        let confirmed = vial(compound: "BPC-157", amount: 10, diluent: 2)
+        var stamped = confirmed
+        stamped.concentrationConfirmedAt = first
+        var renamed = stamped
+        renamed.notes = "Fridge"
+        #expect(stamped.applyingEdit(renamed).concentrationConfirmed)
+        #expect(stamped.applyingEdit(renamed).concentrationConfirmedAt == first)
+
+        var moreWater = stamped
+        moreWater.diluentML = 3
+        #expect(!stamped.applyingEdit(moreWater).concentrationConfirmed)
+        #expect(stamped.applyingEdit(moreWater).concentrationConfirmedAt == nil)
+
+        var retickedAfterEdit = moreWater
+        retickedAfterEdit.concentrationConfirmedAt = first.addingTimeInterval(60)
+        #expect(stamped.applyingEdit(retickedAfterEdit).concentrationConfirmed)
+
+        var newAmount = stamped
+        newAmount.components[0].amount = 20
+        #expect(!stamped.applyingEdit(newAmount).concentrationConfirmed)
+    }
+
     @Test func civilDatesUseNewYork() {
         // 03:30 UTC on Sep 21 is still Sep 20 in New York.
         let date = PeptideMath.parseISO8601("2026-09-21T03:30:00Z")

@@ -17,6 +17,7 @@ struct PeptideVialEditorTarget: Identifiable {
 struct PeptideVialsView: View {
     @Environment(PeptideLogStore.self) private var store
     @State private var editorTarget: PeptideVialEditorTarget?
+    @State private var reconstituteTarget: PeptideVialEditorTarget?
     @State private var showFinished = false
     @State private var finishTarget: PeptideVial?
     @State private var isPickingFile = false
@@ -30,11 +31,17 @@ struct PeptideVialsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 PeptideScreenTitle(title: "Vials", subtitle: "Vials you mixed. Remaining is worked out only from your own numbers.")
                 Button {
-                    editorTarget = PeptideVialEditorTarget(vial: nil)
+                    reconstituteTarget = PeptideVialEditorTarget(vial: nil)
                 } label: {
-                    Label("Add vial", systemImage: "plus")
+                    Label("Reconstitute a vial", systemImage: "plus")
                 }
                 .buttonStyle(IronPrimaryButtonStyle())
+                Button {
+                    editorTarget = PeptideVialEditorTarget(vial: nil)
+                } label: {
+                    Label("Add a blend or other vial", systemImage: "square.and.pencil")
+                }
+                .buttonStyle(PeptideSecondaryButtonStyle())
                 Button {
                     isPickingFile = true
                 } label: {
@@ -53,6 +60,9 @@ struct PeptideVialsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editorTarget) { target in
             PeptideVialEditor(vial: target.vial)
+        }
+        .sheet(item: $reconstituteTarget) { target in
+            ReconView(vial: target.vial)
         }
         .fileImporter(
             isPresented: $isPickingFile,
@@ -295,6 +305,7 @@ struct PeptideVialEditor: View {
     @State private var mixedKnown: Bool
     @State private var mixedOn: Date
     @State private var confirmed: Bool
+    @State private var confirmedAt: Date?
     @State private var thresholdText: String
     @State private var notes: String
     @State private var errorText: String?
@@ -325,6 +336,7 @@ struct PeptideVialEditor: View {
         _mixedKnown = State(initialValue: vial?.mixedOn != nil)
         _mixedOn = State(initialValue: vial?.mixedOn.map(PeptideViewDates.localDate(fromCivil:)) ?? Date())
         _confirmed = State(initialValue: vial?.concentrationConfirmed ?? false)
+        _confirmedAt = State(initialValue: vial?.concentrationConfirmedAt)
         _thresholdText = State(initialValue: vial?.lowStockThresholdML.map(PeptideMath.number) ?? "")
         _notes = State(initialValue: vial?.notes ?? "")
     }
@@ -340,13 +352,6 @@ struct PeptideVialEditor: View {
                     confirmSection
                     thresholdSection
                     notesSection
-                    NavigationLink {
-                        ReconView()
-                    } label: {
-                        Label("Open Recon Bench", systemImage: "cross.vial.fill")
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            .foregroundStyle(IronTheme.bloodText)
-                    }
                     if let errorText {
                         PeptideIssueText(text: errorText)
                     }
@@ -490,17 +495,46 @@ struct PeptideVialEditor: View {
         }
     }
 
+    /// The same tick as Reconstitute's step 3: it stamps when. Changing an
+    /// amount or the diluent unticks it.
     private var confirmSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("I mixed this vial with exactly this diluent volume", isOn: $confirmed)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(IronTheme.textPrimary)
-                .tint(IronTheme.olive)
-            Text("Without this, concentration and remaining volume are not calculated.")
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                confirmed.toggle()
+                confirmedAt = confirmed ? Date() : nil
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: confirmed ? "checkmark.square.fill" : "square")
+                        .font(.title3)
+                        .foregroundStyle(confirmed ? IronTheme.olive : IronTheme.textSecondary)
+                    Text("I mixed this vial with exactly this diluent volume.")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("I mixed this vial with exactly this diluent volume")
+            .accessibilityValue(confirmed ? "Ticked" : "Not ticked")
+            .accessibilityAddTraits(confirmed ? .isSelected : [])
+            Text(confirmed
+                ? "Confirmed by you" + (confirmedAt.map { " · " + PeptideMath.shortDateTime($0) } ?? "") + "."
+                : "Without this, concentration and remaining volume are not shown.")
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .onChange(of: components) { _, _ in unconfirm() }
+        .onChange(of: diluentText) { _, _ in unconfirm() }
+    }
+
+    private func unconfirm() {
+        confirmed = false
+        confirmedAt = nil
     }
 
     private var thresholdSection: some View {
@@ -563,7 +597,7 @@ struct PeptideVialEditor: View {
             errorText = error
             return
         }
-        let vial = PeptideVial(
+        let edited = PeptideVial(
             id: existing?.id ?? UUID().uuidString,
             compound: name,
             isBlend: isBlend,
@@ -571,12 +605,13 @@ struct PeptideVialEditor: View {
             diluentML: diluent.value,
             mixedOn: mixedKnown ? PeptideViewDates.civil(fromLocal: mixedOn) : nil,
             concentrationConfirmed: confirmed,
+            concentrationConfirmedAt: confirmedAt,
             lowStockThresholdML: threshold.value,
             status: existing?.status ?? .active,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             createdAt: existing?.createdAt ?? Date()
         )
-        store.saveVial(vial)
+        store.saveVial(existing.map { $0.applyingEdit(edited) } ?? edited)
         dismiss()
     }
 }
