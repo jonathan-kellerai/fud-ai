@@ -58,6 +58,41 @@ struct WorkoutPayload: Codable {
     }
 }
 
+extension WorkoutPayload {
+    /// A saved workout as edited in Workout History. Notes are the non-blank
+    /// lines of `notesText`; an empty conditioning field means none.
+    static func historyCorrection(
+        programVersion: String,
+        programDay: String,
+        sessionDate: String,
+        title: String,
+        conditioning: String,
+        notesText: String,
+        sets: [EditableBridgeSet],
+        now: Date = Date()
+    ) -> WorkoutPayload {
+        let stamp = ISO8601DateFormatter().string(from: now)
+        let noteLines = notesText
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return WorkoutPayload(
+            kind: "COMPLETED",
+            programVersion: programVersion,
+            programDay: programDay,
+            title: title,
+            units: "lb",
+            sessionDate: sessionDate,
+            conditioning: conditioning.isEmpty ? nil : conditioning,
+            notes: noteLines,
+            recordedAtUtc: stamp,
+            openedAtUtc: stamp,
+            source: "jl-fud-native",
+            sets: sets.map(\.payload)
+        )
+    }
+}
+
 /// The history editor's plain values and bridge conversion live together.
 struct EditableBridgeSet: Identifiable {
     let id: String
