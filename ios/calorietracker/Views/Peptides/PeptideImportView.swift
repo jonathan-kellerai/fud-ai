@@ -3,8 +3,8 @@
 //  calorietracker
 //
 //  Import a peptides file (the same format Export writes). The preview says
-//  what would be added, and to whom, before anything changes. Records only:
-//  nothing is calculated or suggested from the file.
+//  what would be added before anything changes. Everything goes into this
+//  phone's log. Records only: nothing is calculated or suggested from the file.
 //
 
 import SwiftUI
@@ -19,12 +19,10 @@ struct PeptideImportPreviewSheet: View {
     @Environment(PeptideLogStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let archive: PeptideArchive
-    @State private var person: String
     @State private var imported: PeptideImportSummary?
 
-    init(archive: PeptideArchive, person: String) {
+    init(archive: PeptideArchive) {
         self.archive = archive
-        _person = State(initialValue: PeptidePerson.normalized(person))
     }
 
     var body: some View {
@@ -41,16 +39,8 @@ struct PeptideImportPreviewSheet: View {
                         )
                     } else {
                         countsCard(summary)
-                        if summary.newVialsWithoutPerson > 0 {
-                            VStack(alignment: .leading, spacing: 8) {
-                                PeptideFieldLabel(summary.newVialsWithoutPerson == 1
-                                    ? "1 vial in this file has no person. It goes to"
-                                    : "\(summary.newVialsWithoutPerson) vials in this file have no person. They go to")
-                                PeptidePersonToggle(person: $person)
-                            }
-                        }
                         Button(summary.added == 0 ? "Nothing new to import" : "Import " + Self.addedText(summary)) {
-                            imported = store.importArchive(archive, person: person)
+                            imported = store.importArchive(archive)
                         }
                         .buttonStyle(IronPrimaryButtonStyle(enabled: summary.added > 0))
                         .disabled(summary.added == 0)

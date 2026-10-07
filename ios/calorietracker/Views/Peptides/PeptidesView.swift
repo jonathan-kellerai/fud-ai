@@ -12,13 +12,11 @@ import SwiftUI
 /// Opens the log sheet. The amount always starts empty.
 struct PeptideLogRequest: Identifiable {
     let id = UUID().uuidString
-    var person: String
     var compound: String?
 }
 
 struct PeptidesView: View {
     @Environment(PeptideLogStore.self) private var store
-    @State private var person: String
     @State private var day: String
     @State private var logRequest: PeptideLogRequest?
     @State private var editTarget: PeptideLogEntry?
@@ -30,9 +28,8 @@ struct PeptidesView: View {
     private let referenceDate: Date?
     @State private var now: Date
 
-    init(initialPerson: String? = nil, initialDay: String? = nil, referenceDate: Date? = nil) {
+    init(initialDay: String? = nil, referenceDate: Date? = nil) {
         let start = referenceDate ?? Date()
-        _person = State(initialValue: initialPerson.map(PeptidePerson.normalized) ?? PeptidePersonMemory.load())
         _day = State(initialValue: initialDay ?? PeptideMath.civilDate(start))
         _now = State(initialValue: start)
         self.referenceDate = referenceDate
@@ -54,9 +51,6 @@ struct PeptidesView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Peptides")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: person) { _, newValue in
-            PeptidePersonMemory.save(newValue)
-        }
         .peptideLiveDate($now, fixed: referenceDate != nil)
         .onChange(of: today) { oldToday, newToday in
             // Showing "Today" when the date rolls over: follow it.
@@ -79,7 +73,9 @@ struct PeptidesView: View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
                 PeptideScreenTitle(title: "Peptides", subtitle: "What you took, as you typed it.")
-                PeptidePersonToggle(person: $person)
+                if store.heldAsideCount > 0 {
+                    PeptideSecondProfileCard()
+                }
                 dateStrip
             }
             .peptideListRow()
@@ -131,7 +127,7 @@ struct PeptidesView: View {
 
     private var summarySection: some View {
         Section {
-            PeptideDaySummaryCard(person: person, day: day)
+            PeptideDaySummaryCard(day: day)
                 .peptideListRow()
         } header: {
             IronSectionTitle(title: day == today ? "Today" : "Day summary")
@@ -140,7 +136,7 @@ struct PeptidesView: View {
 
     @ViewBuilder
     private var dueSection: some View {
-        let items = PeptideMath.dueItems(date: day, person: person, schedules: store.schedules, entries: store.entries)
+        let items = PeptideMath.dueItems(date: day, schedules: store.schedules, entries: store.entries)
         if !items.isEmpty {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
@@ -178,7 +174,7 @@ struct PeptidesView: View {
             }
             if !item.taken {
                 Button("Log") {
-                    logRequest = PeptideLogRequest(person: person, compound: item.schedule.compound)
+                    logRequest = PeptideLogRequest(compound: item.schedule.compound)
                 }
                 .buttonStyle(IronCompactButtonStyle())
             }
@@ -187,11 +183,11 @@ struct PeptidesView: View {
     }
 
     private var logSection: some View {
-        let rows = store.dayEntries(day, person: person, includeVoided: showVoided).reversed()
-        let voidedCount = store.dayEntries(day, person: person, includeVoided: true).filter(\.voided).count
+        let rows = store.dayEntries(day, includeVoided: showVoided).reversed()
+        let voidedCount = store.dayEntries(day, includeVoided: true).filter(\.voided).count
         return Section {
             Button {
-                logRequest = PeptideLogRequest(person: person, compound: nil)
+                logRequest = PeptideLogRequest(compound: nil)
             } label: {
                 Label("Log dose", systemImage: "plus")
             }
@@ -245,12 +241,12 @@ struct PeptidesView: View {
     }
 
     private var linksSection: some View {
-        let low = store.lowStockVials(person: person).count
-        let active = store.personVials(person: person).count
-        let schedules = store.personSchedules(person: person).filter(\.active).count
+        let low = store.lowStockVials().count
+        let active = store.vialList().count
+        let schedules = store.schedules.filter(\.active).count
         return Section {
             NavigationLink {
-                PeptideVialsView(person: person)
+                PeptideVialsView()
             } label: {
                 linkLabel(
                     "Vials",
@@ -261,7 +257,7 @@ struct PeptidesView: View {
             }
             .listRowBackground(IronTheme.surface)
             NavigationLink {
-                PeptideScheduleView(person: person, referenceDate: referenceDate)
+                PeptideScheduleView(referenceDate: referenceDate)
             } label: {
                 linkLabel(
                     "Schedule & adherence",
@@ -272,7 +268,7 @@ struct PeptidesView: View {
             }
             .listRowBackground(IronTheme.surface)
             NavigationLink {
-                PeptideHistoryView(person: person, referenceDate: referenceDate)
+                PeptideHistoryView(referenceDate: referenceDate)
             } label: {
                 linkLabel("History", systemImage: "chart.bar.xaxis", detail: "Calendar, totals, chart", warning: nil)
             }
@@ -326,19 +322,18 @@ struct PeptideLogSheetHost: View {
     let request: PeptideLogRequest
 
     var body: some View {
-        PeptideLogSheet(person: request.person, compound: request.compound)
+        PeptideLogSheet(compound: request.compound)
     }
 }
 
 /// Today's (or the picked day's) count, totals per unit and adherence.
 struct PeptideDaySummaryCard: View {
     @Environment(PeptideLogStore.self) private var store
-    let person: String
     let day: String
 
     var body: some View {
-        let summary = PeptideMath.dailySummary(entries: store.entries, date: day, person: person)
-        let due = PeptideMath.dueItems(date: day, person: person, schedules: store.schedules, entries: store.entries)
+        let summary = PeptideMath.dailySummary(entries: store.entries, date: day)
+        let due = PeptideMath.dueItems(date: day, schedules: store.schedules, entries: store.entries)
         let dueCount = due.count
         let doneCount = due.filter(\.taken).count
         return VStack(alignment: .leading, spacing: 10) {
@@ -361,7 +356,7 @@ struct PeptideDaySummaryCard: View {
                 }
             }
             if summary.totals.isEmpty {
-                Text("No doses logged for \(PeptidePerson.name(person)).")
+                Text("No doses logged.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -29,7 +29,6 @@ struct PeptideLogSheet: View {
     /// values the test typed. App call sites never pass it.
     /// `now` is the default time only (Visual QA passes a fixed instant).
     init(
-        person: String,
         compound: String? = nil,
         reviewDraft: PeptideLogDraft? = nil,
         now: Date = Date(),
@@ -39,7 +38,7 @@ struct PeptideLogSheet: View {
             _draft = State(initialValue: reviewDraft)
             _step = State(initialValue: .confirm)
         } else {
-            _draft = State(initialValue: PeptideLogDraft.new(person: PeptidePerson.normalized(person), compound: compound ?? "", now: now))
+            _draft = State(initialValue: PeptideLogDraft.new(compound: compound ?? "", now: now))
             _step = State(initialValue: .entry)
         }
         self.onSaved = onSaved
@@ -75,7 +74,6 @@ struct PeptideLogSheet: View {
 
     private var entryForm: some View {
         VStack(alignment: .leading, spacing: 16) {
-            PeptidePersonToggle(person: personBinding)
             compoundSection
             amountSection
             timeSection
@@ -88,19 +86,8 @@ struct PeptideLogSheet: View {
         }
     }
 
-    private var personBinding: Binding<String> {
-        Binding(
-            get: { draft.person },
-            set: { newValue in
-                guard newValue != draft.person else { return }
-                draft.person = newValue
-                draft.vialID = nil
-            }
-        )
-    }
-
     private var compoundOptions: [String] {
-        PeptideMath.compoundOptions(person: draft.person, loggedCompounds: store.loggedCompounds(person: draft.person))
+        PeptideMath.compoundOptions(vialCompounds: store.vialList().map(\.compound), loggedCompounds: store.loggedCompounds())
     }
 
     private var selectedOption: String? {
@@ -204,7 +191,7 @@ struct PeptideLogSheet: View {
 
     @ViewBuilder
     private var vialSection: some View {
-        let vials = store.personVials(person: draft.person).filter {
+        let vials = store.vialList().filter {
             !draft.trimmedCompound.isEmpty && PeptideMath.sameCompound($0.compound, draft.compound)
         }
         if !vials.isEmpty {
@@ -324,7 +311,6 @@ struct PeptideLogReviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                PeptideFieldLabel(PeptidePerson.name(draft.person))
                 Text(draft.trimmedCompound)
                     .font(.system(size: 26, weight: .black))
                     .fontWidth(.condensed)
@@ -407,7 +393,6 @@ struct PeptideLogReviewCard: View {
     private var hypotheticalEntry: PeptideLogEntry {
         PeptideLogEntry(
             id: "draft-review",
-            person: PeptidePerson.normalized(draft.person),
             compound: draft.trimmedCompound,
             dose: draft.amount,
             units: draft.units,

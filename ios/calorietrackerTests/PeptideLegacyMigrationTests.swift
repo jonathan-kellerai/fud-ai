@@ -25,12 +25,17 @@ struct PeptideLegacyMigrationTests {
             .filter { $0.hasPrefix("peptide_log_v1.pre-local-") }
     }
 
+    /// Build 67's raw profile tags, as its saves carry them.
+    private static let firstTag = PeptideLegacyProfile.firstProfileRawValue
+    private static let secondTag = PeptideLegacyProfile.secondProfileRawValue
+
     /// Two synced app rows, an assistant COMPLETED row with badges, a PLANNED
     /// row, a voided row with a trail, a queued correction, a refused void,
     /// a queued create with a vial link, a cancelled uncertain create, and a
     /// create whose row already arrived. Plus one row with no id and one
-    /// element that isn't a row.
-    private let version1 = """
+    /// element that isn't a row. The corrected row, the refused void and the
+    /// local schedule were tagged with the second profile.
+    private var version1: String { """
     {"version":1,"historyComplete":true,"lastSync":800000000,
      "rows":[
       {"id":"row-app","datetime":"2026-09-20T07:30:00-04:00","compound":"BPC-157","dose":500,"units":"mcg",
@@ -45,9 +50,9 @@ struct PeptideLegacyMigrationTests {
        "status":"COMPLETED","recorded_via":"app","voided":true,"void_reason":"Logged twice",
        "correction_history":[{"at":"2026-09-18T12:00:00Z","field":"dose","old":250,"new":500,"reason":"Typo","by":"app"}]},
       {"id":"row-corrected","datetime":"2026-09-17T08:00:00-04:00","compound":"MT2","dose":250,"units":"mcg",
-       "status":"COMPLETED","recorded_via":"app","person":"victoria","voided":false},
+       "status":"COMPLETED","recorded_via":"app","person":"\(Self.secondTag)","voided":false},
       {"id":"row-refused-void","datetime":"2026-09-16T08:00:00-04:00","compound":"MT2","dose":250,"units":"mcg",
-       "status":"COMPLETED","recorded_via":"app","person":"victoria","voided":false},
+       "status":"COMPLETED","recorded_via":"app","person":"\(Self.secondTag)","voided":false},
       {"id":"row-synced-create","datetime":"2026-09-15T08:00:00-04:00","compound":"BPC-157","dose":500,"units":"mcg",
        "status":"COMPLETED","recorded_via":"app","client_request_id":"crid-synced","voided":false},
       {"datetime":"2026-09-14T08:00:00-04:00","compound":"No id"},
@@ -59,7 +64,7 @@ struct PeptideLegacyMigrationTests {
       {"id":"op-void","kind":"void","rowID":"row-refused-void","reason":"Duplicate","attempts":2,
        "lastError":"refused","failed":true,"createdAt":800000000},
       {"id":"crid-queued","kind":"create","create":{"clientRequestID":"crid-queued","datetime":"2026-09-21T07:00:00-04:00",
-       "dose":0.25,"units":"mL","compound":"BPC-157","route":"Thigh R","person":"jonathan"},
+       "dose":0.25,"units":"mL","compound":"BPC-157","route":"Thigh R","person":"\(Self.firstTag)"},
        "attempts":3,"failed":false,"createdAt":800000000,"outcomeUncertain":false},
       {"id":"crid-cancelled","kind":"create","create":{"clientRequestID":"crid-cancelled","datetime":"2026-09-21T06:00:00-04:00",
        "dose":500,"units":"mcg","compound":"BPC-157"},
@@ -72,15 +77,19 @@ struct PeptideLegacyMigrationTests {
       {"key":"crid-app","vialID":"vial-1"}
      ],
      "vials":[
-      {"id":"vial-1","person":"jonathan","compound":"BPC-157","isBlend":false,
+      {"id":"vial-1","person":"\(Self.firstTag)","compound":"BPC-157","isBlend":false,
        "components":[{"id":"c1","name":"BPC-157","amount":10,"unit":"mg"}],"diluentML":2,"mixedOn":"2026-09-10",
        "concentrationConfirmed":true,"bridgeInventoryID":"INV-SYNTH-001","status":"active","notes":"","createdAt":800000000}
      ],
      "schedules":[
-      {"id":"sched-local","person":"victoria","compound":"MT2","frequency":{"type":"daily","days":[]},
+      {"id":"sched-local","person":"\(Self.secondTag)","compound":"MT2","frequency":{"type":"daily","days":[]},
        "startDate":"2026-09-01","active":true,"notes":"","createdAt":800000000}
      ]}
-    """
+    """ }
+
+    private func heldEntry(_ store: PeptideLogStore, _ id: String) -> PeptideLogEntry? {
+        store.heldAside.entries.first { $0.id == id }
+    }
 
     @Test func everyRowTheScreensShowedBecomesALocalEntry() throws {
         let directory = tempDirectory()
@@ -88,15 +97,17 @@ struct PeptideLegacyMigrationTests {
         let url = try write(version1, in: directory)
         let store = PeptideLogStore(persistence: .file(url))
 
-        // PLANNED dropped; the create whose row arrived stays one entry.
+        // PLANNED dropped; the create whose row arrived stays one entry. The
+        // first profile's rows (tagged or not) are the user's own; the second
+        // profile's are held aside, not dropped.
         #expect(Set(store.entries.map(\.id)) == [
-            "row-app", "row-agent", "row-voided", "row-corrected", "row-refused-void",
+            "row-app", "row-agent", "row-voided",
             "row-synced-create", "crid-queued", "crid-cancelled",
         ])
+        #expect(Set(store.heldAside.entries.map(\.id)) == ["row-corrected", "row-refused-void"])
         #expect(store.entry(id: "plan-1") == nil)
 
         let app = try #require(store.entry(id: "row-app"))
-        #expect(app.person == "jonathan")
         #expect(app.dose == 500)
         #expect(app.units == "mcg")
         #expect(app.route == "Abdomen L")
@@ -125,13 +136,12 @@ struct PeptideLegacyMigrationTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = PeptideLogStore(persistence: .file(try write(version1, in: directory)))
 
-        let corrected = try #require(store.entry(id: "row-corrected"))
-        #expect(corrected.person == "victoria")
+        let corrected = try #require(heldEntry(store, "row-corrected"))
         #expect(corrected.dose == 300)
         #expect(corrected.notes == "Corrected on the phone")
 
         // Refused by the bridge, but the user voided it.
-        let refused = try #require(store.entry(id: "row-refused-void"))
+        let refused = try #require(heldEntry(store, "row-refused-void"))
         #expect(refused.voided)
         #expect(refused.voidReason == "Duplicate")
 
@@ -157,21 +167,21 @@ struct PeptideLegacyMigrationTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = PeptideLogStore(persistence: .file(try write(version1, in: directory)))
 
-        let corrected = try #require(store.entry(id: "row-corrected"))
+        let corrected = try #require(heldEntry(store, "row-corrected"))
         #expect(corrected.corrections == [
             PeptideCorrection(at: queuedAt, field: "dose", old: "250", new: "300", reason: "Wrong amount", by: "app"),
             PeptideCorrection(at: queuedAt, field: "notes", old: "—", new: "Corrected on the phone", reason: "Wrong amount", by: "app"),
         ])
 
-        let refused = try #require(store.entry(id: "row-refused-void"))
+        let refused = try #require(heldEntry(store, "row-refused-void"))
         #expect(refused.corrections == [
             PeptideCorrection(at: queuedAt, field: "voided", old: "false", new: "true", reason: "Duplicate", by: "app"),
         ])
 
         // Survives the save: a relaunch reads the same trail.
         let reopened = PeptideLogStore(persistence: .file(directory.appendingPathComponent("peptide_log_v1.json")))
-        #expect(reopened.entry(id: "row-corrected")?.corrections == corrected.corrections)
-        #expect(reopened.entry(id: "row-refused-void")?.corrections == refused.corrections)
+        #expect(heldEntry(reopened, "row-corrected")?.corrections == corrected.corrections)
+        #expect(heldEntry(reopened, "row-refused-void")?.corrections == refused.corrections)
     }
 
     @Test func queuedChangesAddToTheExistingTrailInOrder() throws {
@@ -219,7 +229,8 @@ struct PeptideLegacyMigrationTests {
         #expect(vial.diluentML == 2)
         #expect(vial.mixedOn == "2026-09-10")
         #expect(vial.concentrationConfirmed)
-        #expect(store.schedules.map(\.id) == ["sched-local"])
+        #expect(store.schedules.isEmpty)
+        #expect(store.heldAside.schedules.map(\.id) == ["sched-local"])
         // row-app (no draw, mcg from a 10 mg / 2 mL vial = 0.1 mL) and
         // crid-queued (25 units = 0.25 mL) come out of the vial.
         #expect(store.remaining(for: vial).remainingML == 1.65)
@@ -244,7 +255,7 @@ struct PeptideLegacyMigrationTests {
         // The saved log holds only what was read; the count is saved with it.
         let second = PeptideLogStore(persistence: .file(url))
         #expect(second.storageNote == note)
-        second.saveVial(PeptideVial(id: "vial-2", person: "jonathan", compound: "MT2", diluentML: 1))
+        second.saveVial(PeptideVial(id: "vial-2", compound: "MT2", diluentML: 1))
         let third = PeptideLogStore(persistence: .file(url))
         #expect(third.storageNote == note)
         #expect(third.vial(id: "vial-2") != nil)
@@ -263,12 +274,13 @@ struct PeptideLegacyMigrationTests {
         #expect(names.count == 1)
         let copy = try Data(contentsOf: directory.appendingPathComponent(try #require(names.first)))
         #expect(copy == Data(version1.utf8))
-        #expect(PeptideLogSnapshot.savedVersion(of: try Data(contentsOf: url)) == 2)
+        #expect(PeptideLogSnapshot.savedVersion(of: try Data(contentsOf: url)) == PeptideLogStore.fileVersion)
 
         let second = PeptideLogStore(persistence: .file(url))
         #expect(second.entries == first.entries)
         #expect(second.vials == first.vials)
         #expect(second.schedules == first.schedules)
+        #expect(second.heldAside == first.heldAside)
         #expect(copies(in: directory).count == 1)
     }
 
@@ -282,9 +294,10 @@ struct PeptideLegacyMigrationTests {
         let url = directory.appendingPathComponent("peptide_log_v1.json")
 
         let store = PeptideLogStore(persistence: .file(url, defaults: defaults))
-        #expect(store.entries.count == 8)
+        #expect(store.entries.count == 6)
+        #expect(store.heldAside.entries.count == 2)
         #expect(copies(in: directory).count == 1)
-        #expect(PeptideLogSnapshot.savedVersion(of: try Data(contentsOf: url)) == 2)
+        #expect(PeptideLogSnapshot.savedVersion(of: try Data(contentsOf: url)) == PeptideLogStore.fileVersion)
         #expect(defaults.data(forKey: PeptideLogStore.defaultsKey) == nil)
     }
 
@@ -303,10 +316,10 @@ struct PeptideLegacyMigrationTests {
 
         let store = PeptideLogStore(persistence: .file(url, defaults: defaults))
         // Shown from memory, never saved over.
-        #expect(store.entries.count == 8)
+        #expect(store.entries.count == 6)
         #expect(store.persistError != nil)
         _ = store.log({
-            var draft = PeptideLogDraft.new(person: "jonathan", compound: "BPC-157")
+            var draft = PeptideLogDraft.new(compound: "BPC-157")
             draft.amountText = "500"
             draft.units = "mcg"
             return draft
@@ -323,7 +336,7 @@ struct PeptideLegacyMigrationTests {
         let store = PeptideLogStore(persistence: .file(url))
         #expect(store.entries.isEmpty)
         #expect(store.storageNote != nil)
-        store.saveSchedule(PeptideUserSchedule(person: "jonathan", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01"))
+        store.saveSchedule(PeptideUserSchedule(compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01"))
         #expect(try Data(contentsOf: url) == Data(newer.utf8))
         #expect(copies(in: directory).isEmpty)
     }

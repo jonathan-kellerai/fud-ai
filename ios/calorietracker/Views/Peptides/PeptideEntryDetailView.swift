@@ -53,7 +53,6 @@ struct PeptideEntryDetailView: View {
 
     private func fieldsCard(_ entry: PeptideLogEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            PeptideDetailRow(label: "Person", value: PeptidePerson.name(entry.person))
             PeptideDetailRow(label: "Time", value: entry.date.map { PeptideMath.shortDateTime($0) + " ET" } ?? entry.datetimeRaw)
             PeptideDetailRow(label: "Site", value: nonEmpty(entry.route))
             PeptideDetailRow(label: "Vial", value: store.vial(id: entry.vialID)?.displayName ?? "None")
@@ -253,7 +252,7 @@ struct PeptideEditEntrySheet: View {
     }
 
     private var localFields: some View {
-        let vials = store.personVials(person: entry.person, includeFinished: true).filter {
+        let vials = store.vialList(includeFinished: true).filter {
             PeptideMath.sameCompound($0.compound, compound) || $0.id == vialID
         }
         return VStack(alignment: .leading, spacing: 10) {

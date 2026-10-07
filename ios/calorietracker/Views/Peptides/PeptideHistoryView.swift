@@ -11,7 +11,6 @@ import SwiftUI
 
 struct PeptideHistoryView: View {
     @Environment(PeptideLogStore.self) private var store
-    @State private var person: String
     @State private var compoundFilter: String?
     @State private var anchor: String
     @State private var selectedDay: String?
@@ -23,9 +22,8 @@ struct PeptideHistoryView: View {
     private let referenceDate: Date?
     @State private var now: Date
 
-    init(person: String = PeptidePerson.jonathan, initialDay: String? = nil, referenceDate: Date? = nil) {
+    init(initialDay: String? = nil, referenceDate: Date? = nil) {
         let start = referenceDate ?? Date()
-        _person = State(initialValue: PeptidePerson.normalized(person))
         let today = PeptideMath.civilDate(start)
         _anchor = State(initialValue: initialDay ?? today)
         _selectedDay = State(initialValue: initialDay)
@@ -35,13 +33,9 @@ struct PeptideHistoryView: View {
 
     private var today: String { PeptideMath.civilDate(referenceDate ?? now) }
 
-    private var personEntries: [PeptideLogEntry] {
-        let owner = PeptidePerson.normalized(person)
+    private var filteredEntries: [PeptideLogEntry] {
         let key = compoundFilter.map(PeptideMath.compoundKey)
-        return store.entries.filter {
-            PeptidePerson.normalized($0.person) == owner
-                && (key == nil || PeptideMath.compoundKey($0.compound) == key)
-        }
+        return store.entries.filter { key == nil || PeptideMath.compoundKey($0.compound) == key }
     }
 
     var body: some View {
@@ -50,10 +44,8 @@ struct PeptideHistoryView: View {
                 PeptideScreenTitle(title: "History", subtitle: "Every dose you logged, by day.")
                 storageNotes
                 exportButton
-                PeptidePersonToggle(person: $person)
                 filterChips
                 PeptideMonthCalendar(
-                    person: person,
                     compound: compoundFilter,
                     anchor: $anchor,
                     selectedDay: $selectedDay,
@@ -70,9 +62,6 @@ struct PeptideHistoryView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Peptide history")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: person) { _, _ in
-            compoundFilter = nil
-        }
         .peptideLiveDate($now, fixed: referenceDate != nil)
     }
 
@@ -84,14 +73,14 @@ struct PeptideHistoryView: View {
                 Label("Export all peptides", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(PeptideSecondaryButtonStyle())
-            .accessibilityHint("Saves both people's doses, vials and schedules as a file you can keep or import later.")
+            .accessibilityHint("Saves your doses, vials and schedules as a file you can keep or import later.")
             if let exportError {
                 PeptideIssueText(text: exportError)
             }
         }
     }
 
-    /// Writes every record (both people) to a peptides file and opens the share sheet.
+    /// Writes every record to a peptides file and opens the share sheet.
     private func export() {
         let now = Date()
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(PeptideArchive.fileName(exportedOn: now))
@@ -118,7 +107,7 @@ struct PeptideHistoryView: View {
     private var compoundChoices: [String] {
         var seen = Set<String>()
         var names: [String] = []
-        let candidates = store.loggedCompounds(person: person) + store.personSchedules(person: person).map(\.compound)
+        let candidates = store.loggedCompounds() + store.schedules.map(\.compound)
         for name in candidates {
             let key = PeptideMath.compoundKey(name)
             guard !key.isEmpty, seen.insert(key).inserted else { continue }
@@ -144,7 +133,7 @@ struct PeptideHistoryView: View {
     @ViewBuilder
     private var selectedDaySection: some View {
         if let selectedDay {
-            let rows = personEntries.filter { $0.civilDate == selectedDay && (showVoided || !$0.voided) }
+            let rows = filteredEntries.filter { $0.civilDate == selectedDay && (showVoided || !$0.voided) }
             VStack(alignment: .leading, spacing: 8) {
                 IronSectionTitle(title: ReconMath.formatDate(selectedDay))
                 if rows.isEmpty {
@@ -161,7 +150,7 @@ struct PeptideHistoryView: View {
 
     @ViewBuilder
     private var summariesSection: some View {
-        let summaries = PeptideMath.compoundSummaries(entries: personEntries, person: person, today: today)
+        let summaries = PeptideMath.compoundSummaries(entries: filteredEntries, today: today)
         if !summaries.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 IronSectionTitle(title: "By compound")
@@ -173,7 +162,7 @@ struct PeptideHistoryView: View {
     }
 
     private var chartSection: some View {
-        let counts = PeptideMath.weeklyCounts(entries: store.entries, compound: compoundFilter, person: person, weeks: 12, today: today)
+        let counts = PeptideMath.weeklyCounts(entries: store.entries, compound: compoundFilter, weeks: 12, today: today)
         return VStack(alignment: .leading, spacing: 8) {
             IronSectionTitle(title: "Doses per week")
             Chart(counts) { week in
@@ -204,9 +193,9 @@ struct PeptideHistoryView: View {
 
     @ViewBuilder
     private var listSection: some View {
-        let rows = personEntries.filter { showVoided || !$0.voided }
+        let rows = filteredEntries.filter { showVoided || !$0.voided }
         let days = groupedDays(rows)
-        let voidedCount = personEntries.filter(\.voided).count
+        let voidedCount = filteredEntries.filter(\.voided).count
         VStack(alignment: .leading, spacing: 12) {
             IronSectionTitle(title: "All doses")
             if voidedCount > 0 {
@@ -310,7 +299,6 @@ struct PeptideCompoundSummaryCard: View {
 /// Rust: a scheduled dose was missed. Brass: logged with nothing scheduled.
 struct PeptideMonthCalendar: View {
     @Environment(PeptideLogStore.self) private var store
-    let person: String
     let compound: String?
     @Binding var anchor: String
     @Binding var selectedDay: String?
@@ -366,7 +354,6 @@ struct PeptideMonthCalendar: View {
     private func dayCell(_ iso: String, inMonth: Bool) -> some View {
         let marker = PeptideMath.dayMarker(
             date: iso,
-            person: person,
             compound: compound,
             schedules: store.schedules,
             entries: store.entries,

@@ -3,7 +3,7 @@
 //  calorietracker
 //
 //  The one file format for peptide export, import and the iCloud backup:
-//  {format, format_version, exported_at, vials, schedules, entries}.
+//  {format, format_version, exported_at, vials, schedules, entries, held_aside?}.
 //  Records only: every number is one the user (or their records) entered.
 //
 
@@ -14,8 +14,6 @@ struct PeptideImportSummary: Equatable {
     var newVials = 0
     var newSchedules = 0
     var newEntries = 0
-    /// New vials whose file names no person; they go to the person picked on import.
-    var newVialsWithoutPerson = 0
     /// Records whose id is already on this phone (left unchanged).
     var alreadyHere = 0
     /// Records in the file that couldn't be read.
@@ -52,14 +50,52 @@ struct PeptideArchive: Equatable {
     var vials: [Vial]
     var schedules: [Schedule]
     var entries: [PeptideLogEntry]
+    /// Records an earlier build kept under a second profile that the user
+    /// hasn't kept or deleted yet (`held_aside`). Written only when there are some.
+    var heldAside = HeldAside()
     /// Records in the file that couldn't be read. Never written.
     var skipped = 0
 
-    init(exportedAt: String?, vials: [PeptideVial], schedules: [PeptideUserSchedule], entries: [PeptideLogEntry]) {
+    struct HeldAside: Equatable {
+        var vials: [Vial] = []
+        var schedules: [Schedule] = []
+        var entries: [PeptideLogEntry] = []
+
+        var isEmpty: Bool { vials.isEmpty && schedules.isEmpty && entries.isEmpty }
+    }
+
+    init(
+        exportedAt: String?,
+        vials: [PeptideVial],
+        schedules: [PeptideUserSchedule],
+        entries: [PeptideLogEntry],
+        heldAside: PeptideRecordSet = PeptideRecordSet()
+    ) {
         self.exportedAt = exportedAt
         self.vials = vials.map { Vial($0) }
         self.schedules = schedules.map { Schedule($0) }
         self.entries = entries
+        self.heldAside = HeldAside(
+            vials: heldAside.vials.map { Vial($0) },
+            schedules: heldAside.schedules.map { Schedule($0) },
+            entries: heldAside.entries
+        )
+    }
+
+    /// The on-device records: the user's own, and those still held aside.
+    func records(now: Date) -> PeptideRecordsByProfile {
+        PeptideRecordsByProfile(
+            own: PeptideRecordSet(
+                entries: entries,
+                vials: vials.map { $0.vial(now: now) },
+                schedules: schedules.map { $0.schedule(now: now) }
+            ),
+            heldAside: PeptideRecordSet(
+                entries: heldAside.entries,
+                vials: heldAside.vials.map { $0.vial(now: now) },
+                schedules: heldAside.schedules.map { $0.schedule(now: now) }
+            )
+        )
     }
 
     /// Validates size, format and version before anything is read. With
@@ -84,12 +120,25 @@ struct PeptideArchive: Equatable {
         let vials = (file.vials ?? []).compactMap(\.value)
         let schedules = (file.schedules ?? []).compactMap(\.value)
         let entries = (file.entries ?? []).compactMap(\.value)
-        var archive = PeptideArchive(exportedAt: file.exportedAt, vials: [], schedules: [], entries: entries)
-        archive.vials = vials
-        archive.schedules = schedules
-        archive.skipped = ((file.vials?.count ?? 0) - vials.count)
-            + ((file.schedules?.count ?? 0) - schedules.count)
-            + ((file.entries?.count ?? 0) - entries.count)
+        let held = file.heldAside
+        let heldVials = (held?.vials ?? []).compactMap(\.value)
+        let heldSchedules = (held?.schedules ?? []).compactMap(\.value)
+        let heldEntries = (held?.entries ?? []).compactMap(\.value)
+        var archive = PeptideArchive(exportedAt: file.exportedAt, vials: [], schedules: [], entries: [])
+        // Records an older file tagged with the second profile are held aside, like those in `held_aside`.
+        archive.vials = vials.filter { $0.profile == .own }.map(\.value)
+        archive.schedules = schedules.filter { $0.profile == .own }.map(\.value)
+        archive.entries = entries.filter { $0.profile == .own }.map(\.value)
+        archive.heldAside = HeldAside(
+            vials: vials.filter { $0.profile == .second }.map(\.value) + heldVials,
+            schedules: schedules.filter { $0.profile == .second }.map(\.value) + heldSchedules,
+            entries: entries.filter { $0.profile == .second }.map(\.value) + heldEntries
+        )
+        let listed: Int = (file.vials?.count ?? 0) + (file.schedules?.count ?? 0) + (file.entries?.count ?? 0)
+        let heldListed: Int = (held?.vials?.count ?? 0) + (held?.schedules?.count ?? 0) + (held?.entries?.count ?? 0)
+        let read: Int = vials.count + schedules.count + entries.count
+        let heldRead: Int = heldVials.count + heldSchedules.count + heldEntries.count
+        archive.skipped = (listed - read) + (heldListed - heldRead)
         if complete, archive.skipped > 0 { throw PeptideArchiveError.incomplete }
         return archive
     }
@@ -120,7 +169,8 @@ struct PeptideArchive: Equatable {
             exportedAt: exportedAt,
             vials: vials,
             schedules: schedules,
-            entries: entries
+            entries: entries,
+            heldAside: heldAside
         ))
     }
 
@@ -134,6 +184,11 @@ struct PeptideArchive: Equatable {
         case format, vials, schedules, entries
         case formatVersion = "format_version"
         case exportedAt = "exported_at"
+        case heldAside = "held_aside"
+    }
+
+    private enum HeldAsideKeys: String, CodingKey {
+        case vials, schedules, entries
     }
 
     /// Read side: one unreadable record never drops the rest. A list that is
@@ -142,15 +197,30 @@ struct PeptideArchive: Equatable {
         var format: String?
         var formatVersion: Int?
         var exportedAt: String?
-        var vials: [PeptideLossy<Vial>]?
-        var schedules: [PeptideLossy<Schedule>]?
-        var entries: [PeptideLossy<PeptideLogEntry>]?
+        var vials: [PeptideLossy<PeptideProfiled<Vial>>]?
+        var schedules: [PeptideLossy<PeptideProfiled<Schedule>>]?
+        var entries: [PeptideLossy<PeptideProfiled<PeptideLogEntry>>]?
+        var heldAside: HeldAsideIn?
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: FileKeys.self)
             format = try? container.decodeIfPresent(String.self, forKey: .format)
             formatVersion = try? container.decodeIfPresent(Int.self, forKey: .formatVersion)
             exportedAt = try? container.decodeIfPresent(String.self, forKey: .exportedAt)
+            vials = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Vial>>].self, forKey: .vials)
+            schedules = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Schedule>>].self, forKey: .schedules)
+            entries = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<PeptideLogEntry>>].self, forKey: .entries)
+            heldAside = try? container.decodeIfPresent(HeldAsideIn.self, forKey: .heldAside)
+        }
+    }
+
+    private struct HeldAsideIn: Decodable {
+        var vials: [PeptideLossy<Vial>]?
+        var schedules: [PeptideLossy<Schedule>]?
+        var entries: [PeptideLossy<PeptideLogEntry>]?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: HeldAsideKeys.self)
             vials = try? container.decodeIfPresent([PeptideLossy<Vial>].self, forKey: .vials)
             schedules = try? container.decodeIfPresent([PeptideLossy<Schedule>].self, forKey: .schedules)
             entries = try? container.decodeIfPresent([PeptideLossy<PeptideLogEntry>].self, forKey: .entries)
@@ -164,6 +234,7 @@ struct PeptideArchive: Equatable {
         var vials: [Vial]
         var schedules: [Schedule]
         var entries: [PeptideLogEntry]
+        var heldAside: HeldAside
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: FileKeys.self)
@@ -173,16 +244,21 @@ struct PeptideArchive: Equatable {
             try container.encode(vials, forKey: .vials)
             try container.encode(schedules, forKey: .schedules)
             try container.encode(entries, forKey: .entries)
+            if !heldAside.isEmpty {
+                var held = container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside)
+                try held.encode(heldAside.vials, forKey: .vials)
+                try held.encode(heldAside.schedules, forKey: .schedules)
+                try held.encode(heldAside.entries, forKey: .entries)
+            }
         }
     }
 
     // MARK: Vial
 
-    /// A vial in the file. `person` may be null (records kept elsewhere have
-    /// no owner); amounts are never inferred from notes.
+    /// A vial in the file. A `person` key from an older file is read only by
+    /// `PeptideProfiled`; amounts are never inferred from notes.
     struct Vial: Codable, Equatable {
         var id: String
-        var person: String?
         var compound: String
         var isBlend: Bool
         var components: [Component]
@@ -196,7 +272,7 @@ struct PeptideArchive: Equatable {
         var createdAt: String?
 
         enum CodingKeys: String, CodingKey {
-            case id, person, compound, components, status, notes
+            case id, compound, components, status, notes
             case isBlend = "is_blend"
             case diluentML = "diluent_ml"
             case mixedOn = "mixed_on"
@@ -214,7 +290,6 @@ struct PeptideArchive: Equatable {
 
         init(_ vial: PeptideVial) {
             id = vial.id
-            person = vial.person
             compound = vial.compound
             isBlend = vial.isBlend
             components = vial.components.map { Component(id: $0.id, name: $0.name, amount: $0.amount, unit: $0.unit) }
@@ -234,8 +309,6 @@ struct PeptideArchive: Equatable {
             guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "Empty id")
             }
-            let owner = try container.decodeIfPresent(String.self, forKey: .person)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            person = (owner?.isEmpty ?? true) ? nil : owner
             compound = try container.decode(String.self, forKey: .compound)
             isBlend = (try container.decodeIfPresent(Bool.self, forKey: .isBlend)) ?? false
             components = (try container.decodeIfPresent([Component].self, forKey: .components)) ?? []
@@ -249,11 +322,10 @@ struct PeptideArchive: Equatable {
             createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
         }
 
-        /// The on-device vial. A vial with no person goes to `person`.
-        func vial(defaultPerson person: String, now: Date) -> PeptideVial {
+        /// The on-device vial.
+        func vial(now: Date) -> PeptideVial {
             PeptideVial(
                 id: id,
-                person: PeptidePerson.normalized(self.person ?? person),
                 compound: compound,
                 isBlend: isBlend,
                 components: components.map {
@@ -275,7 +347,6 @@ struct PeptideArchive: Equatable {
     /// A schedule the user typed. The amount is a note; it never fills a log.
     struct Schedule: Codable, Equatable {
         var id: String
-        var person: String?
         var compound: String
         var amount: Double?
         var units: String?
@@ -288,7 +359,7 @@ struct PeptideArchive: Equatable {
         var createdAt: String?
 
         enum CodingKeys: String, CodingKey {
-            case id, person, compound, amount, units, frequency, active, notes
+            case id, compound, amount, units, frequency, active, notes
             case startDate = "start_date"
             case endDate = "end_date"
             case timeOfDay = "time_of_day"
@@ -297,7 +368,6 @@ struct PeptideArchive: Equatable {
 
         init(_ schedule: PeptideUserSchedule) {
             id = schedule.id
-            person = schedule.person
             compound = schedule.compound
             amount = schedule.amount
             units = schedule.units
@@ -316,8 +386,6 @@ struct PeptideArchive: Equatable {
             guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "Empty id")
             }
-            let owner = try container.decodeIfPresent(String.self, forKey: .person)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            person = (owner?.isEmpty ?? true) ? nil : owner
             compound = try container.decode(String.self, forKey: .compound)
             amount = try container.decodeIfPresent(Double.self, forKey: .amount)
             units = try container.decodeIfPresent(String.self, forKey: .units)
@@ -333,11 +401,10 @@ struct PeptideArchive: Equatable {
             createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
         }
 
-        /// The on-device schedule. A schedule with no person goes to `person`.
-        func schedule(defaultPerson person: String, now: Date) -> PeptideUserSchedule {
+        /// The on-device schedule.
+        func schedule(now: Date) -> PeptideUserSchedule {
             PeptideUserSchedule(
                 id: id,
-                person: PeptidePerson.normalized(self.person ?? person),
                 compound: compound,
                 amount: amount,
                 units: units,

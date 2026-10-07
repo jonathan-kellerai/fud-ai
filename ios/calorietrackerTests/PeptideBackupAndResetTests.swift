@@ -20,9 +20,9 @@ struct PeptideBackupAndResetTests {
 
     private func filledStore(at url: URL, defaults: UserDefaults? = nil, compound: String = "BPC-157", id: String = "e1") throws -> PeptideLogStore {
         let store = PeptideLogStore(persistence: .file(url, defaults: defaults))
-        store.saveVial(PeptideVial(id: "v-" + id, person: "victoria", compound: "Glow", diluentML: 2, createdAt: now))
-        store.saveSchedule(PeptideUserSchedule(id: "s-" + id, person: "jonathan", compound: compound, frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01", createdAt: now))
-        var draft = PeptideLogDraft.new(person: "jonathan", compound: compound, now: now)
+        store.saveVial(PeptideVial(id: "v-" + id, compound: "Glow", diluentML: 2, createdAt: now))
+        store.saveSchedule(PeptideUserSchedule(id: "s-" + id, compound: compound, frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01", createdAt: now))
+        var draft = PeptideLogDraft.new(compound: compound, now: now)
         draft.amountText = "500"
         draft.units = "mcg"
         _ = try #require(store.log(draft, id: id, now: now))

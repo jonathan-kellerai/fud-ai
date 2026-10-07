@@ -17,7 +17,7 @@ import Testing
 @Suite(.serialized)
 struct PeptideNoNetworkTests {
     private func draft(compound: String = "BPC-157", amount: String = "500", units: String = "mcg") -> PeptideLogDraft {
-        var draft = PeptideLogDraft.new(person: "jonathan", compound: compound, now: Date(timeIntervalSince1970: 1_790_000_000))
+        var draft = PeptideLogDraft.new(compound: compound, now: Date(timeIntervalSince1970: 1_790_000_000))
         draft.amountText = amount
         draft.units = units
         return draft
@@ -64,7 +64,6 @@ struct PeptideNoNetworkTests {
             let store = PeptideLogStore(persistence: .file(url))
             let vial = PeptideVial(
                 id: "v1",
-                person: "jonathan",
                 compound: "BPC-157",
                 components: [PeptideVialComponent(name: "BPC-157", amount: 10, unit: "mg")],
                 diluentML: 2,
@@ -82,7 +81,7 @@ struct PeptideNoNetworkTests {
             #expect(store.remaining(for: vial).calculable)
             store.finishVial(id: vial.id)
             store.deleteVial(id: vial.id)
-            let schedule = PeptideUserSchedule(id: "s1", person: "jonathan", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01")
+            let schedule = PeptideUserSchedule(id: "s1", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01")
             store.saveSchedule(schedule)
             store.setScheduleActive(id: "s1", active: false)
             store.deleteSchedule(id: "s1")
@@ -91,21 +90,25 @@ struct PeptideNoNetworkTests {
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }
 
-    @Test func homeCardInputsAndPersonToggleStayOnThePhone() async throws {
+    @Test func homeCardInputsAndTheSecondProfileChoiceStayOnThePhone() async throws {
         let seen = try await requests {
             let store = PeptideLogStore(persistence: .inMemory)
-            store.saveSchedule(PeptideUserSchedule(id: "s1", person: "victoria", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01"))
+            store.saveSchedule(PeptideUserSchedule(id: "s1", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01"))
             _ = store.log(draft())
             let day = PeptideMath.civilDate(Date(timeIntervalSince1970: 1_790_000_000))
             #expect(store.hasLocalActivity(today: day))
             #expect(store.takenEntries(on: day).count == 1)
-            _ = store.lowStockVials(person: nil)
-            #expect(!PeptideMath.dueItems(date: day, person: "victoria", schedules: store.schedules, entries: store.entries).isEmpty)
+            _ = store.lowStockVials()
+            #expect(!PeptideMath.dueItems(date: day, schedules: store.schedules, entries: store.entries).isEmpty)
 
-            let savedPerson = UserDefaults.standard.object(forKey: PeptideLogStore.personKey)
-            defer { UserDefaults.standard.set(savedPerson, forKey: PeptideLogStore.personKey) }
-            PeptidePersonMemory.save("victoria")
-            #expect(PeptidePersonMemory.load() == "victoria")
+            let held = PeptideArchive(
+                exportedAt: nil, vials: [], schedules: [], entries: [],
+                heldAside: PeptideRecordSet(vials: [PeptideVial(id: "held", compound: "MT2")])
+            )
+            #expect(store.replaceAll(with: held) == nil)
+            #expect(store.heldAsideCount == 1)
+            store.keepHeldAside()
+            #expect(store.vial(id: "held") != nil)
         }
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }
@@ -136,7 +139,7 @@ struct PeptideNoNetworkTests {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let seen = try await requests {
             let store = PeptideLogStore(persistence: .inMemory)
-            store.saveVial(PeptideVial(id: "v1", person: "victoria", compound: "MT2"))
+            store.saveVial(PeptideVial(id: "v1", compound: "MT2"))
             _ = store.log(draft())
             let file = url.deletingLastPathComponent().appendingPathComponent(PeptideArchive.fileName(exportedOn: Date()))
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -144,7 +147,7 @@ struct PeptideNoNetworkTests {
             let archive = try PeptideArchive.load(from: file)
             let other = PeptideLogStore(persistence: .file(url))
             #expect(other.importSummary(of: archive).added == 2)
-            #expect(other.importArchive(archive, person: "jonathan").added == 2)
+            #expect(other.importArchive(archive).added == 2)
         }
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }

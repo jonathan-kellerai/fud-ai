@@ -53,42 +53,6 @@ struct PeptideFieldLabel: View {
     }
 }
 
-/// Jonathan | Victoria, same look as Recon Bench's person switch.
-struct PeptidePersonToggle: View {
-    @Binding var person: String
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(PeptidePerson.order, id: \.self) { key in
-                let selected = PeptidePerson.normalized(person) == key
-                Button {
-                    person = key
-                } label: {
-                    Text(PeptidePerson.name(key))
-                        .font(.system(size: 15, weight: .heavy))
-                        .fontWidth(.condensed)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .foregroundStyle(selected ? IronTheme.textPrimary : IronTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(selected ? IronTheme.blood : IronTheme.surfaceRaised)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
-                .stroke(IronTheme.hairline, lineWidth: 1)
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Person")
-    }
-}
-
 /// Wraps chips onto as many lines as the width needs (iPhone SE, large text).
 struct PeptideFlowLayout: Layout {
     var spacing: CGFloat = 8
@@ -383,7 +347,6 @@ struct PeptideRemainingBar: View {
 struct PeptideLogRow: View {
     let entry: PeptideLogEntry
     var vialName: String?
-    var showsPerson = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -414,7 +377,6 @@ struct PeptideLogRow: View {
 
     private var detailLine: String {
         var parts: [String] = []
-        if showsPerson { parts.append(PeptidePerson.name(entry.person)) }
         if let date = entry.date {
             parts.append(PeptideMath.timeText(date))
         } else if !entry.datetimeRaw.isEmpty {
@@ -451,17 +413,5 @@ enum PeptideViewDates {
 
     static func localDate(minutes: Int) -> Date {
         Calendar.current.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: Date()) ?? Date()
-    }
-}
-
-/// Remembers Jonathan | Victoria between visits.
-enum PeptidePersonMemory {
-    static func load() -> String {
-        let stored = UserDefaults.standard.string(forKey: PeptideLogStore.personKey) ?? PeptidePerson.jonathan
-        return PeptidePerson.order.contains(stored) ? stored : PeptidePerson.jonathan
-    }
-
-    static func save(_ person: String) {
-        UserDefaults.standard.set(PeptidePerson.normalized(person), forKey: PeptideLogStore.personKey)
     }
 }

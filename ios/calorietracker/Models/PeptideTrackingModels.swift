@@ -8,21 +8,53 @@
 
 import Foundation
 
-/// The two people the Peptides section tracks. Keys match Recon Bench.
-nonisolated enum PeptidePerson {
-    static let jonathan = "jonathan"
-    static let victoria = "victoria"
-    static let order = ReconMath.peopleOrder
+/// Peptides track one person: whoever uses this phone. Build 67 and earlier
+/// tagged every record with one of two profiles in a `person` field. This is
+/// the only place those saved raw values are read, to sort old records: the
+/// first profile (or none) is the user's own; the second profile's records are
+/// held aside until the user keeps or deletes them. Nothing new is tagged.
+nonisolated enum PeptideLegacyProfile: Equatable {
+    case own
+    case second
 
-    /// Bridge rows with no person are Jonathan's (legacy rows).
-    static func normalized(_ raw: String?) -> String {
+    // Legacy raw values of build 67's `person` field. Migration decoding
+    // only: never written or shown. Tests build old saves from these.
+    /// The first profile: its records (and untagged ones) are the user's own.
+    static let firstProfileRawValue = "jonathan"
+    /// The second profile: its records are held aside.
+    static let secondProfileRawValue = "victoria"
+
+    init(raw: String?) {
         let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return trimmed.isEmpty ? jonathan : trimmed
+        switch trimmed {
+        case Self.secondProfileRawValue:
+            self = .second
+        default:
+            // The first profile, an empty tag or no tag at all.
+            self = .own
+        }
+    }
+}
+
+/// A record as any build saved it, plus the legacy profile it was tagged with
+/// (the `person` key, read here and nowhere else).
+struct PeptideProfiled<Value: Decodable>: Decodable {
+    var value: Value
+    var profile: PeptideLegacyProfile
+
+    private enum LegacyKeys: String, CodingKey {
+        case person
     }
 
-    static func name(_ raw: String?) -> String {
-        let key = normalized(raw)
-        return ReconMath.peopleNames[key] ?? key.capitalized
+    init(value: Value, profile: PeptideLegacyProfile) {
+        self.value = value
+        self.profile = profile
+    }
+
+    init(from decoder: Decoder) throws {
+        value = try Value(from: decoder)
+        let container = try decoder.container(keyedBy: LegacyKeys.self)
+        profile = PeptideLegacyProfile(raw: try? container.decodeIfPresent(String.self, forKey: .person))
     }
 }
 
@@ -50,7 +82,6 @@ nonisolated enum PeptideVialStatus: String, Codable, Equatable {
 /// A vial the user mixed. Remaining volume is only calculated from these numbers.
 nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
     var id: String
-    var person: String
     var compound: String
     var isBlend: Bool
     var components: [PeptideVialComponent]
@@ -66,7 +97,6 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
 
     init(
         id: String = UUID().uuidString,
-        person: String,
         compound: String,
         isBlend: Bool = false,
         components: [PeptideVialComponent] = [],
@@ -79,7 +109,6 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         createdAt: Date = Date()
     ) {
         self.id = id
-        self.person = person
         self.compound = compound
         self.isBlend = isBlend
         self.components = components
@@ -102,7 +131,6 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
 /// used to fill a log.
 nonisolated struct PeptideUserSchedule: Codable, Equatable, Identifiable, Hashable {
     var id: String
-    var person: String
     var compound: String
     var amount: Double?
     var units: String?
@@ -120,7 +148,6 @@ nonisolated struct PeptideUserSchedule: Codable, Equatable, Identifiable, Hashab
 
     init(
         id: String = UUID().uuidString,
-        person: String,
         compound: String,
         amount: Double? = nil,
         units: String? = nil,
@@ -133,7 +160,6 @@ nonisolated struct PeptideUserSchedule: Codable, Equatable, Identifiable, Hashab
         createdAt: Date = Date()
     ) {
         self.id = id
-        self.person = person
         self.compound = compound
         self.amount = amount
         self.units = units
@@ -147,7 +173,7 @@ nonisolated struct PeptideUserSchedule: Codable, Equatable, Identifiable, Hashab
     }
 
     static func == (lhs: PeptideUserSchedule, rhs: PeptideUserSchedule) -> Bool {
-        lhs.id == rhs.id && lhs.person == rhs.person && lhs.compound == rhs.compound
+        lhs.id == rhs.id && lhs.compound == rhs.compound
             && lhs.amount == rhs.amount && lhs.units == rhs.units && lhs.frequency == rhs.frequency
             && lhs.startDate == rhs.startDate && lhs.endDate == rhs.endDate && lhs.timeOfDay == rhs.timeOfDay
             && lhs.active == rhs.active && lhs.notes == rhs.notes && lhs.createdAt == rhs.createdAt
@@ -168,6 +194,49 @@ nonisolated struct PeptideRecordSet: Equatable {
         self.entries = entries
         self.vials = vials
         self.schedules = schedules
+    }
+
+    var count: Int { entries.count + vials.count + schedules.count }
+    var isEmpty: Bool { count == 0 }
+
+    /// `other`'s records whose id isn't here yet, added after these.
+    func adding(_ other: PeptideRecordSet) -> PeptideRecordSet {
+        var result = self
+        var entryIDs = Set(entries.map(\.id))
+        result.entries += other.entries.filter { entryIDs.insert($0.id).inserted }
+        var vialIDs = Set(vials.map(\.id))
+        result.vials += other.vials.filter { vialIDs.insert($0.id).inserted }
+        var scheduleIDs = Set(schedules.map(\.id))
+        result.schedules += other.schedules.filter { scheduleIDs.insert($0.id).inserted }
+        return result
+    }
+}
+
+/// Records read from a save or a file, sorted by the legacy profile an
+/// earlier build tagged them with: the user's own, and those held aside.
+struct PeptideRecordsByProfile: Equatable {
+    var own = PeptideRecordSet()
+    var heldAside = PeptideRecordSet()
+
+    init(own: PeptideRecordSet = PeptideRecordSet(), heldAside: PeptideRecordSet = PeptideRecordSet()) {
+        self.own = own
+        self.heldAside = heldAside
+    }
+
+    init(
+        entries: [PeptideProfiled<PeptideLogEntry>],
+        vials: [PeptideProfiled<PeptideVial>],
+        schedules: [PeptideProfiled<PeptideUserSchedule>]
+    ) {
+        for item in entries {
+            if item.profile == .second { heldAside.entries.append(item.value) } else { own.entries.append(item.value) }
+        }
+        for item in vials {
+            if item.profile == .second { heldAside.vials.append(item.value) } else { own.vials.append(item.value) }
+        }
+        for item in schedules {
+            if item.profile == .second { heldAside.schedules.append(item.value) } else { own.schedules.append(item.value) }
+        }
     }
 }
 
@@ -210,7 +279,6 @@ nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
 /// what the user typed.
 nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     var id: String
-    var person: String
     var compound: String
     var dose: Double?
     var units: String?
@@ -234,7 +302,7 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     let civilDate: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, person, compound, dose, units, datetime, route, notes, voided, corrections
+        case id, compound, dose, units, datetime, route, notes, voided, corrections
         case sourceVial = "source_vial"
         case voidReason = "void_reason"
         case vialID = "vial_id"
@@ -245,7 +313,6 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
 
     init(
         id: String,
-        person: String,
         compound: String,
         dose: Double? = nil,
         units: String? = nil,
@@ -263,7 +330,6 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         createdAt: String? = nil
     ) {
         self.id = id
-        self.person = person
         self.compound = compound
         self.dose = dose
         self.units = units
@@ -292,7 +358,6 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         let datetime = (try container.decodeIfPresent(String.self, forKey: .datetime)) ?? ""
         self.init(
             id: id,
-            person: PeptidePerson.normalized(try container.decodeIfPresent(String.self, forKey: .person)),
             compound: try container.decode(String.self, forKey: .compound),
             dose: try container.decodeIfPresent(Double.self, forKey: .dose),
             units: try container.decodeIfPresent(String.self, forKey: .units),
@@ -314,7 +379,6 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
-        try container.encode(person, forKey: .person)
         try container.encode(compound, forKey: .compound)
         try container.encodeIfPresent(dose, forKey: .dose)
         try container.encodeIfPresent(units, forKey: .units)
@@ -356,7 +420,6 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         if let typed = changes.datetime { newDate = PeptideMath.parseISO8601(typed) }
         return PeptideLogEntry(
             id: id,
-            person: person,
             compound: changes.compound ?? compound,
             dose: changes.dose ?? dose,
             units: changes.units ?? units,
@@ -399,7 +462,6 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
 /// What the log sheet collects. Starts with the amount EMPTY: the app never
 /// fills an amount.
 nonisolated struct PeptideLogDraft: Equatable {
-    var person: String
     var compound: String
     var amountText: String
     /// Nil until the user picks one (or picks a single-component vial).
@@ -412,9 +474,8 @@ nonisolated struct PeptideLogDraft: Equatable {
     var drawnUnit: String?
     var notes: String
 
-    static func new(person: String, compound: String = "", now: Date = Date()) -> PeptideLogDraft {
+    static func new(compound: String = "", now: Date = Date()) -> PeptideLogDraft {
         PeptideLogDraft(
-            person: person,
             compound: compound,
             amountText: "",
             units: nil,

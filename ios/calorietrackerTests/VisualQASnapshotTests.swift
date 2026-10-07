@@ -728,7 +728,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("60-peptides-today", heightMultiplier: 2.4) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -737,10 +737,10 @@ final class VisualQASnapshotTests: XCTestCase {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("61-peptide-log-sheet", heightMultiplier: 2, sheet: {
-            PeptideLogSheet(person: "jonathan", compound: "BPC-157", now: VisualQAFixtures.peptideReferenceDate)
+            PeptideLogSheet(compound: "BPC-157", now: VisualQAFixtures.peptideReferenceDate)
         }) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -750,10 +750,10 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         let draft = VisualQAFixtures.peptideReviewDraft()
         try await eachSize("62-peptide-log-confirm", heightMultiplier: 1.6, sheet: {
-            PeptideLogSheet(person: "jonathan", reviewDraft: draft)
+            PeptideLogSheet(reviewDraft: draft)
         }) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -775,7 +775,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("64-peptide-vials", heightMultiplier: 3) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView(person: "jonathan") }
+                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView() }
             }
         }
     }
@@ -785,10 +785,10 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         let glow = VisualQAFixtures.peptideGlowVial()
         try await eachSize("65-peptide-vial-editor", heightMultiplier: 2.4, sheet: {
-            PeptideVialEditor(vial: glow, person: "victoria")
+            PeptideVialEditor(vial: glow)
         }) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView(person: "victoria") }
+                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView() }
             }
         }
     }
@@ -798,7 +798,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("66-peptide-schedule", heightMultiplier: 2.4) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideScheduleView(person: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "Peptides") { PeptideScheduleView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -808,7 +808,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("67-peptide-history", heightMultiplier: 3) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideHistoryView(person: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "Peptides") { PeptideHistoryView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -818,7 +818,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("68-peptides-victoria", heightMultiplier: 2.4) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialPerson: "victoria", referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -2600,10 +2600,10 @@ extension VisualQASnapshotTests {
         XCTAssertEqual(archive.vials.count, 3)
         XCTAssertEqual(archive.entries.count, 1)
         try await eachSize("104-peptides-import-preview", heightMultiplier: 1.6, sheet: {
-            PeptideImportPreviewSheet(archive: archive, person: "jonathan")
+            PeptideImportPreviewSheet(archive: archive)
         }) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView(person: "jonathan") }
+                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView() }
             }
         }
     }
@@ -2618,7 +2618,7 @@ extension VisualQASnapshotTests {
         try await eachSize("105-peptides-airplane", heightMultiplier: 2.4) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "More") {
-                    PeptidesView(initialPerson: "jonathan", referenceDate: VisualQAFixtures.peptideReferenceDate)
+                    PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate)
                 }
             }
         }

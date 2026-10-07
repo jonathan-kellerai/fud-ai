@@ -9,8 +9,8 @@ import Testing
 struct PeptideLogStoreTests {
     private let takenAt = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func draft(compound: String = "BPC-157", amount: String = "500", units: String = "mcg", person: String = "jonathan") -> PeptideLogDraft {
-        var draft = PeptideLogDraft.new(person: person, compound: compound, now: takenAt)
+    private func draft(compound: String = "BPC-157", amount: String = "500", units: String = "mcg") -> PeptideLogDraft {
+        var draft = PeptideLogDraft.new(compound: compound, now: takenAt)
         draft.amountText = amount
         draft.units = units
         return draft
@@ -25,7 +25,6 @@ struct PeptideLogStoreTests {
     private func bpcVial(id: String = "v-bpc") -> PeptideVial {
         PeptideVial(
             id: id,
-            person: "jonathan",
             compound: "BPC-157",
             components: [PeptideVialComponent(name: "BPC-157", amount: 10, unit: "mg")],
             diluentML: 2,
@@ -41,7 +40,6 @@ struct PeptideLogStoreTests {
         let id = try #require(store.log(typed, id: "Dose-1", now: takenAt))
         #expect(id == "dose-1")
         let entry = try #require(store.entry(id: id))
-        #expect(entry.person == "jonathan")
         #expect(entry.compound == "BPC-157")
         #expect(entry.dose == 500)
         #expect(entry.units == "mcg")
@@ -56,7 +54,7 @@ struct PeptideLogStoreTests {
 
     @Test func invalidDraftIsNotSaved() {
         let store = PeptideLogStore(persistence: .inMemory)
-        var empty = PeptideLogDraft.new(person: "jonathan", compound: "BPC-157")
+        var empty = PeptideLogDraft.new(compound: "BPC-157")
         empty.units = "mcg"
         #expect(store.log(empty) == nil)
         var noUnits = draft()
@@ -132,8 +130,8 @@ struct PeptideLogStoreTests {
         #expect(store.correct(voided, reason: "Fix", changes: PeptideCorrectionChanges(dose: 1)) == "This entry is voided.")
         // Still listed when voided entries are shown; never counted.
         let day = PeptideMath.civilDate(takenAt)
-        #expect(store.dayEntries(day, person: "jonathan", includeVoided: true).count == 1)
-        #expect(store.dayEntries(day, person: "jonathan", includeVoided: false).isEmpty)
+        #expect(store.dayEntries(day, includeVoided: true).count == 1)
+        #expect(store.dayEntries(day, includeVoided: false).isEmpty)
         #expect(store.remaining(for: vial).remainingML == 2)
     }
 
@@ -167,8 +165,7 @@ struct PeptideLogStoreTests {
         #expect(remaining.calculable)
         #expect(remaining.remainingML == 0.4)
         #expect(remaining.isLow)
-        #expect(store.lowStockVials(person: "jonathan").map(\.id) == [vial.id])
-        #expect(store.lowStockVials(person: "victoria").isEmpty)
+        #expect(store.lowStockVials().map(\.id) == [vial.id])
     }
 
     @Test func vialsAndSchedulesAreSavedAndFiltered() {
@@ -181,15 +178,14 @@ struct PeptideLogStoreTests {
         #expect(store.vials.count == 1)
         #expect(store.vial(id: vial.id)?.compound == "BPC-157 (new)")
         store.finishVial(id: vial.id)
-        #expect(store.personVials(person: "jonathan").isEmpty)
-        #expect(store.personVials(person: "jonathan", includeFinished: true).count == 1)
+        #expect(store.vialList().isEmpty)
+        #expect(store.vialList(includeFinished: true).count == 1)
         store.deleteVial(id: vial.id)
         #expect(store.vials.isEmpty)
 
-        let schedule = PeptideUserSchedule(id: "s1", person: "victoria", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01")
+        let schedule = PeptideUserSchedule(id: "s1", compound: "MT2", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01")
         store.saveSchedule(schedule)
-        #expect(store.personSchedules(person: "victoria").map(\.id) == ["s1"])
-        #expect(store.personSchedules(person: "jonathan").isEmpty)
+        #expect(store.schedules.map(\.id) == ["s1"])
         store.setScheduleActive(id: "s1", active: false)
         #expect(store.schedules.first?.active == false)
         store.deleteSchedule(id: "s1")
@@ -199,24 +195,25 @@ struct PeptideLogStoreTests {
     @Test func dueItemsComeFromTheUsersOwnSchedules() throws {
         let store = PeptideLogStore(persistence: .inMemory)
         let day = PeptideMath.civilDate(takenAt)
-        store.saveSchedule(PeptideUserSchedule(id: "s1", person: "jonathan", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: ReconMath.addDays(day, -3)))
-        let before = PeptideMath.dueItems(date: day, person: "jonathan", schedules: store.schedules, entries: store.entries)
+        store.saveSchedule(PeptideUserSchedule(id: "s1", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: ReconMath.addDays(day, -3)))
+        let before = PeptideMath.dueItems(date: day, schedules: store.schedules, entries: store.entries)
         #expect(before.map(\.taken) == [false])
         _ = try #require(store.log(draft(compound: "bpc 157")))
-        let after = PeptideMath.dueItems(date: day, person: "jonathan", schedules: store.schedules, entries: store.entries)
+        let after = PeptideMath.dueItems(date: day, schedules: store.schedules, entries: store.entries)
         #expect(after.map(\.taken) == [true])
-        #expect(PeptideMath.dueItems(date: day, person: "victoria", schedules: store.schedules, entries: store.entries).isEmpty)
     }
 
-    @Test func personFilterKeepsPeopleApart() throws {
+    /// One person per phone: every dose is in the one log, nothing is filtered by a profile.
+    @Test func everyDoseIsInTheOneLog() throws {
         let store = PeptideLogStore(persistence: .inMemory)
-        _ = try #require(store.log(draft(compound: "MT2", amount: "250", person: "Victoria")))
-        _ = try #require(store.log(draft(compound: "BPC-157")))
+        _ = try #require(store.log(draft(compound: "MT2", amount: "250"), id: "a"))
+        _ = try #require(store.log(draft(compound: "BPC-157"), id: "b"))
         let day = PeptideMath.civilDate(takenAt)
-        #expect(store.dayEntries(day, person: "victoria", includeVoided: false).map(\.compound) == ["MT2"])
-        #expect(store.dayEntries(day, person: "jonathan", includeVoided: false).map(\.compound) == ["BPC-157"])
-        #expect(store.loggedCompounds(person: "victoria") == ["MT2"])
+        #expect(store.dayEntries(day, includeVoided: false).map(\.compound) == ["MT2", "BPC-157"])
+        #expect(store.loggedCompounds() == ["BPC-157", "MT2"])
         #expect(store.takenEntries(on: day).count == 2)
+        let saved = try JSONEncoder().encode(try #require(store.entry(id: "a")))
+        #expect(!String(decoding: saved, as: UTF8.self).contains("person"))
     }
 
     @Test func homeActivityIsLocalOnly() throws {
@@ -239,7 +236,7 @@ struct PeptideLogStoreTests {
         let store = PeptideLogStore(persistence: .file(url))
         let vial = bpcVial()
         store.saveVial(vial)
-        store.saveSchedule(PeptideUserSchedule(id: "s1", person: "jonathan", compound: "BPC-157", frequency: ReconMath.Frequency(type: "everyN", n: 2), startDate: "2026-09-01"))
+        store.saveSchedule(PeptideUserSchedule(id: "s1", compound: "BPC-157", frequency: ReconMath.Frequency(type: "everyN", n: 2), startDate: "2026-09-01"))
         var typed = draft(amount: "0.25", units: "mL")
         typed.vialID = vial.id
         typed.notes = "After training"
@@ -264,8 +261,8 @@ struct PeptideLogStoreTests {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let json = """
-        {"version":2,"entries":[
-          {"id":"ok","person":"victoria","compound":"MT2","dose":250,"units":"mcg","datetime":"2026-09-20T07:15:00-04:00","voided":false,"corrections":[]},
+        {"version":3,"entries":[
+          {"id":"ok","compound":"MT2","dose":250,"units":"mcg","datetime":"2026-09-20T07:15:00-04:00","voided":false,"corrections":[]},
           {"id":"","compound":"MT2"},
           {"compound":"no id"},
           "not a record"
@@ -286,13 +283,14 @@ struct PeptideLogStoreTests {
     }
 
     @Test func savesWithoutAnOmittedCountReadAsNone() throws {
-        let plain = #"{"version":2,"entries":[],"vials":[],"schedules":[]}"#
+        let plain = #"{"version":3,"entries":[],"vials":[],"schedules":[]}"#
         let snapshot = try JSONDecoder().decode(PeptideLogSnapshot.self, from: Data(plain.utf8))
         #expect(snapshot.omitted == 0 && snapshot.skipped == 0)
         // Nothing omitted: the key isn't written, so the bytes stay as before.
-        let encoded = try JSONEncoder().encode(PeptideLogSnapshot(version: 2, entries: [], vials: [], schedules: []))
+        let encoded = try JSONEncoder().encode(PeptideLogSnapshot(version: 3, entries: [], vials: [], schedules: []))
         #expect(!String(decoding: encoded, as: UTF8.self).contains("omitted"))
-        let counted = try JSONEncoder().encode(PeptideLogSnapshot(version: 2, entries: [], vials: [], schedules: [], omitted: 4))
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("held_aside"))
+        let counted = try JSONEncoder().encode(PeptideLogSnapshot(version: 3, entries: [], vials: [], schedules: [], omitted: 4))
         #expect(try JSONDecoder().decode(PeptideLogSnapshot.self, from: counted).omitted == 4)
     }
 
@@ -312,7 +310,7 @@ struct PeptideLogStoreTests {
         let url = tempURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let newer = Data(#"{"version":3,"entries":[],"doses":[{"id":"x"}]}"#.utf8)
+        let newer = Data(#"{"version":4,"entries":[],"doses":[{"id":"x"}]}"#.utf8)
         try newer.write(to: url)
         let store = PeptideLogStore(persistence: .file(url))
         #expect(store.storageNote != nil)
