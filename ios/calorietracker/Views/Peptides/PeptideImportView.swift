@@ -4,7 +4,9 @@
 //
 //  Import a peptides file (the same format Export writes). The preview says
 //  what would be added before anything changes. Everything goes into this
-//  phone's log. Records only: nothing is calculated or suggested from the file.
+//  phone's log, except records an older file kept under a second profile:
+//  those are held aside for the one-time keep/delete choice. Records only:
+//  nothing is calculated or suggested from the file.
 //
 
 import SwiftUI
@@ -39,11 +41,11 @@ struct PeptideImportPreviewSheet: View {
                         )
                     } else {
                         countsCard(summary)
-                        Button(summary.added == 0 ? "Nothing new to import" : "Import " + Self.addedText(summary)) {
+                        Button(summary.total == 0 ? "Nothing new to import" : "Import " + Self.addedText(summary)) {
                             imported = store.importArchive(archive)
                         }
-                        .buttonStyle(IronPrimaryButtonStyle(enabled: summary.added > 0))
-                        .disabled(summary.added == 0)
+                        .buttonStyle(IronPrimaryButtonStyle(enabled: summary.total > 0))
+                        .disabled(summary.total == 0)
                         Text("Only records that aren't on this phone yet are added. Nothing is changed or removed.")
                             .font(.system(.footnote, design: .rounded))
                             .foregroundStyle(IronTheme.textSecondary)
@@ -69,6 +71,13 @@ struct PeptideImportPreviewSheet: View {
             PeptideDetailRow(label: "New vials", value: "\(summary.newVials)")
             PeptideDetailRow(label: "New schedules", value: "\(summary.newSchedules)")
             PeptideDetailRow(label: "New doses", value: "\(summary.newEntries)")
+            if summary.heldAside > 0 {
+                PeptideDetailRow(label: "From a second profile", value: "\(summary.heldAside)")
+                Text("These are kept on this phone but not in your log until you choose to keep or delete them.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if summary.alreadyHere > 0 {
                 PeptideDetailRow(label: "Already on this phone", value: "\(summary.alreadyHere)")
             }
@@ -89,6 +98,7 @@ struct PeptideImportPreviewSheet: View {
         if summary.newVials > 0 { parts.append(summary.newVials == 1 ? "1 vial" : "\(summary.newVials) vials") }
         if summary.newSchedules > 0 { parts.append(summary.newSchedules == 1 ? "1 schedule" : "\(summary.newSchedules) schedules") }
         if summary.newEntries > 0 { parts.append(summary.newEntries == 1 ? "1 dose" : "\(summary.newEntries) doses") }
+        if summary.heldAside > 0 { parts.append(summary.heldAside == 1 ? "1 record from a second profile" : "\(summary.heldAside) records from a second profile") }
         return parts.isEmpty ? "nothing" : parts.joined(separator: ", ")
     }
 }
