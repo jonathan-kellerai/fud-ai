@@ -2,7 +2,8 @@
 //  WorkoutHistoryEditView.swift
 //  calorietracker
 //
-//  Edit or delete a Neon bridge workout.
+//  Edit or delete a workout saved on this phone. A correction keeps the
+//  version it replaces in the workout log.
 //
 
 import SwiftUI
@@ -12,6 +13,7 @@ struct WorkoutHistoryEditView: View {
     let onChanged: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(WorkoutLogStore.self) private var workoutLog
     @State private var title = ""
     @State private var programDay = ""
     @State private var programVersion = "program-v2"
@@ -26,8 +28,6 @@ struct WorkoutHistoryEditView: View {
     /// Widens the RPE input with Dynamic Type (capped at the row's xxLarge
     /// ceiling) so its placeholder never truncates.
     @ScaledMetric(relativeTo: .body) private var inputScale: CGFloat = 1
-
-    private let neonBridge = NeonBridgeService.shared
 
     var body: some View {
         Group {
@@ -82,7 +82,7 @@ struct WorkoutHistoryEditView: View {
 
                     Section {
                         Button("Save changes") {
-                            Task { await save() }
+                            save()
                         }
                         .disabled(isSaving || sets.isEmpty)
 
@@ -96,7 +96,7 @@ struct WorkoutHistoryEditView: View {
         .navigationTitle(title.isEmpty ? "Edit Workout" : title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await load()
+            load()
         }
         .alert("Could Not Update", isPresented: Binding(
             get: { errorMessage != nil },
@@ -108,32 +108,31 @@ struct WorkoutHistoryEditView: View {
         }
         .confirmationDialog("Delete this workout?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
-                Task { await deleteWorkout() }
+                deleteWorkout()
             }
             Button("Cancel", role: .cancel) {}
         }
     }
 
-    private func load() async {
+    private func load() {
         isLoading = true
         defer { isLoading = false }
-        do {
-            let detail = try await neonBridge.getWorkout(id: workoutID)
-            title = detail.workout.title
-            programDay = detail.workout.programDay
-            programVersion = detail.workout.programVersion
-            sessionDate = String(detail.workout.sessionDate.prefix(10))
-            conditioning = detail.workout.conditioning ?? ""
-            notes = detail.workout.notes.joined(separator: "\n")
-            sets = detail.sets
-                .sorted { $0.setOrder < $1.setOrder }
-                .map { EditableBridgeSet($0) }
-        } catch {
-            errorMessage = error.localizedDescription
+        guard let detail = workoutLog.detail(id: workoutID) else {
+            errorMessage = WorkoutLogError.notFound.localizedDescription
+            return
         }
+        title = detail.workout.title
+        programDay = detail.workout.programDay
+        programVersion = detail.workout.programVersion
+        sessionDate = String(detail.workout.sessionDate.prefix(10))
+        conditioning = detail.workout.conditioning ?? ""
+        notes = detail.workout.notes.joined(separator: "\n")
+        sets = detail.sets
+            .sorted { $0.setOrder < $1.setOrder }
+            .map { EditableBridgeSet($0) }
     }
 
-    private func save() async {
+    private func save() {
         isSaving = true
         defer { isSaving = false }
 
@@ -148,7 +147,7 @@ struct WorkoutHistoryEditView: View {
         )
 
         do {
-            _ = try await neonBridge.updateWorkout(id: workoutID, payload: payload)
+            try workoutLog.correct(id: workoutID, with: payload)
             onChanged()
             dismiss()
         } catch {
@@ -156,9 +155,9 @@ struct WorkoutHistoryEditView: View {
         }
     }
 
-    private func deleteWorkout() async {
+    private func deleteWorkout() {
         do {
-            try await neonBridge.deleteWorkout(id: workoutID)
+            try workoutLog.delete(id: workoutID)
             onChanged()
             dismiss()
         } catch {

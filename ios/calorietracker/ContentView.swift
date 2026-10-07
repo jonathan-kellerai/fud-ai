@@ -2277,7 +2277,6 @@ struct ProfileView: View {
             gemmaStatus: gemmaStatusLabel,
             healthKitEnabled: healthKitEnabled,
             weightUnitRaw: weightUnitRaw,
-            bridgePendingCount: WorkoutSyncService.shared.syncQueue.count,
             bridgeConfigured: !NeonBridgeSettings.load().baseURL.isEmpty,
             iCloudEnabled: cloudBackup.enabled,
             iCloudLastBackupISO: cloudBackup.lastAt,
@@ -2293,10 +2292,7 @@ struct ProfileView: View {
     }
 
     private var bridgeStatusLabel: String {
-        MoreHubSubtitles.bridgeStatus(
-            pendingCount: WorkoutSyncService.shared.syncQueue.count,
-            configured: !NeonBridgeSettings.load().baseURL.isEmpty
-        )
+        MoreHubSubtitles.bridgeStatus(configured: !NeonBridgeSettings.load().baseURL.isEmpty)
     }
 
     private var profileHubSubtitle: String {

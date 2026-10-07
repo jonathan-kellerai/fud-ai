@@ -10,7 +10,7 @@ import SwiftUI
 struct ProgramV2WorkoutLogView: View {
     let day: ProgramV2Day
     let onSaved: () -> Void
-    /// Advances the next-in-cycle day as soon as the bridge accepts the save.
+    /// Advances the next-in-cycle day as soon as the workout is saved.
     private let progress: TrainProgressStore
 
     init(day: ProgramV2Day, progress: TrainProgressStore = .shared, onSaved: @escaping () -> Void = {}) {
@@ -22,6 +22,7 @@ struct ProgramV2WorkoutLogView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutDraftStore.self) private var draftStore
+    @Environment(WorkoutLogStore.self) private var workoutLog
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isReordering = false
     @State private var showingRestTimer = false
@@ -43,7 +44,7 @@ struct ProgramV2WorkoutLogView: View {
     @State private var ladderForm: CCFormSelection?
 
     /// Logged sets live in the app-level draft store so they survive tab
-    /// switches, dismissal and relaunch until the bridge confirms the save.
+    /// switches, dismissal and relaunch until the workout log saves them.
     private var workoutSets: [String: [LoggedSet]] {
         draftStore.existingDraft(for: day)?.sets ?? [:]
     }
@@ -150,7 +151,7 @@ struct ProgramV2WorkoutLogView: View {
                 }
             }
             .task {
-                entry.lastPerformances = await ExerciseHistoryLoader.load(exerciseNames: day.exercises.map(\.name), programDay: day.id)
+                entry.lastPerformances = ExerciseHistoryLoader.load(programDay: day.id, log: workoutLog)
                 entry.refreshPrefilledLoads(in: draftStore, startedAt: openedAt)
                 entry.refreshRestEntry(in: draftStore, rest: restSession)
                 await loadLaddersIfNeeded()
@@ -186,7 +187,7 @@ struct ProgramV2WorkoutLogView: View {
                     dismiss()
                 }
             } message: {
-                Text("Your workout has been logged and synced.")
+                Text("Saved on this phone.")
             }
             .plausibilityConfirmation(
                 title: "Double-check before saving",
@@ -211,7 +212,7 @@ struct ProgramV2WorkoutLogView: View {
         }
     }
 
-    /// Non-blocking: the sets stay in memory and can still be saved to the bridge.
+    /// Non-blocking: the sets stay in memory and can still be saved.
     private var persistErrorBanner: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -638,28 +639,15 @@ struct ProgramV2WorkoutLogView: View {
     private func saveWorkout() async {
         restSession.stop()
         isSaving = true
-        defer {
-            Task { @MainActor in
-                isSaving = false
-            }
-        }
+        defer { isSaving = false }
 
-        // The store builds the payload from the draft, posts it, and clears the
-        // draft only after the bridge accepts it. On failure the draft stays.
+        // The draft clears only after the on-device log has saved it. On failure the draft stays.
         do {
-            let saved = draftStore.draft
-            try await draftStore.save()
-            if let saved {
-                progress.recordCompleted(programDay: saved.programDay, title: saved.title, sessionDate: saved.sessionDate)
-            }
-
-            await MainActor.run {
-                showingSaveConfirmation = true
-            }
+            try draftStore.save(to: workoutLog)
+            progress.adopt(workoutLog, days: [])
+            showingSaveConfirmation = true
         } catch {
-            await MainActor.run {
-                saveError = error.localizedDescription
-            }
+            saveError = error.localizedDescription
         }
     }
 }

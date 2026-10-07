@@ -12,8 +12,6 @@ struct JLPhysicalTabView: View {
     @State private var bridgeNotice: String?
     @State private var showingPrograms = false
     @State private var loggingDay: ProgramV2Day?
-    @State private var recentWorkouts: [RemoteWorkout] = []
-    @State private var isLoadingRecent = false
     /// Set when the Coach handoff or Start finds an unsaved workout for another day.
     @State private var pendingResume: PendingResume?
     @State private var showingResumePrompt = false
@@ -21,6 +19,7 @@ struct JLPhysicalTabView: View {
     
     private let routerHandoff = RouterHandoff.shared
     @Environment(WorkoutDraftStore.self) private var workoutDraftStore
+    @Environment(WorkoutLogStore.self) private var workoutLog
     private var neonBridge = NeonBridgeService.shared
     /// Nil means "now". Visual QA snapshot tests pin a lifting day and a rest day.
     private let referenceDate: Date?
@@ -114,7 +113,7 @@ struct JLPhysicalTabView: View {
             }
             .sheet(item: $loggingDay) { day in
                 ProgramV2WorkoutLogView(day: day, progress: progress, onSaved: {
-                    Task { await loadRecentWorkouts() }
+                    adoptLoggedWorkouts()
                 })
             }
             .confirmationDialog(
@@ -136,7 +135,7 @@ struct JLPhysicalTabView: View {
             }
             .task {
                 await loadActiveProgram()
-                await loadRecentWorkouts()
+                adoptLoggedWorkouts()
                 consumeWorkoutHandoff()
             }
             .onAppear {
@@ -144,6 +143,9 @@ struct JLPhysicalTabView: View {
             }
             .onChange(of: routerHandoff.pendingOpenTodayWorkout) { _, _ in
                 consumeWorkoutHandoff()
+            }
+            .onChange(of: workoutLog.records) { _, _ in
+                adoptLoggedWorkouts()
             }
         }
     }
@@ -218,38 +220,23 @@ struct JLPhysicalTabView: View {
                 }
             }
             
-            if isLoadingRecent {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding()
-            } else if recentWorkouts.isEmpty {
+            if workoutLog.workouts.isEmpty {
                 Text("No workouts logged yet")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
-                ForEach(recentWorkouts.prefix(3), id: \.id) { workout in
+                ForEach(workoutLog.workouts.prefix(3), id: \.id) { workout in
                     RecentWorkoutRow(workout: workout)
                 }
             }
         }
     }
     
-    private func loadRecentWorkouts() async {
-        isLoadingRecent = true
-        defer { isLoadingRecent = false }
-        
-        do {
-            // 20 rows cover the current program week for the next-in-cycle day.
-            let workouts = try await neonBridge.listWorkouts(limit: 20)
-            await MainActor.run {
-                recentWorkouts = workouts
-                progress.replaceHistory(with: workouts, days: programBody.days)
-            }
-        } catch {
-            print("Failed to load recent workouts: \(error)")
-        }
+    /// Next-in-cycle follows the workouts saved on this phone.
+    private func adoptLoggedWorkouts() {
+        progress.adopt(workoutLog, days: programBody.days)
     }
 
     private func loadActiveProgram() async {
@@ -330,16 +317,12 @@ struct RecentWorkoutRow: View {
 }
 
 struct WorkoutHistoryListView: View {
-    @State private var workouts: [RemoteWorkout] = []
-    @State private var isLoading = false
-    
-    private var neonBridge = NeonBridgeService.shared
-    
+    @Environment(WorkoutLogStore.self) private var workoutLog
+    @State private var deleteError: String?
+
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView()
-            } else if workouts.isEmpty {
+            if workoutLog.workouts.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "figure.strengthtraining.traditional")
                         .font(.system(size: 48))
@@ -350,11 +333,9 @@ struct WorkoutHistoryListView: View {
                 }
             } else {
                 List {
-                    ForEach(workouts) { workout in
+                    ForEach(workoutLog.workouts) { workout in
                         NavigationLink {
-                            WorkoutHistoryEditView(workoutID: workout.id, onChanged: {
-                                Task { await loadWorkouts() }
-                            })
+                            WorkoutHistoryEditView(workoutID: workout.id, onChanged: {})
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(workout.title)
@@ -373,9 +354,7 @@ struct WorkoutHistoryListView: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task {
-                                    await deleteWorkout(workout.id)
-                                }
+                                deleteWorkout(workout.id)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -385,31 +364,21 @@ struct WorkoutHistoryListView: View {
             }
         }
         .navigationTitle("Workout History")
-        .task {
-            await loadWorkouts()
+        .alert("Could Not Delete", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK") { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
         }
     }
-    
-    private func loadWorkouts() async {
-        isLoading = true
-        defer { isLoading = false }
-        
+
+    private func deleteWorkout(_ id: String) {
         do {
-            let workouts = try await neonBridge.listWorkouts(limit: 50)
-            await MainActor.run {
-                self.workouts = workouts
-            }
+            try workoutLog.delete(id: id)
         } catch {
-            print("Failed to load workouts: \(error)")
-        }
-    }
-    
-    private func deleteWorkout(_ id: String) async {
-        do {
-            try await neonBridge.deleteWorkout(id: id)
-            await loadWorkouts()
-        } catch {
-            print("Failed to delete workout: \(error)")
+            deleteError = error.localizedDescription
         }
     }
 }

@@ -14,7 +14,6 @@ struct BridgeSettingsView: View {
     @State private var isTestingConnection = false
     @State private var testResult: String?
     @State private var testSuccess = false
-    @State private var syncService = WorkoutSyncService.shared
     @State private var stepsService = StepsTrackingService.shared
 
     init() {
@@ -37,7 +36,7 @@ struct BridgeSettingsView: View {
             } header: {
                 IronSectionTitle(title: "Connection")
             } footer: {
-                Text("The Neon training bridge endpoint for workout and steps sync.")
+                Text("The Neon training bridge endpoint for programs, steps and CC ladders. Workouts stay on this phone.")
             }
             
             Section {
@@ -76,19 +75,12 @@ struct BridgeSettingsView: View {
             }
             
             Section {
-                HStack {
-                    Text("Pending Workouts")
-                    Spacer()
-                    Text("\(syncService.syncQueue.count)")
-                        .foregroundStyle(.secondary)
-                }
-
                 LabeledContent("Last Steps Sync") {
                     Text(lastStepsSyncLabel)
                         .foregroundStyle(.secondary)
                 }
                 
-                if let error = syncService.lastSyncError ?? stepsService.lastSyncError {
+                if let error = stepsService.lastSyncError {
                     VStack(alignment: .leading) {
                         Text("Last Error")
                             .font(.caption.weight(.semibold))

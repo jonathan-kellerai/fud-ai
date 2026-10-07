@@ -293,3 +293,14 @@ struct WorkoutLossy<Value: Decodable>: Decodable {
         value = try? Value(from: decoder)
     }
 }
+
+#if DEBUG
+extension WorkoutLogStore {
+    /// Visual QA seeds whole records into an in-memory log. Release builds
+    /// keep only the persistence-based initializer.
+    convenience init(visualQARecords: [StoredWorkout]) {
+        self.init(persistence: .inMemory)
+        records = Self.sorted(visualQARecords)
+    }
+}
+#endif

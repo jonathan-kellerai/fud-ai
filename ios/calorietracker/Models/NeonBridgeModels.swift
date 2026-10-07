@@ -29,30 +29,6 @@ struct BridgeHealth: Codable {
     }
 }
 
-// MARK: - Workout Response
-
-struct WorkoutResponse: Codable {
-    let id: String?
-    let ok: Bool?
-    let message: String?
-    let deduped: Bool?
-    let action: String?
-    let contentHash: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case id
-        case ok
-        case message
-        case deduped
-        case action
-        case contentHash = "content_hash"
-    }
-}
-
-struct ListWorkoutsResponse: Codable {
-    let workouts: [RemoteWorkout]
-}
-
 // MARK: - Steps Payload
 
 struct StepsPayload: Codable {

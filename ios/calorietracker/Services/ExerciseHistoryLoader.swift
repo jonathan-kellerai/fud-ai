@@ -3,66 +3,19 @@
 //  calorietracker
 //
 //  Finds the most recent logged session for each exercise in a program day
-//  from the Neon bridge workout history, preferring sessions logged under the
-//  same program day and falling back to the newest session from any day.
+//  from the on-device workout log, preferring sessions logged under the same
+//  program day and falling back to the newest session from any day. Its
+//  answer is what the +5 / -5 lb progression rule reads.
 //
 
 import Foundation
 
 enum ExerciseHistoryLoader {
-    static let listLimit = 50
-    static let maxDetailRequests = 50
-    static let batchSize = 5
-
-    /// Last performance keyed by `LastPerformanceBuilder.key(for:)`. Bridge failures
-    /// give an empty map; a detail request that fails is skipped. Details are fetched
-    /// in concurrent batches, newest first, until every wanted exercise is found.
-    /// With `programDay`, sessions from that day are fetched first so the early
-    /// exit only stops once a same-day answer is final.
-    static func load(
-        exerciseNames: [String],
-        programDay: String? = nil,
-        bridge: NeonBridgeService = .shared
-    ) async -> [String: LastPerformance] {
-        guard let workouts = try? await bridge.listWorkouts(limit: listLimit) else { return [:] }
-        let wanted = Set(exerciseNames.map { LastPerformanceBuilder.key(for: $0) })
-        let ids = orderedCandidates(workouts, preferring: programDay).prefix(maxDetailRequests).map(\.id)
-        var found = Set<String>()
-        var details: [WorkoutDetailResponse] = []
-
-        for start in stride(from: 0, to: ids.count, by: batchSize) {
-            if Task.isCancelled || (!wanted.isEmpty && wanted.isSubset(of: found)) {
-                break
-            }
-            let batch = Array(ids[start..<min(start + batchSize, ids.count)])
-            for detail in await fetchDetails(ids: batch, bridge: bridge) {
-                details.append(detail)
-                for set in detail.sets where set.reps > 0 {
-                    found.insert(LastPerformanceBuilder.key(for: set.exercise))
-                }
-            }
-        }
+    /// Last performance keyed by `LastPerformanceBuilder.key(for:)`, from every
+    /// workout in the log. With `programDay`, sessions from that day win.
+    static func load(programDay: String? = nil, log: WorkoutLogStore) -> [String: LastPerformance] {
+        let details = orderedCandidates(log.workouts, preferring: programDay).compactMap { log.detail(id: $0.id) }
         return LastPerformanceBuilder.build(from: details, preferredProgramDay: programDay)
-    }
-
-    /// Fetches `ids` concurrently and returns the successes in `ids` order.
-    private static func fetchDetails(
-        ids: [String],
-        bridge: NeonBridgeService
-    ) async -> [WorkoutDetailResponse] {
-        var results = [WorkoutDetailResponse?](repeating: nil, count: ids.count)
-        await withTaskGroup(of: (Int, WorkoutDetailResponse?).self) { group in
-            for (index, id) in ids.enumerated() {
-                group.addTask {
-                    let detail = try? await bridge.getWorkout(id: id)
-                    return (index, detail)
-                }
-            }
-            for await (index, detail) in group {
-                results[index] = detail
-            }
-        }
-        return results.compactMap { $0 }
     }
 
     /// Real sessions only, newest session date first, list order breaking ties.

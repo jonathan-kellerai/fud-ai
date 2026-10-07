@@ -35,6 +35,14 @@ struct TrainProgressStoreTests {
         )
     }
 
+    /// A workout saved on this phone for `programDay` on `date`.
+    private func saved(_ programDay: String, _ date: String, title: String = "") -> WorkoutPayload {
+        WorkoutPayload(kind: "COMPLETED", programVersion: "program-v2", programDay: programDay, title: title,
+                       units: "lb", sessionDate: date, conditioning: nil, notes: [],
+                       recordedAtUtc: date + "T12:00:00.000Z", openedAtUtc: date + "T11:00:00.000Z",
+                       source: "jl-fud-native", sets: [])
+    }
+
     private func plan(_ store: TrainProgressStore, _ civil: String, draft: WorkoutDraft? = nil) -> TrainingDayResolution {
         TrainingProgramSchedule.resolution(body, on: day(civil),
             context: store.context(draft: draft, days: body.days), calendar: eastern)
@@ -93,18 +101,22 @@ struct TrainProgressStoreTests {
         #expect(TrainProgressStore(defaults: defaults).history == [CompletedProgramSession(dayIndex: 1, sessionDate: "2026-10-05")])
     }
 
-    @Test func aRecordedSaveAdvancesTheCardWithoutABridgeList() throws {
+    @Test func aSavedWorkoutAdvancesTheCard() throws {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = TrainProgressStore(defaults: defaults)
+        let log = WorkoutLogStore(persistence: .inMemory)
         store.setOverride(dayIndex: 3, on: day("2026-10-06"), calendar: eastern)
-        store.recordCompleted(programDay: "3-wed", title: "Pull / Hinge", sessionDate: "2026-10-06")
+        try log.save(saved("3-wed", "2026-10-06", title: "Pull / Hinge"), id: "w1")
+        store.adopt(log, days: [])
         let today = plan(store, "2026-10-06")
         #expect(today.reason == .loggedToday)
         #expect(today.plan == .session(dayIndex: 3, name: "Pull / Hinge", stepsTarget: 10_000))
-        #expect(plan(TrainProgressStore(defaults: defaults), "2026-10-07").plan
-                == .session(dayIndex: 4, name: "Upper Physique", stepsTarget: 10_000))
-        store.recordCompleted(programDay: "not a day", title: "", sessionDate: "2026-10-07")
+        let relaunched = TrainProgressStore(defaults: defaults)
+        relaunched.adopt(log, days: body.days)
+        #expect(plan(relaunched, "2026-10-07").plan == .session(dayIndex: 4, name: "Upper Physique", stepsTarget: 10_000))
+        try log.save(saved("not a day", "2026-10-07"), id: "w2")
+        store.adopt(log, days: [])
         #expect(store.history.count == 1)
     }
 
@@ -112,11 +124,33 @@ struct TrainProgressStoreTests {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = TrainProgressStore(defaults: defaults)
+        let log = WorkoutLogStore(persistence: .inMemory)
         store.setOverride(dayIndex: 3, on: day("2026-10-06"), calendar: eastern)
-        store.recordCompleted(programDay: "3-wed", title: "Pull / Hinge", sessionDate: "2026-10-06")
+        try log.save(saved("3-wed", "2026-10-06", title: "Pull / Hinge"), id: "w1")
+        store.adopt(log, days: [])
         #expect(store.override == nil)
         #expect(defaults.data(forKey: TrainProgressStore.overrideKey) == nil)
         #expect(TrainProgressStore(defaults: defaults).override == nil)
+    }
+
+    @Test func bridgeEraSessionsCountAlongsideTheLogUntilAnImport() throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // The cache an earlier build kept from the last bridge list.
+        TrainProgressStore(defaults: defaults).replaceHistory(
+            with: [remote("1-mon", "2026-09-28"), remote("2-tue", "2026-09-29")], days: body.days)
+        let store = TrainProgressStore(defaults: defaults)
+        let log = WorkoutLogStore(persistence: .inMemory)
+        try log.save(saved("3-wed", "2026-09-30"), id: "w1")
+        store.adopt(log, days: body.days)
+        #expect(store.history.map(\.dayIndex) == [1, 2, 3])
+        #expect(plan(store, "2026-10-01").plan == .session(dayIndex: 4, name: "Upper Physique", stepsTarget: 10_000))
+        // The bridge-era cache itself is left as it was ...
+        #expect(TrainProgressStore(defaults: defaults).history.map(\.dayIndex) == [1, 2])
+        // ... so a workout deleted from the log doesn't linger.
+        try log.delete(id: "w1")
+        store.adopt(log, days: body.days)
+        #expect(store.history.map(\.dayIndex) == [1, 2])
     }
 
     @Test func aBridgeListWithASessionOnTheOverridesDateConsumesIt() throws {
@@ -138,7 +172,9 @@ struct TrainProgressStoreTests {
         let store = TrainProgressStore(defaults: defaults)
         let picked = TodayWorkoutOverride(date: "2026-10-06", dayIndex: 3)
         store.setOverride(dayIndex: 3, on: day("2026-10-06"), calendar: eastern)
-        store.recordCompleted(programDay: "1-mon", title: "Lower A", sessionDate: "2026-10-05")
+        let log = WorkoutLogStore(persistence: .inMemory)
+        try log.save(saved("1-mon", "2026-10-05", title: "Lower A"), id: "w1")
+        store.adopt(log, days: [])
         #expect(store.override == picked)
         store.replaceHistory(with: [remote("1-mon", "2026-10-05")], days: body.days)
         #expect(store.override == picked)

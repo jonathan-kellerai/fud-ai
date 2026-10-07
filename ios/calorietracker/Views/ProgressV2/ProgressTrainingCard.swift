@@ -15,12 +15,11 @@ enum ProgressTrainingChartMetric: String, CaseIterable, Hashable {
     }
 }
 
-/// Sessions, sets and volume per Monday–Sunday week from the Neon bridge.
+/// Sessions, sets and volume per Monday–Sunday week from the workouts saved on this phone.
 struct ProgressTrainingCard: View {
     let state: ProgressTrainingLoadState
     let rangeDescription: String
     let useMetric: Bool
-    let onRetry: () -> Void
 
     @State private var chartMetric: ProgressTrainingChartMetric = .sessions
     @Environment(\.calendar) private var calendar
@@ -35,33 +34,17 @@ struct ProgressTrainingCard: View {
         VStack(alignment: .leading, spacing: 14) {
             ProgressV2SectionTitle(
                 title: String(localized: "Training"),
-                detail: String(localized: "Completed sessions from the Neon bridge · weeks run Monday–Sunday (Eastern)")
+                detail: String(localized: "Completed sessions saved on this phone · weeks run Monday–Sunday (Eastern)")
             )
 
             switch state {
             case .idle, .loading:
-                ProgressV2LoadingRow(title: String(localized: "Loading training from the Neon bridge…"))
-            case .notConfigured:
-                ProgressV2EmptyState(
-                    title: String(localized: "Neon bridge not set up"),
-                    message: String(localized: "Add the bridge URL in More › Neon Bridge to see sessions, sets and volume."),
-                    systemImage: "link"
-                )
-            case .failed(let message):
-                ProgressV2EmptyState(
-                    title: String(localized: "Couldn't reach the bridge"),
-                    message: message,
-                    systemImage: "exclamationmark.triangle"
-                )
-                Button(action: onRetry) {
-                    Label(String(localized: "Retry"), systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(IronCompactButtonStyle())
+                ProgressV2LoadingRow(title: String(localized: "Loading training…"))
             case .loaded(let summary):
                 if summary.isEmpty {
                     ProgressV2EmptyState(
                         title: String(localized: "No completed workouts in \(rangeDescription)"),
-                        message: String(localized: "Workouts saved from the Train tab show up here once they reach the Neon bridge."),
+                        message: String(localized: "Workouts saved from the Train tab show up here."),
                         systemImage: "dumbbell"
                     )
                     notes(summary)
@@ -107,7 +90,7 @@ struct ProgressTrainingCard: View {
         if bars.isEmpty {
             ProgressV2EmptyState(
                 title: String(localized: "No \(chartMetric.title.lowercased()) data for these weeks"),
-                message: String(localized: "Sets for these sessions haven't loaded from the bridge."),
+                message: String(localized: "No sets are saved for these sessions."),
                 systemImage: "chart.bar"
             )
         } else {
