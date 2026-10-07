@@ -11,7 +11,7 @@ import XCTest
 /// attached to the xcresult bundle.
 ///
 /// Bridge calls are answered by `VisualQAStubProtocol` from local fixtures, so the real bridge is never hit.
-/// Peptide fixtures reuse existing Recon Bench label/trial presets only.
+/// Peptide fixtures are synthetic draws and vials (VisualQAPeptideFixtures.swift).
 @MainActor
 final class VisualQASnapshotTests: XCTestCase {
     private static let sizes: [(label: String, size: DynamicTypeSize, category: UIContentSizeCategory)] = [
@@ -687,62 +687,65 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - Peptides log
+    // MARK: - Peptides (build 68: one person, Today / Week / Vials)
+
+    /// Peptides pushed from More at `referenceNow`, on `tab`.
+    private func peptides(_ tab: PeptideTab) -> some View {
+        VisualQATabShell(selected: .more) {
+            VisualQAPushed(rootTitle: "More") {
+                PeptidesView(initialTab: tab, referenceDate: VisualQAFixtures.peptideReferenceDate)
+            }
+        }
+    }
 
     func test60PeptidesToday() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("60-peptides-today", heightMultiplier: 2.4) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+            self.peptides(.today)
         }
     }
 
+    /// The draw field is empty and no unit is picked.
     func test61PeptideLogSheet() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
-        try await eachSize("61-peptide-log-sheet", heightMultiplier: 2, sheet: {
-            PeptideLogSheet(compound: "BPC-157", now: VisualQAFixtures.peptideReferenceDate)
+        try await eachSize("61-peptide-log-sheet-empty-draw", heightMultiplier: 2, sheet: {
+            PeptideLogSheet(now: VisualQAFixtures.peptideReferenceDate)
         }) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+            self.peptides(.today)
         }
     }
 
-    func test62PeptideLogConfirm() async throws {
+    func test62PeptideLogReview() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
         let draft = VisualQAFixtures.peptideReviewDraft()
-        try await eachSize("62-peptide-log-confirm", heightMultiplier: 1.6, sheet: {
+        try await eachSize("62-peptide-log-review", heightMultiplier: 1.6, sheet: {
             PeptideLogSheet(reviewDraft: draft)
         }) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+            self.peptides(.today)
         }
     }
 
-    func test63PeptideEntryDetail() async throws {
+    /// Confirmed vial and U-100 at save: mg one step per line.
+    func test63PeptideEntryDetailWithMg() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
-        try await eachSize("63-peptide-entry-detail", heightMultiplier: 1.8) { _ in
+        try await eachSize("63-peptide-entry-detail-mg", heightMultiplier: 1.8) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "Peptides") {
-                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideVoidedRowID)
+                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideDetailWithMgID)
                 }
             }
         }
     }
 
-    func test64PeptideVials() async throws {
+    func test64PeptidesVials() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
-        try await eachSize("64-peptide-vials", heightMultiplier: 3) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialTab: .vials, referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+        try await eachSize("64-peptides-vials", heightMultiplier: 3) { _ in
+            self.peptides(.vials)
         }
     }
 
@@ -753,9 +756,7 @@ final class VisualQASnapshotTests: XCTestCase {
         try await eachSize("65-peptide-vial-editor", heightMultiplier: 2.4, sheet: {
             PeptideVialEditor(vial: glow)
         }) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialTab: .vials, referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+            self.peptides(.vials)
         }
     }
 
@@ -769,23 +770,25 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
-    func test67PeptideHistory() async throws {
+    /// Seven cells per compound; the stacked list at axL.
+    func test67PeptidesWeek() async throws {
         VisualQAFixtures.seedsPeptides = true
         defer { VisualQAFixtures.seedsPeptides = false }
-        try await eachSize("67-peptide-history", heightMultiplier: 3) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptidesView(initialTab: .week, referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+        try await eachSize("67-peptides-week", heightMultiplier: 3) { _ in
+            self.peptides(.week)
         }
     }
 
-    func test68PeptidesVictoria() async throws {
+    /// Replaces the old second-person view: the one-time keep/delete card.
+    func test68PeptidesSecondProfileChoice() async throws {
         VisualQAFixtures.seedsPeptides = true
-        defer { VisualQAFixtures.seedsPeptides = false }
-        try await eachSize("68-peptides-victoria", heightMultiplier: 2.4) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+        VisualQAFixtures.holdsSecondProfileRecords = true
+        defer {
+            VisualQAFixtures.seedsPeptides = false
+            VisualQAFixtures.holdsSecondProfileRecords = false
+        }
+        try await eachSize("68-peptides-second-profile-choice", heightMultiplier: 2.4) { _ in
+            self.peptides(.today)
         }
     }
 
@@ -1470,6 +1473,9 @@ final class VisualQAStores {
         peptides = PeptideLogStore(persistence: .inMemory)
         if VisualQAFixtures.seedsPeptides {
             VisualQAFixtures.seedPeptides(peptides)
+        }
+        if VisualQAFixtures.holdsSecondProfileRecords {
+            VisualQAFixtures.holdSecondProfileRecords(peptides)
         }
 
         for entry in VisualQAFixtures.sampleFoodEntries() {
@@ -2479,7 +2485,7 @@ extension VisualQASnapshotTests {
 
 @MainActor
 enum VisualQABuild66Fixture {
-    /// Tue 2026-10-06 09:00 New York, the morning Jonathan asked for this.
+    /// Tue 2026-10-06 09:00 New York, the morning this was asked for.
     static let date: Date = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
@@ -2549,9 +2555,7 @@ extension VisualQASnapshotTests {
         try await eachSize("104-peptides-import-preview", heightMultiplier: 1.6, sheet: {
             PeptideImportPreviewSheet(archive: archive)
         }) { _ in
-            VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "More") { PeptidesView(initialTab: .vials, referenceDate: VisualQAFixtures.peptideReferenceDate) }
-            }
+            self.peptides(.vials)
         }
     }
 
@@ -2563,11 +2567,121 @@ extension VisualQASnapshotTests {
             VisualQAFixtures.installsBridgeKey = true
         }
         try await eachSize("105-peptides-airplane", heightMultiplier: 2.4) { _ in
+            self.peptides(.today)
+        }
+    }
+}
+
+// MARK: - Build 68: the Peptides redesign
+
+/// Reconstitute steps 1-3, history, entry details and the syringe-scale
+/// setting, at `referenceNow`, seeded with synthetic draws and vials.
+extension VisualQASnapshotTests {
+    /// Step 1 empty: nothing is filled in.
+    func test20ReconstituteStep1() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("20-reconstitute-step1-empty", heightMultiplier: 2.4, sheet: {
+            ReconView(referenceDate: VisualQAFixtures.peptideReferenceDate)
+        }) { _ in
+            self.peptides(.vials)
+        }
+    }
+
+    /// Step 2: the plain arithmetic on the unconfirmed vial's typed numbers.
+    func test21ReconstituteStep2() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let vial = VisualQAFixtures.peptideTesaVial()
+        try await eachSize("21-reconstitute-step2-arithmetic", heightMultiplier: 2.4, sheet: {
+            ReconView(vial: vial, referenceDate: VisualQAFixtures.peptideReferenceDate)
+        }) { _ in
+            self.peptides(.vials)
+        }
+    }
+
+    /// Step 3 ticked: confirmed by you, stamped with the time.
+    func test22ReconstituteStep3() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let vial = VisualQAFixtures.peptideTesaVial()
+        try await eachSize("22-reconstitute-step3-confirmed", heightMultiplier: 2.4, sheet: {
+            ReconView(
+                vial: vial,
+                referenceDate: VisualQAFixtures.peptideReferenceDate,
+                initialConfirmedAt: VisualQAFixtures.peptideReferenceDate
+            )
+        }) { _ in
+            self.peptides(.vials)
+        }
+    }
+
+    /// Last week's history on its own (Week shows it under the grid).
+    func test106PeptidesHistory() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        let monday = ReconMath.mondayOf(VisualQAFixtures.peptideToday)
+        try await eachSize("106-peptides-history", heightMultiplier: 2.4) { _ in
             VisualQATabShell(selected: .more) {
                 VisualQAPushed(rootTitle: "More") {
-                    PeptidesView(referenceDate: VisualQAFixtures.peptideReferenceDate)
+                    VisualQAPeptideSection {
+                        PeptideHistoryView(from: ReconMath.addDays(monday, -7), to: ReconMath.addDays(monday, -1))
+                    }
                 }
             }
         }
+    }
+
+    /// Saved before a syringe scale was recorded: units only, "Syringe scale not recorded".
+    func test107PeptideEntryDetailWithoutScale() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("107-peptide-entry-detail-no-scale", heightMultiplier: 1.8) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") {
+                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideNoScaleRowID)
+                }
+            }
+        }
+    }
+
+    /// Corrected, then voided: one status, the trail in words.
+    func test108PeptideEntryVoided() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("108-peptide-entry-voided", heightMultiplier: 1.8) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") {
+                    PeptideEntryDetailView(entryID: VisualQAFixtures.peptideVoidedRowID)
+                }
+            }
+        }
+    }
+
+    func test109PeptideSettingsSyringeScale() async throws {
+        VisualQAFixtures.seedsPeptides = true
+        defer { VisualQAFixtures.seedsPeptides = false }
+        try await eachSize("109-peptide-settings-syringe-scale", heightMultiplier: 1.6) { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "Peptides") { PeptideSettingsView() }
+            }
+        }
+    }
+}
+
+/// One Peptides section on its own, scrolling on the canvas like a tab.
+struct VisualQAPeptideSection<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                content()
+            }
+            .padding(16)
+        }
+        .background(IronTheme.canvas)
+        .navigationTitle("Peptides")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

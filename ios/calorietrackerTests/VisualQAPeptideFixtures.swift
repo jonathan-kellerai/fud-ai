@@ -1,17 +1,26 @@
 import Foundation
 @testable import calorietracker
 
-/// Peptides log fixtures for Visual QA. Synthetic draws only (BPC-157 50
+/// Peptides log fixtures for Visual QA. Synthetic draws only (BPC-157 25
 /// units, Tesamorelin 0.1 mL, MT2 25 units, Glow 10 units, on a U-100 scale
-/// in Settings; vials 10 mg BPC-157 in 2 mL, 5 mg Tesamorelin in 0.5 mL,
-/// Glow 50/10/10 mg in 2 mL). "Today" is the America/New_York civil date,
-/// the same one the Peptides screens use.
+/// in Settings; vials 10 mg BPC-157 in 2 mL (confirmed), 5 mg Tesamorelin in
+/// 0.5 mL (not confirmed), Glow 50/10/10 mg in 2 mL (confirmed), and a
+/// finished BPC-157 vial). One draw was saved before the scale was set, for
+/// the "Syringe scale not recorded" detail. "Today" is the America/New_York
+/// civil date, the same one the Peptides screens use.
 extension VisualQAFixtures {
     static var seedsPeptides = false
     /// Seed everything except doses taken today (Home card with only due items and low stock).
     static var skipsTodaysPeptideDoses = false
-    static let peptideVoidedRowID = "qa-adm-j-voided"
+    /// Also hold a synthetic second-profile set aside (the one-time choice card).
+    static var holdsSecondProfileRecords = false
+    static let peptideVoidedRowID = "qa-adm-voided"
+    /// Today's BPC-157 draw: confirmed vial, U-100 recorded, so its detail shows mg.
+    static let peptideDetailWithMgID = "qa-adm-bpc-0"
+    /// Saved before a syringe scale was recorded.
+    static let peptideNoScaleRowID = "qa-adm-no-scale"
     static let peptideBPCVialID = "qa-vial-bpc"
+    static let peptideOldBPCVialID = "qa-vial-bpc-old"
     static let peptideTesaVialID = "qa-vial-tesa"
     static let peptideGlowVialID = "qa-vial-glow"
 
@@ -35,7 +44,23 @@ extension VisualQAFixtures {
             diluentML: 2,
             mixedOn: ReconMath.addDays(peptideToday, -5),
             concentrationConfirmed: true,
+            concentrationConfirmedAt: peptideDate(offset: 5, minutes: 9 * 60 + 2),
             createdAt: Date(timeIntervalSince1970: 1_790_000_000)
+        )
+    }
+
+    /// An earlier BPC-157 vial, finished, confirmed at 5 mg/mL.
+    static func peptideOldBPCVial() -> PeptideVial {
+        PeptideVial(
+            id: peptideOldBPCVialID,
+            compound: "BPC-157",
+            components: [PeptideVialComponent(id: "qa-c-bpc-old", name: "BPC-157", amount: 10, unit: "mg")],
+            diluentML: 2,
+            mixedOn: ReconMath.addDays(peptideToday, -20),
+            concentrationConfirmed: true,
+            concentrationConfirmedAt: peptideDate(offset: 20, minutes: 8 * 60),
+            status: .finished,
+            createdAt: Date(timeIntervalSince1970: 1_789_000_000)
         )
     }
 
@@ -64,6 +89,7 @@ extension VisualQAFixtures {
             diluentML: 2,
             mixedOn: ReconMath.addDays(peptideToday, -10),
             concentrationConfirmed: true,
+            concentrationConfirmedAt: peptideDate(offset: 10, minutes: 20 * 60),
             lowStockThresholdML: 1.6,
             notes: "Reorder before the next one runs out.",
             createdAt: Date(timeIntervalSince1970: 1_790_000_000)
@@ -76,7 +102,7 @@ extension VisualQAFixtures {
             compound: "BPC-157",
             now: PeptideMath.date(civil: peptideToday, minutes: 7 * 60 + 30) ?? peptideReferenceDate
         )
-        draft.drawText = "50"
+        draft.drawText = "25"
         draft.drawUnit = .units
         draft.site = "Abdomen L"
         draft.vialID = peptideBPCVialID
@@ -84,10 +110,16 @@ extension VisualQAFixtures {
     }
 
     static func seedPeptides(_ store: PeptideLogStore) {
-        store.setSyringeScale(.u100)
         store.saveVial(peptideBPCVial())
         store.saveVial(peptideTesaVial())
         store.saveVial(peptideGlowVial())
+        store.saveVial(peptideOldBPCVial())
+        // Saved before Settings had a syringe scale, so it never gets one.
+        seedDose(
+            peptideNoScaleRowID, store: store, compound: "BPC-157", draw: "25", unit: .units,
+            offset: 12, minutes: 7 * 60 + 30, site: "Abdomen L", vialID: peptideOldBPCVialID
+        )
+        store.setSyringeScale(.u100)
         store.saveSchedule(PeptideUserSchedule(
             id: "qa-sched-bpc",
             compound: "BPC-157",
@@ -105,7 +137,7 @@ extension VisualQAFixtures {
         ))
         for offset in bpcOffsets {
             seedDose(
-                "qa-adm-bpc-\(offset)", store: store, compound: "BPC-157", draw: "50", unit: .units,
+                "qa-adm-bpc-\(offset)", store: store, compound: "BPC-157", draw: "25", unit: .units,
                 offset: offset, minutes: 7 * 60 + 30, site: offset % 2 == 0 ? "Abdomen L" : "Abdomen R",
                 vialID: offset <= 4 ? peptideBPCVialID : nil
             )
@@ -186,10 +218,37 @@ extension VisualQAFixtures {
          ],
          "schedules":[],
          "entries":[
-          {"id":"qa-import-dose-1","compound":"MT2","dose":250,"units":"mcg",
+          {"id":"qa-import-dose-1","compound":"MT2","drawn_volume":25,"drawn_unit":"units",
            "datetime":"2026-10-05T07:15:00-04:00","voided":false,"corrections":[]}
          ]}
         """
         return (try? PeptideArchive.decode(Data(json.utf8))) ?? PeptideArchive(exportedAt: nil, vials: [], schedules: [], entries: [])
+    }
+
+    /// What an earlier version kept under a second profile: three synthetic
+    /// draws and a vial, held aside until the user chooses. Uses the same
+    /// path as an iCloud restore of an older backup.
+    static func holdSecondProfileRecords(_ store: PeptideLogStore) {
+        let held = PeptideRecordSet(
+            entries: [1, 3, 5].map { offset in
+                PeptideLogEntry(
+                    id: "qa-held-\(offset)",
+                    compound: "MT2",
+                    date: peptideDate(offset: offset, minutes: 7 * 60 + 15),
+                    drawnVolume: 25,
+                    drawnUnit: .units
+                )
+            },
+            vials: [PeptideVial(id: "qa-held-vial", compound: "MT2", diluentML: 2, createdAt: Date(timeIntervalSince1970: 1_790_000_000))]
+        )
+        let archive = PeptideArchive(
+            exportedAt: nil,
+            vials: store.vials,
+            schedules: store.schedules,
+            entries: store.entries,
+            heldAside: held,
+            syringeScale: store.syringeScale
+        )
+        _ = store.replaceAll(with: archive, now: peptideReferenceDate)
     }
 }
