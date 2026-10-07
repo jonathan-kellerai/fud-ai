@@ -168,6 +168,65 @@ struct WorkoutLogStoreTests {
         #expect(try Data(contentsOf: url.deletingLastPathComponent().appendingPathComponent(aside)) == garbage)
     }
 
+    /// Opens the log while its folder can't be written to, so nothing can be set aside beside it.
+    private func openWithoutCopies(_ url: URL) throws -> WorkoutLogStore {
+        let directory = url.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
+        return WorkoutLogStore(persistence: .file(url))
+    }
+
+    @Test func anUnreadableLogThatCantBeSetAsideIsNeverWrittenOver() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let garbage = Data("{not json".utf8)
+        try garbage.write(to: url)
+
+        let store = try openWithoutCopies(url)
+        #expect(!files(beside: url).contains { $0.hasPrefix("workout_log_v1.unreadable-") })
+        #expect(store.storageNote == WorkoutLogError.unreadableNotKept.localizedDescription)
+
+        // The folder is writable again, but nothing may replace the only copy.
+        #expect(throws: WorkoutLogError.unreadableNotKept) { try save(store, draft().payload(now: finished)) }
+        #expect(store.persistError == WorkoutLogError.unreadableNotKept.localizedDescription)
+        #expect(store.workouts.isEmpty)
+        #expect(store.backupData() == nil)
+        let source = WorkoutLogStore(persistence: .inMemory)
+        try save(source, draft().payload(now: finished))
+        let backup = try #require(source.backupData())
+        #expect(store.restoreBackupData(backup) != nil)
+        #expect(store.workouts.isEmpty)
+        #expect(try Data(contentsOf: url) == garbage)
+
+        // Next launch the copy can be made, so a new log starts and the old bytes are kept.
+        let relaunched = WorkoutLogStore(persistence: .file(url))
+        let aside = try #require(files(beside: url).first { $0.hasPrefix("workout_log_v1.unreadable-") })
+        #expect(try Data(contentsOf: url.deletingLastPathComponent().appendingPathComponent(aside)) == garbage)
+        let id = try save(relaunched, draft().payload(now: finished))
+        #expect(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id) == [id])
+    }
+
+    @Test func skippedRecordsThatCantBeSetAsideAreShownButNeverDropped() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let id = try save(WorkoutLogStore(persistence: .file(url)), draft().payload(now: finished))
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var rows = try #require(json["workouts"] as? [[String: Any]])
+        rows.append(["workout": ["id": "broken"]])
+        json["workouts"] = rows
+        try JSONSerialization.data(withJSONObject: json).write(to: url)
+        let saved = try Data(contentsOf: url)
+
+        let store = try openWithoutCopies(url)
+        #expect(store.workouts.map(\.id) == [id])
+        #expect(store.storageNote == WorkoutLogError.unreadableNotKept.localizedDescription)
+        #expect(throws: WorkoutLogError.unreadableNotKept) { try store.delete(id: id) }
+        #expect(throws: WorkoutLogError.unreadableNotKept) { try save(store, draft().payload(now: finished)) }
+        #expect(store.workouts.map(\.id) == [id])
+        #expect(try Data(contentsOf: url) == saved)
+    }
+
     @Test func oneBadRecordIsSkippedCountedAndTheRestKept() throws {
         let url = tempURL()
         defer { cleanUp(url) }
