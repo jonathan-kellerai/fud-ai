@@ -418,4 +418,30 @@ struct PeptideUnreadableLogTests {
             #expect(files(beside: url) == ["peptide_log_v1.json"])
         }
     }
+
+    /// The vial and schedule editors stay open on a refused delete: the store
+    /// keeps the record and says why (a partly read log whose copy failed still shows them).
+    @Test func deletingAShownVialOrScheduleIsRefusedWhileTheLogIsReadOnly() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let writer = PeptideLogStore(persistence: .file(url))
+        writer.saveVial(PeptideVial(id: "v1", compound: "BPC-157", diluentML: 2))
+        writer.saveSchedule(PeptideUserSchedule(id: "s1", compound: "BPC-157", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-10-01"))
+        // Plus one dose that can't be read.
+        var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        object["entries"] = [["compound": "no id"]]
+        let saved = try JSONSerialization.data(withJSONObject: object)
+        try saved.write(to: url)
+
+        let store = try openWithoutCopies(url)
+        #expect(store.vial(id: "v1") != nil)
+        #expect(store.schedules.map(\.id) == ["s1"])
+        let refusal = try #require(store.changeRefusal)
+        store.deleteVial(id: "v1")
+        store.deleteSchedule(id: "s1")
+        #expect(store.vial(id: "v1") != nil)
+        #expect(store.schedules.map(\.id) == ["s1"])
+        #expect(store.persistError == refusal)
+        #expect(try Data(contentsOf: url) == saved)
+    }
 }

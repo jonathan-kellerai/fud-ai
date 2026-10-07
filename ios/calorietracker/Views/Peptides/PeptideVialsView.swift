@@ -382,6 +382,10 @@ struct PeptideVialEditor: View {
             .confirmationDialog("Delete this vial?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete vial", role: .destructive) {
                     if let existing { store.deleteVial(id: existing.id) }
+                    if let refusal = store.changeRefusal {
+                        errorText = refusal
+                        return
+                    }
                     dismiss()
                 }
                 Button("Cancel", role: .cancel) {}
