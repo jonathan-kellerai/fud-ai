@@ -317,7 +317,7 @@ struct PeptideLogSheet: View {
             return
         }
         guard store.log(draft, id: entryID) != nil else {
-            saveError = "This draw couldn't be saved. Check the fields and try again."
+            saveError = store.changeRefusal ?? "This draw couldn't be saved. Check the fields and try again."
             return
         }
         onSaved?()

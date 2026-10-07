@@ -376,6 +376,10 @@ struct PeptideScheduleEditor: View {
             createdAt: existing?.createdAt ?? Date()
         )
         store.saveSchedule(schedule)
+        if let refusal = store.changeRefusal {
+            errorText = refusal
+            return
+        }
         dismiss()
     }
 }

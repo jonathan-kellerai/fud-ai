@@ -22,6 +22,7 @@ struct PeptideImportPreviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let archive: PeptideArchive
     @State private var imported: PeptideImportSummary?
+    @State private var refusal: String?
 
     init(archive: PeptideArchive) {
         self.archive = archive
@@ -42,10 +43,15 @@ struct PeptideImportPreviewSheet: View {
                     } else {
                         countsCard(summary)
                         Button(summary.total == 0 ? "Nothing new to import" : "Import " + Self.addedText(summary)) {
-                            imported = store.importArchive(archive)
+                            let result = store.importArchive(archive)
+                            refusal = store.changeRefusal
+                            if refusal == nil { imported = result }
                         }
                         .buttonStyle(IronPrimaryButtonStyle(enabled: summary.total > 0))
                         .disabled(summary.total == 0)
+                        if let refusal {
+                            PeptideIssueText(text: refusal)
+                        }
                         Text("Only records that aren't on this phone yet are added. Nothing is changed or removed.")
                             .font(.system(.footnote, design: .rounded))
                             .foregroundStyle(IronTheme.textSecondary)

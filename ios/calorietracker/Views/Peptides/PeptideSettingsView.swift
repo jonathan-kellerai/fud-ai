@@ -40,6 +40,9 @@ struct PeptideSettingsView: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("peptides.settings.syringeScale")
+                if let error = store.persistError {
+                    PeptideIssueText(text: error)
+                }
                 PeptideFooter()
             }
             .padding(16)

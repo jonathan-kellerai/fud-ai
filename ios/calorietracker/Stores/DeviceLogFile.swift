@@ -25,18 +25,6 @@ struct DeviceLogFile {
     let defaults: UserDefaults?
     let defaultsKey: String
 
-    /// The saved bytes: the file, else the UserDefaults fallback.
-    func read() -> Data? {
-        var data: Data?
-        if case .data(let bytes) = readFile() {
-            data = bytes
-        }
-        if data == nil, let defaults {
-            data = defaults.data(forKey: defaultsKey)
-        }
-        return data
-    }
-
     /// The file alone, saying whether it is missing or there but unreadable
     /// (locked by file protection, no permission). No UserDefaults fallback.
     func readFile() -> DeviceLogRead {

@@ -616,6 +616,10 @@ struct PeptideVialEditor: View {
             createdAt: existing?.createdAt ?? Date()
         )
         store.saveVial(existing.map { $0.applyingEdit(edited) } ?? edited)
+        if let refusal = store.changeRefusal {
+            errorText = refusal
+            return
+        }
         dismiss()
     }
 }

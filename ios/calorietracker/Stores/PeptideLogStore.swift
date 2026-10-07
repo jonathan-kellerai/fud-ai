@@ -109,10 +109,11 @@ final class PeptideLogStore {
     // MARK: Logging
 
     /// Saves a draw from what the user typed. Returns its id, or nil when the
-    /// draft is not valid. Saving the same id again replaces that entry.
+    /// draft is not valid or the log can't change (`persistError` says why).
+    /// Saving the same id again replaces that entry.
     @discardableResult
     func log(_ draft: PeptideLogDraft, id: String? = nil, now: Date = Date()) -> String? {
-        guard PeptideMath.validate(draft).isEmpty else { return nil }
+        guard PeptideMath.validate(draft).isEmpty, canChange() else { return nil }
         let entryID = (id ?? UUID().uuidString).lowercased()
         let entry = entry(from: draft, id: entryID, now: now)
         entries.removeAll { $0.id == entryID }
@@ -147,7 +148,7 @@ final class PeptideLogStore {
 
     /// Settings → Syringe scale. Saved drafts keep the scale they were saved with.
     func setSyringeScale(_ scale: PeptideSyringeScale?) {
-        guard scale != syringeScale else { return }
+        guard canChange(), scale != syringeScale else { return }
         syringeScale = scale
         didChange()
     }
@@ -157,6 +158,7 @@ final class PeptideLogStore {
     /// message, or nil when saved.
     @discardableResult
     func correct(_ entry: PeptideLogEntry, reason: String, changes: PeptideCorrectionChanges, now: Date = Date()) -> String? {
+        guard canChange() else { return persistError }
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return "This entry is no longer here." }
         if entries[index].voided { return "This entry is voided." }
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -170,6 +172,7 @@ final class PeptideLogStore {
     /// "Delete" means void with a reason: the entry stays in history, struck through.
     @discardableResult
     func void(_ entry: PeptideLogEntry, reason: String, now: Date = Date()) -> String? {
+        guard canChange() else { return persistError }
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return "This entry is no longer here." }
         if entries[index].voided { return "This entry is already voided." }
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -182,6 +185,7 @@ final class PeptideLogStore {
     // MARK: Vials and schedules
 
     func saveVial(_ vial: PeptideVial) {
+        guard canChange() else { return }
         if let index = vials.firstIndex(where: { $0.id == vial.id }) {
             vials[index] = vial
         } else {
@@ -191,17 +195,19 @@ final class PeptideLogStore {
     }
 
     func finishVial(id: String) {
-        guard let index = vials.firstIndex(where: { $0.id == id }) else { return }
+        guard canChange(), let index = vials.firstIndex(where: { $0.id == id }) else { return }
         vials[index].status = .finished
         didChange()
     }
 
     func deleteVial(id: String) {
+        guard canChange() else { return }
         vials.removeAll { $0.id == id }
         didChange()
     }
 
     func saveSchedule(_ schedule: PeptideUserSchedule) {
+        guard canChange() else { return }
         if let index = schedules.firstIndex(where: { $0.id == schedule.id }) {
             schedules[index] = schedule
         } else {
@@ -211,12 +217,13 @@ final class PeptideLogStore {
     }
 
     func setScheduleActive(id: String, active: Bool) {
-        guard let index = schedules.firstIndex(where: { $0.id == id }) else { return }
+        guard canChange(), let index = schedules.firstIndex(where: { $0.id == id }) else { return }
         schedules[index].active = active
         didChange()
     }
 
     func deleteSchedule(id: String) {
+        guard canChange() else { return }
         schedules.removeAll { $0.id == id }
         didChange()
     }
@@ -230,7 +237,7 @@ final class PeptideLogStore {
     /// "Keep them in my log": the held-aside records join this log (a record
     /// whose id is already here is left as it is) and the choice is saved.
     func keepHeldAside() {
-        guard !heldAside.isEmpty else { return }
+        guard canChange(), !heldAside.isEmpty else { return }
         let merged = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules).adding(heldAside)
         entries = Self.sorted(merged.entries)
         vials = merged.vials
@@ -241,7 +248,7 @@ final class PeptideLogStore {
 
     /// "Delete them": the held-aside records are removed and the choice is saved.
     func deleteHeldAside() {
-        guard !heldAside.isEmpty else { return }
+        guard canChange(), !heldAside.isEmpty else { return }
         heldAside = PeptideRecordSet()
         didChange()
     }
@@ -257,7 +264,7 @@ final class PeptideLogStore {
     func adoptReconBench(_ data: Data, now: Date = Date()) -> Bool {
         guard let found = ReconBenchMigration.vials(from: data, now: now),
               !found.own.isEmpty || !found.heldAside.isEmpty else { return false }
-        guard !file.isInMemory, readOnly == nil, file.keepBeforeUpgrade(data, label: "recon-bench-pre-v3", now: now) else {
+        guard !file.isInMemory, canChange(), readOnly == nil, file.keepBeforeUpgrade(data, label: "recon-bench-pre-v3", now: now) else {
             return false
         }
         let new = newRecords(in: found)
@@ -300,9 +307,11 @@ final class PeptideLogStore {
 
     /// Adds what `archive` has that this phone doesn't: the user's own records
     /// to this log, second-profile records to those held aside for the user's
-    /// choice. Nothing already here is changed.
+    /// choice. Nothing already here is changed. Adds nothing (an empty
+    /// summary) when the log can't change; `persistError` says why.
     @discardableResult
     func importArchive(_ archive: PeptideArchive, now: Date = Date()) -> PeptideImportSummary {
+        guard canChange() else { return PeptideImportSummary() }
         let summary = importSummary(of: archive)
         guard summary.total > 0 else { return summary }
         let new = newRecords(in: archive.records(now: now))
@@ -327,7 +336,7 @@ final class PeptideLogStore {
     func replaceAll(with archive: PeptideArchive, now: Date = Date()) -> String? {
         var replacement = archive.records(now: now)
         replacement.own.entries = Self.sorted(replacement.own.entries)
-        if readOnly != nil { return persistError ?? "Peptides can't be saved on this phone right now." }
+        if !canChange() || readOnly != nil { return persistError ?? "Peptides can't be saved on this phone right now." }
         if !file.isInMemory, case .failure(let error)? = save(replacement, scale: archive.syringeScale, fallbackOnFailure: false) {
             return error.localizedDescription
         }
@@ -355,7 +364,30 @@ final class PeptideLogStore {
         readOnly = nil
     }
 
+    /// Why changes are refused now, with nothing changed (the saved log isn't
+    /// open yet). Nil while changes are made. Views read it after a change.
+    var changeRefusal: String? { readOnly?.refusal }
+
+    /// A saved log that couldn't be opened (the phone was locked at launch) is
+    /// read again. Every change asks first; until it opens nothing changes.
+    func reloadIfNotOpened() {
+        guard readOnly == .notOpened else { return }
+        readOnly = nil
+        storageNote = nil
+        persistError = nil
+        load()
+    }
+
     // MARK: Private
+
+    /// Every change asks first. False, with nothing changed and `persistError`
+    /// saying why, while the saved log on disk isn't what memory holds.
+    private func canChange() -> Bool {
+        reloadIfNotOpened()
+        guard let refusal = readOnly?.refusal else { return true }
+        persistError = refusal
+        return false
+    }
 
     private func didChangeEntries() {
         entries = Self.sorted(entries)
@@ -378,7 +410,18 @@ final class PeptideLogStore {
     // MARK: Persistence
 
     private func load() {
-        guard let data = file.read() else { return }
+        let data: Data
+        switch file.read() {
+        case .missing:
+            return
+        case .failed:
+            // The file is there but its bytes are unknown: an empty log saved now would replace them.
+            readOnly = .notOpened
+            storageNote = "The saved peptide log couldn't be opened, so peptides aren't shown yet. Unlock the phone and reopen the app to try again."
+            return
+        case .data(let bytes):
+            data = bytes
+        }
         guard let version = PeptideLogSnapshot.savedVersion(of: data) else {
             file.keepUnreadable(data)
             return
@@ -487,6 +530,17 @@ enum PeptideLogReadOnly: Equatable {
     case newerVersion
     /// An older save that couldn't be set aside before upgrading. Changes are shown but not saved.
     case upgradeNotKept
+    /// The file is there but couldn't be opened (locked before first unlock).
+    /// Changes are refused: memory holds none of it.
+    case notOpened
+
+    /// Why a change is refused, nothing changed; nil when changes are shown but not saved.
+    var refusal: String? {
+        switch self {
+        case .newerVersion, .upgradeNotKept: nil
+        case .notOpened: "Peptides can't be changed until the saved log opens."
+        }
+    }
 }
 
 /// The saved file (version 3; version 2 reads the same way). One unreadable
@@ -612,8 +666,11 @@ struct PeptideLogSnapshot: Codable {
 
 extension PeptideLogStore: CloudBackupPeptides {
     /// The archive without an export time, so unchanged peptides back up to the same bytes.
+    /// Nil while a change would be refused, so peptides this app couldn't read
+    /// are never backed up as an empty log.
     func backupArchiveData() -> Data? {
-        try? archive(exportedAt: nil).encoded()
+        if readOnly?.refusal != nil { return nil }
+        return try? archive(exportedAt: nil).encoded()
     }
 
     /// Replaces the peptides only with a whole backup that was saved; otherwise

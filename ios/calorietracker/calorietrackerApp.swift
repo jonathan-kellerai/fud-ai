@@ -172,8 +172,9 @@ struct calorietrackerApp: App {
                 Task { await cloudBackupService.autoBackupIfNeeded() }
             }
             if newPhase == .active {
-                // A workout log locked at launch (before first unlock) opens now.
+                // Workout and peptide logs locked at launch (before first unlock) open now.
                 workoutLogStore.reloadIfNotOpened()
+                peptideLogStore.reloadIfNotOpened()
                 Task {
                     await notificationManager.refreshAuthorizationStatus()
                 }

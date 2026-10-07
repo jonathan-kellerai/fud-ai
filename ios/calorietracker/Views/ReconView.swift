@@ -227,6 +227,10 @@ struct ReconView: View {
             now: referenceDate ?? Date()
         )
         store.saveVial(vial)
+        if let refusal = store.changeRefusal {
+            errorText = refusal
+            return
+        }
         dismiss()
     }
 }

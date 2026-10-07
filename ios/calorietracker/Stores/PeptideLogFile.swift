@@ -52,10 +52,17 @@ struct PeptideLogFile {
         DeviceLogFile(url: url, defaults: defaults, defaultsKey: defaultsKey)
     }
 
-    /// The saved bytes: the file, else the UserDefaults fallback.
-    func read() -> Data? {
-        if isInMemory { return nil }
-        return file.read()
+    /// The saved bytes: the file; only when there is no file, the UserDefaults
+    /// copy kept while the file couldn't be written. A file that is there but
+    /// can't be opened is `.failed`, never that copy: it may be older or absent,
+    /// and a save would replace the file with it.
+    func read() -> DeviceLogRead {
+        if isInMemory { return .missing }
+        let found = file.readFile()
+        if case .missing = found, let saved = defaults?.data(forKey: defaultsKey) {
+            return .data(saved)
+        }
+        return found
     }
 
     /// Never overwrite data that could not be read: set it aside first.
