@@ -313,6 +313,32 @@ struct PeptideArchiveTests {
         #expect(try PeptideArchive.decode(Data(whole.utf8), complete: true).skipped == 0)
     }
 
+    /// `held_aside` is optional: missing, null or empty restores. One that is
+    /// there but can't be read is refused by a restore (it would restore as
+    /// nothing held aside); an import still adds the user's own records.
+    @Test func aHeldAsideThatCantBeReadRefusesARestore() throws {
+        let start = #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],"entries":[{"id":"own-e","compound":"BPC-157","datetime":"2026-09-20T07:00:00-04:00"}]"#
+        for fine in ["", #","held_aside":null"#, #","held_aside":{}"#, #","held_aside":{"vials":[],"schedules":null}"#] {
+            let archive = try PeptideArchive.decode(Data((start + fine + "}").utf8), complete: true)
+            #expect(archive.entries.map(\.id) == ["own-e"])
+            #expect(archive.heldAside.isEmpty)
+        }
+        let malformed = [
+            #","held_aside":"bad""#,
+            #","held_aside":[]"#,
+            #","held_aside":{"entries":{}}"#,
+            #","held_aside":{"vials":"bad","entries":[]}"#,
+            #","held_aside":{"vials":[],"schedules":[],"entries":7}"#,
+        ]
+        for bad in malformed {
+            let data = Data((start + bad + "}").utf8)
+            #expect(throws: PeptideArchiveError.incomplete) { try PeptideArchive.decode(data, complete: true) }
+            let imported = try PeptideArchive.decode(data)
+            #expect(imported.entries.map(\.id) == ["own-e"])
+            #expect(imported.heldAside.isEmpty)
+        }
+    }
+
     @Test func otherFilesAreRefused() throws {
         #expect(throws: PeptideArchiveError.unreadable) { try PeptideArchive.decode(Data("not json".utf8)) }
         #expect(throws: PeptideArchiveError.wrongFormat) {

@@ -118,6 +118,37 @@ struct PeptideBackupAndResetTests {
         }
     }
 
+    /// A backup whose `held_aside` can't be read is refused, so the phone keeps
+    /// its own records and those it holds aside, on disk and in memory.
+    @Test func malformedHeldAsideNeverReplacesThePhonesPeptides() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let url = folder.appendingPathComponent("peptide_log_v1.json")
+        let store = try filledStore(at: url)
+        let heldJSON = """
+        {"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],"entries":[],
+         "held_aside":{"vials":[],"schedules":[],"entries":[{"id":"held-e","compound":"MT2","datetime":"2026-09-20T07:15:00-04:00"}]}}
+        """
+        store.importArchive(try PeptideArchive.decode(Data(heldJSON.utf8)), now: now)
+        #expect(store.heldAside.entries.map(\.id) == ["held-e"])
+        let before = (store.entries, store.vials, store.schedules, store.heldAside)
+        let saved = try Data(contentsOf: url)
+        let service = CloudBackupService(defaults: defaults, peptides: store)
+        let backup = #"{"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],"entries":[{"id":"other","compound":"MT2","datetime":"2026-09-21T07:00:00-04:00"}]"#
+        for bad in [#","held_aside":"bad""#, #","held_aside":{"entries":{}}"#] {
+            service.errorMessage = nil
+            service.applyValues([CloudBackupService.peptidesKey: .data(Data((backup + bad + "}").utf8))])
+            #expect(service.errorMessage?.contains("kept") == true)
+            #expect(store.entries == before.0)
+            #expect(store.vials == before.1)
+            #expect(store.schedules == before.2)
+            #expect(store.heldAside == before.3)
+            #expect(try Data(contentsOf: url) == saved)
+        }
+    }
+
     @Test func restoreThatCantBeSavedKeepsThePhonesPeptides() throws {
         let folder = directory()
         defer { try? FileManager.default.removeItem(at: folder) }
