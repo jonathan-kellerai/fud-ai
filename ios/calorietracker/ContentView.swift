@@ -3076,47 +3076,12 @@ struct ProfileView: View {
                         }
 
                         if selectedProvider.requiresAPIKey {
-                            AdaptiveLabelValue {
-                                Label {
-                                    Text("API Key")
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                } icon: {
-                                    Image(systemName: "key.fill")
-                                        .foregroundStyle(AppColors.calorie)
-                                }
-                            } value: {
-                                HStack {
-                                    Group {
-                                        if showAPIKey {
-                                            TextField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
-                                        } else {
-                                            SecureField(selectedProvider.apiKeyPlaceholder, text: $apiKeyText)
-                                        }
-                                    }
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.trailing)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .onChange(of: apiKeyText) { _, newValue in
-                                        let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        AIProviderSettings.setAPIKey(t.isEmpty ? nil : t, for: selectedProvider)
-                                        ModelCatalogService.shared.scheduleRefresh(
-                                            provider: selectedProvider,
-                                            baseURL: resolvedPrimaryBaseURL,
-                                            apiKey: t
-                                        )
-                                    }
-                                    Button {
-                                        showAPIKey.toggle()
-                                    } label: {
-                                        Image(systemName: showAPIKey ? "eye.fill" : "eye.slash.fill")
-                                            .foregroundStyle(.secondary)
-                                            .font(.system(size: 14))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                            AIProviderAPIKeyRow(
+                                provider: selectedProvider,
+                                baseURL: resolvedPrimaryBaseURL,
+                                apiKeyText: $apiKeyText,
+                                showAPIKey: $showAPIKey
+                            )
                         }
 
                         if selectedProvider == .ollama || selectedProvider.requiresCustomEndpoint {
