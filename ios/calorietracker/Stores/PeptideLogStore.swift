@@ -12,7 +12,8 @@ import Foundation
 @Observable
 @MainActor
 final class PeptideLogStore {
-    static let defaultsKey = "peptide.log.v1"
+    /// Also read by `CloudBackupPolicy`, which leaves this key to the store.
+    nonisolated static let defaultsKey = "peptide.log.v1"
     /// Version of the saved file. Version 1 was the bridge-era cache and queue;
     /// version 2 tagged every record with one of two profiles.
     static let fileVersion = 3

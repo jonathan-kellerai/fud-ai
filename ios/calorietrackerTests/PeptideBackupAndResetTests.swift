@@ -201,6 +201,38 @@ struct PeptideBackupAndResetTests {
         #expect(reopened.schedules == before.2)
     }
 
+    /// On the phone the store's fallback and the backup share UserDefaults.standard.
+    /// The fallback is never uploaded (the archive carries those peptides) and a
+    /// restore never removes or replaces it, so a restore that can't save the
+    /// file, or an older backup without peptides, leaves it the only copy it was.
+    @Test func restoreLeavesThePeptideFallbackInTheSharedUserDefaults() throws {
+        let folder = directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (defaults, name) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let source = try filledStore(at: folder.appendingPathComponent("a/peptide_log_v1.json"))
+        let values = try CloudBackupService(defaults: defaults, peptides: source).snapshotValues()
+        let olderBackup = values.filter { $0.key != CloudBackupService.peptidesKey }
+
+        // The file can't be written (a folder sits at its path), so the phone's
+        // peptides live only in the fallback.
+        let url = folder.appendingPathComponent("b/peptide_log_v1.json")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let phone = try filledStore(at: url, defaults: defaults, compound: "MT2", id: "other")
+        let fallback = try #require(defaults.data(forKey: PeptideLogStore.defaultsKey))
+        #expect(CloudBackupPolicy.include(PeptideLogStore.defaultsKey) == false)
+        #expect(try CloudBackupService(defaults: defaults, peptides: phone).snapshotValues()[PeptideLogStore.defaultsKey] == nil)
+
+        for backup in [values, olderBackup] {
+            let service = CloudBackupService(defaults: defaults, peptides: phone)
+            service.applyValues(backup)
+            #expect(defaults.data(forKey: PeptideLogStore.defaultsKey) == fallback)
+            let reopened = PeptideLogStore(persistence: .file(url, defaults: defaults))
+            #expect(reopened.entries.map(\.id) == ["other"])
+            #expect(reopened.vial(id: "v-other") != nil)
+        }
+    }
+
     /// Makes a saved log unreadable (as file protection does before first unlock) or readable again.
     private func lock(_ url: URL, _ locked: Bool) throws {
         try FileManager.default.setAttributes([.posixPermissions: locked ? 0o000 : 0o644], ofItemAtPath: url.path)

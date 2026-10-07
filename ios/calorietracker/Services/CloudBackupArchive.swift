@@ -22,6 +22,9 @@ enum CloudBackupPolicy {
 
     static func include(_ key: String) -> Bool {
         if key == "healthKitEnabled" { return true }
+        // The peptide store's own fallback copy: the peptides archive carries
+        // its records, and a restore must never remove or replace it.
+        if key == PeptideLogStore.defaultsKey { return false }
         if excludedKeys.contains(key) { return false }
         if key.hasPrefix("healthKit") { return false }
         if key.hasPrefix("Apple") || key.hasPrefix("NS") || key.hasPrefix("com.apple") { return false }
