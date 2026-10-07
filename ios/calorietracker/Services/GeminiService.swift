@@ -333,7 +333,11 @@ struct GeminiService {
         return try result.get()
     }
 
-    static func analyzeTextInput(description: String, skipHostedMetering: Bool = false) async throws -> FoodAnalysis {
+    static func analyzeTextInput(
+        description: String,
+        skipHostedMetering: Bool = false,
+        trace: AIRequestTrace? = nil
+    ) async throws -> FoodAnalysis {
         let prompt = """
         Estimate the nutritional content for: \(description)
         Parse any quantities, brands, and multiple items from the text. If a brand is mentioned, use that brand's known nutritional data. If multiple items are described, sum up the total nutrition.
@@ -345,13 +349,15 @@ struct GeminiService {
         When supported by the text, use slice/piece for discrete foods, ml/cup/fl oz for liquids, tbsp/tsp for spooned foods, and can/packet for packaged foods.
         Include a single food emoji that best represents the food. Use null for any nutrient you cannot estimate.
         """
-        return try await runWithHostedQuota(.textFood, skip: skipHostedMetering) {
-            let analysis = try await callTextFoodAnalysis(prompt: prompt, description: description)
-            return await addingFallbackServingUnits(to: analysis, image: nil, description: description)
+        return try await logged(.textFood, trace: trace) { active in
+            try await runWithHostedQuota(.textFood, skip: skipHostedMetering) {
+                let analysis = try await callTextFoodAnalysis(prompt: prompt, description: description, trace: active)
+                return await addingFallbackServingUnits(to: analysis, image: nil, description: description)
+            }
         }
     }
 
-    static func autoAnalyze(image: UIImage) async throws -> FoodAnalysis {
+    static func autoAnalyze(image: UIImage, trace: AIRequestTrace? = nil) async throws -> FoodAnalysis {
         let prompt = """
         Analyze this image. It could be either a photo of food OR a nutrition facts label.
 
@@ -366,14 +372,21 @@ struct GeminiService {
         When supported by the image or label, use slice/piece for discrete foods, ml/cup/fl oz for liquids, tbsp/tsp for spooned foods, and can/packet for packaged foods. For a whole or mostly-whole divisible food, count only clearly visible pieces or slices and derive grams_per_unit from serving_size_grams / quantity.
         Use null for any nutrient you cannot estimate.
         """
-        return try await runWithHostedQuota(.photoFood) {
-            let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: ""))
-            let analysis = try parseFoodAnalysis(from: text)
-            return await addingFallbackServingUnits(to: analysis, image: image, description: nil)
+        return try await logged(.mealPhoto, trace: trace) { active in
+            try await runWithHostedQuota(.photoFood) {
+                let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: ""), trace: active)
+                let analysis = try parseFoodAnalysis(from: text)
+                return await addingFallbackServingUnits(to: analysis, image: image, description: nil)
+            }
         }
     }
 
-    static func analyzeFood(image: UIImage, description: String? = nil, skipHostedMetering: Bool = false) async throws -> FoodAnalysis {
+    static func analyzeFood(
+        image: UIImage,
+        description: String? = nil,
+        skipHostedMetering: Bool = false,
+        trace: AIRequestTrace? = nil
+    ) async throws -> FoodAnalysis {
         var prompt = """
         Analyze this food image. Identify the food and estimate its nutritional content.
 
@@ -391,10 +404,12 @@ struct GeminiService {
             prompt += "\n\nAdditional context from the user about this meal: \(description)\nUse this context to improve accuracy of identification, portion size, and nutrition estimates."
         }
 
-        return try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
-            let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: description ?? ""))
-            let analysis = try parseFoodAnalysis(from: text)
-            return await addingFallbackServingUnits(to: analysis, image: image, description: description)
+        return try await logged(.mealPhoto, trace: trace) { active in
+            try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
+                let text = try await callAI(prompt: prompt, image: image, route: .foodPhoto(caption: description ?? ""), trace: active)
+                let analysis = try parseFoodAnalysis(from: text)
+                return await addingFallbackServingUnits(to: analysis, image: image, description: description)
+            }
         }
     }
 
@@ -442,18 +457,21 @@ struct GeminiService {
         images: [UIImage],
         description: String? = nil,
         progressiveMeal: Bool = false,
-        skipHostedMetering: Bool = false
+        skipHostedMetering: Bool = false,
+        trace: AIRequestTrace? = nil
     ) async throws -> FoodAnalysis {
         guard !images.isEmpty else { throw AnalysisError.imageConversionFailed }
 
         let prompt = multiPhotoAnalysisPrompt(progressiveMeal: progressiveMeal, description: description)
 
-        return try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
-            let text = try await callAI(prompt: prompt, images: images, route: .foodPhoto(caption: description ?? ""))
-            let analysis = try parseFoodAnalysis(from: text)
-            var result = await addingFallbackServingUnits(to: analysis, image: images[0], description: description)
-            result.progressiveMeal = progressiveMeal
-            return result
+        return try await logged(.mealPhoto, trace: trace) { active in
+            try await runWithHostedQuota(.photoFood, skip: skipHostedMetering) {
+                let text = try await callAI(prompt: prompt, images: images, route: .foodPhoto(caption: description ?? ""), trace: active)
+                let analysis = try parseFoodAnalysis(from: text)
+                var result = await addingFallbackServingUnits(to: analysis, image: images[0], description: description)
+                result.progressiveMeal = progressiveMeal
+                return result
+            }
         }
     }
 
@@ -718,6 +736,34 @@ struct GeminiService {
         }
     }
 
+    /// Runs one meal identification request with a trace and writes the trace to the
+    /// on-device request log. A caller that passes its own trace (Settings → AI Providers
+    /// tests) owns it and writes it, so a test request is logged once, as a test.
+    private static func logged<T>(
+        _ kind: AIRequestLogEntry.Kind,
+        trace callerTrace: AIRequestTrace?,
+        _ work: (AIRequestTrace) async throws -> T
+    ) async throws -> T {
+        if let callerTrace {
+            return try await work(callerTrace)
+        }
+        let trace = AIRequestTrace(kind: kind)
+        do {
+            let value = try await work(trace)
+            AIRequestLogStore.shared.append(trace.entries(outcome: .parsed))
+            return value
+        } catch {
+            AIRequestLogStore.shared.append(trace.entries(outcome: .failed(requestLogMessage(for: error))))
+            throw error
+        }
+    }
+
+    /// The line the request log shows for a request that produced no usable answer.
+    static func requestLogMessage(for error: Error) -> String {
+        if error is CancellationError { return "Cancelled before an answer arrived." }
+        return analysisErrorMessage(error)
+    }
+
     private static func runWithHostedQuota<T>(
         _ action: HostedAIAction,
         skip: Bool = false,
@@ -771,6 +817,7 @@ struct GeminiService {
         if environment.isHosted() {
             let capped = Array(images.prefix(HostedAIConstants.maxHostedImages))
             let imageDataList = try capped.map { try encodedJPEGData(for: $0) }
+            trace?.beginAttempt(provider: AIRequestTrace.hostedProviderName, model: nil)
             return try await perform(AIAttempt(provider: nil) { prompt, _ in
                 try await environment.hosted(prompt, imageDataList)
             })
@@ -779,6 +826,7 @@ struct GeminiService {
         let plan = await environment.plan(route, base)
         let primary = plan.primary
         if primary.provider.requiresAPIKey, primary.apiKey == nil {
+            trace?.beginAttempt(provider: primary.provider.displayName, model: primary.model)
             throw AnalysisError.noAPIKey
         }
 
@@ -800,10 +848,16 @@ struct GeminiService {
                     fallbackName: fallback.provider.displayName, detail: detail)
             },
             recordFallback: environment.recordFallback
-        ) { config in
-            try await perform(AIAttempt(provider: config.provider) { prompt, jsonResponse in
-                try await environment.dispatch(config, prompt, imageDataList, jsonResponse, trace)
-            })
+        ) { (config: AIProviderSettings.RequestConfig) async throws -> T in
+            trace?.beginAttempt(provider: config.provider.displayName, model: config.model)
+            do {
+                return try await perform(AIAttempt(provider: config.provider) { prompt, jsonResponse in
+                    try await environment.dispatch(config, prompt, imageDataList, jsonResponse, trace)
+                })
+            } catch {
+                trace?.recordAttemptFailure(analysisErrorMessage(error))
+                throw error
+            }
         }
     }
 
@@ -1158,10 +1212,12 @@ struct GeminiService {
             } catch let error as URLError where error.code == .cancelled {
                 throw CancellationError()
             } catch {
+                trace?.recordTransportError(provider: provider.displayName, error)
                 throw AnalysisError.networkError(error)
             }
 
             guard let httpResponse = response as? HTTPURLResponse else { return data }
+            trace?.recordResponse(provider: provider.displayName, status: httpResponse.statusCode, body: data)
 
             if httpResponse.statusCode == 200 {
                 return data

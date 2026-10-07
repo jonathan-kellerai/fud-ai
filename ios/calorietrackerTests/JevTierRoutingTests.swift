@@ -754,6 +754,74 @@ struct JevTierRoutingTests {
         #expect(log.sentImageCounts == [1, 1, 2])
     }
 
+    // MARK: - Request log trace
+
+    @Test func traceRecordsEachAttemptOfAFallback() async throws {
+        let log = RouteLog()
+        let primaryModel = base.model
+        let environment = routeEnvironment(log, textFallback: Self.config(.openai, "text-fallback")) { config in
+            if config.model == primaryModel { throw StubError.failed }
+            return Self.foodJSON
+        }
+        let trace = AIRequestTrace(kind: .textFood)
+        _ = try await withRoute(environment) {
+            try await GeminiService.analyzeTextInput(description: "oatmeal", skipHostedMetering: true, trace: trace)
+        }
+        let entries = trace.entries(outcome: .parsed)
+        #expect(entries.map(\.provider) == [AIProvider.gemini.displayName, AIProvider.openai.displayName])
+        #expect(entries.map(\.model) == ["gemini-strong", "text-fallback"])
+        #expect(entries.map(\.parsed) == [false, true])
+        #expect(entries[0].errorBody == GeminiService.analysisErrorMessage(StubError.failed))
+        #expect(entries.allSatisfy { $0.kind == .textFood })
+    }
+
+    @Test func traceNamesTheProviderWhenTheKeyIsMissing() async {
+        let log = RouteLog()
+        let keyless = AIProviderSettings.RequestConfig(
+            provider: .openrouter,
+            model: "openai/gpt-5-mini",
+            baseURL: "https://openrouter.test",
+            apiKey: nil
+        )
+        let environment = routeEnvironment(log, base: keyless) { _ in Self.foodJSON }
+        let trace = AIRequestTrace(kind: .mealPhoto)
+        do {
+            _ = try await withRoute(environment) {
+                try await GeminiService.analyzeFood(image: Self.image(), skipHostedMetering: true, trace: trace)
+            }
+            Issue.record("Expected noAPIKey")
+        } catch {
+            guard case GeminiService.AnalysisError.noAPIKey = error else {
+                Issue.record("Unexpected error \(error)")
+                return
+            }
+        }
+        let entries = trace.entries(outcome: .failed(GeminiService.requestLogMessage(for: GeminiService.AnalysisError.noAPIKey)))
+        #expect(entries.count == 1)
+        #expect(entries[0].provider == AIProvider.openrouter.displayName)
+        #expect(entries[0].model == "openai/gpt-5-mini")
+        #expect(entries[0].errorBody == AIErrorKind.noKey.message)
+        #expect(!entries[0].parsed)
+        #expect(log.sent.isEmpty)
+    }
+
+    @Test func traceNamesTheHostedService() async throws {
+        let log = RouteLog()
+        let environment = routeEnvironment(log, hosted: true) { _ in Self.foodJSON }
+        let trace = AIRequestTrace(kind: .mealPhoto)
+        _ = try await withRoute(environment) {
+            try await GeminiService.analyzeFood(image: Self.image(), skipHostedMetering: true, trace: trace)
+        }
+        let entries = trace.entries(outcome: .parsed)
+        #expect(entries.map(\.provider) == [AIRequestTrace.hostedProviderName])
+        #expect(entries.map(\.parsed) == [true])
+    }
+
+    @Test func cancelledRequestsSayCancelledInTheLog() {
+        #expect(GeminiService.requestLogMessage(for: CancellationError()) == "Cancelled before an answer arrived.")
+        #expect(GeminiService.requestLogMessage(for: GeminiService.AnalysisError.noAPIKey) == AIErrorKind.noKey.message)
+    }
+
     @Test func routePhotoServingRepair() async throws {
         let log = RouteLog()
         let environment = routeEnvironment(log) { _ in
