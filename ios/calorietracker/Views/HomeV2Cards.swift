@@ -79,6 +79,7 @@ struct HomeV2Cards: View {
     @Environment(HealthKitManager.self) private var healthKitManager
     @Environment(ProfileStore.self) private var profileStore
     @Environment(WorkoutDraftStore.self) private var workoutDraftStore
+    @Environment(WorkoutLogStore.self) private var workoutLog
     @Environment(PeptideLogStore.self) private var peptideStore
     /// Optional so hosts without Challenges (previews, older harness roots) render without it.
     @Environment(ChallengeStore.self) private var challengeStore: ChallengeStore?
@@ -95,9 +96,6 @@ struct HomeV2Cards: View {
     @State private var programRecord: TrainingProgramRecord?
     @State private var allowCachedProgram = true
     @State private var programNotice: String?
-    @State private var workouts: [RemoteWorkout] = []
-    @State private var workoutsLoaded = false
-    @State private var sessionDetail: WorkoutDetailResponse?
     @State private var stepsByDay: [Date: Int]?
     @State private var burnedCalories: Int?
     @State private var weightSamples: [HealthSampleReading] = []
@@ -113,6 +111,9 @@ struct HomeV2Cards: View {
 
     private let bridge = NeonBridgeService.shared
     private let trainProgress = TrainProgressStore.shared
+
+    /// Workouts saved on this phone, newest session first.
+    private var workouts: [RemoteWorkout] { workoutLog.workouts }
 
     private var calendar: Calendar {
         var calendar = Calendar.current
@@ -137,6 +138,9 @@ struct HomeV2Cards: View {
         .task(id: loadKey) {
             await reload()
         }
+        .onChange(of: workoutLog.records) { _, _ in
+            adoptLoggedWorkouts()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Customize") { showingCustomize = true }
@@ -151,9 +155,7 @@ struct HomeV2Cards: View {
             }
         }
         .sheet(item: $loggingDay) { day in
-            ProgramV2WorkoutLogView(day: day) {
-                Task { await reloadWorkouts() }
-            }
+            ProgramV2WorkoutLogView(day: day)
         }
         .sheet(isPresented: $showingPeptideLog) {
             PeptideLogSheet(person: PeptidePersonMemory.load())
@@ -366,9 +368,7 @@ struct HomeV2Cards: View {
 
     private func status(for date: Date) -> HomeV2Logic.WeekDayStatus {
         let key = SessionDateFormatting.calendarDateString(from: date, calendar: calendar)
-        let workout: Bool? = workoutsLoaded
-            ? workouts.contains { String($0.sessionDate.prefix(10)) == key }
-            : nil
+        let workout: Bool? = workouts.contains { String($0.sessionDate.prefix(10)) == key }
         let steps = stepsByDay?[calendar.startOfDay(for: date)]
         let stepsValue: Int? = stepsByDay == nil ? nil : (steps ?? 0)
         return HomeV2Logic.weekDayStatus(
@@ -451,7 +451,7 @@ struct HomeV2Cards: View {
     private func loggedSummary(_ logged: RemoteWorkout) -> some View {
         Text(logged.title.isEmpty ? logged.programDay : logged.title)
             .font(.system(.title3, design: .rounded, weight: .bold))
-        if let sessionDetail, sessionDetail.workout.id == logged.id {
+        if let sessionDetail = workoutLog.detail(id: logged.id) {
             let summary = HomeV2Logic.sessionSummary(
                 sets: sessionDetail.sets.map { ($0.exercise, $0.loadLb, $0.reps) }
             )
@@ -854,7 +854,7 @@ struct HomeV2Cards: View {
     private func reload() async {
         reloadLayout()
         await reloadProgram()
-        await reloadWorkouts()
+        adoptLoggedWorkouts()
         await reloadHealth()
     }
 
@@ -881,21 +881,9 @@ struct HomeV2Cards: View {
         }
     }
 
-    private func reloadWorkouts() async {
-        do {
-            let listed = try await bridge.listWorkouts(limit: 50)
-            workouts = listed
-            trainProgress.replaceHistory(with: listed, days: programBody?.days ?? [])
-            workoutsLoaded = true
-            let key = SessionDateFormatting.calendarDateString(from: selectedDate, calendar: calendar)
-            if let match = listed.first(where: { String($0.sessionDate.prefix(10)) == key }) {
-                sessionDetail = try? await bridge.getWorkout(id: match.id)
-            } else {
-                sessionDetail = nil
-            }
-        } catch {
-            workoutsLoaded = false
-        }
+    /// Next-in-cycle follows the workouts saved on this phone.
+    private func adoptLoggedWorkouts() {
+        trainProgress.adopt(workoutLog, days: programBody?.days ?? [])
     }
 
     private func reloadHealth() async {

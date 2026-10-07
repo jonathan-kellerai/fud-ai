@@ -2,7 +2,7 @@
 //  WorkoutDraftStore.swift
 //  calorietracker
 //
-//  In-progress JL Neon workout, kept on disk until the bridge confirms the save
+//  In-progress JL workout, kept on disk until the on-device workout log saves it
 //
 
 import Foundation
@@ -44,6 +44,10 @@ struct WorkoutDraft: Codable, Equatable {
     var holdLoads: Bool? = nil
     /// Nil preserves the planned-order payload and the legacy JSON shape.
     var exerciseOrder: [String]? = nil
+    /// The workout's id in the on-device log, set by the store on the first
+    /// edit so saving again replaces that workout. Nil before then, and in
+    /// drafts written before build 70.
+    var recordID: String? = nil
 
     init(day: ProgramV2Day, now: Date = Date()) {
         programDay = day.id
@@ -123,7 +127,7 @@ struct WorkoutDraft: Codable, Equatable {
         )
     }
 
-    /// The bridge payload, built exactly as the logger built it before drafts existed.
+    /// The session as saved, built exactly as the logger built it before drafts existed.
     /// The session date is the day the workout started, not the day it is saved.
     func payload(now: Date = Date()) -> WorkoutPayload {
         var allSets: [WorkoutSet] = []
@@ -223,8 +227,6 @@ enum WorkoutHandoffDecision {
 
 @Observable
 final class WorkoutDraftStore {
-    typealias PostWorkout = @MainActor (WorkoutPayload) async throws -> Void
-
     static let fileName = "jl-workout-draft.json"
 
     private(set) var draft: WorkoutDraft?
@@ -263,26 +265,32 @@ final class WorkoutDraftStore {
     func update(_ day: ProgramV2Day, startedAt: Date = Date(), _ change: (inout WorkoutDraft) -> Void) {
         var next = existingDraft(for: day) ?? WorkoutDraft(day: day, now: startedAt)
         next.adopt(day)
+        if next.recordID == nil {
+            next.recordID = UUID().uuidString.lowercased()
+        }
         change(&next)
         next.updatedAt = Date()
         draft = next
         persist()
     }
 
-    /// Posts the draft and clears it only once the bridge accepted it.
-    /// A failure rethrows and leaves the draft untouched on disk. Edits made
-    /// while the post was in flight are kept rather than cleared.
-    func save(now: Date = Date(), post: PostWorkout? = nil) async throws {
-        guard let snapshot = draft else { return }
-        let payload = snapshot.payload(now: now)
-        if let post {
-            try await post(payload)
+    /// Saves the draft to the on-device workout log and clears it only once
+    /// the log has written it. A failure rethrows and leaves the draft on disk.
+    /// The draft's record id is on disk before the save, so saving again after
+    /// a crash replaces that workout instead of adding a second one.
+    func save(to log: WorkoutLogStore, now: Date = Date()) throws {
+        guard var snapshot = draft else { return }
+        let id: String
+        if let recordID = snapshot.recordID {
+            id = recordID
         } else {
-            _ = try await NeonBridgeService.shared.postWorkout(payload)
+            id = UUID().uuidString.lowercased()
+            snapshot.recordID = id
+            draft = snapshot
+            persist()
         }
-        if draft == snapshot {
-            clear()
-        }
+        try log.save(snapshot.payload(now: now), id: id)
+        clear()
     }
 
     func discard() {

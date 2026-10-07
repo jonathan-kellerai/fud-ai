@@ -235,6 +235,34 @@ struct WorkoutLogStoreTests {
                                             exercisePosition: 1, plannedPosition: 2)])
     }
 
+    @Test func lastPerformanceAndTheProgressionRuleReadTheLog() throws {
+        let store = WorkoutLogStore(persistence: .inMemory)
+        let day = ProgramV2Templates.day1LowerA
+        let press = day.exercises[0]
+        // An older session, then the latest: leg press 180 x 15 at RIR 4 on set 1.
+        var older = WorkoutDraft(day: day, now: started.addingTimeInterval(-7 * 86_400))
+        older.sets[press.name] = [LoggedSet(weight: 175, reps: 12, rir: 2, rpeText: "")]
+        try save(store, older.payload(now: finished.addingTimeInterval(-7 * 86_400)))
+        var latest = WorkoutDraft(day: day, now: started)
+        latest.sets[press.name] = [LoggedSet(weight: 180, reps: 15, rir: 4, rpeText: ""),
+                                   LoggedSet(weight: 180, reps: 13, rir: 2, rpeText: "")]
+        try save(store, latest.payload(now: finished))
+
+        let history = ExerciseHistoryLoader.load(programDay: day.id, log: store)
+        let last = try #require(history[LastPerformanceBuilder.key(for: press.name)])
+        #expect(last.sessionDate == latest.sessionDate)
+        #expect(last.sets.map(\.load) == [180, 180])
+        // Top of 10-15 at RIR 4: +5 lb, computed on the phone.
+        let decision = ProgressionRule.suggestedDecision(last: last, reps: press.reps, startLoadLb: press.startLoadLb)
+        #expect(decision == ProgressionDecision(load: 185, reason: .increase))
+
+        // A deleted session no longer counts.
+        let latestID = try #require(store.workouts.first?.id)
+        try store.delete(id: latestID)
+        let afterDelete = try #require(ExerciseHistoryLoader.load(programDay: day.id, log: store)[LastPerformanceBuilder.key(for: press.name)])
+        #expect(afterDelete.sets.map(\.load) == [175])
+    }
+
     @Test func inMemoryLogsWriteNothing() throws {
         let store = WorkoutLogStore(persistence: .inMemory)
         let id = try save(store, draft().payload(now: finished))

@@ -9,7 +9,6 @@ nonisolated struct MoreHubInputs: Equatable, Sendable {
     var gemmaStatus: String
     var healthKitEnabled: Bool
     var weightUnitRaw: String
-    var bridgePendingCount: Int
     var bridgeConfigured: Bool
     var iCloudEnabled: Bool
     var iCloudLastBackupISO: String?
@@ -34,7 +33,7 @@ enum MoreHubSubtitles {
             let unit = inputs.weightUnitRaw == "kg" ? "kg" : "lb"
             return "\(health) · \(unit)"
         case .dataSync:
-            let bridge = bridgeStatus(pendingCount: inputs.bridgePendingCount, configured: inputs.bridgeConfigured)
+            let bridge = bridgeStatus(configured: inputs.bridgeConfigured)
             return "\(bridge) · \(iCloudStatus(inputs))"
         case .notifications:
             return NotificationsHubSubtitle.text(
@@ -48,10 +47,8 @@ enum MoreHubSubtitles {
         }
     }
 
-    static func bridgeStatus(pendingCount: Int, configured: Bool) -> String {
-        let pending = pendingCount
-        if pending > 0 { return "Bridge \(pending) pending" }
-        return configured ? "Bridge OK" : "Bridge off"
+    static func bridgeStatus(configured: Bool) -> String {
+        configured ? "Bridge OK" : "Bridge off"
     }
 
     private static func iCloudStatus(_ inputs: MoreHubInputs) -> String {

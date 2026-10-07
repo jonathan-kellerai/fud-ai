@@ -27,6 +27,8 @@ struct calorietrackerApp: App {
     @State private var importedHealthWorkoutStore = ImportedHealthWorkoutStore()
     @State private var weeklyChallengeStore = WeeklyChallengeStore()
     @State private var workoutDraftStore = WorkoutDraftStore()
+    /// Workouts saved on this phone only.
+    @State private var workoutLogStore = WorkoutLogStore()
     /// Built in init: the iCloud backup carries the peptide log.
     @State private var cloudBackupService: CloudBackupService
     @State private var peptideLogStore: PeptideLogStore
@@ -85,6 +87,7 @@ struct calorietrackerApp: App {
                         .environment(importedHealthWorkoutStore)
                         .environment(weeklyChallengeStore)
                         .environment(workoutDraftStore)
+                        .environment(workoutLogStore)
                         .environment(cloudBackupService)
                         .environment(peptideLogStore)
                         .environment(challengeStore)
@@ -101,6 +104,7 @@ struct calorietrackerApp: App {
                         .environment(waterStore)
                         .environment(fastingStore)
                         .environment(workoutDraftStore)
+                        .environment(workoutLogStore)
                         .environment(challengeStore)
                 }
             }

@@ -3,8 +3,8 @@
 //  calorietracker
 //
 //  What decides today's program day besides the program itself: completed
-//  sessions (the last bridge list, plus saves since) and today's pick from
-//  the Change sheet. Both survive relaunches so offline launches keep the day.
+//  sessions (from the on-device workout log) and today's pick from the Change
+//  sheet. Both survive relaunches.
 //
 
 import Foundation
@@ -28,27 +28,27 @@ final class TrainProgressStore {
         override = Self.decode(TodayWorkoutOverride.self, defaults.data(forKey: Self.overrideKey))
     }
 
-    /// The bridge list is the source of truth once it loads; it replaces the cache.
+    /// Replaces the completed sessions outright (Visual QA and tests).
     func replaceHistory(with workouts: [RemoteWorkout], days: [TrainingProgramDay]) {
         history = workouts.compactMap { CompletedProgramSession(remote: $0, days: days) }
         persistHistory()
         clearOverrideIfConsumed()
     }
 
-    /// A save the bridge accepted, so the card advances even if the next
-    /// list fails. The next successful list replaces it.
-    func recordCompleted(programDay: String, title: String, sessionDate: String, now: Date = Date()) {
-        guard let dayIndex = CompletedProgramSession.dayIndex(programDay: programDay, title: title, days: []) else {
-            return
+    /// Completed sessions from the on-device workout log. Until a file import
+    /// has brought the bridge-era history into the log, the sessions cached
+    /// from the last bridge list (builds before 70) count too, so upgrading
+    /// doesn't restart the cycle. That cache isn't rewritten before then, so a
+    /// workout deleted from the log never lingers in it.
+    func adopt(_ log: WorkoutLogStore, days: [TrainingProgramDay]) {
+        let fromLog = log.workouts.compactMap { CompletedProgramSession(remote: $0, days: days) }
+        if log.hasImportedHistory {
+            history = fromLog
+            persistHistory()
+        } else {
+            let cached = Self.decode([CompletedProgramSession].self, defaults.data(forKey: Self.historyKey)) ?? []
+            history = cached + fromLog.filter { !cached.contains($0) }
         }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        history.append(CompletedProgramSession(
-            dayIndex: dayIndex,
-            sessionDate: sessionDate,
-            recordedAt: formatter.string(from: now)
-        ))
-        persistHistory()
         clearOverrideIfConsumed()
     }
 

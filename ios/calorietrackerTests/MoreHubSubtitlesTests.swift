@@ -11,7 +11,6 @@ struct MoreHubSubtitlesTests {
         programName: String? = "Program V2",
         healthKitEnabled: Bool = true,
         weightUnitRaw: String = "lbs",
-        bridgePendingCount: Int = 0,
         bridgeConfigured: Bool = true,
         iCloudEnabled: Bool = true,
         iCloudLastBackup: Date? = nil,
@@ -25,7 +24,6 @@ struct MoreHubSubtitlesTests {
             gemmaStatus: "Gemma off",
             healthKitEnabled: healthKitEnabled,
             weightUnitRaw: weightUnitRaw,
-            bridgePendingCount: bridgePendingCount,
             bridgeConfigured: bridgeConfigured,
             iCloudEnabled: iCloudEnabled,
             iCloudLastBackupISO: iCloudLastBackup.map { ISO8601DateFormatter().string(from: $0) },
@@ -66,10 +64,9 @@ struct MoreHubSubtitlesTests {
             == "Bridge off · iCloud off")
     }
 
-    @Test func bridgePendingWinsOverConfiguration() {
-        #expect(MoreHubSubtitles.bridgeStatus(pendingCount: 3, configured: false) == "Bridge 3 pending")
-        #expect(MoreHubSubtitles.bridgeStatus(pendingCount: 0, configured: true) == "Bridge OK")
-        #expect(MoreHubSubtitles.bridgeStatus(pendingCount: 0, configured: false) == "Bridge off")
+    @Test func bridgeStatusFollowsConfiguration() {
+        #expect(MoreHubSubtitles.bridgeStatus(configured: true) == "Bridge OK")
+        #expect(MoreHubSubtitles.bridgeStatus(configured: false) == "Bridge off")
     }
 
     @Test func notificationsFollowTheMasterSwitchAndCount() {

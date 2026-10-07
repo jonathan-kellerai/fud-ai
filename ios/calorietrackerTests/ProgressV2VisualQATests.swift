@@ -80,8 +80,7 @@ final class ProgressV2VisualQATests: XCTestCase {
                     ProgressTrainingCard(
                         state: .loaded(summary),
                         rangeDescription: TimeRange.month.rangeDescription,
-                        useMetric: false,
-                        onRetry: {}
+                        useMetric: false
                     )
                 }
                 .progressV2QAPinned()
@@ -189,7 +188,7 @@ extension View {
 
 /// Deterministic Progress data relative to a fixed "now" (2026-09-30 12:00
 /// New York): weight ~190 → 189 lb over 45 days, body fat on a few of the
-/// same days, Withings lean mass, steps and a Neon bridge training history.
+/// same days, Withings lean mass, steps and a training history.
 /// The same `now` and calendar go into `ProgressV2Fixture`, so the tab's
 /// windows match the data no matter when or where the tests run.
 @MainActor

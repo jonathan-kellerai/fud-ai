@@ -1476,6 +1476,7 @@ final class VisualQAStores {
     let importedWorkouts: ImportedHealthWorkoutStore
     let weeklyChallenge: WeeklyChallengeStore
     let workoutDraft: WorkoutDraftStore
+    let workoutLog: WorkoutLogStore
     let cloudBackup: CloudBackupService
     let peptides: PeptideLogStore
 
@@ -1494,6 +1495,9 @@ final class VisualQAStores {
             defaults.set(true, forKey: CloudBackupService.enabledKey)
         }
         workoutDraft = WorkoutDraftStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true))
+        workoutLog = WorkoutLogStore(visualQARecords: VisualQAFixtures.seededWorkouts().map {
+            StoredWorkout(workout: $0.workout, sets: $0.sets)
+        })
         cloudBackup = CloudBackupService(defaults: defaults)
         bodyFat = BodyFatStore(observesExternalChanges: false)
         bodyMeasurement = BodyMeasurementStore()
@@ -1533,6 +1537,7 @@ final class VisualQAStores {
             .environment(importedWorkouts)
             .environment(weeklyChallenge)
             .environment(workoutDraft)
+            .environment(workoutLog)
             .environment(cloudBackup)
             .environment(peptides)
             .environment(\.dynamicTypeSize, dynamicType)
@@ -1549,6 +1554,9 @@ enum VisualQAFixtures {
     nonisolated static let host = VisualQAStubStorage.host
     static let workoutID = "qa-workout-1"
     static var icloudLastBackupISO: String?
+    /// Workouts seeded into each render's on-device log. Nil: the shared
+    /// sample history. Shots with their own history set it and reset it.
+    static var workoutHistory: [WorkoutDetailResponse]?
 
     /// Fixed clock for the shots that print or count from "now": Wed 2026-10-07 09:00 New York.
     /// Program V2 week 2, clear of the 10/19-10/25 reduction week.
@@ -1564,7 +1572,7 @@ enum VisualQAFixtures {
     static func install() {
         VisualQAStubStorage.setResponses(buildResponses())
         // Shots that use the shared Train store start from no history and no
-        // pick, whatever an earlier shot's stub list left behind.
+        // pick, whatever an earlier shot left behind.
         TrainProgressStore.shared.replaceHistory(with: [], days: [])
         TrainProgressStore.shared.clearOverride()
         URLProtocol.registerClass(VisualQAStubProtocol.self)
@@ -1733,6 +1741,13 @@ enum VisualQAFixtures {
     }
 
     static let upperPhysiqueWorkoutID = "qa-workout-4"
+
+    /// The shared sample history: the four sample workouts, two of them with sets.
+    static func seededWorkouts() -> [WorkoutDetailResponse] {
+        if let workoutHistory { return workoutHistory }
+        let details = [workoutID: sampleWorkoutDetail(), upperPhysiqueWorkoutID: upperPhysiqueWorkoutDetail()]
+        return sampleWorkouts().map { details[$0.id] ?? WorkoutDetailResponse(workout: $0, sets: []) }
+    }
 
     /// Day 4 session with the curl + pressdown superset, for the logger's Last line.
     static func upperPhysiqueWorkoutDetail() -> WorkoutDetailResponse {
@@ -1921,9 +1936,6 @@ enum VisualQAFixtures {
         }
         let program = TrainingProgramRecord.bundledV2()
         return [
-            "/api/workouts": json(ListWorkoutsResponse(workouts: sampleWorkouts())),
-            "/api/workouts/\(workoutID)": json(sampleWorkoutDetail()),
-            "/api/workouts/\(upperPhysiqueWorkoutID)": json(upperPhysiqueWorkoutDetail()),
             "/api/programs": json(TrainingProgramListResponse(programs: [program])),
             "/api/programs/active": json(program),
             "/api/programs/\(program.id)": json(program),
@@ -2028,6 +2040,9 @@ extension VisualQASnapshotTests {
         // Tall build-62 renders reach ~21k px on the Pro simulator; the 2-minute default
         // allowance timed out test74 there in run 37165562250. CI caps this at 240 s.
         executionTimeAllowance = 240
+        // The logger's Last lines and the Train card read this history from the on-device log.
+        VisualQAFixtures.workoutHistory = VisualQAFixtures.build62History()
+        defer { VisualQAFixtures.workoutHistory = nil }
         var fixture: VisualQABuild62Fixture?
         try await eachSize(name, heightMultiplier: heightMultiplier, sheet: {
             let seeded = VisualQABuild62Fixture(scenario: scenario)
@@ -2119,12 +2134,9 @@ extension VisualQAFixtures {
         }
         var program = TrainingProgramRecord.bundledV2()
         program.body = build62Body()
-        let history = build62History()
         responses["/api/programs"] = json(TrainingProgramListResponse(programs: [program]))
         responses["/api/programs/active"] = json(program)
         responses["/api/programs/\(program.id)"] = json(program)
-        responses["/api/workouts"] = json(ListWorkoutsResponse(workouts: history.map(\.workout)))
-        for detail in history { responses["/api/workouts/\(detail.workout.id)"] = json(detail) }
         return responses
     }
 }
@@ -2465,7 +2477,7 @@ enum VisualQACCFormFixtures {
 /// Shots 100-103: Train on Tue 2026-10-06 09:00 New York with the real Neon
 /// history (Day 1-4 on 9/28-10/1, Day 5 skipped), so the cycle says Day 1
 /// Lower A, week 2. Each render gets its own TrainProgressStore on a fresh
-/// defaults suite, seeded with the same history the stub bridge returns.
+/// defaults suite, seeded with the same history as the on-device log.
 extension VisualQASnapshotTests {
     func test100TrainNextInCycle() async throws {
         try await build66Shot("100-train-next-in-cycle", overrideDayIndex: nil)
@@ -2503,6 +2515,10 @@ extension VisualQASnapshotTests {
             XCTAssertFalse(resolution.canStart)
             XCTAssertFalse(resolution.canChange)
         }
+        VisualQAFixtures.workoutHistory = VisualQABuild66Fixture.history(loggedToday: loggedToday).map {
+            WorkoutDetailResponse(workout: $0, sets: [])
+        }
+        defer { VisualQAFixtures.workoutHistory = nil }
         try await eachSize(name, sheet: showsSheet ? {
             let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex, loggedToday: loggedToday)
             VisualQAGraveyard.keep(progress)
@@ -2518,9 +2534,6 @@ extension VisualQASnapshotTests {
                 onBackToSuggested: {}
             ))
         } : nil) { _ in
-            // install() has already registered the read-only protocol; only
-            // /api/workouts differs from the shared fixtures.
-            VisualQAStubStorage.setResponses(VisualQABuild66Fixture.responses(loggedToday: loggedToday))
             let progress = VisualQABuild66Fixture.progress(overrideDayIndex: overrideDayIndex, loggedToday: loggedToday)
             VisualQAGraveyard.keep(progress)
             return VisualQATabShell(selected: .train) {
@@ -2559,17 +2572,7 @@ enum VisualQABuild66Fixture {
         return [today] + week1
     }
 
-    static func responses(loggedToday: Bool = false) -> [String: (Int, Data)] {
-        var responses = VisualQAFixtures.buildResponses()
-        if let data = try? JSONEncoder().encode(ListWorkoutsResponse(workouts: history(loggedToday: loggedToday))) {
-            responses["/api/workouts"] = (200, data)
-        } else {
-            XCTFail("Could not encode build-66 workout history")
-        }
-        return responses
-    }
-
-    /// A store on a fresh suite with the bridge history, and Day 3 picked for
+    /// A store on a fresh suite with that history, and Day 3 picked for
     /// today when `overrideDayIndex` is set.
     static func progress(overrideDayIndex: Int?, loggedToday: Bool = false) -> TrainProgressStore {
         let suite = "visual-qa-build66-\(UUID().uuidString)"

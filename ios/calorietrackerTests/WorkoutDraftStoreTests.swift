@@ -3,11 +3,9 @@ import Testing
 @testable import calorietracker
 
 /// The in-progress logger session must survive the logger going away and
-/// only disappear once the bridge accepts it or the user discards it.
+/// only disappear once the on-device workout log saved it or the user discards it.
 @MainActor
 struct WorkoutDraftStoreTests {
-    private struct PostFailed: Error {}
-
     @Test func draftRoundTripsThroughJSON() throws {
         var draft = WorkoutDraft(day: sampleDay(), now: fixedDate)
         draft.sets["Leg press"] = [
@@ -50,70 +48,70 @@ struct WorkoutDraftStoreTests {
         }
     }
 
-    @Test func successfulSaveClearsDraft() async throws {
-        try await withAsyncDirectory { directory in
+    @Test func successfulSaveClearsDraft() throws {
+        try withDirectory { directory in
             let day = sampleDay()
             let store = WorkoutDraftStore(directory: directory)
+            let log = WorkoutLogStore(persistence: .file(logURL(in: directory)))
             store.update(day) { draft in
                 draft.sets["Leg press"] = [LoggedSet(weight: 145, reps: 12, rir: 2, rpeText: "8,5")]
                 draft.sets["Leg curl"] = [LoggedSet(weight: 60, reps: 15, rir: 1, rpeText: "")]
             }
+            let id = try #require(store.draft?.recordID)
 
-            try await confirmation("posts the draft to the bridge") { posted in
-                try await store.save(now: fixedDate) { payload in
-                    posted()
-                    #expect(payload.programDay == "Day1_LowerA")
-                    #expect(payload.sets.map(\.exercise) == ["Leg press", "Leg curl"])
-                    #expect(payload.sets.map(\.order) == [0, 1])
-                    #expect(payload.sets.first?.rpe == 8.5)
-                    #expect(payload.sets.last?.rpe == nil)
-                    #expect(payload.conditioning == nil)
-                }
-            }
+            try store.save(to: log, now: fixedDate)
 
+            let saved = try #require(log.detail(id: id))
+            #expect(saved.workout.programDay == "Day1_LowerA")
+            #expect(saved.sets.map(\.exercise) == ["Leg press", "Leg curl"])
+            #expect(saved.sets.map(\.setOrder) == [0, 1])
+            #expect(saved.sets.first?.rpe == 8.5)
+            #expect(saved.sets.last?.rpe == nil)
+            #expect(saved.workout.conditioning == nil)
             #expect(store.draft == nil)
             #expect(WorkoutDraftStore(directory: directory).draft == nil)
         }
     }
 
-    @Test func failedSaveKeepsDraft() async throws {
-        try await withAsyncDirectory { directory in
+    @Test func failedSaveKeepsDraft() throws {
+        try withDirectory { directory in
             let day = sampleDay()
             let store = WorkoutDraftStore(directory: directory)
             store.update(day) { draft in
                 draft.sets["Leg press"] = [LoggedSet(weight: 145, reps: 12, rir: 2, rpeText: "")]
             }
             let before = store.draft
+            // The log's folder is a plain file, so the log can't be written.
+            let blocker = directory.appendingPathComponent("blocker")
+            try Data("x".utf8).write(to: blocker)
+            let log = WorkoutLogStore(persistence: .file(blocker.appendingPathComponent(WorkoutLogFile.fileName)))
 
-            await #expect(throws: PostFailed.self) {
-                try await store.save { _ in throw PostFailed() }
-            }
+            #expect(throws: (any Error).self) { try store.save(to: log) }
 
             #expect(store.draft != nil)
             #expect(store.draft == before)
             #expect(WorkoutDraftStore(directory: directory).draft?.sets == before?.sets)
+            #expect(log.workouts.isEmpty)
         }
     }
 
-    @Test func editsDuringSaveSurviveSuccessfulSave() async throws {
-        try await withAsyncDirectory { directory in
+    @Test func savingAgainAfterACrashKeepsOneWorkout() throws {
+        try withDirectory { directory in
             let day = sampleDay()
             let store = WorkoutDraftStore(directory: directory)
+            let log = WorkoutLogStore(persistence: .file(logURL(in: directory)))
             store.update(day) { draft in
                 draft.sets["Leg press"] = [LoggedSet(weight: 145, reps: 12, rir: 2, rpeText: "")]
             }
+            // The log saved it, then the app died before the draft was cleared.
+            let draft = try #require(store.draft)
+            try log.save(draft.payload(now: fixedDate), id: try #require(draft.recordID))
 
-            try await store.save(now: fixedDate) { payload in
-                #expect(payload.sets.map(\.exercise) == ["Leg press"])
-                store.update(day) { draft in
-                    draft.sets["Leg curl"] = [LoggedSet(weight: 60, reps: 15, rir: 1, rpeText: "")]
-                }
-            }
+            let relaunched = WorkoutDraftStore(directory: directory)
+            try relaunched.save(to: log, now: fixedDate)
 
-            #expect(store.draft?.sets["Leg curl"]?.first?.weight == 60)
-            #expect(store.draft?.sets["Leg press"]?.count == 1)
-            let reopened = WorkoutDraftStore(directory: directory)
-            #expect(reopened.draft?.sets == store.draft?.sets)
+            #expect(WorkoutLogStore(persistence: .file(logURL(in: directory))).workouts.count == 1)
+            #expect(relaunched.draft == nil)
         }
     }
 
@@ -146,7 +144,7 @@ struct WorkoutDraftStoreTests {
         }
     }
 
-    @Test func sessionDateIsTheDayTheWorkoutStarted() async throws {
+    @Test func sessionDateIsTheDayTheWorkoutStarted() throws {
         let started = try localDate(year: 2026, month: 9, day: 29, hour: 23, minute: 50)
         let saved = try localDate(year: 2026, month: 9, day: 30, hour: 0, minute: 20)
         let startedStamp = isoTimestamp(started)
@@ -160,9 +158,10 @@ struct WorkoutDraftStoreTests {
         #expect(payload.openedAtUtc == startedStamp)
         #expect(payload.recordedAtUtc == savedStamp)
 
-        try await withAsyncDirectory { directory in
+        try withDirectory { directory in
             let day = sampleDay()
             let store = WorkoutDraftStore(directory: directory)
+            let log = WorkoutLogStore(persistence: .file(logURL(in: directory)))
             store.update(day, startedAt: started) { draft in
                 draft.sets["Leg press"] = [LoggedSet(weight: 145, reps: 12, rir: 2, rpeText: "")]
             }
@@ -173,14 +172,10 @@ struct WorkoutDraftStoreTests {
             #expect(store.draft?.startedAt == started)
             #expect(store.draft?.sessionDate == "2026-09-29")
 
-            try await confirmation("posts the start day") { posted in
-                try await store.save(now: saved) { payload in
-                    posted()
-                    #expect(payload.sessionDate == "2026-09-29")
-                    #expect(payload.openedAtUtc == startedStamp)
-                    #expect(payload.recordedAtUtc == savedStamp)
-                }
-            }
+            try store.save(to: log, now: saved)
+            let workout = try #require(log.workouts.first)
+            #expect(workout.sessionDate == "2026-09-29")
+            #expect(workout.recordedAt == savedStamp)
             #expect(store.draft == nil)
         }
     }
@@ -378,10 +373,8 @@ struct WorkoutDraftStoreTests {
         try body(directory)
     }
 
-    private func withAsyncDirectory(_ body: (URL) async throws -> Void) async throws {
-        let directory = makeDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        try await body(directory)
+    private func logURL(in directory: URL) -> URL {
+        directory.appendingPathComponent("WorkoutLog", isDirectory: true).appendingPathComponent(WorkoutLogFile.fileName)
     }
 
     private func makeDirectory() -> URL {

@@ -931,102 +931,42 @@ struct ProgressV2MathTests {
         #expect(allEmpty.start == "2026-09-30")
     }
 
-    @Test func detailCacheInvalidationForcesRefetch() {
-        var cache = ProgressWorkoutDetailCache()
-        let bridge = "https://bridge.example"
-        let other = "https://other.example"
-        cache.store(ProgressWorkoutTotals(sets: 10, volumeLb: 1_000), id: "w1", baseURL: bridge)
-        cache.store(ProgressWorkoutTotals(sets: 5, volumeLb: 500), id: "w2", baseURL: bridge)
-        cache.store(ProgressWorkoutTotals(sets: 3, volumeLb: 300), id: "w1", baseURL: other)
+    // MARK: - From the workout log
 
-        let before = cache.lookup(ids: ["w1", "w2", "w3"], baseURL: bridge)
-        #expect(before.found["w1"] == ProgressWorkoutTotals(sets: 10, volumeLb: 1_000))
-        #expect(before.missing == ["w3"])
-
-        // Retry / pull to refresh: every workout from this bridge is refetched.
-        cache.invalidate(baseURL: bridge)
-        let after = cache.lookup(ids: ["w1", "w2"], baseURL: bridge)
-        #expect(after.found.isEmpty)
-        #expect(after.missing == ["w1", "w2"])
-        #expect(cache.lookup(ids: ["w1"], baseURL: other).found["w1"]?.sets == 3)
-
-        // Fetched totals (an edited workout) replace the old ones.
-        cache.store(ProgressWorkoutTotals(sets: 12, volumeLb: 1_400), id: "w1", baseURL: bridge)
-        cache.store(ProgressWorkoutTotals(sets: 14, volumeLb: 1_600), id: "w1", baseURL: bridge)
-        #expect(cache.lookup(ids: ["w1"], baseURL: bridge).found["w1"] == ProgressWorkoutTotals(sets: 14, volumeLb: 1_600))
-    }
-
-    // MARK: - Bridge JSON
-
-    @Test func decodesWorkoutListTolerantly() throws {
-        let json = """
-        {"workouts":[
-          {"id":"w1","kind":"COMPLETED","program_day":"3-wed","title":"Pull / Hinge","session_date":"2026-09-30T00:00:00.000Z","recorded_at":"2026-09-30T12:04:47.384Z","units":"lb","notes":[],"synthetic":false},
-          {"id":42,"kind":"completed","session_date":"2026-09-27"},
-          {"kind":"COMPLETED","session_date":"2026-09-26"},
-          {"id":"w4","kind":"COMPLETED","session_date":null,"recorded_at":"2026-09-25T12:00:00Z","synthetic":true},
-          {"id":"w5","kind":"strength","session_date":"2026-09-24","synthetic":null}
-        ]}
-        """
-        let workouts = try ProgressTrainingMath.decodeWorkouts(Data(json.utf8))
-        #expect(workouts.map(\.id) == ["w1", "42", "w4", "w5"])
-        #expect(workouts[0].programDay == "3-wed")
-        #expect(workouts[0].title == "Pull / Hinge")
-        #expect(ProgressTrainingMath.dayKey(for: workouts[0]) == "2026-09-30")
-        #expect(workouts.map(ProgressTrainingMath.isCompleted) == [true, true, false, false])
-        #expect(workouts[2].synthetic == true)
-        #expect(workouts[3].synthetic == nil)
-        #expect(throws: (any Error).self) {
-            try ProgressTrainingMath.decodeWorkouts(Data(#"{"error":"unauthorized"}"#.utf8))
+    @Test func trainingSummaryComesFromTheWorkoutLog() throws {
+        func detail(_ id: String, _ date: String, kind: String = "COMPLETED", synthetic: Bool? = false,
+                    sets: [(Double, Int)]) -> WorkoutDetailResponse {
+            WorkoutDetailResponse(
+                workout: RemoteWorkout(id: id, kind: kind, programVersion: "program-v2", programDay: "1-mon",
+                                       title: "Lower A", units: "lb", sessionDate: date, conditioning: nil,
+                                       notes: [], contentHash: nil, synthetic: synthetic, recordedAt: nil),
+                sets: sets.enumerated().map { index, set in
+                    RemoteWorkoutSet(id: "\(index)", workoutId: id, setOrder: index, exercise: "Leg press",
+                                     loadLb: set.0, reps: set.1, rir: nil, rpe: nil)
+                }
+            )
         }
-    }
+        let now = try #require(ProgressTrainingMath.parseTimestamp("2026-09-30T16:00:00Z"))
+        let summary = ProgressTrainingLoader.summary(range: .month, details: [
+            detail("a", "2026-09-28", sets: [(100, 10), (50, 12)]),
+            detail("b", "2026-09-30", sets: [(135, 8)]),
+            // Imported bridge rows carry a timestamp; only the day counts.
+            detail("c", "2026-09-24T00:00:00.000Z", sets: [(200, 5)]),
+            detail("synthetic", "2026-09-29", synthetic: true, sets: [(500, 10)]),
+            detail("strength", "2026-09-29", kind: "strength", sets: [(500, 10)]),
+        ], now: now)
 
-    @Test func decodesWorkoutDetailWithStringNumbersAndNulls() throws {
-        let json = """
-        {"workout":{"id":"w1","kind":"COMPLETED","program_day":"3-wed","title":"Pull / Hinge","session_date":"2026-09-30T00:00:00.000Z"},
-         "sets":[
-           {"id":"97","workout_id":"w1","set_order":0,"exercise":"Cable pull-through","load_lb":35,"reps":12,"rir":3,"rpe":null,"logged_at":"2026-09-30T12:10:00.000Z"},
-           {"id":98,"workout_id":"w1","set_order":"1","exercise":"RDL","load_lb":"135.5","reps":"8","rir":null},
-           {"id":"99","exercise":"Pull-up","load_lb":null,"reps":10},
-           {"id":"100","exercise":"Row","load_lb":"n/a","reps":8},
-           "garbage"
-         ]}
-        """
-        let detail = try ProgressTrainingMath.decodeWorkoutDetail(Data(json.utf8))
-        #expect(detail.sets.count == 4)
-        #expect(detail.sets[0].exercise == "Cable pull-through")
-        #expect(detail.sets[1].id == "98")
-        #expect(detail.sets[1].loadLb == 135.5)
-        #expect(detail.sets[1].reps == 8)
-        #expect(detail.sets[2].loadLb == nil)
-        #expect(detail.sets[3].loadLb == nil)
-        // 35 × 12 + 135.5 × 8; bodyweight / unreadable loads add sets but no volume.
-        #expect(detail.totals == ProgressWorkoutTotals(sets: 4, volumeLb: 1_504))
-
-        let noSets = try ProgressTrainingMath.decodeWorkoutDetail(Data(#"{"workout":{"id":"w2"},"sets":[]}"#.utf8))
-        #expect(noSets.totals == ProgressWorkoutTotals(sets: 0, volumeLb: 0))
-        #expect(throws: (any Error).self) {
-            try ProgressTrainingMath.decodeWorkoutDetail(Data(#"{"error":"not_found"}"#.utf8))
-        }
-    }
-
-    @Test func bridgeConfigMatchesNeonBridgeRequests() {
-        let config = ProgressBridgeConfig(baseURL: "https://jl-workout-ingest.vercel.app", apiKey: "secret")
-        #expect(config.isConfigured)
-        let request = config.request(path: "/api/workouts", queryItems: [URLQueryItem(name: "limit", value: "200")])
-        #expect(request?.url?.absoluteString == "https://jl-workout-ingest.vercel.app/api/workouts?limit=200")
-        let detail = config.request(path: ProgressBridgeConfig.workoutPath(id: "8c1f-2a"), queryItems: [])
-        #expect(detail?.url?.absoluteString == "https://jl-workout-ingest.vercel.app/api/workouts/8c1f-2a")
-        #expect(ProgressBridgeConfig.workoutPath(id: "a/b c") == "/api/workouts/a%2Fb%20c")
-        #expect(request?.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
-        #expect(request?.value(forHTTPHeaderField: "Accept") == "application/json")
-        #expect(request?.httpMethod == "GET")
-
-        #expect(!ProgressBridgeConfig(baseURL: "  ", apiKey: nil).isConfigured)
-        #expect(!ProgressBridgeConfig(baseURL: "not a url", apiKey: nil).isConfigured)
-        #expect(ProgressBridgeConfig(baseURL: "", apiKey: nil).request(path: "/api/workouts", queryItems: []) == nil)
-        let anonymous = ProgressBridgeConfig(baseURL: "https://example.invalid", apiKey: nil)
-            .request(path: "/api/workouts", queryItems: [URLQueryItem(name: "limit", value: "200")])
-        #expect(anonymous?.value(forHTTPHeaderField: "Authorization") == nil)
+        let thisWeek = try #require(summary.weeks.first { $0.weekStart == "2026-09-28" })
+        #expect(thisWeek.sessions == 2)
+        #expect(thisWeek.sets == 3)
+        #expect(thisWeek.volumeLb == 2_680)
+        let lastWeek = try #require(summary.weeks.first { $0.weekStart == "2026-09-21" })
+        #expect(lastWeek.sessions == 1)
+        #expect(lastWeek.volumeLb == 1_000)
+        // The log is complete: nothing is cut off or missing.
+        #expect(!summary.listTruncated)
+        #expect(summary.failedDetails == 0)
+        #expect(!summary.isDetailLimited)
+        #expect(summary.totalSessions == 3)
     }
 }

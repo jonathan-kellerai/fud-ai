@@ -1,43 +1,9 @@
 import Foundation
 
-// MARK: - Tolerant bridge decoding
+// MARK: - Workouts
 
-/// Number that may arrive as a JSON number, a numeric string (Postgres
-/// `numeric` comes back as a string through node-postgres) or null.
-nonisolated struct ProgressFlexibleNumber: Decodable, Equatable, Sendable {
-    let value: Double?
-
-    init(_ value: Double?) {
-        self.value = value
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() {
-            value = nil
-        } else if let number = try? container.decode(Double.self) {
-            value = number.isFinite ? number : nil
-        } else if let text = try? container.decode(String.self) {
-            let parsed = Double(text.trimmingCharacters(in: .whitespacesAndNewlines))
-            value = parsed.flatMap { $0.isFinite ? $0 : nil }
-        } else {
-            value = nil
-        }
-    }
-}
-
-/// Decodes one array element, turning a malformed row into nil instead of
-/// failing the whole response.
-nonisolated struct ProgressLossy<Element: Decodable & Sendable>: Decodable, Sendable {
-    let value: Element?
-
-    init(from decoder: Decoder) throws {
-        value = try? Element(from: decoder)
-    }
-}
-
-/// One row of GET /api/workouts. The list has no sets.
-nonisolated struct ProgressBridgeWorkout: Decodable, Equatable, Sendable {
+/// One completed-session row the weekly math reads (from the on-device workout log).
+nonisolated struct ProgressBridgeWorkout: Equatable, Sendable {
     let id: String
     /// "COMPLETED" for real saved sessions.
     let kind: String?
@@ -46,16 +12,6 @@ nonisolated struct ProgressBridgeWorkout: Decodable, Equatable, Sendable {
     let sessionDate: String?
     let recordedAt: String?
     let synthetic: Bool?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case kind
-        case programDay = "program_day"
-        case title
-        case sessionDate = "session_date"
-        case recordedAt = "recorded_at"
-        case synthetic
-    }
 
     init(
         id: String,
@@ -74,101 +30,6 @@ nonisolated struct ProgressBridgeWorkout: Decodable, Equatable, Sendable {
         self.recordedAt = recordedAt
         self.synthetic = synthetic
     }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let text = try? container.decode(String.self, forKey: .id) {
-            id = text
-        } else if let number = try? container.decode(Int.self, forKey: .id) {
-            id = String(number)
-        } else {
-            throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "Workout row has no id")
-        }
-        kind = try? container.decodeIfPresent(String.self, forKey: .kind)
-        programDay = try? container.decodeIfPresent(String.self, forKey: .programDay)
-        title = try? container.decodeIfPresent(String.self, forKey: .title)
-        sessionDate = try? container.decodeIfPresent(String.self, forKey: .sessionDate)
-        recordedAt = try? container.decodeIfPresent(String.self, forKey: .recordedAt)
-        synthetic = try? container.decodeIfPresent(Bool.self, forKey: .synthetic)
-    }
-}
-
-nonisolated struct ProgressBridgeWorkoutList: Decodable, Sendable {
-    let workouts: [ProgressBridgeWorkout]
-
-    enum CodingKeys: String, CodingKey {
-        case workouts
-    }
-
-    init(workouts: [ProgressBridgeWorkout]) {
-        self.workouts = workouts
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let rows = try container.decode([ProgressLossy<ProgressBridgeWorkout>].self, forKey: .workouts)
-        workouts = rows.compactMap(\.value)
-    }
-}
-
-/// One row of `sets` in GET /api/workouts/{id}.
-nonisolated struct ProgressBridgeSet: Decodable, Equatable, Sendable {
-    let id: String?
-    let exercise: String?
-    let loadLb: Double?
-    let reps: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case exercise
-        case loadLb = "load_lb"
-        case reps
-    }
-
-    init(id: String? = nil, exercise: String? = nil, loadLb: Double?, reps: Double?) {
-        self.id = id
-        self.exercise = exercise
-        self.loadLb = loadLb
-        self.reps = reps
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = (try? container.decodeIfPresent(String.self, forKey: .id))
-            ?? (try? container.decodeIfPresent(Int.self, forKey: .id)).map { String($0) }
-        exercise = try? container.decodeIfPresent(String.self, forKey: .exercise)
-        loadLb = (try? container.decodeIfPresent(ProgressFlexibleNumber.self, forKey: .loadLb))?.value
-        reps = (try? container.decodeIfPresent(ProgressFlexibleNumber.self, forKey: .reps))?.value
-    }
-
-    /// load_lb × reps; a missing load or rep count adds nothing.
-    var volumeLb: Double {
-        guard let loadLb, let reps else { return 0 }
-        return loadLb * reps
-    }
-}
-
-/// GET /api/workouts/{id} → {"workout": {...}, "sets": [...]}.
-nonisolated struct ProgressBridgeWorkoutDetail: Decodable, Sendable {
-    let sets: [ProgressBridgeSet]
-
-    enum CodingKeys: String, CodingKey {
-        case sets
-    }
-
-    init(sets: [ProgressBridgeSet]) {
-        self.sets = sets
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let rows = try container.decode([ProgressLossy<ProgressBridgeSet>].self, forKey: .sets)
-        sets = rows.compactMap(\.value)
-    }
-
-    var totals: ProgressWorkoutTotals {
-        ProgressWorkoutTotals(sets: sets.count, volumeLb: sets.reduce(0) { $0 + $1.volumeLb })
-    }
 }
 
 /// Sets and volume of one completed workout.
@@ -176,42 +37,6 @@ nonisolated struct ProgressWorkoutTotals: Equatable, Sendable {
     let sets: Int
     /// Σ load_lb × reps.
     let volumeLb: Double
-}
-
-/// Sets and volume per workout, keyed by bridge URL and workout id.
-nonisolated struct ProgressWorkoutDetailCache: Sendable {
-    private var entries: [String: ProgressWorkoutTotals] = [:]
-
-    init() {}
-
-    private static func key(baseURL: String, id: String) -> String {
-        "\(baseURL)|\(id)"
-    }
-
-    /// Cached totals for `ids`, and the ids that still need a request (in order).
-    func lookup(ids: [String], baseURL: String) -> (found: [String: ProgressWorkoutTotals], missing: [String]) {
-        var found: [String: ProgressWorkoutTotals] = [:]
-        var missing: [String] = []
-        for id in ids {
-            if let totals = entries[Self.key(baseURL: baseURL, id: id)] {
-                found[id] = totals
-            } else {
-                missing.append(id)
-            }
-        }
-        return (found, missing)
-    }
-
-    /// Replaces any earlier totals for the workout.
-    mutating func store(_ totals: ProgressWorkoutTotals, id: String, baseURL: String) {
-        entries[Self.key(baseURL: baseURL, id: id)] = totals
-    }
-
-    /// Forgets every workout from one bridge (Retry / pull to refresh).
-    mutating func invalidate(baseURL: String) {
-        let prefix = "\(baseURL)|"
-        entries = entries.filter { !$0.key.hasPrefix(prefix) }
-    }
 }
 
 // MARK: - Weekly summary
@@ -255,7 +80,7 @@ nonisolated struct ProgressTrainingSummary: Equatable, Sendable {
     /// Weeks overlapping the selected range, before the week cap.
     let weeksInRange: Int
     let weekLimit: Int
-    /// /api/workouts returned its full limit, so older sessions may be missing.
+    /// The workout list reached `listLimit`, so older sessions may be missing.
     let listTruncated: Bool
     /// Oldest day in a truncated list, when that is on or after the first
     /// counted day: sessions before it are unknown, not zero, and its own
@@ -325,7 +150,6 @@ nonisolated enum ProgressTrainingMath {
     static let maxDetailSessions = 60
     /// Weeks drawn; a year of bars. Older weeks in All are summarized in a note.
     static let maxWeeks = 53
-    static let maxConcurrentRequests = 4
 
     static var eastern: TimeZone { TimeZone(identifier: "America/New_York") ?? .gmt }
 
@@ -601,108 +425,5 @@ nonisolated enum ProgressTrainingMath {
             detailLimit: detailLimit,
             failedDetails: failedDetails
         )
-    }
-
-    static func decodeWorkouts(_ data: Data) throws -> [ProgressBridgeWorkout] {
-        try JSONDecoder().decode(ProgressBridgeWorkoutList.self, from: data).workouts
-    }
-
-    static func decodeWorkoutDetail(_ data: Data) throws -> ProgressBridgeWorkoutDetail {
-        try JSONDecoder().decode(ProgressBridgeWorkoutDetail.self, from: data)
-    }
-}
-
-// MARK: - Network
-
-/// Same URL and header rules as NeonBridgeService.makeURL / makeRequest,
-/// built from its settings so Progress follows whatever bridge the user set.
-nonisolated struct ProgressBridgeConfig: Equatable, Sendable {
-    let baseURL: String
-    let apiKey: String?
-
-    var isConfigured: Bool {
-        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let url = URL(string: trimmed),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
-              url.host?.isEmpty == false else { return false }
-        return true
-    }
-
-    func request(path: String, queryItems: [URLQueryItem]) -> URLRequest? {
-        guard isConfigured else { return nil }
-        var components = URLComponents(string: baseURL + path)
-        if !queryItems.isEmpty {
-            components?.queryItems = queryItems
-        }
-        guard let url = components?.url else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 20
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let apiKey, !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
-        return request
-    }
-
-    /// "/api/workouts/{id}" with the id percent-encoded as one path segment.
-    static func workoutPath(id: String) -> String {
-        var allowed = CharacterSet.urlPathAllowed
-        allowed.remove(charactersIn: "/")
-        return "/api/workouts/" + (id.addingPercentEncoding(withAllowedCharacters: allowed) ?? id)
-    }
-}
-
-nonisolated enum ProgressTrainingError: Error, Equatable {
-    case notConfigured
-    case offline
-    case http(Int)
-    case badResponse
-    case transport
-}
-
-nonisolated enum ProgressTrainingAPI {
-    static func fetchWorkouts(config: ProgressBridgeConfig, limit: Int = ProgressTrainingMath.workoutListLimit) async throws -> [ProgressBridgeWorkout] {
-        let data = try await get(config: config, path: "/api/workouts", queryItems: [URLQueryItem(name: "limit", value: "\(limit)")])
-        do {
-            return try ProgressTrainingMath.decodeWorkouts(data)
-        } catch {
-            throw ProgressTrainingError.badResponse
-        }
-    }
-
-    static func fetchWorkoutTotals(config: ProgressBridgeConfig, id: String) async throws -> ProgressWorkoutTotals {
-        let data = try await get(config: config, path: ProgressBridgeConfig.workoutPath(id: id), queryItems: [])
-        do {
-            return try ProgressTrainingMath.decodeWorkoutDetail(data).totals
-        } catch {
-            throw ProgressTrainingError.badResponse
-        }
-    }
-
-    private static func get(config: ProgressBridgeConfig, path: String, queryItems: [URLQueryItem]) async throws -> Data {
-        guard let request = config.request(path: path, queryItems: queryItems) else {
-            throw ProgressTrainingError.notConfigured
-        }
-        let result: (Data, URLResponse)
-        do {
-            result = try await URLSession.shared.data(for: request)
-        } catch let error as URLError {
-            switch error.code {
-            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .timedOut, .cannotConnectToHost, .cannotFindHost:
-                throw ProgressTrainingError.offline
-            default:
-                throw ProgressTrainingError.transport
-            }
-        } catch {
-            throw ProgressTrainingError.transport
-        }
-        let (data, response) = result
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw ProgressTrainingError.http(http.statusCode)
-        }
-        return data
     }
 }

@@ -3,8 +3,8 @@ import SwiftUI
 // MARK: - Progress Tab
 
 /// Progress: body composition (weight, body fat, lean mass) with 7-day trends,
-/// latest readings, steps from Apple Health, training volume from the Neon
-/// bridge, workout burn, and nutrition averages for one selected range.
+/// latest readings, steps from Apple Health, training volume from the workouts
+/// saved on this phone, workout burn, and nutrition averages for one selected range.
 ///
 /// Heavy work (series, trends, downsampling, nutrition) runs in `.task(id:)`
 /// keyed by the range and the data counts, never in `body`.
@@ -16,6 +16,8 @@ struct ProgressTabView: View {
     @Environment(StrengthWorkoutStore.self) private var strengthWorkoutStore
     @Environment(ImportedHealthWorkoutStore.self) private var importedHealthWorkoutStore
     @Environment(HealthKitManager.self) private var healthKitManager
+    /// Optional: fixture hosts render without it, and only read it past the fixture guard.
+    @Environment(WorkoutLogStore.self) private var workoutLog: WorkoutLogStore?
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
 
     @State private var timeRange: TimeRange
@@ -26,7 +28,6 @@ struct ProgressTabView: View {
     @State private var trainingRefreshToken = 0
     @State private var stepsRefreshToken = 0
     @State private var compositionRefreshToken = 0
-    @State private var forceTrainingRefresh = false
     @State private var showLogWeight = false
     @State private var showLogBodyFat = false
     @State private var showGoalReached = false
@@ -37,7 +38,7 @@ struct ProgressTabView: View {
     @State private var foodRangeStats: ProgressFoodRangeStats?
     @State private var isLoadingFoodRangeStats = false
 
-    /// Set only by snapshot tests; replaces store, HealthKit and bridge data.
+    /// Set only by snapshot tests; replaces store, HealthKit and workout data.
     private let fixture: ProgressV2Fixture?
 
     init() {
@@ -46,7 +47,7 @@ struct ProgressTabView: View {
         _metric = State(initialValue: .weight)
     }
 
-    /// Renders fixed data without touching HealthKit or the Neon bridge.
+    /// Renders fixed data without touching HealthKit or the workout log.
     init(fixture: ProgressV2Fixture) {
         self.fixture = fixture
         _timeRange = State(initialValue: fixture.timeRange)
@@ -167,8 +168,7 @@ struct ProgressTabView: View {
                     ProgressTrainingCard(
                         state: training,
                         rangeDescription: timeRange.rangeDescription,
-                        useMetric: useMetric,
-                        onRetry: retryTraining
+                        useMetric: useMetric
                     )
 
                     workoutsSection
@@ -200,6 +200,9 @@ struct ProgressTabView: View {
             }
             .task(id: trainingTaskKey) {
                 await loadTraining()
+            }
+            .onChange(of: workoutLog?.records) { _, _ in
+                trainingRefreshToken += 1
             }
             .task(id: foodRangeStatsTaskKey) {
                 isLoadingFoodRangeStats = true
@@ -391,15 +394,10 @@ struct ProgressTabView: View {
 
     // MARK: - Loading
 
-    private func retryTraining() {
-        forceTrainingRefresh = true
-        trainingRefreshToken += 1
-    }
-
     /// Pull to refresh: rebuild body composition, re-read Health steps and
-    /// bypass the bridge caches (workout list and per-workout sets).
+    /// recount training from the workout log.
     private func refresh() async {
-        retryTraining()
+        trainingRefreshToken += 1
         stepsRefreshToken += 1
         compositionRefreshToken += 1
     }
@@ -445,16 +443,10 @@ struct ProgressTabView: View {
             training = fixture.training
             return
         }
-        let force = forceTrainingRefresh
-        forceTrainingRefresh = false
-        training = .loading
-        let result = await ProgressTrainingLoader.load(
-            range: timeRange,
-            forceRefresh: force,
-            now: referenceNow
-        )
+        await Task.yield()
+        let summary = ProgressTrainingLoader.summary(range: timeRange, details: workoutLog?.details ?? [], now: referenceNow)
         guard !Task.isCancelled else { return }
-        training = result
+        training = .loaded(summary)
     }
 
     // MARK: - Labels

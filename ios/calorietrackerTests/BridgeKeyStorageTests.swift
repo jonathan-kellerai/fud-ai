@@ -119,12 +119,8 @@ struct BridgeKeyStorageTests {
             bridge.settings = savedSettings
         }
 
+        // Workouts stay on the phone (build 70), so no workout call is left to check.
         _ = try await bridge.checkHealth()
-        _ = try await bridge.listWorkouts(limit: 1)
-        _ = try await bridge.getWorkout(id: "auth-test-workout")
-        var draft = WorkoutDraft(day: ProgramV2Templates.day1LowerA, now: Date(timeIntervalSince1970: 100))
-        draft.sets[draft.exercises[0].name] = [LoggedSet(weight: 145, reps: 12, rir: 2, rpeText: "")]
-        _ = try await bridge.postWorkout(draft.payload(now: Date(timeIntervalSince1970: 200)))
         _ = try await bridge.activeProgram()
         // Foreground, HealthKit observer, and BGAppRefresh step sync all use this call.
         _ = try await bridge.postSteps(StepsPayload(date: "2026-10-03", steps: 1234,
@@ -132,23 +128,14 @@ struct BridgeKeyStorageTests {
         _ = try await CCLadderClient.fetchLadders(settings: bridge.settings)
         try await CCLadderClient.postEvent(CCLadderEventRequest(series: "pushup", eventType: "manual_step",
             fromStep: 1, toStep: 2, reason: "auth test", createdBy: "app"), settings: bridge.settings)
-        let progressConfig = ProgressTrainingLoader.currentConfig()
-        #expect(progressConfig.apiKey == Self.testKey)
-        _ = try await ProgressTrainingAPI.fetchWorkouts(config: progressConfig, limit: 1)
-        _ = try await ProgressTrainingAPI.fetchWorkoutTotals(config: progressConfig, id: "auth-test-workout")
 
         let requests = BridgeAuthorizationURLProtocol.requestLog.snapshot()
         #expect(requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } == [
             "GET /api/bridge/health",
-            "GET /api/workouts",
-            "GET /api/workouts/auth-test-workout",
-            "POST /api/workouts",
             "GET /api/programs/active",
             "POST /api/steps",
             "GET /api/cc/ladders",
             "POST /api/cc/events",
-            "GET /api/workouts",
-            "GET /api/workouts/auth-test-workout",
         ])
         for request in requests {
             #expect(request.url?.host == "bridge-key-tests.invalid")
@@ -288,12 +275,6 @@ nonisolated private final class BridgeAuthorizationURLProtocol: URLProtocol, @un
         switch (request.httpMethod, request.url?.path) {
         case ("GET", "/api/bridge/health"):
             json = #"{"ok":true,"service":"test","program":"v2","program_version":"v2","workouts":"ok","steps":"ok","steps_target":10000}"#
-        case ("GET", "/api/workouts"):
-            json = #"{"workouts":[]}"#
-        case ("GET", "/api/workouts/auth-test-workout"):
-            json = #"{"workout":{"id":"auth-test-workout","kind":"COMPLETED","program_version":"v2","program_day":"Day1_LowerA","title":"Lower A","units":"lb","session_date":"2026-10-03","notes":[]},"sets":[]}"#
-        case ("POST", "/api/workouts"):
-            json = #"{"id":"auth-test-workout","ok":true}"#
         case ("GET", "/api/programs/active"):
             json = #"{"id":"auth-test-program","lineage_id":"auth-test-lineage","version":1,"name":"Test","status":"active"}"#
         case ("POST", "/api/steps"):
