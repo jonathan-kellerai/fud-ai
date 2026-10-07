@@ -287,3 +287,12 @@ struct WorkoutRevision: Codable, Equatable {
         case workout, sets
     }
 }
+
+/// Decodes one element, turning a malformed one into nil instead of failing the list.
+struct WorkoutLossy<Value: Decodable>: Decodable {
+    var value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
+}
