@@ -8,8 +8,8 @@ import Foundation
 /// request log entries, one per attempt. The trace is passed explicitly, never through a
 /// task-local, so no task-local scope is open while app objects are released (swiftlang/swift#88036).
 final class AIRequestTrace {
-    static let hostedProviderName = "JL Physical AI (hosted)"
-    static let notSentProviderName = "Not sent"
+    nonisolated static let hostedProviderName = "JL Physical AI (hosted)"
+    nonisolated static let notSentProviderName = "Not sent"
 
     struct Attempt: Equatable {
         var provider: String

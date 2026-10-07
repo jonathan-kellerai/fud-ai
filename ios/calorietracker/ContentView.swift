@@ -3145,6 +3145,10 @@ struct ProfileView: View {
                 }
 
                 if settingsCategory == .aiProviders {
+                AIDiagnosticsSection()
+                }
+
+                if settingsCategory == .aiProviders {
                 Section {
                     TypeSafeEstimateCheckSection()
                 } footer: {
