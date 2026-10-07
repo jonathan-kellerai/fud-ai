@@ -89,9 +89,9 @@ struct WorkoutLogStoreTests {
         try save(store, draft().payload(now: finished.addingTimeInterval(30)), id: id)
         #expect(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id) == [id])
 
-        // A deleted workout isn't brought back by a repeated save.
+        // A deleted workout isn't brought back by a repeated save, and the save says so.
         try store.delete(id: id)
-        try save(store, draft().payload(now: finished), id: id)
+        #expect(throws: WorkoutLogError.deletedSinceSaved) { try save(store, draft().payload(now: finished), id: id) }
         #expect(store.workouts.isEmpty)
     }
 
