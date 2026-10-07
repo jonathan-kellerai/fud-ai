@@ -823,147 +823,131 @@ nonisolated enum PeptideMath {
         return items
     }
 
-    // MARK: - Summaries
+    // MARK: - Week
 
-    struct CompoundTotal: Identifiable, Equatable {
+    /// Monday first.
+    static let weekdayLetters = ["M", "T", "W", "T", "F", "S", "S"]
+    static let weekdayShortNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    static let weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    static let noRecordText = "–"
+
+    /// One day of one compound in the week grid, as entered. Never mg.
+    struct WeekCell: Equatable, Identifiable {
+        /// yyyy-MM-dd.
+        var date: String
+        var letter: String
+        var shortDay: String
+        /// "50u", "0.1mL", "2×", or a dash for no record.
+        var shortText: String
+        /// "50 units", "2 draws: 50 units, 25 units", or a dash.
+        var longText: String
+        /// "Monday, BPC-157, 50 units" / "Friday, no record".
+        var spoken: String
+        var hasRecord: Bool
+        var id: String { date }
+    }
+
+    struct WeekRow: Equatable, Identifiable {
         var compound: String
-        var units: String
-        var total: Double
-        var count: Int
-        var id: String { PeptideMath.compoundKey(compound) + "|" + units }
-
-        var text: String {
-            units.isEmpty ? "\(count)× (no amount)" : PeptideMath.number(total) + " " + units
-        }
-    }
-
-    struct DailySummary: Equatable {
-        var count: Int
-        var totals: [CompoundTotal]
-        var first: Date?
-        var last: Date?
-    }
-
-    /// Totals add only within identical units. mg and mcg stay separate lines.
-    static func totals(_ entries: [PeptideLogEntry]) -> [CompoundTotal] {
-        var order: [String] = []
-        var totals: [String: CompoundTotal] = [:]
-        for entry in entries where entry.countsAsTaken {
-            let units = (entry.units ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let key = compoundKey(entry.compound) + "|" + units
-            var item: CompoundTotal
-            if let existing = totals[key] {
-                item = existing
-            } else {
-                order.append(key)
-                item = CompoundTotal(compound: entry.compound, units: units, total: 0, count: 0)
-            }
-            item.count += 1
-            if let dose = entry.dose, !units.isEmpty {
-                item.total = ReconMath.clean(item.total + dose)
-            }
-            totals[key] = item
-        }
-        return order.compactMap { totals[$0] }
-    }
-
-    static func dailySummary(entries: [PeptideLogEntry], date: String) -> DailySummary {
-        let day = entries.filter { $0.countsAsTaken && $0.civilDate == date }
-        let times = day.compactMap(\.date).sorted()
-        return DailySummary(count: day.count, totals: totals(day), first: times.first, last: times.last)
-    }
-
-    struct WeekCount: Identifiable, Equatable {
-        /// Monday, yyyy-MM-dd.
-        var weekStart: String
-        var count: Int
-        var id: String { weekStart }
-    }
-
-    static func weeklyCounts(entries: [PeptideLogEntry], compound: String?, weeks: Int, today: String) -> [WeekCount] {
-        let key = compound.map(compoundKey)
-        let lastMonday = ReconMath.mondayOf(today)
-        let count = max(weeks, 1)
-        let starts = (0..<count).map { ReconMath.addDays(lastMonday, -7 * (count - 1 - $0)) }
-        var counts: [String: Int] = [:]
-        for entry in entries where entry.countsAsTaken {
-            if let key, compoundKey(entry.compound) != key { continue }
-            guard let civil = entry.civilDate else { continue }
-            counts[ReconMath.mondayOf(civil), default: 0] += 1
-        }
-        return starts.map { WeekCount(weekStart: $0, count: counts[$0] ?? 0) }
-    }
-
-    struct CompoundWindowSummary: Equatable, Identifiable {
-        var compound: String
-        var count7: Int
-        var count30: Int
-        var count90: Int
-        var totals30: [CompoundTotal]
-        var lastDose: Date?
+        /// Seven cells, Monday to Sunday.
+        var cells: [WeekCell]
+        var drawCount: Int
         var id: String { PeptideMath.compoundKey(compound) }
     }
 
-    static func compoundSummaries(entries: [PeptideLogEntry], today: String) -> [CompoundWindowSummary] {
-        let mine = entries.filter(\.countsAsTaken)
-        var order: [String] = []
-        var names: [String: String] = [:]
-        for entry in mine.sorted(by: { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }) {
-            let key = compoundKey(entry.compound)
-            if names[key] == nil {
-                names[key] = entry.compound
-                order.append(key)
-            }
+    /// One row per compound logged in the Monday-start week of `weekStart`,
+    /// by name; voided entries don't count.
+    static func weekRows(entries: [PeptideLogEntry], weekStart: String) -> [WeekRow] {
+        let days = (0..<7).map { ReconMath.addDays(weekStart, $0) }
+        let inWeek = entries.filter { entry in
+            entry.countsAsTaken && (entry.civilDate.map { days.contains($0) } ?? false)
         }
-        return order.map { key in
-            let rows = mine.filter { compoundKey($0.compound) == key }
-            func within(_ days: Int) -> [PeptideLogEntry] {
-                let from = ReconMath.addDays(today, -(days - 1))
-                return rows.filter { ($0.civilDate ?? "") >= from && ($0.civilDate ?? "") <= today }
+        var names: [String: String] = [:]
+        for entry in inWeek {
+            let key = compoundKey(entry.compound)
+            if names[key] == nil { names[key] = entry.compound }
+        }
+        let keys = names.keys.sorted {
+            (names[$0] ?? $0).localizedCaseInsensitiveCompare(names[$1] ?? $1) == .orderedAscending
+        }
+        return keys.map { key in
+            let name = names[key] ?? key
+            let mine = inWeek.filter { compoundKey($0.compound) == key }
+            let cells = days.enumerated().map { index, day in
+                weekCell(compound: name, day: day, index: index, entries: mine.filter { $0.civilDate == day })
             }
-            return CompoundWindowSummary(
-                compound: names[key] ?? key,
-                count7: within(7).count,
-                count30: within(30).count,
-                count90: within(90).count,
-                totals30: totals(within(30)),
-                lastDose: rows.compactMap(\.date).max()
+            return WeekRow(compound: name, cells: cells, drawCount: mine.count)
+        }
+    }
+
+    private static func weekCell(compound: String, day: String, index: Int, entries: [PeptideLogEntry]) -> WeekCell {
+        let dayName = weekdayNames[index]
+        var cell = WeekCell(
+            date: day,
+            letter: weekdayLetters[index],
+            shortDay: weekdayShortNames[index],
+            shortText: noRecordText,
+            longText: noRecordText,
+            spoken: dayName + ", no record",
+            hasRecord: !entries.isEmpty
+        )
+        if entries.count == 1, let entry = entries.first {
+            if let value = entry.drawnVolume, let unit = entry.drawnUnit {
+                cell.shortText = drawShortText(value, unit)
+                cell.longText = drawText(value, unit)
+                cell.spoken = "\(dayName), \(compound), \(drawSpokenText(value, unit))"
+            } else {
+                cell.shortText = "1×"
+                cell.longText = "logged, draw not recorded"
+                cell.spoken = "\(dayName), \(compound), logged, draw not recorded"
+            }
+        } else if entries.count > 1 {
+            let texts = entries.map { $0.drawText ?? "draw not recorded" }
+            let spoken = entries.map { entry in
+                guard let value = entry.drawnVolume, let unit = entry.drawnUnit else { return "draw not recorded" }
+                return drawSpokenText(value, unit)
+            }
+            cell.shortText = "\(entries.count)×"
+            cell.longText = "\(entries.count) draws: " + texts.joined(separator: ", ")
+            cell.spoken = "\(dayName), \(compound), \(entries.count) draws: " + spoken.joined(separator: ", ")
+        }
+        return cell
+    }
+
+    /// "Week of 28 Sep".
+    static func weekTitle(_ weekStart: String) -> String {
+        guard let parts = ReconMath.parseISO(weekStart) else { return "Week of " + weekStart }
+        return "Week of \(parts.day) \(ReconMath.monthShort[parts.month - 1])"
+    }
+
+    struct HistoryDay: Equatable, Identifiable {
+        /// yyyy-MM-dd.
+        var day: String
+        /// By time.
+        var entries: [PeptideLogEntry]
+        var id: String { day }
+    }
+
+    /// Entries from `from` to `to` (yyyy-MM-dd, inclusive), newest day first.
+    static func historyDays(entries: [PeptideLogEntry], from: String, to: String, includeVoided: Bool) -> [HistoryDay] {
+        var byDay: [String: [PeptideLogEntry]] = [:]
+        for entry in entries where includeVoided || !entry.voided {
+            guard let civil = entry.civilDate, civil >= from, civil <= to else { continue }
+            byDay[civil, default: []].append(entry)
+        }
+        return byDay.keys.sorted(by: >).map { day in
+            HistoryDay(
+                day: day,
+                entries: (byDay[day] ?? []).sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
             )
         }
     }
 
-    enum DayMarker: Equatable {
-        case none
-        /// Every scheduled dose that day is logged.
-        case allTaken
-        /// A scheduled dose that day has no log.
-        case missed
-        /// Logged, nothing scheduled.
-        case unscheduledOnly
-    }
-
-    static func dayMarker(
-        date: String,
-        compound: String?,
-        schedules: [PeptideUserSchedule],
-        entries: [PeptideLogEntry],
-        today: String
-    ) -> DayMarker {
-        let key = compound.map(compoundKey)
-        let relevant = schedules.filter {
-            $0.active && $0.frequency.type != "perWeek" && (key == nil || compoundKey($0.compound) == key)
-        }
-        let scheduled = relevant.filter { !occurrences($0, from: date, to: date).isEmpty }
-        let logged = entries.contains {
-            $0.countsAsTaken && $0.civilDate == date && (key == nil || compoundKey($0.compound) == key)
-        }
-        if scheduled.isEmpty {
-            return logged ? .unscheduledOnly : .none
-        }
-        let allTaken = scheduled.allSatisfy {
-            takenDates(compound: $0.compound, entries: entries).contains(date)
-        }
-        if allTaken { return .allTaken }
-        return date < today ? .missed : (logged ? .unscheduledOnly : .none)
+    /// The Home card's one line: "2 draws today · 1 due · 1 vial low". No amounts.
+    static func homeSummaryText(drawsToday: Int, dueLeft: Int, lowVials: Int) -> String {
+        var parts = [drawsToday == 0 ? "Nothing logged today" : (drawsToday == 1 ? "1 draw today" : "\(drawsToday) draws today")]
+        if dueLeft > 0 { parts.append("\(dueLeft) due") }
+        if lowVials > 0 { parts.append(lowVials == 1 ? "1 vial low" : "\(lowVials) vials low") }
+        return parts.joined(separator: " · ")
     }
 }

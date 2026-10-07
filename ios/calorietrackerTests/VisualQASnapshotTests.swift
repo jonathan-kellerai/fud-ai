@@ -741,7 +741,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("64-peptide-vials", heightMultiplier: 3) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView() }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialTab: .vials, referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -754,7 +754,7 @@ final class VisualQASnapshotTests: XCTestCase {
             PeptideVialEditor(vial: glow)
         }) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView() }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialTab: .vials, referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -774,7 +774,7 @@ final class VisualQASnapshotTests: XCTestCase {
         defer { VisualQAFixtures.seedsPeptides = false }
         try await eachSize("67-peptide-history", heightMultiplier: 3) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideHistoryView(referenceDate: VisualQAFixtures.peptideReferenceDate) }
+                VisualQAPushed(rootTitle: "Peptides") { PeptidesView(initialTab: .week, referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
@@ -2550,7 +2550,7 @@ extension VisualQASnapshotTests {
             PeptideImportPreviewSheet(archive: archive)
         }) { _ in
             VisualQATabShell(selected: .more) {
-                VisualQAPushed(rootTitle: "Peptides") { PeptideVialsView() }
+                VisualQAPushed(rootTitle: "More") { PeptidesView(initialTab: .vials, referenceDate: VisualQAFixtures.peptideReferenceDate) }
             }
         }
     }
