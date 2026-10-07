@@ -367,39 +367,59 @@ struct PeptideMathTests {
         #expect(recent.streak == 4)
     }
 
-    // MARK: Summaries
+    // MARK: Week, history, Home line
 
-    @Test func dailySummaryNeverSumsAcrossUnits() {
+    @Test func weekGridShowsDrawsAsEnteredWithADashForEmptyDays() {
+        // Monday 2026-09-28 to Sunday 2026-10-04.
         let entries = [
-            entry("1", compound: "Tesamorelin", dose: 1, units: "mg", hour: 7),
-            entry("2", compound: "Tesamorelin", dose: 400, units: "mcg", hour: 9),
-            entry("3", compound: "tesamorelin", dose: 0.5, units: "mg", hour: 20),
-            entry("4", compound: "Tesamorelin", dose: 9, units: "mg", hour: 21, voided: true),
-            entry("5", compound: "MT2", dose: 250, units: "mcg", civil: "2026-09-21"),
+            entry("b1", dose: nil, units: nil, civil: "2026-09-28", drawn: 50, drawnUnit: .units),
+            entry("b2", compound: "bpc 157", dose: nil, units: nil, civil: "2026-09-29", drawn: 50, drawnUnit: .units),
+            entry("t1", compound: "Tesamorelin", dose: nil, units: nil, civil: "2026-09-29", drawn: 0.1, drawnUnit: .milliliters),
+            entry("t2", compound: "Tesamorelin", dose: nil, units: nil, civil: "2026-09-30", hour: 7, drawn: 0.1, drawnUnit: .milliliters),
+            entry("t3", compound: "Tesamorelin", dose: nil, units: nil, civil: "2026-09-30", hour: 21, drawn: 0.05, drawnUnit: .milliliters),
+            entry("old", civil: "2026-10-01"),
+            entry("void", civil: "2026-10-02", drawn: 50, drawnUnit: .units, voided: true),
+            entry("lastWeek", civil: "2026-09-27", drawn: 50, drawnUnit: .units),
         ]
-        let summary = PeptideMath.dailySummary(entries: entries, date: "2026-09-20")
-        #expect(summary.count == 3)
-        #expect(summary.totals.count == 2)
-        let mg = summary.totals.first { $0.units == "mg" }
-        let mcg = summary.totals.first { $0.units == "mcg" }
-        #expect(mg?.total == 1.5)
-        #expect(mg?.count == 2)
-        #expect(mcg?.total == 400)
-        #expect(summary.first != nil && summary.last != nil && summary.first! < summary.last!)
+        let rows = PeptideMath.weekRows(entries: entries, weekStart: "2026-09-28")
+        #expect(rows.map(\.compound) == ["BPC-157", "Tesamorelin"])
+        let bpc = rows[0]
+        #expect(bpc.cells.map(\.letter) == ["M", "T", "W", "T", "F", "S", "S"])
+        #expect(bpc.cells.map(\.shortText) == ["50u", "50u", "–", "1×", "–", "–", "–"])
+        #expect(bpc.drawCount == 3)
+        #expect(bpc.cells[0].spoken == "Monday, BPC-157, 50 units")
+        #expect(bpc.cells[4].spoken == "Friday, no record")
+        #expect(bpc.cells[3].longText == "logged, draw not recorded")
+        let tesa = rows[1]
+        #expect(tesa.cells[1].shortText == "0.1mL")
+        #expect(tesa.cells[1].spoken == "Tuesday, Tesamorelin, 0.1 millilitres")
+        #expect(tesa.cells[2].shortText == "2×")
+        #expect(tesa.cells[2].longText == "2 draws: 0.1 mL, 0.05 mL")
+        // Week text never carries mg.
+        let all = rows.flatMap(\.cells).flatMap { [$0.shortText, $0.longText, $0.spoken] }
+        #expect(!all.contains { $0.contains("mg") || $0.contains("milligram") })
+        #expect(PeptideMath.weekTitle("2026-09-28") == "Week of 28 Sep")
     }
 
-    @Test func weeklyCountsBucketByMonday() {
+    @Test func historyGroupsByDayNewestFirst() {
         let entries = [
-            entry("1", civil: "2026-09-21"),
-            entry("2", civil: "2026-09-27"),
-            entry("3", civil: "2026-09-28"),
-            entry("4", compound: "TB-500", civil: "2026-09-28"),
+            entry("a", civil: "2026-09-28", hour: 9),
+            entry("b", civil: "2026-09-30", hour: 21),
+            entry("c", civil: "2026-09-30", hour: 7),
+            entry("v", civil: "2026-09-29", voided: true),
+            entry("out", civil: "2026-10-05"),
         ]
-        let all = PeptideMath.weeklyCounts(entries: entries, compound: nil, weeks: 3, today: "2026-09-30")
-        #expect(all.map(\.weekStart) == ["2026-09-14", "2026-09-21", "2026-09-28"])
-        #expect(all.map(\.count) == [0, 2, 2])
-        let bpc = PeptideMath.weeklyCounts(entries: entries, compound: "bpc 157", weeks: 3, today: "2026-09-30")
-        #expect(bpc.map(\.count) == [0, 2, 1])
+        let days = PeptideMath.historyDays(entries: entries, from: "2026-09-28", to: "2026-10-04", includeVoided: false)
+        #expect(days.map(\.day) == ["2026-09-30", "2026-09-28"])
+        #expect(days.first?.entries.map(\.id) == ["c", "b"])
+        let withVoided = PeptideMath.historyDays(entries: entries, from: "2026-09-28", to: "2026-10-04", includeVoided: true)
+        #expect(withVoided.map(\.day) == ["2026-09-30", "2026-09-29", "2026-09-28"])
+    }
+
+    @Test func homeLineCountsWithoutAmounts() {
+        #expect(PeptideMath.homeSummaryText(drawsToday: 0, dueLeft: 0, lowVials: 0) == "Nothing logged today")
+        #expect(PeptideMath.homeSummaryText(drawsToday: 1, dueLeft: 0, lowVials: 1) == "1 draw today · 1 vial low")
+        #expect(PeptideMath.homeSummaryText(drawsToday: 2, dueLeft: 1, lowVials: 2) == "2 draws today · 1 due · 2 vials low")
     }
 
     // MARK: Reconstitute

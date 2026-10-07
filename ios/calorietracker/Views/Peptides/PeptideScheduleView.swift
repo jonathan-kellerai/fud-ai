@@ -2,8 +2,9 @@
 //  PeptideScheduleView.swift
 //  calorietracker
 //
-//  Schedules the user typed (device only) and adherence against them. The app
-//  never generates or proposes a schedule, dose or protocol.
+//  Schedules the user typed (device only), optional, under Peptides › Week.
+//  No amounts, no targets, no streaks. The app never generates or proposes a
+//  schedule, dose or protocol.
 //
 
 import SwiftUI
@@ -45,7 +46,7 @@ struct PeptideScheduleView: View {
             .padding(16)
         }
         .background(IronTheme.canvas)
-        .navigationTitle("Schedule & adherence")
+        .navigationTitle("Schedule")
         .navigationBarTitleDisplayMode(.inline)
         .peptideLiveDate($now, fixed: referenceDate != nil)
         .sheet(item: $editorTarget) { target in
@@ -59,7 +60,7 @@ struct PeptideScheduleView: View {
         VStack(alignment: .leading, spacing: 12) {
             IronSectionTitle(title: "Your schedules")
             if schedules.isEmpty {
-                Text("No schedules yet. Add one to see what's due and track adherence.")
+                Text("No schedules yet. Add one to see it on Today.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -81,11 +82,10 @@ struct PeptideScheduleCard: View {
 
     var body: some View {
         let week = PeptideMath.adherence(schedule, entries: store.entries, from: ReconMath.addDays(today, -6), to: today, today: today)
-        let month = PeptideMath.adherence(schedule, entries: store.entries, from: ReconMath.addDays(today, -29), to: today, today: today)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text(schedule.compound)
-                    .font(.system(size: 22, weight: .black))
+                    .font(.system(.title3, design: .default, weight: .black))
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .foregroundStyle(schedule.active ? IronTheme.textPrimary : IronTheme.textTertiary)
@@ -104,8 +104,11 @@ struct PeptideScheduleCard: View {
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             if schedule.active {
-                adherenceRow(week: week, month: month)
-                missedList(month)
+                // A plain record of what was logged; no percentages, no streaks.
+                Text("Last 7 days: \(week.taken) of \(week.due) logged.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Toggle("Active", isOn: activeBinding)
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
@@ -130,50 +133,6 @@ struct PeptideScheduleCard: View {
         var text = "From " + ReconMath.formatDate(schedule.startDate)
         if let end = schedule.endDate { text += " to " + ReconMath.formatDate(end) }
         return text
-    }
-
-    private func adherenceRow(week: PeptideMath.Adherence, month: PeptideMath.Adherence) -> some View {
-        PeptideFlowLayout(spacing: 12) {
-            stat("7 days", value: week.percentText, detail: "\(week.taken) of \(week.due)")
-            stat("30 days", value: month.percentText, detail: "\(month.taken) of \(month.due)")
-            stat("Streak", value: "\(month.streak)", detail: schedule.frequency.type == "perWeek" ? "weeks" : "in a row")
-        }
-    }
-
-    private func stat(_ title: String, value: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            PeptideFieldLabel(title)
-            Text(value)
-                .font(.system(size: 24, weight: .black).monospacedDigit())
-                .fontWidth(.condensed)
-                .foregroundStyle(IronTheme.textPrimary)
-            Text(detail)
-                .font(.system(.caption, design: .rounded))
-                .foregroundStyle(IronTheme.textSecondary)
-        }
-        .padding(8)
-        .background(IronTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func missedList(_ month: PeptideMath.Adherence) -> some View {
-        if !month.missedDates.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                PeptideFieldLabel(schedule.frequency.type == "perWeek" ? "Short weeks (last 30 days)" : "Missed (last 30 days)")
-                Text(month.missedDates.suffix(10).reversed().map { prefixWeek($0) }.joined(separator: ", "))
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(IronTheme.rust)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } else if month.todayDue && !month.todayTaken {
-            Text("Due today, not logged yet.")
-                .font(.system(.footnote, design: .rounded, weight: .semibold))
-                .foregroundStyle(IronTheme.brass)
-        }
-    }
-
-    private func prefixWeek(_ date: String) -> String {
-        schedule.frequency.type == "perWeek" ? "week of " + ReconMath.formatDateShort(date) : ReconMath.formatDateShort(date)
     }
 }
 
@@ -261,7 +220,7 @@ struct PeptideScheduleEditor: View {
                             .font(.system(size: 15, weight: .heavy))
                             .fontWidth(.condensed)
                             .textCase(.uppercase)
-                            .foregroundStyle(IronTheme.bloodText)
+                            .foregroundStyle(IronTheme.brass)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                     }

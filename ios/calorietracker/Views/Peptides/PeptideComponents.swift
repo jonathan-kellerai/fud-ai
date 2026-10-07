@@ -2,7 +2,8 @@
 //  PeptideComponents.swift
 //  calorietracker
 //
-//  Iron & Blood building blocks for the Peptides screens.
+//  Iron & Blood building blocks for the Peptides screens. Blood red is only
+//  a fill or an accent bar here, never text; rust text is large and bold.
 //
 
 import SwiftUI
@@ -34,7 +35,8 @@ struct PeptideScreenTitle: View {
     }
 }
 
-/// Small condensed label above a field or inside a card.
+/// Small condensed label above a field or inside a card. Brass, like the
+/// design's labels; scales with Dynamic Type.
 struct PeptideFieldLabel: View {
     let title: String
 
@@ -44,12 +46,158 @@ struct PeptideFieldLabel: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 12, weight: .heavy))
+            .font(.system(.caption, design: .default, weight: .heavy))
             .fontWidth(.condensed)
             .tracking(0.6)
             .textCase(.uppercase)
-            .foregroundStyle(IronTheme.textSecondary)
+            .foregroundStyle(IronTheme.brass)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Today | Week | Vials. Brass marks the selected tab (black text on it).
+/// At large text sizes the three stack instead of truncating.
+enum PeptideTab: String, CaseIterable, Identifiable {
+    case today = "Today"
+    case week = "Week"
+    case vials = "Vials"
+
+    var id: String { rawValue }
+}
+
+struct PeptideTabPicker: View {
+    @Binding var tab: PeptideTab
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) { segments }
+            VStack(spacing: 0) { segments }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
+                .stroke(IronTheme.brass, lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Peptides section")
+    }
+
+    private var segments: some View {
+        ForEach(PeptideTab.allCases) { item in
+            let selected = tab == item
+            Button {
+                tab = item
+            } label: {
+                Text(item.rawValue)
+                    .font(.system(.subheadline, design: .default, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .textCase(.uppercase)
+                    .fixedSize()
+                    .foregroundStyle(selected ? IronTheme.canvas : IronTheme.textPrimary)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 8)
+                    .background(selected ? IronTheme.brass : IronTheme.surface)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier("peptides.tab." + item.rawValue.lowercased())
+        }
+    }
+}
+
+/// Condensed heavy brass header ("TODAY · WED 7 OCT"). Wraps, never truncates.
+struct PeptideHeader: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(.title2, design: .default, weight: .black))
+            .fontWidth(.condensed)
+            .textCase(.uppercase)
+            .foregroundStyle(IronTheme.brass)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension View {
+    /// A 6 pt squared card with a coloured accent bar on its leading edge
+    /// (olive: confirmed, rust: not confirmed, brass: neutral). The bar is
+    /// never text.
+    func peptideAccentCard(_ accent: Color) -> some View {
+        let shape = RoundedRectangle(cornerRadius: IronTheme.cardRadius, style: .continuous)
+        return self
+            .padding(.leading, IronTheme.ruleWidth)
+            .background(IronTheme.surface)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(accent)
+                    .frame(width: IronTheme.ruleWidth + 1)
+                    .accessibilityHidden(true)
+            }
+            .clipShape(shape)
+            .overlay { shape.strokeBorder(IronTheme.hairline, lineWidth: 1) }
+    }
+}
+
+/// One saved draw, like a finished set: compound, the draw as typed, time,
+/// vial. Olive bar when its vial was confirmed at save, rust when not, brass
+/// with no vial. Never shows mg (not even to VoiceOver).
+struct PeptideRecordCard: View {
+    let entry: PeptideLogEntry
+    var vialName: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.compound.isEmpty ? "Draw" : entry.compound)
+                .font(.system(.title3, design: .default, weight: .black))
+                .fontWidth(.condensed)
+                .foregroundStyle(IronTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            PeptideDetailRow(label: "Draw", value: entry.drawText ?? "Not recorded")
+            PeptideDetailRow(label: "Time", value: entry.date.map(PeptideMath.timeText) ?? entry.datetimeRaw)
+            if let vialName {
+                PeptideDetailRow(label: "Vial", value: vialName)
+            }
+            if entry.voided {
+                Text("Voided")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(IronTheme.textSecondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .peptideAccentCard(accent)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+    }
+
+    private var accent: Color {
+        guard entry.vialID != nil else { return IronTheme.brass }
+        return entry.concentrationConfirmedAtSave ? IronTheme.olive : IronTheme.rust
+    }
+
+    /// "BPC-157, 50 units, 7:30 AM, vial BPC-157. Concentration confirmed."
+    private var spokenLabel: String {
+        var parts = [entry.compound]
+        if let value = entry.drawnVolume, let unit = entry.drawnUnit {
+            parts.append(PeptideMath.drawSpokenText(value, unit))
+        } else {
+            parts.append("draw not recorded")
+        }
+        if let date = entry.date {
+            parts.append(PeptideMath.timeText(date).replacingOccurrences(of: " ET", with: ""))
+        }
+        if let vialName { parts.append("vial " + vialName) }
+        var text = parts.joined(separator: ", ") + "."
+        if entry.vialID != nil {
+            text += entry.concentrationConfirmedAtSave ? " Concentration confirmed." : " Concentration not confirmed."
+        }
+        if entry.voided { text += " Voided." }
+        return text
     }
 }
 
@@ -146,24 +294,6 @@ struct PeptideChoiceChip: View {
     }
 }
 
-/// Where one due dose stands today. The Due list shows it as a status pill.
-enum PeptideDueStatus: Hashable {
-    case logged
-    case pending
-
-    /// A scheduled dose: logged once taken, otherwise still pending.
-    init(taken: Bool) {
-        self = taken ? .logged : .pending
-    }
-
-    var pill: IronStatusPill {
-        switch self {
-        case .logged: IronStatusPill(text: "Logged", tone: .olive)
-        case .pending: IronStatusPill(text: "Pending", tone: .rust)
-        }
-    }
-}
-
 /// Small status tag. Text tone is a theme color on the raised surface.
 struct PeptideTag: View {
     let text: String
@@ -198,7 +328,7 @@ struct PeptideSecondaryButtonStyle: ButtonStyle {
             .font(.system(.subheadline, design: .rounded, weight: .heavy))
             .textCase(.uppercase)
             .multilineTextAlignment(.center)
-            .foregroundStyle(IronTheme.bloodText)
+            .foregroundStyle(IronTheme.brass)
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.horizontal, 12)
             .background(
@@ -234,7 +364,7 @@ struct PeptideInputField: View {
                 .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
-                        .stroke(issue == nil ? IronTheme.hairline : IronTheme.bloodText, lineWidth: 1)
+                        .stroke(issue == nil ? IronTheme.hairline : IronTheme.rust, lineWidth: 1)
                 )
             if let issue {
                 PeptideIssueText(text: issue)
@@ -247,10 +377,15 @@ struct PeptideIssueText: View {
     let text: String
 
     var body: some View {
-        Label(text, systemImage: "exclamationmark.circle")
-            .font(.system(.footnote, design: .rounded, weight: .semibold))
-            .foregroundStyle(IronTheme.bloodText)
-            .fixedSize(horizontal: false, vertical: true)
+        Label {
+            Text(text)
+                .foregroundStyle(IronTheme.textPrimary)
+        } icon: {
+            Image(systemName: "exclamationmark.circle")
+                .foregroundStyle(IronTheme.rust)
+        }
+        .font(.system(.footnote, design: .rounded, weight: .semibold))
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -340,51 +475,6 @@ struct PeptideRemainingBar: View {
         .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 2, style: .continuous).stroke(IronTheme.hairline, lineWidth: 1))
         .accessibilityHidden(true)
-    }
-}
-
-/// One draw in a list: compound, the draw as typed, time ET, site, vial. Never mg.
-struct PeptideLogRow: View {
-    let entry: PeptideLogEntry
-    var vialName: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(entry.compound.isEmpty ? "Dose" : entry.compound)
-                .font(.system(.headline, design: .rounded))
-                .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
-                .strikethrough(entry.voided)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(entry.drawText ?? "Draw not recorded")
-                .font(.system(.title3, design: .rounded, weight: .bold).monospacedDigit())
-                .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(detailLine)
-                .font(.system(.footnote, design: .rounded))
-                .foregroundStyle(IronTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if entry.voided {
-                Text("Voided" + (entry.voidReason.map { ": " + $0 } ?? ""))
-                    .font(.system(.footnote, design: .rounded, weight: .semibold))
-                    .foregroundStyle(IronTheme.rust)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var detailLine: String {
-        var parts: [String] = []
-        if let date = entry.date {
-            parts.append(PeptideMath.timeText(date))
-        } else if !entry.datetimeRaw.isEmpty {
-            parts.append(entry.datetimeRaw)
-        }
-        if let route = entry.route, !route.isEmpty { parts.append(route) }
-        if let vialName { parts.append("Vial: " + vialName) }
-        return parts.joined(separator: " · ")
     }
 }
 

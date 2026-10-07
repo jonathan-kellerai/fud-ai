@@ -2,8 +2,10 @@
 //  PeptideVialsView.swift
 //  calorietracker
 //
-//  The user's own vials. Remaining volume is only shown when it can be worked
-//  out from the user's own vial numbers.
+//  Peptides › Vials: the user's own vials, each with its amount and diluent
+//  as typed and who confirmed the mix and when. Remaining (and its bar) only
+//  when confirmed; otherwise "Remaining is not shown." Reconstitute is the
+//  main action.
 //
 
 import SwiftUI
@@ -27,37 +29,35 @@ struct PeptideVialsView: View {
     init() {}
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                PeptideScreenTitle(title: "Vials", subtitle: "Vials you mixed. Remaining is worked out only from your own numbers.")
-                Button {
-                    reconstituteTarget = PeptideVialEditorTarget(vial: nil)
-                } label: {
-                    Label("Reconstitute a vial", systemImage: "plus")
-                }
-                .buttonStyle(IronPrimaryButtonStyle())
-                Button {
-                    editorTarget = PeptideVialEditorTarget(vial: nil)
-                } label: {
-                    Label("Add a blend or other vial", systemImage: "square.and.pencil")
-                }
-                .buttonStyle(PeptideSecondaryButtonStyle())
-                Button {
-                    isPickingFile = true
-                } label: {
-                    Label("Import from a file", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(PeptideSecondaryButtonStyle())
-                .accessibilityHint("Adds vials, schedules and doses from a peptides file. You see what it adds first.")
-                activeSection
-                finishedSection
-                PeptideFooter()
+        VStack(alignment: .leading, spacing: 12) {
+            PeptideHeader(text: "Vials")
+            Button {
+                reconstituteTarget = PeptideVialEditorTarget(vial: nil)
+            } label: {
+                Label("Reconstitute a vial", systemImage: "plus")
             }
-            .padding(16)
+            .buttonStyle(IronPrimaryButtonStyle())
+            .accessibilityIdentifier("peptides.vials.reconstitute")
+            activeSection
+            finishedSection
+            Text("Syringe scale: " + (store.syringeScale?.label ?? "not set") + ", recorded in Settings.")
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                editorTarget = PeptideVialEditorTarget(vial: nil)
+            } label: {
+                Label("Add a blend or other vial", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(PeptideSecondaryButtonStyle())
+            Button {
+                isPickingFile = true
+            } label: {
+                Label("Import from a file", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(PeptideSecondaryButtonStyle())
+            .accessibilityHint("Adds vials, schedules and draws from a peptides file. You see what it adds first.")
         }
-        .background(IronTheme.canvas)
-        .navigationTitle("Vials")
-        .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editorTarget) { target in
             PeptideVialEditor(vial: target.vial)
         }
@@ -87,7 +87,7 @@ struct PeptideVialsView: View {
             Button("Finish vial") { store.finishVial(id: vial.id) }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("Finished vials stay in the list and keep their logged doses.")
+            Text("Finished vials stay in the list and keep their logged draws.")
         }
     }
 
@@ -118,20 +118,16 @@ struct PeptideVialsView: View {
     @ViewBuilder
     private var activeSection: some View {
         let vials = store.vialList()
-        VStack(alignment: .leading, spacing: 12) {
-            IronSectionTitle(title: "Active")
-            if vials.isEmpty {
-                Text("No active vials.")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(IronTheme.textSecondary)
-            }
-            ForEach(vials) { vial in
-                PeptideVialCard(
-                    vial: vial,
-                    onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial) },
-                    onFinish: { finishTarget = vial }
-                )
-            }
+        if vials.isEmpty {
+            Text("No vials yet. Reconstitute one to start.")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(IronTheme.textSecondary)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .peptideAccentCard(IronTheme.concrete)
+        }
+        ForEach(vials) { vial in
+            card(vial, onFinish: { finishTarget = vial })
         }
     }
 
@@ -139,22 +135,33 @@ struct PeptideVialsView: View {
     private var finishedSection: some View {
         let finished = store.vialList(includeFinished: true).filter { $0.status == .finished }
         if !finished.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle(showFinished ? "Finished vials (\(finished.count))" : "Show finished vials (\(finished.count))", isOn: $showFinished)
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(IronTheme.textSecondary)
-                    .tint(IronTheme.blood)
-                if showFinished {
-                    ForEach(finished) { vial in
-                        PeptideVialCard(
-                            vial: vial,
-                            onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial) },
-                            onFinish: nil
-                        )
-                    }
+            Toggle(showFinished ? "Finished vials (\(finished.count))" : "Show finished vials (\(finished.count))", isOn: $showFinished)
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(IronTheme.textSecondary)
+                .tint(IronTheme.olive)
+            if showFinished {
+                ForEach(finished) { vial in
+                    card(vial, onFinish: nil)
                 }
             }
         }
+    }
+
+    private func card(_ vial: PeptideVial, onFinish: (() -> Void)?) -> some View {
+        var reconstitute: (() -> Void)?
+        if isSingle(vial) {
+            reconstitute = { reconstituteTarget = PeptideVialEditorTarget(vial: vial) }
+        }
+        return PeptideVialCard(
+            vial: vial,
+            onEdit: { editorTarget = PeptideVialEditorTarget(vial: vial) },
+            onReconstitute: reconstitute,
+            onFinish: onFinish
+        )
+    }
+
+    private func isSingle(_ vial: PeptideVial) -> Bool {
+        !vial.isBlend && vial.components.count <= 1
     }
 }
 
@@ -162,16 +169,17 @@ struct PeptideVialCard: View {
     @Environment(PeptideLogStore.self) private var store
     let vial: PeptideVial
     var onEdit: (() -> Void)?
+    /// Opens Reconstitute on this vial (single-compound vials).
+    var onReconstitute: (() -> Void)?
     var onFinish: (() -> Void)?
 
     var body: some View {
         let remaining = store.remaining(for: vial)
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             header(remaining)
-            componentsBlock
-            concentrationBlock
-            remainingBlock(remaining)
-            Text(remaining.linkedCount == 1 ? "1 dose logged from this vial" : "\(remaining.linkedCount) doses logged from this vial")
+            amountsBlock
+            confirmationBlock(remaining)
+            Text(remaining.linkedCount == 1 ? "1 draw logged from this vial" : "\(remaining.linkedCount) draws logged from this vial")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
             if !vial.notes.isEmpty {
@@ -184,108 +192,104 @@ struct PeptideVialCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .ironCard(rule: remaining.isLow)
+        .peptideAccentCard(vial.concentrationConfirmed ? IronTheme.olive : IronTheme.rust)
     }
 
     private func header(_ remaining: PeptideMath.Remaining) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(vial.displayName)
-                .font(.system(size: 22, weight: .black))
+                .font(.system(.title3, design: .default, weight: .black))
                 .fontWidth(.condensed)
-                .textCase(.uppercase)
                 .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
             PeptideFlowLayout(spacing: 6) {
                 if vial.isBlend { PeptideTag(text: "Blend", tone: IronTheme.textSecondary) }
-                if vial.status == .finished { PeptideTag(text: "Finished", tone: IronTheme.concrete, filled: true) }
-                if remaining.isLow && vial.status == .active { PeptideTag(text: "Low stock", tone: IronTheme.rust) }
+                if vial.status == .finished { PeptideTag(text: "Finished", tone: IronTheme.textSecondary) }
+                if remaining.isLow && vial.status == .active { PeptideTag(text: "Low", tone: IronTheme.brass) }
             }
         }
     }
 
-    private var componentsBlock: some View {
+    /// Exactly what was typed.
+    private var amountsBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(vial.components) { component in
                 PeptideDetailRow(
-                    label: component.name.isEmpty ? "Amount in vial" : component.name,
-                    value: component.amount.map { PeptideMath.number($0) + " " + component.unit } ?? "Not entered"
+                    label: vial.isBlend && !component.name.isEmpty ? component.name : "Vial amount",
+                    value: component.amount.map { PeptideMath.number($0) + " " + component.unit + " (you entered)" } ?? "Not entered"
                 )
             }
-            PeptideDetailRow(label: "Diluent", value: vial.diluentML.map { PeptideMath.number($0) + " mL" } ?? "Not entered")
-            PeptideDetailRow(label: "Mixed", value: vial.mixedOn.map(ReconMath.formatDate) ?? "—")
-        }
-    }
-
-    @ViewBuilder
-    private var concentrationBlock: some View {
-        switch PeptideMath.concentration(vial) {
-        case .calculable(let list):
-            VStack(alignment: .leading, spacing: 2) {
-                PeptideFieldLabel("Concentration")
-                ForEach(list) { item in
-                    Text((vial.isBlend ? item.name + " " : "") + item.text)
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundStyle(IronTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if vial.components.isEmpty {
+                PeptideDetailRow(label: "Vial amount", value: "Not entered")
             }
-        case .uncalculable(let reason):
-            VStack(alignment: .leading, spacing: 2) {
-                Text(vial.concentrationConfirmed ? "Concentration can't be calculated" : "Concentration not confirmed — remaining can't be calculated")
-                    .font(.system(.subheadline, design: .rounded, weight: .bold))
-                    .foregroundStyle(IronTheme.rust)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(reason)
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(IronTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            PeptideDetailRow(label: "Diluent", value: vial.diluentML.map { PeptideMath.number($0) + " mL (you entered)" } ?? "Not entered")
+            if let mixed = vial.mixedOn {
+                PeptideDetailRow(label: "Mixed", value: ReconMath.formatDate(mixed))
             }
         }
     }
 
     @ViewBuilder
-    private func remainingBlock(_ remaining: PeptideMath.Remaining) -> some View {
-        if remaining.calculable, let left = remaining.remainingML, let total = remaining.totalML {
-            VStack(alignment: .leading, spacing: 4) {
-                PeptideFieldLabel("Remaining")
-                Text(PeptideMath.mlText(left) + " of " + PeptideMath.mlText(total))
-                    .font(.system(.headline, design: .rounded).monospacedDigit())
-                    .foregroundStyle(remaining.isLow ? IronTheme.rust : IronTheme.textPrimary)
+    private func confirmationBlock(_ remaining: PeptideMath.Remaining) -> some View {
+        if let confirmed = PeptideMath.confirmedText(vial) {
+            PeptideDetailRow(label: "Confirmed", value: confirmed)
+            if let line = arithmeticLine {
+                Text(line.text)
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(IronTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(line.spoken)
+            }
+            if remaining.calculable, let left = remaining.remainingML, let total = remaining.totalML {
+                PeptideDetailRow(label: "Left", value: PeptideMath.mlText(left) + " of " + PeptideMath.mlText(total))
                 PeptideRemainingBar(fraction: remaining.fraction ?? 0, low: remaining.isLow)
-                Text(vial.lowStockThresholdML.map { "Low at " + PeptideMath.mlText($0) + " (your threshold)" } ?? "Low at 20% of the diluent (no threshold set)")
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(IronTheme.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .accessibilityElement(children: .combine)
-        } else if vial.concentrationConfirmed {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Remaining can't be calculated")
-                    .font(.system(.subheadline, design: .rounded, weight: .bold))
-                    .foregroundStyle(IronTheme.rust)
+            } else {
+                Text("Remaining is not shown.")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(IronTheme.textPrimary)
                 Text(remaining.reason ?? "A number this needs is missing.")
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        } else {
+            Text("Concentration not confirmed. Remaining is not shown.")
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .foregroundStyle(IronTheme.rust)
+                .fixedSize(horizontal: false, vertical: true)
+            PeptideDetailRow(label: "Left", value: "not tracked")
         }
     }
 
+    /// "10 mg ÷ 2 mL = 5 mg/mL", for a confirmed single-compound vial.
+    private var arithmeticLine: PeptideMath.DerivationStep? {
+        guard !vial.isBlend, vial.components.count == 1 else { return nil }
+        return PeptideMath.reconstituteArithmetic(
+            amount: vial.components[0].amount,
+            unit: vial.components[0].unit,
+            diluentML: vial.diluentML
+        )
+    }
+
     private var buttons: some View {
-        HStack(spacing: 10) {
+        PeptideFlowLayout(spacing: 10) {
+            if !vial.concentrationConfirmed, let onReconstitute {
+                Button("Confirm in Reconstitute", action: onReconstitute)
+                    .buttonStyle(IronCompactButtonStyle())
+            }
             if let onEdit {
                 Button("Edit", action: onEdit)
                     .buttonStyle(IronCompactButtonStyle())
             }
             if let onFinish {
                 Button("Finish vial", action: onFinish)
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.system(.subheadline, design: .default, weight: .heavy))
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .foregroundStyle(IronTheme.textPrimary)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
                     .background(IronTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
             }
         }
@@ -362,7 +366,7 @@ struct PeptideVialEditor: View {
                             .font(.system(size: 15, weight: .heavy))
                             .fontWidth(.condensed)
                             .textCase(.uppercase)
-                            .foregroundStyle(IronTheme.bloodText)
+                            .foregroundStyle(IronTheme.brass)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                     }
@@ -386,7 +390,7 @@ struct PeptideVialEditor: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Logged doses stay. They just lose the link to this vial.")
+                Text("Logged draws stay. They just lose the link to this vial.")
             }
         }
     }
@@ -454,7 +458,7 @@ struct PeptideVialEditor: View {
                             components.removeAll { $0.id == component.wrappedValue.id }
                         } label: {
                             Image(systemName: "minus.circle")
-                                .foregroundStyle(IronTheme.bloodText)
+                                .foregroundStyle(IronTheme.brass)
                                 .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
