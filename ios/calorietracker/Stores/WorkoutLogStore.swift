@@ -22,8 +22,9 @@ final class WorkoutLogStore {
     private(set) var persistError: String?
     /// Plain-text note when the saved log couldn't be read in full.
     private(set) var storageNote: String?
-    /// Why the saved log is shown but never overwritten (a newer app's log, or
-    /// unreadable bytes that couldn't be kept aside); nil while it can be saved.
+    /// Why the saved log is shown but never overwritten (a newer app's log,
+    /// unreadable bytes that couldn't be kept aside, or a file that couldn't be
+    /// opened); nil while it can be saved.
     @ObservationIgnored private var readOnly: WorkoutLogError?
     /// Records that couldn't be read and are no longer in the saved log.
     @ObservationIgnored private var omitted = 0
@@ -75,6 +76,7 @@ final class WorkoutLogStore {
     /// stays deleted and the save throws, so the draft is kept, not lost silently.
     /// Throws, changing nothing, when the log can't be written.
     func save(_ payload: WorkoutPayload, id: String) throws {
+        reloadIfNotOpened()
         let record = StoredWorkout(id: id, payload: payload)
         var next = records
         if let index = next.firstIndex(where: { $0.workout.id == id }) {
@@ -91,6 +93,7 @@ final class WorkoutLogStore {
     /// version it replaces is kept in `revisions`. Throws, changing nothing,
     /// when the workout is gone or the log can't be written.
     func correct(id: String, with payload: WorkoutPayload, now: Date = Date()) throws {
+        reloadIfNotOpened()
         guard let index = records.firstIndex(where: { $0.workout.id == id && !$0.isDeleted }) else {
             throw WorkoutLogError.notFound
         }
@@ -127,6 +130,7 @@ final class WorkoutLogStore {
     /// nothing. Throws, changing nothing, when the workout is gone or the log
     /// can't be written.
     func delete(id: String, now: Date = Date()) throws {
+        reloadIfNotOpened()
         guard let index = records.firstIndex(where: { $0.workout.id == id && !$0.isDeleted }) else {
             throw WorkoutLogError.notFound
         }
@@ -149,12 +153,18 @@ final class WorkoutLogStore {
     /// when that copy or the save fails or the log is read-only.
     @discardableResult
     func importFile(_ file: WorkoutImportFile, now: Date = Date()) throws -> WorkoutImportSummary {
+        reloadIfNotOpened()
         if let readOnly { throw readOnly }
         let (new, duplicates) = newWorkouts(in: file)
         let summary = WorkoutImportSummary(added: new.count, duplicates: duplicates, skipped: file.skipped)
         guard !new.isEmpty else { return summary }
-        if let saved = self.file.read(), !self.file.keepBeforeImport(saved, now: now) {
-            throw WorkoutLogError.copyBeforeImport
+        switch self.file.read() {
+        case .data(let saved):
+            guard self.file.keepBeforeImport(saved, now: now) else { throw WorkoutLogError.copyBeforeImport }
+        case .missing:
+            break
+        case .failed(let error):
+            throw error
         }
         try commit(records + new, importedAt: Self.timestamp(now))
         return summary
@@ -199,9 +209,12 @@ final class WorkoutLogStore {
               restored.skipped == 0 else {
             return "Workouts in this backup couldn't be read, so the ones on this phone were kept."
         }
+        reloadIfNotOpened()
         switch readOnly {
         case .newerVersion?:
             return "Workouts can't be restored until the app is updated, so the ones on this phone were kept."
+        case .notOpened?:
+            return "Workouts weren't restored because the saved workout log couldn't be opened, so it was left as it is."
         case .some:
             return "Workouts weren't restored because the saved workout log couldn't be kept aside, so it was left as it is."
         case nil:
@@ -231,6 +244,15 @@ final class WorkoutLogStore {
         omitted = 0
         importedAt = nil
         readOnly = nil
+    }
+
+    /// A saved log that couldn't be opened (the phone was locked at launch) is
+    /// read again. Every change asks first; until it opens nothing is saved.
+    func reloadIfNotOpened() {
+        guard readOnly == .notOpened else { return }
+        readOnly = nil
+        storageNote = nil
+        load()
     }
 
     // MARK: Private
@@ -276,7 +298,18 @@ final class WorkoutLogStore {
     // MARK: Persistence
 
     private func load() {
-        guard let data = file.read() else { return }
+        let data: Data
+        switch file.read() {
+        case .missing:
+            return
+        case .failed:
+            // The file is there but its bytes are unknown: an empty log saved now would replace them.
+            readOnly = .notOpened
+            storageNote = WorkoutLogError.notOpened.localizedDescription
+            return
+        case .data(let bytes):
+            data = bytes
+        }
         guard let version = WorkoutLogSnapshot.savedVersion(of: data) else {
             setAsideUnreadable(data)
             return
@@ -344,6 +377,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
     case copyBeforeImport
     case deletedSinceSaved
     case unreadableNotKept
+    case notOpened
 
     var errorDescription: String? {
         switch self {
@@ -354,6 +388,7 @@ enum WorkoutLogError: LocalizedError, Equatable {
         case .copyBeforeImport: "The workout log couldn't be copied before the import, so nothing was imported."
         case .deletedSinceSaved: "This workout was saved and then deleted in Workout History. Discard it to start fresh."
         case .unreadableNotKept: "The saved workout log couldn't be read in full or copied aside, so it was left as it is and workouts can't be saved. Close and reopen the app to try again."
+        case .notOpened: "The saved workout log couldn't be opened, so workouts aren't shown and can't be saved yet. Unlock the phone and reopen the app to try again."
         }
     }
 }

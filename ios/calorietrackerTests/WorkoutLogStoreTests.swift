@@ -207,6 +207,57 @@ struct WorkoutLogStoreTests {
         #expect(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id) == [id])
     }
 
+    /// Makes the saved log unreadable (as file protection does before first unlock) or readable again.
+    private func lock(_ url: URL, _ locked: Bool) throws {
+        try FileManager.default.setAttributes([.posixPermissions: locked ? 0o000 : 0o644], ofItemAtPath: url.path)
+    }
+
+    @Test func aLogThatCantBeOpenedIsNeverWrittenOverAndOpensOnceReadable() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let id = try save(WorkoutLogStore(persistence: .file(url)), draft().payload(now: finished))
+        let saved = try Data(contentsOf: url)
+        try lock(url, true)
+        defer { try? lock(url, false) }
+
+        let store = WorkoutLogStore(persistence: .file(url))
+        #expect(store.workouts.isEmpty)
+        #expect(store.storageNote == WorkoutLogError.notOpened.localizedDescription)
+        #expect(throws: WorkoutLogError.notOpened) { try save(store, draft().payload(now: finished)) }
+        #expect(store.persistError == WorkoutLogError.notOpened.localizedDescription)
+        #expect(throws: WorkoutLogError.notOpened) {
+            try store.importFile(WorkoutImportFile.load(from: WorkoutImportFixture.url), now: finished)
+        }
+        #expect(store.backupData() == nil)
+        let source = WorkoutLogStore(persistence: .inMemory)
+        try save(source, draft().payload(now: finished))
+        #expect(store.restoreBackupData(try #require(source.backupData())) != nil)
+        // Nothing was set aside or started in its place.
+        #expect(files(beside: url) == [WorkoutLogFile.fileName])
+
+        try lock(url, false)
+        #expect(try Data(contentsOf: url) == saved)
+        store.reloadIfNotOpened()
+        #expect(store.workouts.map(\.id) == [id])
+        #expect(store.storageNote == nil)
+        let second = try save(store, draft().payload(now: finished))
+        #expect(Set(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id)) == [id, second])
+    }
+
+    @Test func aSaveAfterTheLogBecomesReadableKeepsEveryEarlierWorkout() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let id = try save(WorkoutLogStore(persistence: .file(url)), draft().payload(now: finished))
+        try lock(url, true)
+        let store = WorkoutLogStore(persistence: .file(url))
+        try lock(url, false)
+
+        // No foreground in between: the save itself reads the log first.
+        let second = try save(store, draft().payload(now: finished))
+        #expect(Set(store.workouts.map(\.id)) == [id, second])
+        #expect(Set(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id)) == [id, second])
+    }
+
     @Test func skippedRecordsThatCantBeSetAsideAreShownButNeverDropped() throws {
         let url = tempURL()
         defer { cleanUp(url) }
