@@ -256,14 +256,24 @@ nonisolated struct PeptideRecordSet: Equatable {
 
     /// `other`'s records whose id isn't here yet, added after these.
     func adding(_ other: PeptideRecordSet) -> PeptideRecordSet {
-        var result = self
+        let new = newRecords(in: other)
+        return PeptideRecordSet(
+            entries: entries + new.entries,
+            vials: vials + new.vials,
+            schedules: schedules + new.schedules
+        )
+    }
+
+    /// `other`'s records whose id isn't here, in order; of a repeated id, the first.
+    func newRecords(in other: PeptideRecordSet) -> PeptideRecordSet {
         var entryIDs = Set(entries.map(\.id))
-        result.entries += other.entries.filter { entryIDs.insert($0.id).inserted }
         var vialIDs = Set(vials.map(\.id))
-        result.vials += other.vials.filter { vialIDs.insert($0.id).inserted }
         var scheduleIDs = Set(schedules.map(\.id))
-        result.schedules += other.schedules.filter { scheduleIDs.insert($0.id).inserted }
-        return result
+        return PeptideRecordSet(
+            entries: other.entries.filter { entryIDs.insert($0.id).inserted },
+            vials: other.vials.filter { vialIDs.insert($0.id).inserted },
+            schedules: other.schedules.filter { scheduleIDs.insert($0.id).inserted }
+        )
     }
 }
 
