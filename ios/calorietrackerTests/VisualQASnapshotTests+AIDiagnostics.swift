@@ -9,7 +9,7 @@ import XCTest
 /// log screens read a temp-file store.
 extension VisualQASnapshotTests {
     func test120AIProvidersOpenRouterSignedOut() async throws {
-        let restore = VisualQAAIFixtures.selectProvider(.openrouter)
+        let restore = VisualQAAIFixtures.pinSettings(provider: .openrouter)
         defer { restore() }
         let store = try VisualQAAIFixtures.store()
         try await capture("120-ai-providers-openrouter-signed-out", heightMultiplier: 2) { _ in
@@ -18,7 +18,7 @@ extension VisualQASnapshotTests {
     }
 
     func test121AIProvidersOpenRouterSignedIn() async throws {
-        let restore = VisualQAAIFixtures.selectProvider(.openrouter)
+        let restore = VisualQAAIFixtures.pinSettings(provider: .openrouter)
         defer { restore() }
         let store = try VisualQAAIFixtures.store()
         try await capture("121-ai-providers-openrouter-signed-in", heightMultiplier: 2) { _ in
@@ -27,7 +27,7 @@ extension VisualQASnapshotTests {
     }
 
     func test122AIProvidersXAIKeyOnly() async throws {
-        let restore = VisualQAAIFixtures.selectProvider(.xai)
+        let restore = VisualQAAIFixtures.pinSettings(provider: .xai)
         defer { restore() }
         let store = try VisualQAAIFixtures.store()
         try await capture("122-ai-providers-xai-key-only", heightMultiplier: 2) { _ in
@@ -76,8 +76,8 @@ extension VisualQASnapshotTests {
     }
 }
 
-/// More → AI Providers with a fixture request log and a fixed OpenRouter sign-in state,
-/// so the full screen never reads the device log or the Keychain.
+/// More → AI Providers with a fixture request log and a fixed OpenRouter sign-in state.
+/// Pair with `VisualQAAIFixtures.pinSettings(provider:)` so no saved setting or key shows.
 @MainActor
 struct VisualQAAIProvidersScreen: View {
     let store: AIRequestLogStore
@@ -117,15 +117,54 @@ struct VisualQAAIDiagnosticsCard: View {
 
 @MainActor
 enum VisualQAAIFixtures {
-    /// Selects a Photo & Text provider for one shot and returns how to put the old one back.
-    static func selectProvider(_ provider: AIProvider) -> () -> Void {
+    /// Pins every setting the AI Providers screen shows for one shot: `provider` on its
+    /// default model, no saved API keys or custom server, no separate text AI, fallbacks
+    /// or custom instructions, and on-device speech. Returns how to put the old values
+    /// back. The shot then never depends on what the simulator's Keychain or defaults held.
+    static func pinSettings(provider: AIProvider) -> () -> Void {
         let previousProvider = AIProviderSettings.selectedProvider
         let previousModel = AIProviderSettings.selectedModel
+        let previousKeys = AIProvider.allCases.map { ($0, AIProviderSettings.apiKey(for: $0)) }
+        let previousBaseURL = AIProviderSettings.customBaseURL(for: provider)
+        let previousSeparateText = AIProviderSettings.separateTextProviderEnabled
+        let previousFallback = AIProviderSettings.fallbackEnabled
+        let previousTextFallback = AIProviderSettings.textFallbackEnabled
+        let previousUserContext = AIProviderSettings.userContext
+        let previousReasoningEffort = AIProviderSettings.openRouterReasoningEffort
+        let previousSpeechProvider = SpeechSettings.selectedProvider
+        let previousSpeechLanguage = SpeechSettings.selectedLanguage(for: .nativeIOS)
+        let previousSpeechFallback = SpeechSettings.fallbackEnabled
+
         AIProviderSettings.selectedProvider = provider
         AIProviderSettings.selectedModel = provider.defaultModel
+        for (keyProvider, _) in previousKeys {
+            AIProviderSettings.setAPIKey(nil, for: keyProvider)
+        }
+        AIProviderSettings.setCustomBaseURL(nil, for: provider)
+        AIProviderSettings.separateTextProviderEnabled = false
+        AIProviderSettings.fallbackEnabled = false
+        AIProviderSettings.textFallbackEnabled = false
+        AIProviderSettings.userContext = ""
+        AIProviderSettings.openRouterReasoningEffort = .auto
+        SpeechSettings.selectedProvider = .nativeIOS
+        SpeechSettings.setLanguage(SpeechSettings.defaultLanguage(for: .nativeIOS), for: .nativeIOS)
+        SpeechSettings.fallbackEnabled = false
+
         return {
             AIProviderSettings.selectedProvider = previousProvider
             AIProviderSettings.selectedModel = previousModel
+            for (keyProvider, key) in previousKeys {
+                AIProviderSettings.setAPIKey(key, for: keyProvider)
+            }
+            AIProviderSettings.setCustomBaseURL(previousBaseURL, for: provider)
+            AIProviderSettings.separateTextProviderEnabled = previousSeparateText
+            AIProviderSettings.fallbackEnabled = previousFallback
+            AIProviderSettings.textFallbackEnabled = previousTextFallback
+            AIProviderSettings.userContext = previousUserContext
+            AIProviderSettings.openRouterReasoningEffort = previousReasoningEffort
+            SpeechSettings.selectedProvider = previousSpeechProvider
+            SpeechSettings.setLanguage(previousSpeechLanguage, for: .nativeIOS)
+            SpeechSettings.fallbackEnabled = previousSpeechFallback
         }
     }
 
