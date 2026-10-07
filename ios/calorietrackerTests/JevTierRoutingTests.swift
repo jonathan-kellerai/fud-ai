@@ -956,7 +956,7 @@ struct JevTierRoutingTests {
             textFallback: { _ in textFallback },
             imageFallback: { _ in imageFallback },
             recordFallback: { log.notices.append($0) },
-            dispatch: { config, _, imageDataList, _ in
+            dispatch: { config, _, imageDataList, _, _ in
                 log.sent.append(config.model)
                 log.sentImageCounts.append(imageDataList.count)
                 return try reply(config)

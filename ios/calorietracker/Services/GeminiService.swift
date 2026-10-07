@@ -692,14 +692,19 @@ struct GeminiService {
         prompt: String,
         image: UIImage?,
         jsonResponse: Bool = true,
-        route: JevTierRequest
+        route: JevTierRequest,
+        trace: AIRequestTrace? = nil
     ) async throws -> String {
-        try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse, route: route)
+        try await callAI(prompt: prompt, images: image.map { [$0] } ?? [], jsonResponse: jsonResponse, route: route, trace: trace)
     }
 
     /// Apple Foundation Models answers text food with its own structured on-device generation.
-    private static func callTextFoodAnalysis(prompt: String, description: String) async throws -> FoodAnalysis {
-        try await routed(.textFood(description)) { attempt -> FoodAnalysis in
+    private static func callTextFoodAnalysis(
+        prompt: String,
+        description: String,
+        trace: AIRequestTrace? = nil
+    ) async throws -> FoodAnalysis {
+        try await routed(.textFood(description), trace: trace) { attempt -> FoodAnalysis in
             if attempt.provider == .appleIntelligence {
                 #if canImport(FoundationModels)
                 if #available(iOS 26.0, *) {
@@ -729,7 +734,8 @@ struct GeminiService {
         prompt: String,
         images: [UIImage],
         jsonResponse: Bool = true,
-        route: JevTierRequest
+        route: JevTierRequest,
+        trace: AIRequestTrace? = nil
     ) async throws -> String {
         // imageConversionFailed is local — fallback won't help, rethrow.
         // For everything else (network / 5xx / 4xx / parser failure) try fallback.
@@ -737,7 +743,7 @@ struct GeminiService {
             if case AnalysisError.imageConversionFailed = error { return true }
             return false
         }
-        return try await routed(route, images: images, terminal: isLocalImageFailure) { attempt in
+        return try await routed(route, images: images, terminal: isLocalImageFailure, trace: trace) { attempt in
             try await attempt.send(prompt, jsonResponse)
         }
     }
@@ -753,10 +759,12 @@ struct GeminiService {
     /// Hosted mode skips the router (D7): the Worker picks the model and meters the call.
     /// `route` is required, so no request can reach a provider without the router seeing it.
     /// `terminal` errors surface as is, from either attempt, without trying the fallback.
+    /// `trace`, when given, is handed to every provider request so the request log can record it.
     private static func routed<T>(
         _ route: JevTierRequest,
         images: [UIImage] = [],
         terminal: (Error) -> Bool = { _ in false },
+        trace: AIRequestTrace? = nil,
         _ perform: (AIAttempt) async throws -> T
     ) async throws -> T {
         let environment = AIRouteEnvironment.current
@@ -794,7 +802,7 @@ struct GeminiService {
             recordFallback: environment.recordFallback
         ) { config in
             try await perform(AIAttempt(provider: config.provider) { prompt, jsonResponse in
-                try await environment.dispatch(config, prompt, imageDataList, jsonResponse)
+                try await environment.dispatch(config, prompt, imageDataList, jsonResponse, trace)
             })
         }
     }
@@ -825,7 +833,7 @@ struct GeminiService {
         return data
     }
 
-    fileprivate static func dispatch(provider: AIProvider, model: String, baseURL: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool = true) async throws -> String {
+    fileprivate static func dispatch(provider: AIProvider, model: String, baseURL: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool = true, trace: AIRequestTrace? = nil) async throws -> String {
         switch provider.apiFormat {
         case .onDevice:
             guard imageDataList.isEmpty else {
@@ -849,18 +857,18 @@ struct GeminiService {
             )
         case .gemini:
             guard let key = apiKey else { throw AnalysisError.noAPIKey }
-            return try await callGemini(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList, jsonResponse: jsonResponse)
+            return try await callGemini(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList, jsonResponse: jsonResponse, trace: trace)
         case .openaiCompatible:
-            return try await callOpenAICompatible(baseURL: baseURL, model: model, apiKey: apiKey, provider: provider, prompt: prompt, imageDataList: imageDataList)
+            return try await callOpenAICompatible(baseURL: baseURL, model: model, apiKey: apiKey, provider: provider, prompt: prompt, imageDataList: imageDataList, trace: trace)
         case .anthropic:
             guard let key = apiKey else { throw AnalysisError.noAPIKey }
-            return try await callAnthropic(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList)
+            return try await callAnthropic(baseURL: baseURL, model: model, apiKey: key, prompt: prompt, imageDataList: imageDataList, trace: trace)
         }
     }
 
     // MARK: - Gemini Format
 
-    private static func callGemini(baseURL: String, model: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool) async throws -> String {
+    private static func callGemini(baseURL: String, model: String, apiKey: String?, prompt: String, imageDataList: [Data], jsonResponse: Bool, trace: AIRequestTrace?) async throws -> String {
         // Send the API key in the X-goog-api-key header, not the URL query string,
         // so it doesn't end up in server logs / proxies (CodeQL: cleartext transmission).
         guard let apiKey else { throw AnalysisError.noAPIKey }
@@ -901,7 +909,8 @@ struct GeminiService {
                 headers: ["Content-Type": "application/json", "X-goog-api-key": apiKey],
                 body: body,
                 provider: .gemini,
-                retryDelaysNs: GeminiRequestConfiguration.interactiveRetryDelaysNs
+                retryDelaysNs: GeminiRequestConfiguration.interactiveRetryDelaysNs,
+                trace: trace
             )
             return try GeminiRequestConfiguration.parseTextResponse(from: data)
         }
@@ -979,7 +988,7 @@ struct GeminiService {
         """
     }
 
-    private static func callOpenAICompatible(baseURL: String, model: String, apiKey: String?, provider: AIProvider, prompt: String, imageDataList: [Data]) async throws -> String {
+    private static func callOpenAICompatible(baseURL: String, model: String, apiKey: String?, provider: AIProvider, prompt: String, imageDataList: [Data], trace: AIRequestTrace?) async throws -> String {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
             throw AnalysisError.requestFailed(.invalidURL)
         }
@@ -1016,7 +1025,7 @@ struct GeminiService {
             if provider == .openrouter {
                 body["reasoning"] = AIProviderSettings.openRouterReasoningEffort.requestOptions(compactRetry: compactRetry, exclude: true)
             }
-            let data = try await makeRequest(url: url, headers: headers, body: body, provider: provider)
+            let data = try await makeRequest(url: url, headers: headers, body: body, provider: provider, trace: trace)
             return try parseOpenAITextResponse(from: data)
         }
 
@@ -1065,7 +1074,7 @@ struct GeminiService {
         """
     }
 
-    private static func callAnthropic(baseURL: String, model: String, apiKey: String, prompt: String, imageDataList: [Data]) async throws -> String {
+    private static func callAnthropic(baseURL: String, model: String, apiKey: String, prompt: String, imageDataList: [Data], trace: AIRequestTrace?) async throws -> String {
         guard let url = URL(string: "\(baseURL)/messages") else {
             throw AnalysisError.requestFailed(.invalidURL)
         }
@@ -1097,7 +1106,7 @@ struct GeminiService {
             if let userContext = AIProviderSettings.currentUserContext {
                 body["system"] = userContext
             }
-            let data = try await makeRequest(url: url, headers: headers, body: body, provider: .anthropic)
+            let data = try await makeRequest(url: url, headers: headers, body: body, provider: .anthropic, trace: trace)
             return try parseAnthropicTextResponse(from: data)
         }
 
@@ -1122,7 +1131,8 @@ struct GeminiService {
         body: [String: Any],
         provider: AIProvider,
         session: URLSession = .shared,
-        retryDelaysNs: [UInt64] = GeminiService.defaultRetryDelaysNs
+        retryDelaysNs: [UInt64] = GeminiService.defaultRetryDelaysNs,
+        trace: AIRequestTrace? = nil
     ) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1656,7 +1666,7 @@ struct AIRouteEnvironment {
     var textFallback: (_ primary: Config) -> Config?
     var imageFallback: (_ primary: Config) -> Config?
     var recordFallback: (OnDeviceFallbackNotice?) -> Void
-    var dispatch: (Config, _ prompt: String, _ imageDataList: [Data], _ jsonResponse: Bool) async throws -> String
+    var dispatch: (Config, _ prompt: String, _ imageDataList: [Data], _ jsonResponse: Bool, _ trace: AIRequestTrace?) async throws -> String
     var hosted: (_ prompt: String, _ imageDataList: [Data]) async throws -> String
 
     static var current = AIRouteEnvironment.live
@@ -1673,7 +1683,7 @@ struct AIRouteEnvironment {
                 AIProviderSettings.currentImageFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
             },
             recordFallback: { notice in OnDeviceModelSettings.lastFallback = notice },
-            dispatch: { config, prompt, imageDataList, jsonResponse in
+            dispatch: { config, prompt, imageDataList, jsonResponse, trace in
                 try await GeminiService.dispatch(
                     provider: config.provider,
                     model: config.model,
@@ -1681,7 +1691,8 @@ struct AIRouteEnvironment {
                     apiKey: config.apiKey,
                     prompt: prompt,
                     imageDataList: imageDataList,
-                    jsonResponse: jsonResponse
+                    jsonResponse: jsonResponse,
+                    trace: trace
                 )
             },
             hosted: { prompt, imageDataList in
