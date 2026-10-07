@@ -12,6 +12,15 @@ protocol CloudBackupPeptides: AnyObject {
     func restoreArchiveData(_ data: Data) -> String?
 }
 
+/// Workouts live in their own file on this phone. The backup carries the
+/// whole workout log (the saved file's format).
+@MainActor
+protocol CloudBackupWorkouts: AnyObject {
+    func backupData() -> Data?
+    /// Validates before replacing anything. An error message, or nil when restored.
+    func restoreBackupData(_ data: Data) -> String?
+}
+
 @Observable
 final class CloudBackupService {
     static let enabledKey = "cloudBackupEnabled"
@@ -19,6 +28,8 @@ final class CloudBackupService {
     static let lastHashKey = "cloudBackupLastHash"
     /// Backup value holding the peptides archive. Never a UserDefaults key.
     static let peptidesKey = "peptides.archive.v1"
+    /// Backup value holding the workout log. Never a UserDefaults key.
+    static let workoutsKey = "workouts.log.v1"
     static let smokeTestLaunchArgument = "-fudai.cloudBackup.smokeTest"
     static let smokeTestRecordName = "smoke-test"
 
@@ -40,11 +51,17 @@ final class CloudBackupService {
 
     private let defaults: UserDefaults
     @ObservationIgnored private let peptides: (any CloudBackupPeptides)?
+    @ObservationIgnored private let workouts: (any CloudBackupWorkouts)?
     private var container: CKContainer { CKContainer.default() }
 
-    init(defaults: UserDefaults = .standard, peptides: (any CloudBackupPeptides)? = nil) {
+    init(
+        defaults: UserDefaults = .standard,
+        peptides: (any CloudBackupPeptides)? = nil,
+        workouts: (any CloudBackupWorkouts)? = nil
+    ) {
         self.defaults = defaults
         self.peptides = peptides
+        self.workouts = workouts
         self.enabled = defaults.bool(forKey: Self.enabledKey)
         self.lastAt = defaults.string(forKey: Self.lastAtKey)
     }
@@ -70,6 +87,9 @@ final class CloudBackupService {
         if let archive = peptides?.backupArchiveData() {
             out[Self.peptidesKey] = .data(archive)
         }
+        if let log = workouts?.backupData() {
+            out[Self.workoutsKey] = .data(log)
+        }
         return out
     }
 
@@ -88,6 +108,16 @@ final class CloudBackupService {
                     if let problem = peptides.restoreArchiveData(archive) { errorMessage = problem }
                 } else {
                     errorMessage = "Peptides weren't restored, so the ones on this phone were kept."
+                }
+                continue
+            }
+            if key == Self.workoutsKey {
+                // A backup without this value (older builds) never gets here: workouts stay as they are.
+                guard let workouts else { continue }
+                if let encoded = value.d, let log = Data(base64Encoded: encoded) {
+                    if let problem = workouts.restoreBackupData(log) { errorMessage = problem }
+                } else {
+                    errorMessage = "Workouts weren't restored, so the ones on this phone were kept."
                 }
                 continue
             }

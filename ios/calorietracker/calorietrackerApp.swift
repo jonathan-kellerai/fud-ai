@@ -27,8 +27,8 @@ struct calorietrackerApp: App {
     @State private var importedHealthWorkoutStore = ImportedHealthWorkoutStore()
     @State private var weeklyChallengeStore = WeeklyChallengeStore()
     @State private var workoutDraftStore = WorkoutDraftStore()
-    /// Workouts saved on this phone only.
-    @State private var workoutLogStore = WorkoutLogStore()
+    /// Built in init: workouts are saved on this phone only, and the iCloud backup carries them.
+    @State private var workoutLogStore: WorkoutLogStore
     /// Built in init: the iCloud backup carries the peptide log.
     @State private var cloudBackupService: CloudBackupService
     @State private var peptideLogStore: PeptideLogStore
@@ -49,8 +49,10 @@ struct calorietrackerApp: App {
 
     init() {
         let peptides = PeptideLogStore()
+        let workouts = WorkoutLogStore()
         _peptideLogStore = State(initialValue: peptides)
-        _cloudBackupService = State(initialValue: CloudBackupService(peptides: peptides))
+        _workoutLogStore = State(initialValue: workouts)
+        _cloudBackupService = State(initialValue: CloudBackupService(peptides: peptides, workouts: workouts))
         // Tip-jar IAPs are tracked through RevenueCat (public SDK key, safe to ship).
         Purchases.logLevel = .warn
         Purchases.configure(withAPIKey: "appl_kOERxwXPyEUPZVCKhuuuNnUuGUZ")
@@ -236,9 +238,10 @@ struct calorietrackerApp: App {
                 refreshWidgetSnapshot()
             } else {
                 // Only "Delete Everything" turns onboarding back off; challenges and
-                // peptides (log, vials, schedules, Recon Bench) go with it.
+                // peptides (log, vials, schedules, Recon Bench) and the workout log go with it.
                 challengeStore.clearAll()
                 peptideLogStore.deleteAll()
+                workoutLogStore.deleteAll()
                 ReconBenchStore.deleteSavedData()
             }
         }
