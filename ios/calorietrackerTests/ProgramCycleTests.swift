@@ -61,7 +61,7 @@ struct ProgramCycleTests {
     // MARK: Cycle suggestion
 
     @Test func lastWeekEndingOnDayFourStartsWeekTwoAtDayOne() {
-        // Jonathan's 10/6 case: Day 5 was skipped and does not roll over.
+        // The 10/6 case: Day 5 was skipped and does not roll over.
         #expect(ProgramCycle.suggestion(body: body, history: programCycleRealHistory(), on: "2026-10-06")
                 == .day(dayIndex: 1, week: 2))
         #expect(ProgramCycle.suggestion(body: body, history: programCycleRealHistory(), on: "2026-10-05")
@@ -178,7 +178,7 @@ struct ProgramCycleTests {
     }
 
     @Test func loggedLowerATodayNamesUpperPushWednesdayNext() throws {
-        // Jonathan logged Day 1 (bridge "1-mon") on Tue 10/6 at 07:40 ET.
+        // The user logged Day 1 (bridge "1-mon") on Tue 10/6 at 07:40 ET.
         let history = programCycleRealHistory() + [session(1, "2026-10-06", recordedAt: "2026-10-06T11:40:00.000Z")]
         let context = TrainingDayContext(history: history)
         let tuesday = resolution("2026-10-06", context)
