@@ -247,6 +247,27 @@ final class PeptideLogStore {
         didChange()
     }
 
+    // MARK: Recon Bench
+
+    /// Recon Bench's save (build 67): the mixes the user typed there join
+    /// Vials unconfirmed, the second profile's held aside (see
+    /// `ReconBenchMigration`). Its untouched bytes are kept next to the log
+    /// first, so Delete Everything removes them with it. True once they're
+    /// saved here, so the old save can go. False, with nothing changed, when
+    /// the bytes have no mixes to move or can't be kept or saved.
+    func adoptReconBench(_ data: Data, now: Date = Date()) -> Bool {
+        guard let found = ReconBenchMigration.vials(from: data, now: now),
+              !found.own.isEmpty || !found.heldAside.isEmpty else { return false }
+        guard !file.isInMemory, !savingBlocked, file.keepBeforeUpgrade(data, label: "recon-bench-pre-v3", now: now) else {
+            return false
+        }
+        let new = newRecords(in: found)
+        vials += new.own.vials
+        heldAside = heldAside.adding(new.heldAside)
+        persist()
+        return persistError == nil
+    }
+
     // MARK: Archive
 
     /// Everything on this phone in the archive format, held-aside records included.

@@ -214,8 +214,9 @@ struct PeptideBackupAndResetTests {
     }
 
     /// Recon Bench (folded into Reconstitute in build 68) left a save in the
-    /// app group and standard defaults. Nothing reads it, and Delete Everything
-    /// still removes it. Whatever was there before the test is put back.
+    /// app group and standard defaults. Its mixes move into Vials at launch
+    /// (ReconBenchMigrationTests); Delete Everything still removes whatever is
+    /// left. Whatever was there before the test is put back.
     @Test func reconBenchDataIsWiped() throws {
         let savedDefaults = UserDefaults.standard.data(forKey: ReconBenchStore.defaultsKey)
         let savedFile = ReconBenchStore.fileURL.flatMap { try? Data(contentsOf: $0) }
