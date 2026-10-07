@@ -688,7 +688,7 @@ extension ProgramV2WorkoutLogView {
     /// layouts or reaching into private state through UI automation. Release
     /// builds keep only the normal day-based initializer.
     init(visualQAEntry entry: WorkoutSetEntry, restSession: RestSession,
-         openedAt: Date, initiallyReordering: Bool = false) {
+         openedAt: Date, initiallyReordering: Bool = false, showsSaveConfirmation: Bool = false) {
         day = entry.day
         onSaved = {}
         progress = .shared
@@ -696,6 +696,7 @@ extension ProgramV2WorkoutLogView {
         _restSession = State(initialValue: restSession)
         _openedAt = State(initialValue: openedAt)
         _isReordering = State(initialValue: initiallyReordering)
+        _showingSaveConfirmation = State(initialValue: showsSaveConfirmation)
     }
 }
 #endif
