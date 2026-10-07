@@ -79,7 +79,30 @@ Backup/restore while read-only (in existing suites `PeptideBackupAndResetTests` 
 
 Each guard was disabled in turn in the Linux harness, and at least one listed test failed each time. With the folder check removed, `PeptideBackupAndResetTests.restoreThatCantBeSavedKeepsThePhonesPeptides` fails too.
 
+## Codex round 1 fixes
+
+- **A folder on the way that can't be opened.** `readFile()` used `fileExists`, which is also false when a parent folder can't be traversed. So a log behind a folder with no permission read as missing. Peptides then used the stale UserDefaults copy or an empty log, and workouts used an empty log, and either could be backed up or saved over the file. Now, after a failed read, only `stat` returning `ENOENT`/`ENOTDIR`, or a folder at the log path, counts as missing. `EACCES`, `EPERM` and every other failure stay `.failed`, which gives `.notOpened`. This covers both stores, which share `DeviceLogFile`.
+- **Lists that are there but aren't lists.** `PeptideLogSnapshot` turned a malformed `entries`/`vials`/`schedules`, or a malformed `held_aside` (or a list inside it), into `[]`, with `skipped == 0`. That meant no copy was made, and the next save and backup dropped those bytes. Now each malformed container counts as one record that couldn't be read. That runs the existing copy-aside guard, and the store is read-only if the copy fails. The readable lists are still shown. A list that is absent or `null` still reads as empty. The note says "1 saved peptide record couldn't be read" even though the container may have held more. The workout snapshot already decodes `workouts` with `try`, so a malformed list makes the whole file unreadable (copied aside, read-only if that fails). A test now pins this.
+- **The peptide UserDefaults fallback in the backup.** `peptide.log.v1` passed `CloudBackupPolicy.include`, which caused three problems:
+  - It was uploaded as a raw key beside the peptides archive, which already carries the same records.
+  - A restore removed it whenever the backup lacked it: an older backup with no archive, or any backup made while the file was writable.
+  - A restore wrote back the raw copy from the backup.
+  On the phone, the store and the backup share `UserDefaults.standard`. So a restore whose peptide save then failed deleted the only copy on disk. `include` now returns false for `PeptideLogStore.defaultsKey` (made `nonisolated` so the policy can read the owner's constant). The key isn't uploaded, restored or removed by the generic loop. The peptide store alone owns it, and an older backup without the archive leaves peptides as they are.
+- **Delete sheets.** The delete confirmations for vials and schedules now read `changeRefusal`, show it and stay open, as the save actions do.
+
+| test | guard that makes it fail when disabled |
+|---|---|
+| `PeptideUnreadableLogTests.aLogBehindAFolderThatCantBeOpenedIsNotMissing` and `WorkoutLogStoreTests.aLogBehindAFolderThatCantBeOpenedIsNotMissing` (parent folder chmod 000; restored in cleanup) | `stat` errno check in `readFile()` (old `fileExists` check fails both) |
+| `aListThatIsntAListIsSetAsideBeforeASaveDropsIt`, `aListThatIsntAListAndCantBeSetAsideIsNeverWrittenOver` (object `vials`, string `schedules`, array `held_aside`, object `held_aside.entries`) | malformed-container count |
+| `absentListsAreEmptyAndNothingIsSetAside` | (absent, `null` and partial `held_aside` stay fine) |
+| `WorkoutLogStoreTests.aWorkoutsListThatIsntAListIsSetAside` | (existing throwing decode; passes before and after) |
+| `PeptideBackupAndResetTests.restoreLeavesThePeptideFallbackInTheSharedUserDefaults` (one UserDefaults suite for store and service; restore with a failing file save, and an older backup) | `CloudBackupPolicy.include` exclusion |
+| `deletingAShownVialOrScheduleIsRefusedWhileTheLogIsReadOnly` | (store refusal the views read; the SwiftUI change can't run in the Linux harness and is verified only by the CI build) |
+
+The harness runs as uid 1000 (not root), so `chmod` takes effect.
+
 ## Not changed / open
 
 - **Extra copies.** A version-3 log with skipped records gets a new copy-aside file at each launch until a save drops those records. Workouts already do this.
+- **Other fields that fail to decode.** A malformed `omitted` or `syringe_scale` still reads as 0 or nil, and the next save drops it. These are a count and a setting, not records, so it was left as it is.
 - Not built by Xcode. Proof needs a CI run on the pushed SHA.
