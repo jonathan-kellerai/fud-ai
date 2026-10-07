@@ -29,9 +29,16 @@ struct DeviceLogFile {
     }
 
     /// Never overwrite data that could not be read: set it aside first.
-    func keepUnreadable(_ data: Data, now: Date = Date()) {
-        guard let copy = copyURL(label: "unreadable", now: now) else { return }
-        try? data.write(to: copy, options: .atomic)
+    /// True only when the copy is on disk and reads back the same.
+    @discardableResult
+    func keepUnreadable(_ data: Data, now: Date = Date()) -> Bool {
+        guard let copy = copyURL(label: "unreadable", now: now) else { return false }
+        do {
+            try data.write(to: copy, options: .atomic)
+        } catch {
+            return false
+        }
+        return (try? Data(contentsOf: copy)) == data
     }
 
     /// Writes untouched bytes next to the log as `<stem>.<label>-<stamp>.json`
