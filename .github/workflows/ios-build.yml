@@ -111,6 +111,7 @@ jobs:
           -only-testing:calorietrackerTests/PeptideSecondProfileTests \
           -only-testing:calorietrackerTests/PeptideDerivedMilligramsTests \
           -only-testing:calorietrackerTests/ReconBenchMigrationTests \
+          -only-testing:calorietrackerTests/PeptideChipLayoutTests \
           -only-testing:calorietrackerTests/MoreHubSubtitlesTests \
           -only-testing:calorietrackerTests/JLFeatureFlagsTests \
           -only-testing:calorietrackerTests/ChallengeEngineTests \
@@ -131,7 +132,7 @@ jobs:
           2>&1 | tee "$RUNNER_TEMP/recon-tests.log" | xcpretty
         STATUS=${PIPESTATUS[0]}
         echo "---- Swift Testing results (raw log) ----"
-        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|PeptideSecondProfileTests|PeptideDerivedMilligramsTests|ReconBenchMigrationTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
+        grep -E "WorkoutDraftStoreTests|WorkoutLoggerLogicTests|CCLadderTests|BridgeKeyStorageTests|ProgressV2MathTests|PeptideMathTests|PeptideLogStoreTests|PeptideLegacyMigrationTests|PeptideNoNetworkTests|PeptideArchiveTests|PeptideBackupAndResetTests|PeptideSecondProfileTests|PeptideDerivedMilligramsTests|ReconBenchMigrationTests|PeptideChipLayoutTests|SettingsKeyPreservationTests|TypeSafeEstimateCheckTests|Jev[A-Za-z]+Tests|PlausibilityRulesTests|MoreHubSubtitlesTests|JLFeatureFlagsTests|Challenge[A-Za-z]+Tests|IronThemeTests|HomeV2Tests|TrainingProgramTests|ProgramCycleTests|TrainProgressStoreTests|runSelfTest|scheduleEntryDoesNotStoreSyringeUnits|bridgeSyncStaysOffUnlessMarkedTaken|footerTextMatchesTheBench|PRESERVE |Issue recorded|Expectation failed|✘ Test|Suite .* (passed|failed)|Test run with|Executed [0-9]+ test|\*\* TEST" "$RUNNER_TEMP/recon-tests.log" || true
         if [ "$STATUS" -ne 0 ]; then
           echo "---- raw compiler errors ----"
           grep -n "error:" "$RUNNER_TEMP/recon-tests.log" | head -80 || true
@@ -226,7 +227,7 @@ jobs:
           TrainingProgramTests ProgramCycleTests TrainProgressStoreTests \
           PeptideLogStoreTests PeptideLegacyMigrationTests PeptideNoNetworkTests PeptideArchiveTests \
           PeptideBackupAndResetTests PeptideSecondProfileTests PeptideDerivedMilligramsTests \
-          ReconBenchMigrationTests; do
+          ReconBenchMigrationTests PeptideChipLayoutTests; do
           if grep -qE "Suite ${suite} passed after [0-9.]+ seconds" "$RUNNER_TEMP/recon-tests.log" "$RUNNER_TEMP/peptide-no-network-tests.log"; then
             echo "ok: ${suite}"
           else
