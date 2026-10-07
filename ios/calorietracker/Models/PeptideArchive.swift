@@ -127,6 +127,11 @@ struct PeptideArchive: Equatable {
         if complete, file.vials == nil || file.schedules == nil || file.entries == nil {
             throw PeptideArchiveError.incomplete
         }
+        // `held_aside` is optional, but one that is there and can't be read
+        // would restore as nothing held aside.
+        if complete, file.heldAsideIsMalformed || file.heldAside?.isMalformed == true {
+            throw PeptideArchiveError.incomplete
+        }
         let vials = (file.vials ?? []).compactMap(\.value)
         let schedules = (file.schedules ?? []).compactMap(\.value)
         let entries = (file.entries ?? []).compactMap(\.value)
@@ -205,7 +210,9 @@ struct PeptideArchive: Equatable {
     }
 
     /// Read side: one unreadable record never drops the rest. A list that is
-    /// missing or isn't an array reads as nil.
+    /// missing or isn't an array reads as nil. A `held_aside` that is there
+    /// but isn't an object, or holds a list that isn't an array, is marked
+    /// malformed (missing or null is not).
     private struct FileIn: Decodable {
         var format: String?
         var formatVersion: Int?
@@ -214,6 +221,7 @@ struct PeptideArchive: Equatable {
         var schedules: [PeptideLossy<PeptideProfiled<Schedule>>]?
         var entries: [PeptideLossy<PeptideProfiled<PeptideLogEntry>>]?
         var heldAside: HeldAsideIn?
+        var heldAsideIsMalformed = false
         var syringeScale: Int?
 
         init(from decoder: Decoder) throws {
@@ -224,7 +232,12 @@ struct PeptideArchive: Equatable {
             vials = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Vial>>].self, forKey: .vials)
             schedules = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Schedule>>].self, forKey: .schedules)
             entries = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<PeptideLogEntry>>].self, forKey: .entries)
-            heldAside = try? container.decodeIfPresent(HeldAsideIn.self, forKey: .heldAside)
+            do {
+                heldAside = try container.decodeIfPresent(HeldAsideIn.self, forKey: .heldAside)
+            } catch {
+                heldAside = nil
+                heldAsideIsMalformed = true
+            }
             syringeScale = (try? container.decodeIfPresent(Int.self, forKey: .syringeScale)).flatMap { $0 }
         }
     }
@@ -233,12 +246,28 @@ struct PeptideArchive: Equatable {
         var vials: [PeptideLossy<Vial>]?
         var schedules: [PeptideLossy<Schedule>]?
         var entries: [PeptideLossy<PeptideLogEntry>]?
+        /// A list here is there but isn't an array.
+        var isMalformed = false
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: HeldAsideKeys.self)
-            vials = try? container.decodeIfPresent([PeptideLossy<Vial>].self, forKey: .vials)
-            schedules = try? container.decodeIfPresent([PeptideLossy<Schedule>].self, forKey: .schedules)
-            entries = try? container.decodeIfPresent([PeptideLossy<PeptideLogEntry>].self, forKey: .entries)
+            vials = Self.list(forKey: .vials, in: container, isMalformed: &isMalformed)
+            schedules = Self.list(forKey: .schedules, in: container, isMalformed: &isMalformed)
+            entries = Self.list(forKey: .entries, in: container, isMalformed: &isMalformed)
+        }
+
+        /// Missing or null reads as nil; there but not an array also sets `isMalformed`.
+        private static func list<Record: Decodable>(
+            forKey key: HeldAsideKeys,
+            in container: KeyedDecodingContainer<HeldAsideKeys>,
+            isMalformed: inout Bool
+        ) -> [PeptideLossy<Record>]? {
+            do {
+                return try container.decodeIfPresent([PeptideLossy<Record>].self, forKey: key)
+            } catch {
+                isMalformed = true
+                return nil
+            }
         }
     }
 
