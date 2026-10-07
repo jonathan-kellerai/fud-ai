@@ -149,7 +149,7 @@ struct PeptideVialsView: View {
 
     private func card(_ vial: PeptideVial, onFinish: (() -> Void)?) -> some View {
         var reconstitute: (() -> Void)?
-        if isSingle(vial) {
+        if vial.opensInReconstitute {
             reconstitute = { reconstituteTarget = PeptideVialEditorTarget(vial: vial) }
         }
         return PeptideVialCard(
@@ -158,10 +158,6 @@ struct PeptideVialsView: View {
             onReconstitute: reconstitute,
             onFinish: onFinish
         )
-    }
-
-    private func isSingle(_ vial: PeptideVial) -> Bool {
-        !vial.isBlend && vial.components.count <= 1
     }
 }
 
