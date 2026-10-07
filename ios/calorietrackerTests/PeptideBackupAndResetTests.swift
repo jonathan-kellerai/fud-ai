@@ -23,8 +23,8 @@ struct PeptideBackupAndResetTests {
         store.saveVial(PeptideVial(id: "v-" + id, compound: "Glow", diluentML: 2, createdAt: now))
         store.saveSchedule(PeptideUserSchedule(id: "s-" + id, compound: compound, frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-09-01", createdAt: now))
         var draft = PeptideLogDraft.new(compound: compound, now: now)
-        draft.amountText = "500"
-        draft.units = "mcg"
+        draft.drawText = "50"
+        draft.drawUnit = .units
         _ = try #require(store.log(draft, id: id, now: now))
         return store
     }

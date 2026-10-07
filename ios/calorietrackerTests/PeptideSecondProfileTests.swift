@@ -175,8 +175,8 @@ struct PeptideSecondProfileTests {
         store.saveVial(PeptideVial(id: "new-vial", compound: "TB-500"))
         store.saveSchedule(PeptideUserSchedule(id: "new-sched", compound: "TB-500", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-10-01"))
         var draft = PeptideLogDraft.new(compound: "TB-500", now: Date(timeIntervalSince1970: 1_790_000_000))
-        draft.amountText = "2"
-        draft.units = "mg"
+        draft.drawText = "0.2"
+        draft.drawUnit = .milliliters
         _ = try #require(store.log(draft, id: "new-entry"))
         let relaunched = PeptideLogStore(persistence: .file(url))
         #expect(relaunched.entry(id: "new-entry") != nil)

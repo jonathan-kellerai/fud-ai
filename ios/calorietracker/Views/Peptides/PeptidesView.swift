@@ -274,6 +274,17 @@ struct PeptidesView: View {
             }
             .listRowBackground(IronTheme.surface)
             NavigationLink {
+                PeptideSettingsView()
+            } label: {
+                linkLabel(
+                    "Settings",
+                    systemImage: "gearshape",
+                    detail: "Syringe scale: " + (store.syringeScale?.label ?? "not set"),
+                    warning: nil
+                )
+            }
+            .listRowBackground(IronTheme.surface)
+            NavigationLink {
                 ReconView()
             } label: {
                 linkLabel("Recon Bench", systemImage: "cross.vial.fill", detail: "Reconstitution calculator", warning: nil)
@@ -355,15 +366,11 @@ struct PeptideDaySummaryCard: View {
                     PeptideFieldLabel(dueCount == 0 ? "Nothing scheduled" : "Due logged")
                 }
             }
-            if summary.totals.isEmpty {
-                Text("No doses logged.")
+            if summary.count == 0 {
+                Text("No draws logged.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(summary.totals) { total in
-                    PeptideDetailRow(label: total.compound, value: total.text)
-                }
             }
             if let first = summary.first, let last = summary.last {
                 Text(first == last ? "At \(PeptideMath.timeText(first))" : "First \(PeptideMath.timeText(first)) · last \(PeptideMath.timeText(last))")
@@ -371,10 +378,6 @@ struct PeptideDaySummaryCard: View {
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Totals add only matching units. mg and mcg stay separate; IU is never converted.")
-                .font(.system(.caption, design: .rounded))
-                .foregroundStyle(IronTheme.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -240,6 +240,53 @@ struct PeptideRecordsByProfile: Equatable {
     }
 }
 
+/// The unit a draw was typed in. Raw values match what build 67 saved.
+nonisolated enum PeptideDrawUnit: String, Codable, CaseIterable, Identifiable {
+    case units
+    case milliliters = "mL"
+
+    var id: String { rawValue }
+
+    /// "units" / "mL", after a number.
+    var label: String {
+        switch self {
+        case .units: "units"
+        case .milliliters: "mL"
+        }
+    }
+
+    /// Compact form for a week cell: "u" / "mL".
+    var shortLabel: String {
+        switch self {
+        case .units: "u"
+        case .milliliters: "mL"
+        }
+    }
+
+    /// For VoiceOver.
+    var spokenLabel: String {
+        switch self {
+        case .units: "units"
+        case .milliliters: "millilitres"
+        }
+    }
+}
+
+/// Insulin-syringe scale: how many units are marked per mL. Recorded by the
+/// user in Settings (or for one draw); never assumed.
+nonisolated enum PeptideSyringeScale: Int, Codable, CaseIterable, Identifiable {
+    case u100 = 100
+    case u50 = 50
+    case u40 = 40
+
+    var id: Int { rawValue }
+
+    var unitsPerML: Double { Double(rawValue) }
+
+    /// "U-100".
+    var label: String { "U-\(rawValue)" }
+}
+
 /// What a correction changes. Nil fields are left alone.
 nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
     /// ISO-8601 with offset (America/New_York).
@@ -250,6 +297,9 @@ nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
     var compound: String?
     var units: String?
     var sourceVial: String?
+    /// The draw as typed, and its unit. Set together.
+    var draw: Double?
+    var drawUnit: PeptideDrawUnit?
 
     init(
         datetime: String? = nil,
@@ -258,7 +308,9 @@ nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
         notes: String? = nil,
         compound: String? = nil,
         units: String? = nil,
-        sourceVial: String? = nil
+        sourceVial: String? = nil,
+        draw: Double? = nil,
+        drawUnit: PeptideDrawUnit? = nil
     ) {
         self.datetime = datetime
         self.dose = dose
@@ -267,19 +319,24 @@ nonisolated struct PeptideCorrectionChanges: Codable, Equatable {
         self.compound = compound
         self.units = units
         self.sourceVial = sourceVial
+        self.draw = draw
+        self.drawUnit = drawUnit
     }
 
     var isEmpty: Bool {
         datetime == nil && dose == nil && route == nil && notes == nil
             && compound == nil && units == nil && sourceVial == nil
+            && draw == nil && drawUnit == nil
     }
 }
 
-/// One administration the user logged, saved on this phone. Every amount is
-/// what the user typed.
+/// One draw the user logged, saved on this phone. Every number is what the
+/// user typed. The `...AtSave` fields are copied once, when the entry is
+/// saved, and never re-read from Settings or the vial.
 nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     var id: String
     var compound: String
+    /// An amount typed in an earlier version (before draws). New entries have none.
     var dose: Double?
     var units: String?
     var date: Date?
@@ -293,11 +350,17 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     var voidReason: String?
     var corrections: [PeptideCorrection]
     var vialID: String?
-    /// Drawn volume the user typed.
+    /// The draw, exactly as typed.
     var drawnVolume: Double?
-    /// "mL" or "units" (U-100 insulin syringe units; 100 units = 1 mL).
-    var drawnUnit: String?
+    var drawnUnit: PeptideDrawUnit?
     var createdAt: String?
+    /// The syringe scale in force when saved (Settings, or this draw's own).
+    var syringeScaleAtSave: PeptideSyringeScale?
+    /// The linked vial's concentration in mg/mL when saved, from its typed numbers.
+    var vialConcentrationAtSave: Double?
+    /// The linked vial was confirmed ("I mixed this vial...") when saved.
+    var concentrationConfirmedAtSave: Bool
+    var vialIDAtSave: String?
     /// yyyy-MM-dd in America/New_York, computed once from `date`.
     let civilDate: String?
 
@@ -309,6 +372,10 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         case drawnVolume = "drawn_volume"
         case drawnUnit = "drawn_unit"
         case createdAt = "created_at"
+        case syringeScaleAtSave = "syringe_scale_at_save"
+        case vialConcentrationAtSave = "vial_concentration_at_save"
+        case concentrationConfirmedAtSave = "concentration_confirmed_at_save"
+        case vialIDAtSave = "vial_id_at_save"
     }
 
     init(
@@ -326,8 +393,12 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         corrections: [PeptideCorrection] = [],
         vialID: String? = nil,
         drawnVolume: Double? = nil,
-        drawnUnit: String? = nil,
-        createdAt: String? = nil
+        drawnUnit: PeptideDrawUnit? = nil,
+        createdAt: String? = nil,
+        syringeScaleAtSave: PeptideSyringeScale? = nil,
+        vialConcentrationAtSave: Double? = nil,
+        concentrationConfirmedAtSave: Bool = false,
+        vialIDAtSave: String? = nil
     ) {
         self.id = id
         self.compound = compound
@@ -345,10 +416,15 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         self.drawnVolume = drawnVolume
         self.drawnUnit = drawnUnit
         self.createdAt = createdAt
+        self.syringeScaleAtSave = syringeScaleAtSave
+        self.vialConcentrationAtSave = vialConcentrationAtSave
+        self.concentrationConfirmedAtSave = concentrationConfirmedAtSave
+        self.vialIDAtSave = vialIDAtSave
         self.civilDate = date.map(PeptideMath.civilDate)
     }
 
-    /// `id` and `compound` are required; anything else that's missing reads as empty.
+    /// `id` and `compound` are required; anything else that's missing reads as
+    /// empty. Entries saved before the snapshot fields read as not recorded.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let id = try container.decode(String.self, forKey: .id)
@@ -356,6 +432,8 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
             throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "Empty id")
         }
         let datetime = (try container.decodeIfPresent(String.self, forKey: .datetime)) ?? ""
+        let unit = (try? container.decodeIfPresent(String.self, forKey: .drawnUnit)).flatMap { $0 }
+        let scale = (try? container.decodeIfPresent(Int.self, forKey: .syringeScaleAtSave)).flatMap { $0 }
         self.init(
             id: id,
             compound: try container.decode(String.self, forKey: .compound),
@@ -371,8 +449,12 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
             corrections: (try container.decodeIfPresent([PeptideCorrection].self, forKey: .corrections)) ?? [],
             vialID: try container.decodeIfPresent(String.self, forKey: .vialID),
             drawnVolume: try container.decodeIfPresent(Double.self, forKey: .drawnVolume),
-            drawnUnit: try container.decodeIfPresent(String.self, forKey: .drawnUnit),
-            createdAt: try container.decodeIfPresent(String.self, forKey: .createdAt)
+            drawnUnit: unit.flatMap(PeptideDrawUnit.init(rawValue:)),
+            createdAt: try container.decodeIfPresent(String.self, forKey: .createdAt),
+            syringeScaleAtSave: scale.flatMap(PeptideSyringeScale.init(rawValue:)),
+            vialConcentrationAtSave: try container.decodeIfPresent(Double.self, forKey: .vialConcentrationAtSave),
+            concentrationConfirmedAtSave: (try container.decodeIfPresent(Bool.self, forKey: .concentrationConfirmedAtSave)) ?? false,
+            vialIDAtSave: try container.decodeIfPresent(String.self, forKey: .vialIDAtSave)
         )
     }
 
@@ -391,12 +473,22 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         try container.encode(corrections, forKey: .corrections)
         try container.encodeIfPresent(vialID, forKey: .vialID)
         try container.encodeIfPresent(drawnVolume, forKey: .drawnVolume)
-        try container.encodeIfPresent(drawnUnit, forKey: .drawnUnit)
+        try container.encodeIfPresent(drawnUnit?.rawValue, forKey: .drawnUnit)
         try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(syringeScaleAtSave?.rawValue, forKey: .syringeScaleAtSave)
+        try container.encodeIfPresent(vialConcentrationAtSave, forKey: .vialConcentrationAtSave)
+        try container.encode(concentrationConfirmedAtSave, forKey: .concentrationConfirmedAtSave)
+        try container.encodeIfPresent(vialIDAtSave, forKey: .vialIDAtSave)
     }
 
     /// Counts toward logs, totals and adherence.
     var countsAsTaken: Bool { !voided }
+
+    /// "50 units" / "0.1 mL", or nil when no draw was typed.
+    var drawText: String? {
+        guard let drawnVolume, let drawnUnit else { return nil }
+        return PeptideMath.drawText(drawnVolume, drawnUnit)
+    }
 
     /// This entry with `changes` applied, each changed field added to the
     /// correction trail with the user's reason.
@@ -413,6 +505,9 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         record("dose", dose.map(PeptideMath.number), (changes.dose ?? dose).map(PeptideMath.number))
         record("compound", compound, changes.compound ?? compound)
         record("units", units, changes.units ?? units)
+        let newDraw = changes.draw ?? drawnVolume
+        let newDrawUnit = changes.drawUnit ?? drawnUnit
+        record("draw", drawText, newDraw.flatMap { value in newDrawUnit.map { PeptideMath.drawText(value, $0) } })
         record("route", route, changes.route ?? route)
         record("notes", notes, changes.notes ?? notes)
         record("source_vial", sourceVial, changes.sourceVial ?? sourceVial)
@@ -432,9 +527,13 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
             voidReason: voidReason,
             corrections: trail,
             vialID: vialID,
-            drawnVolume: drawnVolume,
-            drawnUnit: drawnUnit,
-            createdAt: createdAt
+            drawnVolume: newDraw,
+            drawnUnit: newDraw == nil ? nil : newDrawUnit,
+            createdAt: createdAt,
+            syringeScaleAtSave: syringeScaleAtSave,
+            vialConcentrationAtSave: vialConcentrationAtSave,
+            concentrationConfirmedAtSave: concentrationConfirmedAtSave,
+            vialIDAtSave: vialIDAtSave
         )
     }
 
@@ -459,42 +558,35 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     }
 }
 
-/// What the log sheet collects. Starts with the amount EMPTY: the app never
-/// fills an amount.
+/// What the log sheet collects. The draw starts EMPTY and no unit is picked:
+/// the app never fills a draw or a dose.
 nonisolated struct PeptideLogDraft: Equatable {
     var compound: String
-    var amountText: String
-    /// Nil until the user picks one (or picks a single-component vial).
-    var units: String?
+    var drawText: String
+    /// Nil until the user picks units or mL.
+    var drawUnit: PeptideDrawUnit?
+    /// This draw's own syringe scale. Nil uses the one in Settings.
+    var scaleOverride: PeptideSyringeScale?
     var takenAt: Date
     var site: String
     var vialID: String?
-    var drawnText: String
-    /// "mL" or "units". Nil until the user picks one.
-    var drawnUnit: String?
     var notes: String
 
     static func new(compound: String = "", now: Date = Date()) -> PeptideLogDraft {
         PeptideLogDraft(
             compound: compound,
-            amountText: "",
-            units: nil,
+            drawText: "",
+            drawUnit: nil,
+            scaleOverride: nil,
             takenAt: now,
             site: "",
             vialID: nil,
-            drawnText: "",
-            drawnUnit: nil,
             notes: ""
         )
     }
 
-    var amount: Double? {
-        let value = ReconMath.toNumber(amountText)
-        return value.isFinite ? value : nil
-    }
-
-    var drawnVolume: Double? {
-        let value = ReconMath.toNumber(drawnText)
+    var draw: Double? {
+        let value = ReconMath.toNumber(drawText)
         return value.isFinite ? value : nil
     }
 
@@ -505,9 +597,8 @@ nonisolated struct PeptideLogDraft: Equatable {
 
 nonisolated enum PeptideDraftField: String, Hashable {
     case compound
-    case amount
-    case units
-    case drawn
+    case draw
+    case unit
     case site
     case notes
 }

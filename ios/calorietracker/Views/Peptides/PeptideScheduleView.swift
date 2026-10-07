@@ -184,8 +184,6 @@ struct PeptideScheduleEditor: View {
     @Environment(\.dismiss) private var dismiss
     private let existing: PeptideUserSchedule?
     @State private var compound: String
-    @State private var amountText: String
-    @State private var units: String?
     /// Nil until the user picks one. A new schedule never preselects a frequency.
     @State private var frequencyType: String?
     @State private var weekdays: Set<Int>
@@ -211,8 +209,6 @@ struct PeptideScheduleEditor: View {
     init(schedule: PeptideUserSchedule?) {
         existing = schedule
         _compound = State(initialValue: schedule?.compound ?? "")
-        _amountText = State(initialValue: schedule?.amount.map(PeptideMath.number) ?? "")
-        _units = State(initialValue: schedule?.units)
         _frequencyType = State(initialValue: schedule?.frequency.type)
         _weekdays = State(initialValue: Set(schedule?.frequency.days ?? []))
         _nText = State(initialValue: schedule?.frequency.n.map(PeptideMath.number) ?? "")
@@ -234,7 +230,6 @@ struct PeptideScheduleEditor: View {
                         .foregroundStyle(IronTheme.brass)
                         .fixedSize(horizontal: false, vertical: true)
                     compoundSection
-                    amountSection
                     frequencySection
                     datesSection
                     Toggle("Active", isOn: $active)
@@ -303,22 +298,6 @@ struct PeptideScheduleEditor: View {
                 }
             }
             PeptideInputField(title: "Compound name", text: $compound, prompt: "Or type a compound")
-        }
-    }
-
-    private var amountSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            PeptideInputField(title: "Your amount note (optional)", text: $amountText, prompt: "Leave blank if you like", keyboard: .decimalPad, monospaced: true)
-            PeptideFlowLayout(spacing: 8) {
-                PeptideChoiceChip(title: "No units", selected: units == nil) { units = nil }
-                ForEach(PeptideMath.unitOptions, id: \.self) { unit in
-                    PeptideChoiceChip(title: unit, selected: units == unit) { units = unit }
-                }
-            }
-            Text("Shown next to the schedule only. It is never put into a log for you.")
-                .font(.system(.caption, design: .rounded))
-                .foregroundStyle(IronTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -394,16 +373,6 @@ struct PeptideScheduleEditor: View {
             errorText = "Pick or type the compound."
             return
         }
-        var amount: Double?
-        let amountRaw = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !amountRaw.isEmpty {
-            let value = ReconMath.toNumber(amountRaw)
-            guard value.isFinite, value > 0 else {
-                errorText = "Amount must be a number more than 0, or blank."
-                return
-            }
-            amount = value
-        }
         guard let frequencyType else {
             errorText = "Pick how often."
             return
@@ -436,8 +405,9 @@ struct PeptideScheduleEditor: View {
         let schedule = PeptideUserSchedule(
             id: existing?.id ?? UUID().uuidString,
             compound: name,
-            amount: amount,
-            units: amount == nil ? nil : units,
+            // An amount saved by an earlier version is kept, never shown or used.
+            amount: existing?.amount,
+            units: existing?.units,
             frequency: frequency,
             startDate: start,
             endDate: end,

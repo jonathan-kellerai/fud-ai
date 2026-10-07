@@ -152,7 +152,10 @@ struct PeptideLegacyMigrationTests {
         #expect(queued.route == "Thigh R")
         #expect(queued.vialID == "vial-1")
         #expect(queued.drawnVolume == 25)
-        #expect(queued.drawnUnit == "units")
+        #expect(queued.drawnUnit == .units)
+        // Saved before snapshots existed: nothing is filled in.
+        #expect(queued.syringeScaleAtSave == nil)
+        #expect(!queued.concentrationConfirmedAtSave)
 
         let cancelled = try #require(store.entry(id: "crid-cancelled"))
         #expect(cancelled.voided)
@@ -231,9 +234,12 @@ struct PeptideLegacyMigrationTests {
         #expect(vial.concentrationConfirmed)
         #expect(store.schedules.isEmpty)
         #expect(store.heldAside.schedules.map(\.id) == ["sched-local"])
-        // row-app (no draw, mcg from a 10 mg / 2 mL vial = 0.1 mL) and
-        // crid-queued (25 units = 0.25 mL) come out of the vial.
-        #expect(store.remaining(for: vial).remainingML == 1.65)
+        // crid-queued drew 25 units before syringe scales were recorded, so
+        // its mL isn't known and remaining isn't shown (never assumed U-100).
+        let remaining = store.remaining(for: vial)
+        #expect(!remaining.calculable)
+        #expect(remaining.reason?.contains("no syringe scale") == true)
+        #expect(remaining.linkedCount == 2)
     }
 
     @Test func malformedElementsAreSkippedAndCounted() throws {
@@ -320,8 +326,8 @@ struct PeptideLegacyMigrationTests {
         #expect(store.persistError != nil)
         _ = store.log({
             var draft = PeptideLogDraft.new(compound: "BPC-157")
-            draft.amountText = "500"
-            draft.units = "mcg"
+            draft.drawText = "50"
+            draft.drawUnit = .units
             return draft
         }())
         #expect(defaults.data(forKey: PeptideLogStore.defaultsKey) == Data(version1.utf8))

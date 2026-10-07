@@ -36,15 +36,16 @@ struct PeptideArchiveTests {
             endDate: "2026-12-01", timeOfDay: 450, active: true, notes: "AM", createdAt: now
         ))
         var draft = PeptideLogDraft.new(compound: "Glow", now: now)
-        draft.amountText = "10"
-        draft.units = "units"
+        store.setSyringeScale(.u100)
+        draft.drawText = "10"
+        draft.drawUnit = .units
         draft.vialID = "v1"
         draft.site = "Thigh R"
         let id = try #require(store.log(draft, id: "e1", now: now))
-        _ = store.correct(try #require(store.entry(id: id)), reason: "Typo", changes: PeptideCorrectionChanges(dose: 12), now: now)
+        _ = store.correct(try #require(store.entry(id: id)), reason: "Typo", changes: PeptideCorrectionChanges(draw: 12), now: now)
         var next = PeptideLogDraft.new(compound: "BPC-157", now: now.addingTimeInterval(60))
-        next.amountText = "500"
-        next.units = "mcg"
+        next.drawText = "0.1"
+        next.drawUnit = .milliliters
         let other = try #require(store.log(next, id: "e2", now: now))
         _ = store.void(try #require(store.entry(id: other)), reason: "Twice", now: now)
         return store
@@ -65,6 +66,36 @@ struct PeptideArchiveTests {
         #expect(restored.entries == store.entries)
         #expect(restored.entry(id: "e1")?.corrections.count == 1)
         #expect(restored.entry(id: "e2")?.voided == true)
+        // The save-time snapshot travels with each entry.
+        let snapped = try #require(restored.entry(id: "e1"))
+        #expect(snapped.drawnVolume == 12)
+        #expect(snapped.drawnUnit == .units)
+        #expect(snapped.syringeScaleAtSave == .u100)
+        #expect(snapped.vialIDAtSave == "v1")
+        // A blend has no single mg/mL, so none was copied.
+        #expect(snapped.vialConcentrationAtSave == nil)
+        #expect(snapped.concentrationConfirmedAtSave)
+        #expect(archive.syringeScale == .u100)
+    }
+
+    /// Files from build 67 have no snapshot fields: their entries read as
+    /// "not recorded", never filled in from today's settings or vials.
+    @Test func oldEntriesReadWithoutASnapshot() throws {
+        let json = """
+        {"format":"jl-peptides","format_version":1,"vials":[],"schedules":[],
+         "entries":[{"id":"old","compound":"BPC-157","dose":500,"units":"mcg","vial_id":"v1",
+                     "drawn_volume":25,"drawn_unit":"units","datetime":"2026-09-20T07:00:00-04:00"}]}
+        """
+        let archive = try PeptideArchive.decode(Data(json.utf8))
+        let old = try #require(archive.entries.first)
+        #expect(old.dose == 500)
+        #expect(old.drawnVolume == 25)
+        #expect(old.drawnUnit == .units)
+        #expect(old.syringeScaleAtSave == nil)
+        #expect(old.vialConcentrationAtSave == nil)
+        #expect(!old.concentrationConfirmedAtSave)
+        #expect(old.vialIDAtSave == nil)
+        #expect(archive.syringeScale == nil)
     }
 
     @Test func encodingIsStableAndSnakeCase() throws {
@@ -74,7 +105,9 @@ struct PeptideArchiveTests {
         #expect(first == second)
         let text = String(decoding: first, as: UTF8.self)
         for key in ["\"format\" : \"jl-peptides\"", "\"format_version\" : 1", "\"exported_at\"", "\"diluent_ml\"",
-                    "\"concentration_confirmed\"", "\"start_date\"", "\"vial_id\"", "\"void_reason\""] {
+                    "\"concentration_confirmed\"", "\"start_date\"", "\"vial_id\"", "\"void_reason\"",
+                    "\"drawn_unit\" : \"units\"", "\"syringe_scale\" : 100", "\"syringe_scale_at_save\" : 100",
+                    "\"concentration_confirmed_at_save\"", "\"vial_id_at_save\""] {
             #expect(text.contains(key), "\(key)")
         }
     }

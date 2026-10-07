@@ -2,8 +2,9 @@
 //  PeptideLogSheet.swift
 //  calorietracker
 //
-//  Quick entry → confirm → save, like food logging. The amount field always
-//  starts empty and nothing is filled in for the user.
+//  Log a draw like a set: compound, the draw you typed (units or mL), the
+//  time (now unless you change it). Review, then save. The draw field always
+//  starts empty and no unit is picked: nothing is filled in for the user.
 //
 
 import SwiftUI
@@ -11,7 +12,7 @@ import SwiftUI
 struct PeptideLogSheet: View {
     private enum Step {
         case entry
-        case confirm
+        case review
     }
 
     @Environment(PeptideLogStore.self) private var store
@@ -19,13 +20,14 @@ struct PeptideLogSheet: View {
     @State private var draft: PeptideLogDraft
     @State private var step: Step
     @State private var typingOther = false
+    @State private var showsDetails = false
     @State private var issues: [PeptideDraftField: String] = [:]
     @State private var saveError: String?
-    /// One id per sheet, so saving twice replaces instead of adding a second dose.
+    /// One id per sheet, so saving twice replaces instead of adding a second draw.
     @State private var entryID = UUID().uuidString.lowercased()
     private let onSaved: (() -> Void)?
 
-    /// `reviewDraft` is for Visual QA only: it opens on the confirm step with
+    /// `reviewDraft` is for Visual QA only: it opens on the review step with
     /// values the test typed. App call sites never pass it.
     /// `now` is the default time only (Visual QA passes a fixed instant).
     init(
@@ -36,7 +38,7 @@ struct PeptideLogSheet: View {
     ) {
         if let reviewDraft {
             _draft = State(initialValue: reviewDraft)
-            _step = State(initialValue: .confirm)
+            _step = State(initialValue: .review)
         } else {
             _draft = State(initialValue: PeptideLogDraft.new(compound: compound ?? "", now: now))
             _step = State(initialValue: .entry)
@@ -47,12 +49,12 @@ struct PeptideLogSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     if step == .entry {
                         entryForm
                     } else {
                         PeptideLogReviewCard(draft: draft)
-                        confirmActions
+                        reviewActions
                     }
                     PeptideFooter()
                 }
@@ -60,7 +62,7 @@ struct PeptideLogSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(IronTheme.canvas)
-            .navigationTitle(step == .entry ? "Log dose" : "Confirm dose")
+            .navigationTitle(step == .entry ? "Log a draw" : "Review draw")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -73,21 +75,29 @@ struct PeptideLogSheet: View {
     // MARK: Entry
 
     private var entryForm: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             compoundSection
-            amountSection
+            drawSection
             timeSection
-            siteSection
             vialSection
-            drawnSection
-            notesSection
+            if draft.drawUnit == .units {
+                scaleSection
+            }
+            detailsSection
+            if !issues.isEmpty {
+                PeptideIssueText(text: "Check the fields above.")
+            }
             Button("Review") { review() }
                 .buttonStyle(IronPrimaryButtonStyle())
+                .accessibilityIdentifier("peptides.log.review")
         }
     }
 
     private var compoundOptions: [String] {
-        PeptideMath.compoundOptions(vialCompounds: store.vialList().map(\.compound), loggedCompounds: store.loggedCompounds())
+        PeptideMath.compoundOptions(
+            vialCompounds: store.vialList().map(\.compound),
+            loggedCompounds: store.loggedCompounds()
+        )
     }
 
     private var selectedOption: String? {
@@ -98,24 +108,22 @@ struct PeptideLogSheet: View {
     private var compoundSection: some View {
         let options = compoundOptions
         let selected = selectedOption
-        let showsOther = typingOther || (selected == nil && !draft.trimmedCompound.isEmpty)
+        let showsOther = typingOther || options.isEmpty || (selected == nil && !draft.trimmedCompound.isEmpty)
         return VStack(alignment: .leading, spacing: 8) {
             PeptideFieldLabel("Compound")
-            PeptideFlowLayout(spacing: 8) {
-                ForEach(options, id: \.self) { option in
-                    PeptideChoiceChip(
-                        title: option,
-                        subtitle: PeptideMath.sameCompound(option, PeptideMath.glowName) ? PeptideMath.glowSubtitle : nil,
-                        selected: selected == option
-                    ) {
-                        typingOther = false
-                        selectCompound(option)
+            if !options.isEmpty {
+                PeptideFlowLayout(spacing: 8) {
+                    ForEach(options, id: \.self) { option in
+                        PeptideChoiceChip(title: option, selected: selected == option) {
+                            typingOther = false
+                            selectCompound(option)
+                        }
                     }
-                }
-                PeptideChoiceChip(title: "Other…", selected: showsOther) {
-                    typingOther = true
-                    if selected != nil { draft.compound = "" }
-                    draft.vialID = nil
+                    PeptideChoiceChip(title: "Other…", selected: showsOther) {
+                        typingOther = true
+                        if selected != nil { draft.compound = "" }
+                        draft.vialID = nil
+                    }
                 }
             }
             if showsOther {
@@ -134,29 +142,28 @@ struct PeptideLogSheet: View {
         draft.compound = option
     }
 
-    private var amountSection: some View {
+    /// The draw: typed, never filled. The unit is a choice the user makes.
+    private var drawSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             PeptideInputField(
-                title: "Amount",
-                text: $draft.amountText,
-                prompt: "Type the amount you took",
+                title: "Draw",
+                text: $draft.drawText,
+                prompt: "Type what you drew",
                 keyboard: .decimalPad,
                 monospaced: true,
-                issue: issues[.amount]
+                issue: issues[.draw]
             )
-            PeptideFieldLabel("Units")
+            .accessibilityIdentifier("peptides.log.draw")
+            PeptideFieldLabel("Unit")
             PeptideFlowLayout(spacing: 8) {
-                ForEach(PeptideMath.unitOptions, id: \.self) { unit in
-                    PeptideChoiceChip(
-                        title: unit,
-                        subtitle: unit == "units" ? "U-100 syringe" : nil,
-                        selected: draft.units == unit
-                    ) {
-                        draft.units = unit
+                ForEach(PeptideDrawUnit.allCases) { unit in
+                    PeptideChoiceChip(title: unit.label, selected: draft.drawUnit == unit) {
+                        draft.drawUnit = unit
                     }
+                    .accessibilityLabel(unit.spokenLabel)
                 }
             }
-            if let issue = issues[.units] {
+            if let issue = issues[.unit] {
                 PeptideIssueText(text: issue)
             }
         }
@@ -167,25 +174,11 @@ struct PeptideLogSheet: View {
             PeptideFieldLabel("Time")
             DatePicker("Time", selection: $draft.takenAt, in: ...max(Date(), draft.takenAt).addingTimeInterval(60 * 60))
                 .labelsHidden()
-                .tint(IronTheme.bloodText)
+                .tint(IronTheme.brass)
             Text("Saved as " + PeptideMath.shortDateTime(draft.takenAt) + " ET")
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var siteSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            PeptideFieldLabel("Site (optional)")
-            PeptideFlowLayout(spacing: 8) {
-                ForEach(PeptideMath.siteOptions, id: \.self) { site in
-                    PeptideChoiceChip(title: site, selected: draft.site == site) {
-                        draft.site = draft.site == site ? "" : site
-                    }
-                }
-            }
-            PeptideInputField(title: "Site or route", text: $draft.site, prompt: "Or type a site", issue: issues[.site])
         }
     }
 
@@ -208,9 +201,6 @@ struct PeptideLogSheet: View {
                             selected: draft.vialID == vial.id
                         ) {
                             draft.vialID = vial.id
-                            if draft.units == nil {
-                                draft.units = PeptideMath.defaultUnits(for: vial)
-                            }
                         }
                     }
                 }
@@ -218,24 +208,62 @@ struct PeptideLogSheet: View {
         }
     }
 
-    private var drawnSection: some View {
+    /// This draw's own syringe scale. Defaults to the one in Settings.
+    private var scaleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PeptideInputField(
-                title: "Drawn volume (optional)",
-                text: $draft.drawnText,
-                prompt: "What you drew",
-                keyboard: .decimalPad,
-                monospaced: true,
-                issue: issues[.drawn]
-            )
-            HStack(spacing: 8) {
-                PeptideChoiceChip(title: "mL", selected: draft.drawnUnit == "mL") { draft.drawnUnit = "mL" }
-                PeptideChoiceChip(title: "units", subtitle: "U-100", selected: draft.drawnUnit == "units") { draft.drawnUnit = "units" }
+            PeptideFieldLabel("Syringe scale for this draw")
+            PeptideFlowLayout(spacing: 8) {
+                PeptideChoiceChip(
+                    title: "Settings",
+                    subtitle: store.syringeScale?.label ?? "Not set",
+                    selected: draft.scaleOverride == nil
+                ) {
+                    draft.scaleOverride = nil
+                }
+                ForEach(PeptideSyringeScale.allCases) { scale in
+                    PeptideChoiceChip(title: scale.label, selected: draft.scaleOverride == scale) {
+                        draft.scaleOverride = scale
+                    }
+                }
             }
-            Text("Only used to track what's left in a vial you entered. 100 units = 1 mL.")
+            Text("Saved with this draw. Changing Settings later doesn't change it.")
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Site and notes are optional, so they fold away like a set's notes.
+    private var detailsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                showsDetails.toggle()
+            } label: {
+                Label(showsDetails ? "Hide site and notes" : "Add site or notes (optional)", systemImage: showsDetails ? "chevron.up" : "chevron.down")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(IronTheme.brass)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if showsDetails || !draft.site.isEmpty || !draft.notes.isEmpty {
+                siteSection
+                notesSection
+            }
+        }
+    }
+
+    private var siteSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PeptideFieldLabel("Site (optional)")
+            PeptideFlowLayout(spacing: 8) {
+                ForEach(PeptideMath.siteOptions, id: \.self) { site in
+                    PeptideChoiceChip(title: site, selected: draft.site == site) {
+                        draft.site = draft.site == site ? "" : site
+                    }
+                }
+            }
+            PeptideInputField(title: "Site or route", text: $draft.site, prompt: "Or type a site", issue: issues[.site])
         }
     }
 
@@ -262,27 +290,22 @@ struct PeptideLogSheet: View {
         issues = PeptideMath.validate(draft)
         if issues.isEmpty {
             saveError = nil
-            step = .confirm
+            step = .review
         }
     }
 
-    // MARK: Confirm
+    // MARK: Review
 
-    private var confirmActions: some View {
+    private var reviewActions: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let saveError {
                 PeptideIssueText(text: saveError)
             }
-            Button("Save dose") { save() }
+            Button("Save draw") { save() }
                 .buttonStyle(IronPrimaryButtonStyle())
+                .accessibilityIdentifier("peptides.log.save")
             Button("Edit") { step = .entry }
-                .font(.system(size: 15, weight: .heavy))
-                .fontWidth(.condensed)
-                .textCase(.uppercase)
-                .foregroundStyle(IronTheme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(IronTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous))
+                .buttonStyle(PeptideSecondaryButtonStyle())
         }
     }
 
@@ -294,7 +317,7 @@ struct PeptideLogSheet: View {
             return
         }
         guard store.log(draft, id: entryID) != nil else {
-            saveError = "This dose couldn't be saved. Check the fields and try again."
+            saveError = "This draw couldn't be saved. Check the fields and try again."
             return
         }
         onSaved?()
@@ -302,31 +325,36 @@ struct PeptideLogSheet: View {
     }
 }
 
-/// Everything the user typed, plus what's left in the vial only when it can be
-/// calculated from the user's own vial numbers.
+/// Everything the user typed, the syringe scale this draw will record, and
+/// what's left in the vial only when the user's own numbers allow it.
+/// Never shows mg.
 struct PeptideLogReviewCard: View {
     @Environment(PeptideLogStore.self) private var store
     let draft: PeptideLogDraft
 
     var body: some View {
+        let entry = store.entry(from: draft, id: "draft-review")
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(draft.trimmedCompound)
-                    .font(.system(size: 26, weight: .black))
+                    .font(.system(.title2, design: .default, weight: .black))
                     .fontWidth(.condensed)
                     .textCase(.uppercase)
                     .foregroundStyle(IronTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(amountLine)
+                Text(entry.drawText ?? "—")
                     .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
                     .foregroundStyle(IronTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .accessibilityElement(children: .combine)
             Rectangle().fill(IronTheme.hairline).frame(height: 1)
             PeptideDetailRow(label: "Time", value: PeptideMath.shortDateTime(draft.takenAt) + " ET")
-            PeptideDetailRow(label: "Site", value: draft.trimmedSite.isEmpty ? "—" : draft.trimmedSite)
             PeptideDetailRow(label: "Vial", value: vial?.displayName ?? "None")
-            PeptideDetailRow(label: "Drawn volume", value: drawnLine)
+            if entry.drawnUnit == .units {
+                PeptideDetailRow(label: "Syringe scale", value: entry.syringeScaleAtSave?.label ?? "Not recorded")
+            }
+            PeptideDetailRow(label: "Site", value: draft.trimmedSite.isEmpty ? "—" : draft.trimmedSite)
             if !draft.trimmedNotes.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     PeptideFieldLabel("Notes")
@@ -336,46 +364,31 @@ struct PeptideLogReviewCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            remainingBlock
+            remainingBlock(entry)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .ironCard(rule: true)
     }
 
-    private var amountLine: String {
-        let amount = draft.amountText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return [amount, draft.units ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
-    private var drawnLine: String {
-        guard let drawn = draft.drawnVolume else { return "—" }
-        return PeptideMath.number(drawn) + " " + (draft.drawnUnit ?? "")
-    }
-
     private var vial: PeptideVial? { store.vial(id: draft.vialID) }
 
     @ViewBuilder
-    private var remainingBlock: some View {
+    private func remainingBlock(_ entry: PeptideLogEntry) -> some View {
         if let vial {
-            let remaining = store.remaining(for: vial, including: hypotheticalEntry)
+            let remaining = store.remaining(for: vial, including: entry)
             VStack(alignment: .leading, spacing: 6) {
-                PeptideFieldLabel("Remaining in vial after this dose")
+                PeptideFieldLabel("Left in the vial after this draw")
                 if remaining.calculable, let left = remaining.remainingML, let total = remaining.totalML {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(PeptideMath.mlText(left) + " of " + PeptideMath.mlText(total))
-                            .font(.system(.headline, design: .rounded).monospacedDigit())
-                            .foregroundStyle(remaining.isLow ? IronTheme.rust : IronTheme.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if remaining.isLow {
-                            PeptideTag(text: "Low stock", tone: IronTheme.rust)
-                        }
-                    }
+                    Text(PeptideMath.mlText(left) + " of " + PeptideMath.mlText(total))
+                        .font(.system(.headline, design: .rounded).monospacedDigit())
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     PeptideRemainingBar(fraction: remaining.fraction ?? 0, low: remaining.isLow)
                 } else {
-                    Text("Remaining can't be calculated")
-                        .font(.system(.headline, design: .rounded))
-                        .foregroundStyle(IronTheme.rust)
+                    Text("Remaining is not shown.")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(IronTheme.textPrimary)
                     Text(remaining.reason ?? "A number this needs is missing.")
                         .font(.system(.footnote, design: .rounded))
                         .foregroundStyle(IronTheme.textSecondary)
@@ -383,23 +396,10 @@ struct PeptideLogReviewCard: View {
                 }
             }
         } else {
-            Text("No vial picked, so nothing is subtracted from a vial.")
+            Text("No vial picked, so nothing is taken out of a vial.")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private var hypotheticalEntry: PeptideLogEntry {
-        PeptideLogEntry(
-            id: "draft-review",
-            compound: draft.trimmedCompound,
-            dose: draft.amount,
-            units: draft.units,
-            date: draft.takenAt,
-            vialID: draft.vialID,
-            drawnVolume: draft.drawnVolume,
-            drawnUnit: draft.drawnVolume == nil ? nil : draft.drawnUnit
-        )
     }
 }

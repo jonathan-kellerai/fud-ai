@@ -61,8 +61,8 @@ struct HomeV2Tests {
         let today = "2026-09-27"
         #expect(!store.hasLocalActivity(today: today))
         var draft = PeptideLogDraft.new(compound: "BPC-157", now: try #require(PeptideMath.date(civil: today)))
-        draft.amountText = "500"
-        draft.units = "mcg"
+        draft.drawText = "50"
+        draft.drawUnit = .units
         _ = try #require(store.log(draft))
         #expect(store.hasLocalActivity(today: today))
         #expect(!store.hasLocalActivity(today: "2026-09-28"))

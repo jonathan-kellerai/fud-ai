@@ -53,6 +53,8 @@ struct PeptideArchive: Equatable {
     /// Records an earlier build kept under a second profile that the user
     /// hasn't kept or deleted yet (`held_aside`). Written only when there are some.
     var heldAside = HeldAside()
+    /// Settings → Syringe scale (`syringe_scale`, 100/50/40). Absent: not recorded.
+    var syringeScale: PeptideSyringeScale?
     /// Records in the file that couldn't be read. Never written.
     var skipped = 0
 
@@ -69,9 +71,11 @@ struct PeptideArchive: Equatable {
         vials: [PeptideVial],
         schedules: [PeptideUserSchedule],
         entries: [PeptideLogEntry],
-        heldAside: PeptideRecordSet = PeptideRecordSet()
+        heldAside: PeptideRecordSet = PeptideRecordSet(),
+        syringeScale: PeptideSyringeScale? = nil
     ) {
         self.exportedAt = exportedAt
+        self.syringeScale = syringeScale
         self.vials = vials.map { Vial($0) }
         self.schedules = schedules.map { Schedule($0) }
         self.entries = entries
@@ -129,6 +133,7 @@ struct PeptideArchive: Equatable {
         archive.vials = vials.filter { $0.profile == .own }.map(\.value)
         archive.schedules = schedules.filter { $0.profile == .own }.map(\.value)
         archive.entries = entries.filter { $0.profile == .own }.map(\.value)
+        archive.syringeScale = file.syringeScale.flatMap(PeptideSyringeScale.init(rawValue:))
         archive.heldAside = HeldAside(
             vials: vials.filter { $0.profile == .second }.map(\.value) + heldVials,
             schedules: schedules.filter { $0.profile == .second }.map(\.value) + heldSchedules,
@@ -170,7 +175,8 @@ struct PeptideArchive: Equatable {
             vials: vials,
             schedules: schedules,
             entries: entries,
-            heldAside: heldAside
+            heldAside: heldAside,
+            syringeScale: syringeScale?.rawValue
         ))
     }
 
@@ -185,6 +191,7 @@ struct PeptideArchive: Equatable {
         case formatVersion = "format_version"
         case exportedAt = "exported_at"
         case heldAside = "held_aside"
+        case syringeScale = "syringe_scale"
     }
 
     private enum HeldAsideKeys: String, CodingKey {
@@ -201,6 +208,7 @@ struct PeptideArchive: Equatable {
         var schedules: [PeptideLossy<PeptideProfiled<Schedule>>]?
         var entries: [PeptideLossy<PeptideProfiled<PeptideLogEntry>>]?
         var heldAside: HeldAsideIn?
+        var syringeScale: Int?
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: FileKeys.self)
@@ -211,6 +219,7 @@ struct PeptideArchive: Equatable {
             schedules = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Schedule>>].self, forKey: .schedules)
             entries = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<PeptideLogEntry>>].self, forKey: .entries)
             heldAside = try? container.decodeIfPresent(HeldAsideIn.self, forKey: .heldAside)
+            syringeScale = (try? container.decodeIfPresent(Int.self, forKey: .syringeScale)).flatMap { $0 }
         }
     }
 
@@ -235,6 +244,7 @@ struct PeptideArchive: Equatable {
         var schedules: [Schedule]
         var entries: [PeptideLogEntry]
         var heldAside: HeldAside
+        var syringeScale: Int?
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: FileKeys.self)
@@ -244,6 +254,7 @@ struct PeptideArchive: Equatable {
             try container.encode(vials, forKey: .vials)
             try container.encode(schedules, forKey: .schedules)
             try container.encode(entries, forKey: .entries)
+            try container.encodeIfPresent(syringeScale, forKey: .syringeScale)
             if !heldAside.isEmpty {
                 var held = container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside)
                 try held.encode(heldAside.vials, forKey: .vials)

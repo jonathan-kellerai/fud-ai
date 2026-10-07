@@ -1,11 +1,11 @@
 import Foundation
 @testable import calorietracker
 
-/// Peptides log fixtures for Visual QA. Amounts reuse the existing peptide
-/// fixtures and Recon Bench presets only (BPC-157 500 mcg, Tesamorelin 1.4 mg
-/// LABEL, MT2 250 mcg, Glow 10-unit draw; vials 10 mg BPC-157, 5 mg
-/// Tesamorelin, Glow 50/10/10 mg in 2 mL). "Today" is the America/New_York
-/// civil date, the same one the Peptides screens use.
+/// Peptides log fixtures for Visual QA. Synthetic draws only (BPC-157 50
+/// units, Tesamorelin 0.1 mL, MT2 25 units, Glow 10 units, on a U-100 scale
+/// in Settings; vials 10 mg BPC-157 in 2 mL, 5 mg Tesamorelin in 0.5 mL,
+/// Glow 50/10/10 mg in 2 mL). "Today" is the America/New_York civil date,
+/// the same one the Peptides screens use.
 extension VisualQAFixtures {
     static var seedsPeptides = false
     /// Seed everything except doses taken today (Home card with only due items and low stock).
@@ -76,14 +76,15 @@ extension VisualQAFixtures {
             compound: "BPC-157",
             now: PeptideMath.date(civil: peptideToday, minutes: 7 * 60 + 30) ?? peptideReferenceDate
         )
-        draft.amountText = "500"
-        draft.units = "mcg"
+        draft.drawText = "50"
+        draft.drawUnit = .units
         draft.site = "Abdomen L"
         draft.vialID = peptideBPCVialID
         return draft
     }
 
     static func seedPeptides(_ store: PeptideLogStore) {
+        store.setSyringeScale(.u100)
         store.saveVial(peptideBPCVial())
         store.saveVial(peptideTesaVial())
         store.saveVial(peptideGlowVial())
@@ -104,38 +105,38 @@ extension VisualQAFixtures {
         ))
         for offset in bpcOffsets {
             seedDose(
-                "qa-adm-bpc-\(offset)", store: store, compound: "BPC-157", amount: "500", units: "mcg",
+                "qa-adm-bpc-\(offset)", store: store, compound: "BPC-157", draw: "50", unit: .units,
                 offset: offset, minutes: 7 * 60 + 30, site: offset % 2 == 0 ? "Abdomen L" : "Abdomen R",
                 vialID: offset <= 4 ? peptideBPCVialID : nil
             )
         }
         for offset in tesaOffsets {
             seedDose(
-                "qa-adm-tesa-\(offset)", store: store, compound: "Tesamorelin", amount: "1.4", units: "mg",
+                "qa-adm-tesa-\(offset)", store: store, compound: "Tesamorelin", draw: "0.1", unit: .milliliters,
                 offset: offset, minutes: 21 * 60 + 30, site: "Thigh L", vialID: peptideTesaVialID
             )
         }
-        seedDose("qa-adm-agent-1", store: store, compound: "Tesamorelin", amount: "1.4", units: "mg", offset: 2, minutes: 21 * 60 + 30)
+        seedDose("qa-adm-agent-1", store: store, compound: "Tesamorelin", draw: "0.1", unit: .milliliters, offset: 2, minutes: 21 * 60 + 30)
         for offset in mt2Offsets {
             seedDose(
-                "qa-adm-mt2-\(offset)", store: store, compound: "MT2", amount: "250", units: "mcg",
+                "qa-adm-mt2-\(offset)", store: store, compound: "MT2", draw: "25", unit: .units,
                 offset: offset, minutes: 7 * 60 + 15, site: "Abdomen R"
             )
         }
         for offset in glowOffsets {
             seedDose(
-                "qa-adm-glow-\(offset)", store: store, compound: "Glow", amount: "10", units: "units",
+                "qa-adm-glow-\(offset)", store: store, compound: "Glow", draw: "10", unit: .units,
                 offset: offset, minutes: 20 * 60, site: "Thigh R", vialID: peptideGlowVialID
             )
         }
-        seedDose("qa-adm-tesa-today", store: store, compound: "Tesamorelin", amount: "1.4", units: "mg", offset: 0, minutes: 6 * 60 + 45, site: "Abdomen R", vialID: peptideTesaVialID)
+        seedDose("qa-adm-tesa-today", store: store, compound: "Tesamorelin", draw: "0.1", unit: .milliliters, offset: 0, minutes: 6 * 60 + 45, site: "Abdomen R", vialID: peptideTesaVialID)
         // Corrected, then voided: the detail screen shows the reason and the trail.
         seedDose(
-            peptideVoidedRowID, store: store, compound: "BPC-157", amount: "250", units: "mcg",
-            offset: 3, minutes: 7 * 60 + 40, site: "Abdomen L", notes: "Same dose as the 7:30 entry."
+            peptideVoidedRowID, store: store, compound: "BPC-157", draw: "20", unit: .units,
+            offset: 3, minutes: 7 * 60 + 40, site: "Abdomen L", notes: "Same draw as the 7:30 entry."
         )
         if let entry = store.entry(id: peptideVoidedRowID) {
-            store.correct(entry, reason: "Typed the wrong amount", changes: PeptideCorrectionChanges(dose: 500), now: peptideDate(offset: 3, minutes: 7 * 60 + 50))
+            store.correct(entry, reason: "Typed the wrong draw", changes: PeptideCorrectionChanges(draw: 25), now: peptideDate(offset: 3, minutes: 7 * 60 + 50))
         }
         if let entry = store.entry(id: peptideVoidedRowID) {
             store.void(entry, reason: "Logged twice by mistake", now: peptideDate(offset: 3, minutes: 8 * 60 + 5))
@@ -150,8 +151,8 @@ extension VisualQAFixtures {
         _ id: String,
         store: PeptideLogStore,
         compound: String,
-        amount: String,
-        units: String,
+        draw: String,
+        unit: PeptideDrawUnit,
         offset: Int,
         minutes: Int,
         site: String = "",
@@ -161,8 +162,8 @@ extension VisualQAFixtures {
         if offset == 0 && skipsTodaysPeptideDoses { return }
         let takenAt = peptideDate(offset: offset, minutes: minutes)
         var draft = PeptideLogDraft.new(compound: compound, now: takenAt)
-        draft.amountText = amount
-        draft.units = units
+        draft.drawText = draw
+        draft.drawUnit = unit
         draft.site = site
         draft.vialID = vialID
         draft.notes = notes

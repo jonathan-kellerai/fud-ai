@@ -343,7 +343,7 @@ struct PeptideRemainingBar: View {
     }
 }
 
-/// One administration in a list: compound, amount as stored, time ET, site, vial.
+/// One draw in a list: compound, the draw as typed, time ET, site, vial. Never mg.
 struct PeptideLogRow: View {
     let entry: PeptideLogEntry
     var vialName: String?
@@ -355,7 +355,7 @@ struct PeptideLogRow: View {
                 .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
                 .strikethrough(entry.voided)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(PeptideMath.amountText(entry.dose, entry.units))
+            Text(entry.drawText ?? "Draw not recorded")
                 .font(.system(.title3, design: .rounded, weight: .bold).monospacedDigit())
                 .foregroundStyle(entry.voided ? IronTheme.textTertiary : IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)

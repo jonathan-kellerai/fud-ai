@@ -16,10 +16,10 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct PeptideNoNetworkTests {
-    private func draft(compound: String = "BPC-157", amount: String = "500", units: String = "mcg") -> PeptideLogDraft {
+    private func draft(compound: String = "BPC-157", draw: String = "50") -> PeptideLogDraft {
         var draft = PeptideLogDraft.new(compound: compound, now: Date(timeIntervalSince1970: 1_790_000_000))
-        draft.amountText = amount
-        draft.units = units
+        draft.drawText = draw
+        draft.drawUnit = .units
         return draft
     }
 
@@ -70,14 +70,15 @@ struct PeptideNoNetworkTests {
                 concentrationConfirmed: true
             )
             store.saveVial(vial)
+            store.setSyringeScale(.u100)
             var typed = draft()
             typed.vialID = vial.id
             let id = try #require(store.log(typed))
             let entry = try #require(store.entry(id: id))
-            #expect(store.correct(entry, reason: "Typo", changes: PeptideCorrectionChanges(dose: 250)) == nil)
-            store.updateLocalDetails(for: try #require(store.entry(id: id)), vialID: vial.id, drawnVolume: 5, drawnUnit: "units")
+            #expect(store.correct(entry, reason: "Typo", changes: PeptideCorrectionChanges(draw: 25)) == nil)
+            _ = PeptideMath.milligramDerivation(for: try #require(store.entry(id: id)))
             #expect(store.void(try #require(store.entry(id: id)), reason: "Duplicate") == nil)
-            _ = store.log(draft(compound: "MT2", amount: "250"))
+            _ = store.log(draft(compound: "MT2", draw: "25"))
             #expect(store.remaining(for: vial).calculable)
             store.finishVial(id: vial.id)
             store.deleteVial(id: vial.id)
