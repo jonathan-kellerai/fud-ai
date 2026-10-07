@@ -26,14 +26,29 @@ final class OpenRouterSignIn {
     @ObservationIgnored private var pendingPKCE: OpenRouterOAuth.PKCE?
     @ObservationIgnored private var session: ASWebAuthenticationSession?
     @ObservationIgnored private var anchor: OpenRouterPresentationAnchor?
-    private let urlSession: URLSession
+    private let send: ExchangeTransport
+    private let saveKey: @MainActor (String) -> Bool
+
+    /// Posts the key exchange and returns the body and HTTP status.
+    typealias ExchangeTransport = @Sendable (URLRequest) async throws -> (Data, Int)
+
+    nonisolated static let urlSessionTransport: ExchangeTransport = { request in
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
 
     /// Visual QA only: draws the signed-in card without a Keychain (unsigned CI hosts have none).
     static var visualPreviewSignedIn = false
 
-    init(isSignedIn: Bool, urlSession: URLSession = .shared) {
+    /// `send` and `saveKey` are for tests; the defaults are the network and the Keychain.
+    init(
+        isSignedIn: Bool,
+        send: @escaping ExchangeTransport = OpenRouterSignIn.urlSessionTransport,
+        saveKey: @escaping @MainActor (String) -> Bool = { AIProviderSettings.saveOpenRouterSignInKey($0) }
+    ) {
         self.isSignedIn = isSignedIn
-        self.urlSession = urlSession
+        self.send = send
+        self.saveKey = saveKey
     }
 
     /// The state Settings has now.
@@ -141,10 +156,9 @@ final class OpenRouterSignIn {
             return nil
         }
         do {
-            let (data, response) = try await urlSession.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let (data, status) = try await send(request)
             let key = try OpenRouterOAuth.parseExchangeResponse(status: status, data: data)
-            guard AIProviderSettings.saveOpenRouterSignInKey(key) else {
+            guard saveKey(key) else {
                 phase = .failed("Signed in, but the key couldn't be saved to the Keychain. Try again.")
                 return nil
             }
