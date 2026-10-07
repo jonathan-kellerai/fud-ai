@@ -2,8 +2,9 @@
 //  WorkoutRecords.swift
 //  calorietracker
 //
-//  A JL workout and its sets, in the bridge's JSON shape: the logger's
-//  payload, History's rows, and what last performance and next-in-cycle read.
+//  A JL workout and its sets, kept on this phone in the bridge's JSON shape so
+//  saved and imported workouts are one format: what the logger saves, History
+//  shows, and last performance, next-in-cycle and Progress read.
 //
 
 import Foundation
@@ -88,7 +89,7 @@ struct EditableBridgeSet: Identifiable {
     }
 }
 
-struct WorkoutDetailResponse: Codable {
+struct WorkoutDetailResponse: Codable, Equatable {
     let workout: RemoteWorkout
     let sets: [RemoteWorkoutSet]
 }
@@ -104,6 +105,8 @@ struct RemoteWorkoutSet: Codable, Identifiable, Equatable {
     let rpe: Double?
     var exercisePosition: Int? = nil
     var plannedPosition: Int? = nil
+    /// Kept from imported bridge rows; nil for sets saved on this phone.
+    var loggedAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -116,10 +119,11 @@ struct RemoteWorkoutSet: Codable, Identifiable, Equatable {
         case rpe
         case exercisePosition = "exercise_position"
         case plannedPosition = "planned_position"
+        case loggedAt = "logged_at"
     }
 }
 
-struct RemoteWorkout: Codable, Identifiable {
+struct RemoteWorkout: Codable, Identifiable, Equatable {
     let id: String
     let kind: String
     let programVersion: String
@@ -132,7 +136,9 @@ struct RemoteWorkout: Codable, Identifiable {
     let contentHash: String?
     let synthetic: Bool?
     let recordedAt: String?
-    
+    /// Kept from imported bridge rows; nil for workouts saved on this phone.
+    var sourceFingerprint: String? = nil
+
     enum CodingKeys: String, CodingKey {
         case id
         case kind
@@ -146,5 +152,103 @@ struct RemoteWorkout: Codable, Identifiable {
         case contentHash = "content_hash"
         case synthetic
         case recordedAt = "recorded_at"
+        case sourceFingerprint = "source_fingerprint"
+    }
+}
+
+// MARK: - On-device log record
+
+/// One workout in the on-device log: the workout and its sets, the versions a
+/// correction replaced, and when it was deleted.
+struct StoredWorkout: Codable, Equatable {
+    var workout: RemoteWorkout
+    var sets: [RemoteWorkoutSet]
+    /// Versions this one replaced, oldest first.
+    var revisions: [WorkoutRevision] = []
+    /// ISO-8601, set by Delete. The record stays (without its sets) so a
+    /// re-import can't bring the workout back; nothing reads it as a workout.
+    var deletedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case workout, sets, revisions
+        case deletedAt = "deleted_at"
+    }
+
+    init(workout: RemoteWorkout, sets: [RemoteWorkoutSet], revisions: [WorkoutRevision] = [], deletedAt: String? = nil) {
+        self.workout = workout
+        self.sets = sets
+        self.revisions = revisions
+        self.deletedAt = deletedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workout = try container.decode(RemoteWorkout.self, forKey: .workout)
+        sets = try container.decode([RemoteWorkoutSet].self, forKey: .sets)
+        revisions = try container.decodeIfPresent([WorkoutRevision].self, forKey: .revisions) ?? []
+        deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
+    }
+
+    /// A workout saved on this phone from the logger (or a correction).
+    /// Sets are numbered by their order in the session.
+    init(id: String, payload: WorkoutPayload) {
+        workout = RemoteWorkout(
+            id: id,
+            kind: payload.kind,
+            programVersion: payload.programVersion,
+            programDay: payload.programDay,
+            title: payload.title,
+            units: payload.units,
+            sessionDate: payload.sessionDate,
+            conditioning: payload.conditioning,
+            notes: payload.notes,
+            contentHash: nil,
+            synthetic: false,
+            recordedAt: payload.recordedAtUtc
+        )
+        sets = Self.sets(payload.sets, workoutID: id)
+        revisions = []
+        deletedAt = nil
+    }
+
+    var isDeleted: Bool { deletedAt != nil }
+
+    var detail: WorkoutDetailResponse {
+        WorkoutDetailResponse(workout: workout, sets: sets)
+    }
+
+    /// Every content hash this record has carried, current and replaced.
+    var contentHashes: [String] {
+        ([workout.contentHash] + revisions.map(\.workout.contentHash)).compactMap { $0 }
+    }
+
+    static func sets(_ sets: [WorkoutSet], workoutID: String) -> [RemoteWorkoutSet] {
+        sets.map { set in
+            RemoteWorkoutSet(
+                id: String(set.order),
+                workoutId: workoutID,
+                setOrder: set.order,
+                exercise: set.exercise,
+                loadLb: set.load,
+                reps: set.reps,
+                rir: set.rir,
+                rpe: set.rpe,
+                exercisePosition: set.exercisePosition,
+                plannedPosition: set.plannedPosition
+            )
+        }
+    }
+}
+
+/// A version of a workout that a correction replaced.
+struct WorkoutRevision: Codable, Equatable {
+    /// ISO-8601.
+    var replacedAt: String
+    var workout: RemoteWorkout
+    var sets: [RemoteWorkoutSet]
+
+    enum CodingKeys: String, CodingKey {
+        case replacedAt = "replaced_at"
+        case workout, sets
     }
 }
