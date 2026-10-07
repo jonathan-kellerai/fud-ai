@@ -25,7 +25,7 @@ Branch `integ/build-71`, based on `573f87f14` (the launch branch, TestFlight bui
   - `adoptReconBench` returns false, so the Recon Bench save stays where it is for the next launch.
   - `replaceAll` / `restoreArchiveData` refuse.
   - `persistError` says why in each case.
-- **Backup.** `backupArchiveData()` is nil while changes are refused, so an empty archive is never backed up.
+- **Backup.** See *iCloud backup while a log is read-only* below.
 - **Delete Everything.** `deleteAll()` still works and clears the state.
 - **Re-reading.** `reloadIfNotOpened()` reads a log that wasn't opened again. It runs before every change and when the app becomes active, through the same `scenePhase == .active` hook as workouts. Once the phone is unlocked, the records appear and a change keeps them all.
 - **Unreadable bytes.** If the whole file can't be read and can't be copied aside, the store is `.unreadableNotKept`. The next launch tries again; once the copy is made a new log starts, as before.
@@ -37,6 +37,18 @@ Branch `integ/build-71`, based on `573f87f14` (the launch branch, TestFlight bui
   - The vial, Recon, schedule and log sheets now show the refusal and stay open instead of closing as if saved.
   - The import sheet shows it instead of "Imported".
   - Peptide settings shows `persistError`.
+
+## iCloud backup while a log is read-only
+
+The backup upload replaces the last iCloud backup. Leaving peptides or workouts out of it (what nil used to do) dropped the copy the earlier backup held.
+
+- **Contract.** `CloudBackupPeptides.backupArchiveData()` and `CloudBackupWorkouts.backupData()` return `CloudBackupPart`: `.include(Data)` or `.blocked(reason:)`. The protocols no longer use nil. The refactor commit changed only the type; the behavior commit changed what happens.
+- **Blocked when.** Peptides: any `PeptideLogReadOnly` (`.notOpened`, `.unreadableNotKept`, `.newerVersion`, `.upgradeNotKept`). A newer-version log no longer backs up as an empty archive. Workouts: any read-only state (`.notOpened`, `.unreadableNotKept`, `.newerVersion`). Both stores also block when encoding fails. Both re-read a log that wasn't opened before answering.
+- **Backup.** `snapshotValues()` throws `CloudBackupError.backupSkipped(reason)`. `backupNow()` (manual, auto, and turning backup on) uploads nothing, leaves the last-backup time and hash alone, and sets `errorMessage`, e.g. "Peptides couldn't be read on this phone, so iCloud backup was skipped to keep your last backup." The settings screen shows it after Back Up Now, Keep this phone, or turning backup on. Auto backup only sets it, and it tries again next time. `backupNow()` and `restoreNow()` clear the old message first.
+- **Restore.** Before, `applyValues` replaced every UserDefaults key, and then the read-only store refused its part. That left the phone half restored: diary and settings from the backup, peptides or workouts from the phone. Now, when the backup carries peptides or workouts and that store is blocked, nothing changes: no UserDefaults key, no photo (`restoreNow` restores photos only after `applyValues` succeeds), no last-backup time. `errorMessage` says e.g. "Peptides couldn't be read on this phone, so nothing was restored and everything on this phone was kept." A backup without that key (older builds) still restores.
+- **Still partial.** A restore whose store isn't read-only but whose save fails (no space, a folder at the path) still applies UserDefaults and keeps the phone's peptides or workouts, with the message saying so. That failure can't be known before trying, and it was left as it is.
+- **Smoke test.** It logs `FAIL` with the reason when a store is blocked.
+- **Not proven here.** `backupNow()`/`restoreNow()` need CloudKit, so the harness tests the decisions they use: `snapshotValues()` and `applyValues()`.
 
 Readable logs behave as before: versions 1, 2 and 3, the newer-version block, held-aside records, and Recon Bench adoption.
 
@@ -56,10 +68,18 @@ New suite `PeptideUnreadableLogTests`, added to the CI `-only-testing` list, the
 | `skippedRecordsThatCantBeSetAsideAreShownButNeverDropped` | skipped-records copy result honored |
 | `skippedRecordsAreSetAsideBeforeASaveDropsThem` | (success path: copy made, changes allowed) |
 
+Backup/restore while read-only (in existing suites `PeptideBackupAndResetTests` and `WorkoutBackupAndResetTests`, already in `ios-build.yml`):
+
+| test | guard that makes it fail when disabled |
+|---|---|
+| `aReadOnlyPeptideLogSkipsTheWholeBackup` (chmod 000 log and a version-7 log: `.blocked`, `snapshotValues` throws, message text) | `snapshotValues` throws on `.blocked`; newer-version peptides blocked |
+| `restoreOverAPeptideLogThatCantBeOpenedChangesNothing` (UserDefaults and file untouched; a backup without peptides still restores; after unlock the restore goes through) | restore pre-check; re-read before answering |
+| `aReadOnlyWorkoutLogSkipsTheWholeBackup` (chmod 000 log and a version-2 log) | `snapshotValues` throws on `.blocked`; workouts blocked while read-only |
+| `restoreOverANewerWorkoutLogChangesNothing` | restore pre-check |
+
 Each guard was disabled in turn in the Linux harness, and at least one listed test failed each time. With the folder check removed, `PeptideBackupAndResetTests.restoreThatCantBeSavedKeepsThePhonesPeptides` fails too.
 
 ## Not changed / open
 
-- **The iCloud backup still loses its peptides while the log is read-only.** When `backupArchiveData()` (or the workouts' `backupData()`) is nil, `CloudBackupService` leaves the key out of the backup it uploads. That backup replaces the earlier one, so the earlier peptides (or workouts) in iCloud are dropped until a later backup. No empty archive is ever restored over the phone. Keeping the earlier value, or skipping the backup, would be a `CloudBackupService` change, and it isn't made here.
-- **A newer-version peptide log still backs up as an empty archive.** `.newerVersion` keeps its old behavior: changes are shown, not saved, and they are backed up. That backup holds only what this app shows.
+- **Extra copies.** A version-3 log with skipped records gets a new copy-aside file at each launch until a save drops those records. Workouts already do this.
 - Not built by Xcode. Proof needs a CI run on the pushed SHA.
