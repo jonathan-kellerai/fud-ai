@@ -86,7 +86,10 @@ struct AIRequestLogRedactorTests {
     // MARK: - Codex round 1 (P1): escaped keys, inline echoes, the request's own credential
 
     @Test func unicodeEscapedCredentialKeysAreRedacted() {
-        let result = AIRequestLogRedactor.redact(#"{"api_key":"opaque-credential"}"#)
+        // `api\u005fkey` is "api_key" once decoded; the text rules can't match it.
+        let body = #"{"api\u005fkey":"opaque-credential"}"#
+        #expect(body.contains(#"\u005f"#))
+        let result = AIRequestLogRedactor.redact(body)
         #expect(!result.contains("opaque-credential"))
         #expect(result == #"{"api_key":"[REDACTED]"}"#)
     }
@@ -129,10 +132,11 @@ struct AIRequestLogRedactorTests {
 
     @Test func theRequestsOwnCredentialIsRemovedFromDecodedJSONStrings() {
         // The value is split by an escape the raw text pass can't see.
-        let body = #"{"error":{"message":"Unknown credential opaque-credential-77"}}"#
+        let body = #"{"error":{"message":"Unknown credential opaque\u002dcredential-77"}}"#
+        #expect(body.contains(#"\u002d"#))
         let result = AIRequestLogRedactor.redact(body, secrets: ["opaque-credential-77"])
         #expect(!result.contains("credential-77"))
-        #expect(result.contains(redacted))
+        #expect(result == #"{"error":{"message":"Unknown credential [REDACTED]"}}"#)
     }
 
     @Test func shortSecretsAreIgnoredSoOrdinaryWordsSurvive() {
