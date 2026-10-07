@@ -8,14 +8,7 @@ import Testing
 struct WorkoutImportTests {
     private let now = Date(timeIntervalSince1970: 1_791_380_000)
 
-    /// The test bundle's copy (Fixtures/ is a synchronized folder, so the file
-    /// is a bundle resource), else the checkout next to this file.
-    private var fixtureURL: URL {
-        Bundle(for: WorkoutFixtureBundleToken.self).url(forResource: "jl-workouts-import", withExtension: "json")
-            ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-                .appendingPathComponent("Fixtures", isDirectory: true)
-                .appendingPathComponent("jl-workouts-import.json")
-    }
+    private var fixtureURL: URL { WorkoutImportFixture.url }
 
     private func fixture() throws -> WorkoutImportFile {
         try WorkoutImportFile.load(from: fixtureURL)
@@ -197,6 +190,3 @@ struct WorkoutImportTests {
         #expect(TrainProgressStore(defaults: defaults).history == store.history)
     }
 }
-
-/// Finds the test bundle that holds the import fixture.
-private final class WorkoutFixtureBundleToken {}
