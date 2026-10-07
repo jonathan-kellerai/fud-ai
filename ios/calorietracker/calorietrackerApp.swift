@@ -47,6 +47,7 @@ struct calorietrackerApp: App {
 
     init() {
         let peptides = PeptideLogStore()
+        ReconBenchStore.moveMixes(into: peptides)
         _peptideLogStore = State(initialValue: peptides)
         _cloudBackupService = State(initialValue: CloudBackupService(peptides: peptides))
         // Tip-jar IAPs are tracked through RevenueCat (public SDK key, safe to ship).
