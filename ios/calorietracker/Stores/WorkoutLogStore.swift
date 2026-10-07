@@ -122,17 +122,16 @@ final class WorkoutLogStore {
         try commit(next)
     }
 
-    /// Deletes a workout. A record without its sets stays behind so a
-    /// re-import of the same workout adds nothing. Throws, changing nothing,
-    /// when the workout is gone or the log can't be written.
+    /// Deletes a workout. A record without its sets stays behind, keeping every
+    /// id and content hash it carried, so a re-import of any version of it adds
+    /// nothing. Throws, changing nothing, when the workout is gone or the log
+    /// can't be written.
     func delete(id: String, now: Date = Date()) throws {
         guard let index = records.firstIndex(where: { $0.workout.id == id && !$0.isDeleted }) else {
             throw WorkoutLogError.notFound
         }
         var next = records
-        next[index].sets = []
-        next[index].revisions = []
-        next[index].deletedAt = Self.timestamp(now)
+        next[index].delete(at: Self.timestamp(now))
         try commit(next)
     }
 
@@ -164,7 +163,7 @@ final class WorkoutLogStore {
     /// The file's workouts whose id and content hash aren't already in the log
     /// (deleted ones included) or earlier in the file, and how many were.
     private func newWorkouts(in file: WorkoutImportFile) -> (new: [StoredWorkout], duplicates: Int) {
-        var ids = Set(records.map(\.workout.id))
+        var ids = Set(records.flatMap(\.ids))
         var hashes = Set(records.flatMap(\.contentHashes))
         var new: [StoredWorkout] = []
         var duplicates = 0
