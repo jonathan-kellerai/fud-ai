@@ -36,15 +36,29 @@ struct PeptideUnreadableLogTests {
 
     // MARK: Reading the file
 
-    @Test func aPathThroughAPlainFileReadsAsNoFile() throws {
+    private func isMissing(_ url: URL) -> Bool {
+        if case .missing = DeviceLogFile(url: url, defaults: nil, defaultsKey: "unused").readFile() { return true }
+        return false
+    }
+
+    @Test func noFileAtThePathReadsAsMissingAndALockedFileDoesNot() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("device-log-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
+        defer { cleanUp(directory.appendingPathComponent("locked.json")) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // A plain file where a folder should be.
         let blocker = directory.appendingPathComponent("blocked")
         try Data().write(to: blocker)
-        let file = DeviceLogFile(url: blocker.appendingPathComponent("log.json"), defaults: nil, defaultsKey: "unused")
-        guard case .missing = file.readFile() else {
-            Issue.record("A file that can't exist should read as missing")
+        #expect(isMissing(blocker.appendingPathComponent("log.json")))
+        // A folder where the file should be.
+        let folder = directory.appendingPathComponent("folder.json")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        #expect(isMissing(folder))
+        // A file that is there but can't be read.
+        let locked = directory.appendingPathComponent("locked.json")
+        try Data("{}".utf8).write(to: locked)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        guard case .failed = DeviceLogFile(url: locked, defaults: nil, defaultsKey: "unused").readFile() else {
+            Issue.record("A locked file should read as failed")
             return
         }
     }
