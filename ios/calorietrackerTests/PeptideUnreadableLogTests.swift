@@ -207,6 +207,39 @@ struct PeptideUnreadableLogTests {
         #expect(defaults.data(forKey: PeptideLogStore.defaultsKey) == nil)
     }
 
+    /// A folder on the way to the log that can't be opened hides the file; it
+    /// isn't gone. Neither the stale UserDefaults copy nor an empty log may stand in for it.
+    @Test func aLogBehindAFolderThatCantBeOpenedIsNotMissing() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let (defaults, suite) = try defaultsSuite()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = try savedLog(at: url, defaults: defaults)
+        let saved = try Data(contentsOf: url)
+        defaults.set(Data(#"{"version":3,"entries":[],"vials":[],"schedules":[]}"#.utf8), forKey: PeptideLogStore.defaultsKey)
+        let folder = url.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder) }
+
+        guard case .failed = DeviceLogFile(url: url, defaults: nil, defaultsKey: "unused").readFile() else {
+            Issue.record("A file behind a folder that can't be opened should read as failed")
+            return
+        }
+        let store = PeptideLogStore(persistence: .file(url, defaults: defaults))
+        #expect(store.entries.isEmpty)
+        let refusal = try #require(store.changeRefusal)
+        #expect(store.log(draft()) == nil)
+        #expect(store.persistError == refusal)
+        #expect(store.backupArchiveData().data == nil)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder)
+        #expect(try Data(contentsOf: url) == saved)
+        let second = try #require(store.log(draft(compound: "TB-500"), now: takenAt))
+        let reopened = PeptideLogStore(persistence: .file(url))
+        #expect(Set(reopened.entries.map(\.id)) == [id, second])
+        #expect(reopened.vial(id: "v-saved") != nil)
+    }
+
     @Test func deleteEverythingStillWorksWhileTheLogCantBeOpened() throws {
         let url = tempURL()
         defer { cleanUp(url) }

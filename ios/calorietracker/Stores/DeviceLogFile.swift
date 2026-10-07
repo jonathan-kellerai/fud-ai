@@ -31,17 +31,16 @@ struct DeviceLogFile {
         guard let url else { return .missing }
         do {
             return .data(try Data(contentsOf: url))
-        } catch CocoaError.fileReadNoSuchFile {
-            return .missing
         } catch {
-            // No file at the path (nothing there, a folder in its place, or a plain
-            // file where a folder should be) is no file, not an unreadable one;
-            // a locked file is still there, so it stays `.failed`.
-            var isFolder: ObjCBool = false
-            if !FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) || isFolder.boolValue {
-                return .missing
+            // No file at the path (nothing there, a plain file where a folder
+            // should be, or a folder in its place) is no file. Anything else (a
+            // locked file, a folder on the way that can't be opened) may hide a
+            // saved log, so it stays `.failed`.
+            var info = stat()
+            guard stat(url.path, &info) == 0 else {
+                return errno == ENOENT || errno == ENOTDIR ? .missing : .failed(error)
             }
-            return .failed(error)
+            return info.st_mode & S_IFMT == S_IFDIR ? .missing : .failed(error)
         }
     }
 

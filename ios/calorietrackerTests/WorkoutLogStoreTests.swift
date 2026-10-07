@@ -244,6 +244,29 @@ struct WorkoutLogStoreTests {
         #expect(Set(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id)) == [id, second])
     }
 
+    /// A folder on the way to the log that can't be opened hides the file; it
+    /// isn't gone, so an empty log never stands in for it.
+    @Test func aLogBehindAFolderThatCantBeOpenedIsNotMissing() throws {
+        let url = tempURL()
+        defer { cleanUp(url) }
+        let id = try save(WorkoutLogStore(persistence: .file(url)), draft().payload(now: finished))
+        let saved = try Data(contentsOf: url)
+        let folder = url.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder) }
+
+        let store = WorkoutLogStore(persistence: .file(url))
+        #expect(store.workouts.isEmpty)
+        #expect(store.storageNote == WorkoutLogError.notOpened.localizedDescription)
+        #expect(throws: WorkoutLogError.notOpened) { try save(store, draft().payload(now: finished)) }
+        #expect(store.backupData().data == nil)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder)
+        #expect(try Data(contentsOf: url) == saved)
+        let second = try save(store, draft().payload(now: finished))
+        #expect(Set(WorkoutLogStore(persistence: .file(url)).workouts.map(\.id)) == [id, second])
+    }
+
     @Test func aSaveAfterTheLogBecomesReadableKeepsEveryEarlierWorkout() throws {
         let url = tempURL()
         defer { cleanUp(url) }
