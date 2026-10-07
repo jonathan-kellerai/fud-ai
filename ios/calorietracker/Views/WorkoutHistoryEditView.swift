@@ -137,25 +137,14 @@ struct WorkoutHistoryEditView: View {
         isSaving = true
         defer { isSaving = false }
 
-        let now = ISO8601DateFormatter().string(from: Date())
-        let payloadSets = sets.map(\.payload)
-        let noteLines = notes
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        let payload = WorkoutPayload(
-            kind: "COMPLETED",
+        let payload = WorkoutPayload.historyCorrection(
             programVersion: programVersion,
             programDay: programDay,
-            title: title,
-            units: "lb",
             sessionDate: sessionDate,
-            conditioning: conditioning.isEmpty ? nil : conditioning,
-            notes: noteLines,
-            recordedAtUtc: now,
-            openedAtUtc: now,
-            source: "jl-fud-native",
-            sets: payloadSets
+            title: title,
+            conditioning: conditioning,
+            notesText: notes,
+            sets: sets
         )
 
         do {

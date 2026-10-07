@@ -218,6 +218,23 @@ struct WorkoutLogStoreTests {
         #expect(store.persistError != nil)
     }
 
+    @Test func aHistoryCorrectionKeepsNonBlankNoteLinesAndDropsEmptyConditioning() throws {
+        let set = RemoteWorkoutSet(id: "7", workoutId: "w", setOrder: 3, exercise: "Leg press", loadLb: 180,
+                                   reps: 12, rir: 2, rpe: nil, exercisePosition: 1, plannedPosition: 2)
+        var edited = EditableBridgeSet(set)
+        edited.rpeText = "8,5"
+        let payload = WorkoutPayload.historyCorrection(
+            programVersion: "program-v2", programDay: "1-mon", sessionDate: "2026-10-06",
+            title: "Lower A", conditioning: "", notesText: " first \n\n  second  \n",
+            sets: [edited], now: Date(timeIntervalSince1970: 0)
+        )
+        #expect(payload.notes == ["first", "second"])
+        #expect(payload.conditioning == nil)
+        #expect(payload.recordedAtUtc == "1970-01-01T00:00:00Z")
+        #expect(payload.sets == [WorkoutSet(exercise: "Leg press", load: 180, reps: 12, rir: 2, rpe: 8.5, order: 3,
+                                            exercisePosition: 1, plannedPosition: 2)])
+    }
+
     @Test func inMemoryLogsWriteNothing() throws {
         let store = WorkoutLogStore(persistence: .inMemory)
         let id = try save(store, draft().payload(now: finished))
