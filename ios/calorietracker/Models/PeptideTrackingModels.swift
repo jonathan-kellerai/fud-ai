@@ -131,6 +131,12 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         return trimmed.isEmpty ? "Vial" : trimmed
     }
 
+    /// Reconstitute can open this vial to confirm or correct it: one compound,
+    /// with its amount typed or not yet (an imported vial may have none).
+    var opensInReconstitute: Bool {
+        !isBlend && components.count <= 1
+    }
+
     /// A single-compound vial from Reconstitute: the amount and diluent as
     /// typed, confirmed only when the user ticked step 3, stamped with when.
     /// Re-confirming an existing vial keeps its other details.
