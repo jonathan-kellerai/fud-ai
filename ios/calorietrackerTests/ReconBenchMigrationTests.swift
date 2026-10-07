@@ -47,6 +47,7 @@ struct ReconBenchMigrationTests {
         """
     }
 
+    @MainActor
     private struct Phone {
         let directory: URL
         let logURL: URL
