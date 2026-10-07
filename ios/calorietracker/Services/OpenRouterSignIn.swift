@@ -26,6 +26,12 @@ final class OpenRouterSignIn {
     @ObservationIgnored private var pendingPKCE: OpenRouterOAuth.PKCE?
     @ObservationIgnored private var session: ASWebAuthenticationSession?
     @ObservationIgnored private var anchor: OpenRouterPresentationAnchor?
+    /// Bumped by every new attempt and by Cancel. Work from an older attempt that finishes
+    /// late sees a different number and changes nothing: no saved key, no state.
+    @ObservationIgnored private var attempt = 0
+    @ObservationIgnored private var exchangeTask: Task<(Data, Int), Error>?
+    /// The browser sheet's continuation, so Cancel can end a sheet that never calls back.
+    @ObservationIgnored private var pendingCallback: SignInContinuation?
     private let send: ExchangeTransport
     private let saveKey: @MainActor (String) -> Bool
 
@@ -74,6 +80,8 @@ final class OpenRouterSignIn {
 
     /// Returns the new key, or nil when the user cancelled or sign-in failed (`phase` says which).
     func signIn() async -> String? {
+        guard !isBusy else { return nil }
+        let current = beginNewAttempt()
         hasTriedSignIn = true
         isAwaitingPastedCode = false
         phase = .signingIn
@@ -84,9 +92,10 @@ final class OpenRouterSignIn {
                 return nil
             }
             let callback = try await authenticate(url: url)
+            guard current == attempt else { return nil }
             switch OpenRouterOAuth.parseCallback(callback, expectedState: pkce.state) {
             case .code(let code):
-                return await exchange(code: code, pkce: pkce)
+                return await exchange(code: code, pkce: pkce, attempt: current)
             case .denied(let reason):
                 phase = .failed("OpenRouter didn't authorize JL Physical: \(reason)")
             case .stateMismatch:
@@ -95,12 +104,15 @@ final class OpenRouterSignIn {
                 phase = .failed("OpenRouter didn't send a sign-in code back. Use Paste code instead.")
             }
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            guard current == attempt else { return nil }
             phase = .idle
         } catch {
+            guard current == attempt else { return nil }
             phase = .failed("Sign-in didn't finish: \(error.localizedDescription) Use Paste code instead.")
         }
         session = nil
         anchor = nil
+        pendingCallback = nil
         return nil
     }
 
@@ -109,6 +121,7 @@ final class OpenRouterSignIn {
     /// Starts the display-code flow and returns the OpenRouter page to open in Safari.
     /// OpenRouter shows a code there; `submitPastedCode` exchanges it with this verifier.
     func beginPasteCode() -> URL? {
+        beginNewAttempt()
         do {
             let pkce = try Self.makePKCE()
             pendingPKCE = pkce
@@ -122,6 +135,7 @@ final class OpenRouterSignIn {
     }
 
     func submitPastedCode(_ text: String) async -> String? {
+        guard !isBusy else { return nil }
         guard let pkce = pendingPKCE else {
             phase = .failed("Open OpenRouter from Paste code first, then paste the code it shows.")
             return nil
@@ -130,10 +144,13 @@ final class OpenRouterSignIn {
             phase = .failed("That doesn't look like an OpenRouter code.")
             return nil
         }
-        return await exchange(code: code, pkce: pkce)
+        return await exchange(code: code, pkce: pkce, attempt: beginNewAttempt())
     }
 
+    /// Stops whatever sign-in is running, including a key exchange already sent:
+    /// its response is ignored, so Cancel never ends in a saved key.
     func cancelPasteCode() {
+        beginNewAttempt()
         pendingPKCE = nil
         isAwaitingPastedCode = false
         phase = .idle
@@ -149,14 +166,35 @@ final class OpenRouterSignIn {
 
     // MARK: - Private
 
-    private func exchange(code: String, pkce: OpenRouterOAuth.PKCE) async -> String? {
+    /// Invalidates the previous attempt (cancelling its browser sheet and key exchange)
+    /// and returns the new attempt's number.
+    @discardableResult
+    private func beginNewAttempt() -> Int {
+        attempt += 1
+        exchangeTask?.cancel()
+        exchangeTask = nil
+        session?.cancel()
+        session = nil
+        anchor = nil
+        pendingCallback?.resume(with: .failure(CancellationError()))
+        pendingCallback = nil
+        return attempt
+    }
+
+    private func exchange(code: String, pkce: OpenRouterOAuth.PKCE, attempt current: Int) async -> String? {
         phase = .exchanging
         guard let request = OpenRouterOAuth.exchangeRequest(code: code, verifier: pkce.verifier) else {
             phase = .failed("Couldn't build the OpenRouter request.")
             return nil
         }
+        let send = self.send
+        let task = Task { try await send(request) }
+        exchangeTask = task
+        let result = await task.result
+        guard current == attempt else { return nil }
+        exchangeTask = nil
         do {
-            let (data, status) = try await send(request)
+            let (data, status) = try result.get()
             let key = try OpenRouterOAuth.parseExchangeResponse(status: status, data: data)
             guard saveKey(key) else {
                 phase = .failed("Signed in, but the key couldn't be saved to the Keychain. Try again.")
@@ -195,6 +233,7 @@ final class OpenRouterSignIn {
             session.prefersEphemeralWebBrowserSession = false
             self.session = session
             self.anchor = anchor
+            self.pendingCallback = once
             if !session.start() {
                 once.resume(with: .failure(SignInError.couldNotStart))
             }
