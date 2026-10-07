@@ -40,8 +40,9 @@ from the bridge through `ExerciseHistoryLoader`; it now comes from the log. The 
   - `save(_ draft: WorkoutDraft, now:) -> String`: one local record from the draft's session.
   - `correct(id:, title:, conditioning:, notes:, sets:, now:)`: the record changes in place, and the
     version it replaces is kept in `revisions`.
-  - `delete(id:, now:)`: the record is kept as a tombstone (`deleted_at`). It leaves every list, and a
-    re-import can't bring it back.
+  - `delete(id:, now:)`: the record is kept as a tombstone (`deleted_at`, plus `tombstone` with every id and
+    content hash it carried, current and replaced). It leaves every list, and a re-import can't bring it
+    back, not even by the original hash of a workout corrected before it was deleted.
   - Reads: `workouts` (live records, newest session first), `detail(id:)`, `details`.
   - Import: `importSummary(of:)` (preview) and `importFile(_:)`.
   - Backup: `backupData()` and `restoreBackupData(_:)`. Reset: `deleteAll()`.
@@ -51,7 +52,9 @@ from the bridge through `ExerciseHistoryLoader`; it now comes from the log. The 
 - **The file: `WorkoutLogFile`.** It is the peptide approach, through the shared `DeviceLogFile`:
   - Location: `Application Support/WorkoutLog/workout_log_v1.json`, `{version: 1, workouts: [...], omitted?}`.
   - Writes are atomic. Unreadable bytes are set aside as `workout_log_v1.unreadable-<stamp>.json` and
-    never overwritten.
+    never overwritten. If that copy can't be made (or doesn't read back the same), the log is read-only
+    until a later launch makes it: save, correct, delete, import, backup and restore all refuse, and
+    Settings › Workouts says why. That covers a wholly unreadable log and a log with skipped records.
   - Before an import changes the log, a `pre-import` copy is written next to it.
   - Decoding is lossy per record. A record that can't be read is counted (`omitted`), and History says so.
   - A newer `version` leaves the file untouched and runs read-only in memory, with a note.
@@ -95,6 +98,10 @@ from the bridge through `ExerciseHistoryLoader`; it now comes from the log. The 
   workouts alone.
 - **Delete Everything** calls `workoutLogStore.deleteAll()`. That removes the file, every copy set aside
   next to it, and the in-memory records.
+- **Open question for Jonathan:** workouts, like peptides, ride in the user's own iCloud backup (the
+  `workouts.log.v1` key, when iCloud backup is on). That follows his "same as peptides" instruction, so it
+  stays as built. Codex flagged it (P1, `CloudBackupService.swift:90`) because training history then leaves
+  the phone for the user's iCloud. Whether workouts and peptides should both stay in the backup is his call.
 
 ## 5. Tests (real inputs; temp files; no mocks except the tripwire)
 
@@ -281,19 +288,25 @@ Commits on `integ/build-70` after 7f13e35cd, in order:
     - a save to a since-deleted id keeps the draft
     - Home shows "Logged" for a set-less workout, and the logger adopts with program days
 16. this doc
+17. Fixes after CI run 37616995246 and the Codex review:
+    - `test` SetRowPolishTests save into the log (the CI test-build error)
+    - `refactor` `keepUnreadable` reports whether the copy is safe
+    - `behavior` an unreadable log that can't be set aside is read-only (Codex P1)
+    - `behavior` Delete keeps a tombstone of every id and content hash (Codex P2)
+    - this doc (the iCloud backup is an open question; Codex P1 on `CloudBackupService.swift:90` is not changed)
 
 **Saved file** (`Application Support/WorkoutLog/workout_log_v1.json`):
 - Top level: `{version: 1, workouts: [StoredWorkout], omitted?: int, imported_at?: ISO-8601}`.
-- `StoredWorkout`: `{workout: <bridge workout row>, sets: [<bridge set row>], revisions: [{replaced_at, workout, sets}], deleted_at?}`.
+- `StoredWorkout`: `{workout: <bridge workout row>, sets: [<bridge set row>], revisions: [{replaced_at, workout, sets}], deleted_at?, tombstone?: {ids, content_hashes}}`.
 - Row keys are the bridge's, plus `source_fingerprint` and `logged_at`, which are kept from imports.
-- A deleted workout keeps its id and content hash, with no sets.
+- A deleted workout has no sets or revisions; its `tombstone` keeps every id and content hash it carried.
 
 **Import file:** exactly `jl-workouts-export-v1`, as in §3.
 
 **Backup:** the same bytes as the saved file (sorted keys) under `workouts.log.v1`.
 
 **Verified here:**
-- **Linux harness** (`/tmp/r70-harness`, not committed; Swift 6.2, the model and store files symlinked from this worktree): 177 tests in 13 suites, plus `PeptideNoNetworkTests` 5/5 and `WorkoutNoNetworkTests` 3/3, each run alone. That covers the workout log, import, backup/reset, draft store, next-in-cycle, logger logic, Progress training math, and the peptide and Recon suites.
+- **Linux harness** (`/tmp/r70-harness`, not committed; Swift 6.2, the model and store files symlinked from this worktree): 194 tests in 13 suites (now including SetRowPolishTests and the `WorkoutSetEntry` files it needs, which the CI test-build error showed were missing), plus `PeptideNoNetworkTests` 5/5 and `WorkoutNoNetworkTests` 3/3, each run alone. That covers the workout log, import, backup/reset, draft store, next-in-cycle, logger logic, Progress training math, and the peptide and Recon suites.
   - Peptide and Recon totals are the same before and after the `DeviceLogFile` refactor: 76/76 on both.
 - **Tripwire mutation:** an injected `GET /api/workouts` in `WorkoutLogStore.save` fails `WorkoutNoNetworkTests`.
 - **Lint:** the "Workouts stay on device" script passes on this tree and fails on an injected `postWorkout` call and `URLSession` use.
@@ -350,3 +363,5 @@ Peptides make no bridge calls (build 67, lint-gated). Nutrition has no bridge en
 2. **Resolved: `Services/WorkoutSyncService.swift` stays deleted.** Jonathan asked for workout network calls to go away entirely; this file's only job was posting workouts to the bridge.
 3. **Open: the AGENTS.md wording.** "Workout logging lives in `StrengthWorkoutStore`" should probably name `WorkoutLogStore` for program workouts (resolution 8). AGENTS.md changes need his approval, so the file is not edited here; this is a question for him.
 4. **The new CI job must be required in branch protection** for the lint to block merges.
+5. **Open: workouts in the iCloud backup.** Workouts, like peptides, ride in the user's own iCloud backup (§4). That is kept for parity with peptides, as he asked, and the Codex P1 that flagged it was not acted on. Should both stay in the backup?
+6. **Follow-up, not changed: peptides have the same unreadable-copy gap.** `PeptideLogStore.load` ignores whether `keepUnreadable` succeeded, so a failed copy can be followed by a save over the only copy. The workout fix (read-only until the copy is made) would carry over.
