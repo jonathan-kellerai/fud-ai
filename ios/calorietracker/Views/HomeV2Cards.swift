@@ -432,7 +432,7 @@ struct HomeV2Cards: View {
     private func loggedSummary(_ logged: RemoteWorkout) -> some View {
         Text(logged.title.isEmpty ? logged.programDay : logged.title)
             .font(.system(.title3, design: .rounded, weight: .bold))
-        if let sessionDetail = workoutLog.detail(id: logged.id) {
+        if let sessionDetail = workoutLog.detail(id: logged.id), !sessionDetail.sets.isEmpty {
             let summary = HomeV2Logic.sessionSummary(
                 sets: sessionDetail.sets.map { ($0.exercise, $0.loadLb, $0.reps) }
             )
