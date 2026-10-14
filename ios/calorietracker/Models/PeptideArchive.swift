@@ -3,7 +3,7 @@
 //  calorietracker
 //
 //  The one file format for peptide export, import and the iCloud backup:
-//  {format, format_version, exported_at, vials, schedules, entries, held_aside?}.
+//  {format, format_version, exported_at, vials, schedules, entries, reminders, held_aside?}.
 //  Records only: every number is one the user (or their records) entered.
 //
 
@@ -14,6 +14,7 @@ struct PeptideImportSummary: Equatable {
     var newVials = 0
     var newSchedules = 0
     var newEntries = 0
+    var newReminders = 0
     /// Records an older file tagged with a second profile, held aside (out of
     /// the log) until the user keeps or deletes them.
     var heldAside = 0
@@ -23,7 +24,7 @@ struct PeptideImportSummary: Equatable {
     var skipped = 0
 
     /// Records added to the log.
-    var added: Int { newVials + newSchedules + newEntries }
+    var added: Int { newVials + newSchedules + newEntries + newReminders }
     /// Everything the import saves: added to the log or held aside.
     var total: Int { added + heldAside }
 }
@@ -49,13 +50,16 @@ enum PeptideArchiveError: LocalizedError, Equatable {
 
 struct PeptideArchive: Equatable {
     static let format = "jl-peptides"
-    static let formatVersion = 1
+    /// Version 2 (build 72) adds planned doses, AM/PM slots, routes and
+    /// `reminders`. Version-1 files read as before.
+    static let formatVersion = 2
     static let maxBytes = 1_000_000
 
     var exportedAt: String?
     var vials: [Vial]
     var schedules: [Schedule]
     var entries: [PeptideLogEntry]
+    var reminders: [Reminder] = []
     /// Records an earlier build kept under a second profile that the user
     /// hasn't kept or deleted yet (`held_aside`). Written only when there are some.
     var heldAside = HeldAside()
@@ -77,6 +81,7 @@ struct PeptideArchive: Equatable {
         vials: [PeptideVial],
         schedules: [PeptideUserSchedule],
         entries: [PeptideLogEntry],
+        reminders: [PeptideReminder] = [],
         heldAside: PeptideRecordSet = PeptideRecordSet(),
         syringeScale: PeptideSyringeScale? = nil
     ) {
@@ -85,6 +90,7 @@ struct PeptideArchive: Equatable {
         self.vials = vials.map { Vial($0) }
         self.schedules = schedules.map { Schedule($0) }
         self.entries = entries
+        self.reminders = reminders.map { Reminder($0) }
         self.heldAside = HeldAside(
             vials: heldAside.vials.map { Vial($0) },
             schedules: heldAside.schedules.map { Schedule($0) },
@@ -98,7 +104,8 @@ struct PeptideArchive: Equatable {
             own: PeptideRecordSet(
                 entries: entries,
                 vials: vials.map { $0.vial(now: now) },
-                schedules: schedules.map { $0.schedule(now: now) }
+                schedules: schedules.map { $0.schedule(now: now) },
+                reminders: reminders.map { $0.reminder(now: now) }
             ),
             heldAside: PeptideRecordSet(
                 entries: heldAside.entries,
@@ -127,6 +134,10 @@ struct PeptideArchive: Equatable {
         if complete, file.vials == nil || file.schedules == nil || file.entries == nil {
             throw PeptideArchiveError.incomplete
         }
+        // Version-1 files have no reminders; from version 2 the list is always written.
+        if complete, version >= 2, file.reminders == nil {
+            throw PeptideArchiveError.incomplete
+        }
         // `held_aside` is optional, but one that is there and can't be read
         // would restore as nothing held aside.
         if complete, file.heldAsideIsMalformed || file.heldAside?.isMalformed == true {
@@ -135,6 +146,7 @@ struct PeptideArchive: Equatable {
         let vials = (file.vials ?? []).compactMap(\.value)
         let schedules = (file.schedules ?? []).compactMap(\.value)
         let entries = (file.entries ?? []).compactMap(\.value)
+        let reminders = (file.reminders ?? []).compactMap(\.value)
         let held = file.heldAside
         let heldVials = (held?.vials ?? []).compactMap(\.value)
         let heldSchedules = (held?.schedules ?? []).compactMap(\.value)
@@ -144,6 +156,7 @@ struct PeptideArchive: Equatable {
         archive.vials = vials.filter { $0.profile == .own }.map(\.value)
         archive.schedules = schedules.filter { $0.profile == .own }.map(\.value)
         archive.entries = entries.filter { $0.profile == .own }.map(\.value)
+        archive.reminders = reminders
         archive.syringeScale = file.syringeScale.flatMap(PeptideSyringeScale.init(rawValue:))
         archive.heldAside = HeldAside(
             vials: vials.filter { $0.profile == .second }.map(\.value) + heldVials,
@@ -151,8 +164,9 @@ struct PeptideArchive: Equatable {
             entries: entries.filter { $0.profile == .second }.map(\.value) + heldEntries
         )
         let listed: Int = (file.vials?.count ?? 0) + (file.schedules?.count ?? 0) + (file.entries?.count ?? 0)
+            + (file.reminders?.count ?? 0)
         let heldListed: Int = (held?.vials?.count ?? 0) + (held?.schedules?.count ?? 0) + (held?.entries?.count ?? 0)
-        let read: Int = vials.count + schedules.count + entries.count
+        let read: Int = vials.count + schedules.count + entries.count + reminders.count
         let heldRead: Int = heldVials.count + heldSchedules.count + heldEntries.count
         archive.skipped = (listed - read) + (heldListed - heldRead)
         if complete, archive.skipped > 0 { throw PeptideArchiveError.incomplete }
@@ -186,6 +200,7 @@ struct PeptideArchive: Equatable {
             vials: vials,
             schedules: schedules,
             entries: entries,
+            reminders: reminders,
             heldAside: heldAside,
             syringeScale: syringeScale?.rawValue
         ))
@@ -198,7 +213,7 @@ struct PeptideArchive: Equatable {
     // MARK: File shape
 
     private enum FileKeys: String, CodingKey {
-        case format, vials, schedules, entries
+        case format, vials, schedules, entries, reminders
         case formatVersion = "format_version"
         case exportedAt = "exported_at"
         case heldAside = "held_aside"
@@ -220,6 +235,7 @@ struct PeptideArchive: Equatable {
         var vials: [PeptideLossy<PeptideProfiled<Vial>>]?
         var schedules: [PeptideLossy<PeptideProfiled<Schedule>>]?
         var entries: [PeptideLossy<PeptideProfiled<PeptideLogEntry>>]?
+        var reminders: [PeptideLossy<Reminder>]?
         var heldAside: HeldAsideIn?
         var heldAsideIsMalformed = false
         var syringeScale: Int?
@@ -232,6 +248,7 @@ struct PeptideArchive: Equatable {
             vials = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Vial>>].self, forKey: .vials)
             schedules = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<Schedule>>].self, forKey: .schedules)
             entries = try? container.decodeIfPresent([PeptideLossy<PeptideProfiled<PeptideLogEntry>>].self, forKey: .entries)
+            reminders = try? container.decodeIfPresent([PeptideLossy<Reminder>].self, forKey: .reminders)
             do {
                 heldAside = try container.decodeIfPresent(HeldAsideIn.self, forKey: .heldAside)
             } catch {
@@ -278,6 +295,7 @@ struct PeptideArchive: Equatable {
         var vials: [Vial]
         var schedules: [Schedule]
         var entries: [PeptideLogEntry]
+        var reminders: [Reminder]
         var heldAside: HeldAside
         var syringeScale: Int?
 
@@ -289,6 +307,7 @@ struct PeptideArchive: Equatable {
             try container.encode(vials, forKey: .vials)
             try container.encode(schedules, forKey: .schedules)
             try container.encode(entries, forKey: .entries)
+            try container.encode(reminders, forKey: .reminders)
             try container.encodeIfPresent(syringeScale, forKey: .syringeScale)
             if !heldAside.isEmpty {
                 var held = container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside)
@@ -396,7 +415,8 @@ struct PeptideArchive: Equatable {
 
     // MARK: Schedule
 
-    /// A schedule the user typed. The amount is a note; it never fills a log.
+    /// A schedule the user typed. The legacy amount is a note; it never
+    /// fills a log. `dose` is the planned dose (version 2).
     struct Schedule: Codable, Equatable {
         var id: String
         var compound: String
@@ -409,9 +429,13 @@ struct PeptideArchive: Equatable {
         var active: Bool
         var notes: String
         var createdAt: String?
+        var dose: PeptideDose?
+        var slot: PeptideDoseSlot?
+        var route: String?
+        var origin: PeptideRecordOrigin?
 
         enum CodingKeys: String, CodingKey {
-            case id, compound, amount, units, frequency, active, notes
+            case id, compound, amount, units, frequency, active, notes, dose, slot, route, origin
             case startDate = "start_date"
             case endDate = "end_date"
             case timeOfDay = "time_of_day"
@@ -430,6 +454,10 @@ struct PeptideArchive: Equatable {
             active = schedule.active
             notes = schedule.notes
             createdAt = PeptideMath.iso8601NewYork(schedule.createdAt)
+            dose = schedule.dose
+            slot = schedule.slot
+            route = schedule.route
+            origin = schedule.origin
         }
 
         init(from decoder: Decoder) throws {
@@ -451,6 +479,10 @@ struct PeptideArchive: Equatable {
             active = (try container.decodeIfPresent(Bool.self, forKey: .active)) ?? true
             notes = (try container.decodeIfPresent(String.self, forKey: .notes)) ?? ""
             createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+            dose = try container.decodeIfPresent(PeptideDose.self, forKey: .dose)
+            slot = try container.decodeIfPresent(PeptideDoseSlot.self, forKey: .slot)
+            route = try container.decodeIfPresent(String.self, forKey: .route)
+            origin = try? container.decodeIfPresent(PeptideRecordOrigin.self, forKey: .origin)
         }
 
         /// The on-device schedule.
@@ -466,6 +498,79 @@ struct PeptideArchive: Equatable {
                 timeOfDay: timeOfDay,
                 active: active,
                 notes: notes,
+                createdAt: createdAt.flatMap(PeptideMath.parseISO8601) ?? now,
+                dose: dose,
+                slot: slot,
+                route: route,
+                origin: origin
+            )
+        }
+    }
+
+    // MARK: Reminder
+
+    /// A one-off reminder (version 2).
+    struct Reminder: Codable, Equatable {
+        var id: String
+        var title: String
+        /// yyyy-MM-dd.
+        var date: String
+        var startMinutes: Int
+        var endMinutes: Int?
+        var dismissed: Bool
+        var origin: PeptideRecordOrigin?
+        var createdAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, title, date, dismissed, origin
+            case startMinutes = "start_minutes"
+            case endMinutes = "end_minutes"
+            case createdAt = "created_at"
+        }
+
+        init(_ reminder: PeptideReminder) {
+            id = reminder.id
+            title = reminder.title
+            date = reminder.date
+            startMinutes = reminder.startMinutes
+            endMinutes = reminder.endMinutes
+            dismissed = reminder.dismissed
+            origin = reminder.origin
+            createdAt = PeptideMath.iso8601NewYork(reminder.createdAt)
+        }
+
+        /// `id`, `title`, a yyyy-MM-dd `date` and a start time within the day are required.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "Empty id")
+            }
+            title = try container.decode(String.self, forKey: .title)
+            date = try container.decode(String.self, forKey: .date)
+            guard ReconMath.parseISO(date) != nil else {
+                throw DecodingError.dataCorruptedError(forKey: .date, in: container, debugDescription: "Not yyyy-MM-dd")
+            }
+            startMinutes = try container.decode(Int.self, forKey: .startMinutes)
+            guard PeptideReminder.isTimeOfDay(startMinutes) else {
+                throw DecodingError.dataCorruptedError(forKey: .startMinutes, in: container, debugDescription: "Not a time of day")
+            }
+            endMinutes = (try container.decodeIfPresent(Int.self, forKey: .endMinutes)).flatMap { PeptideReminder.isTimeOfDay($0) ? $0 : nil }
+            dismissed = (try container.decodeIfPresent(Bool.self, forKey: .dismissed)) ?? false
+            origin = try? container.decodeIfPresent(PeptideRecordOrigin.self, forKey: .origin)
+            createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        }
+
+        /// The on-device reminder.
+        func reminder(now: Date) -> PeptideReminder {
+            PeptideReminder(
+                id: id,
+                title: title,
+                date: date,
+                startMinutes: startMinutes,
+                endMinutes: endMinutes,
+                dismissed: dismissed,
+                origin: origin,
                 createdAt: createdAt.flatMap(PeptideMath.parseISO8601) ?? now
             )
         }

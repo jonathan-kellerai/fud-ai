@@ -106,7 +106,7 @@ struct PeptideArchiveTests {
         let second = try store.archive(exportedAt: now).encoded()
         #expect(first == second)
         let text = String(decoding: first, as: UTF8.self)
-        for key in ["\"format\" : \"jl-peptides\"", "\"format_version\" : 1", "\"exported_at\"", "\"diluent_ml\"",
+        for key in ["\"format\" : \"jl-peptides\"", "\"format_version\" : 2", "\"exported_at\"", "\"diluent_ml\"",
                     "\"concentration_confirmed\"", "\"start_date\"", "\"vial_id\"", "\"void_reason\"",
                     "\"drawn_unit\" : \"units\"", "\"syringe_scale\" : 100", "\"syringe_scale_at_save\" : 100",
                     "\"concentration_confirmed_at_save\"", "\"vial_id_at_save\""] {
@@ -348,7 +348,7 @@ struct PeptideArchiveTests {
             try PeptideArchive.decode(Data(#"{"format":"jl-peptides"}"#.utf8))
         }
         #expect(throws: PeptideArchiveError.newerVersion) {
-            try PeptideArchive.decode(Data(#"{"format":"jl-peptides","format_version":2,"vials":[]}"#.utf8))
+            try PeptideArchive.decode(Data(#"{"format":"jl-peptides","format_version":\#(PeptideArchive.formatVersion + 1),"vials":[]}"#.utf8))
         }
         let padding = String(repeating: " ", count: PeptideArchive.maxBytes)
         #expect(throws: PeptideArchiveError.tooLarge) {

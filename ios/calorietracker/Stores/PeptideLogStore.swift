@@ -15,11 +15,15 @@ final class PeptideLogStore {
     /// Also read by `CloudBackupPolicy`, which leaves this key to the store.
     nonisolated static let defaultsKey = "peptide.log.v1"
     /// Version of the saved file. Version 1 was the bridge-era cache and queue;
-    /// version 2 tagged every record with one of two profiles.
-    static let fileVersion = 3
+    /// version 2 tagged every record with one of two profiles; version 3 is
+    /// one person's log; version 4 adds planned doses, AM/PM slots and
+    /// reminders (an older build reads it as newer and never saves over it).
+    static let fileVersion = 4
 
     private(set) var vials: [PeptideVial] = []
     private(set) var schedules: [PeptideUserSchedule] = []
+    /// One-off reminders (the lab draw), in the order saved.
+    private(set) var reminders: [PeptideReminder] = []
     /// Every logged dose, oldest first.
     private(set) var entries: [PeptideLogEntry] = []
     /// Records an earlier build kept under a second profile. Saved, backed up
@@ -243,6 +247,43 @@ final class PeptideLogStore {
         return nil
     }
 
+    // MARK: Reminders
+
+    /// Saves a reminder, replacing one with the same id. Returns why it was
+    /// refused (nothing changed), or nil when it was saved.
+    @discardableResult
+    func saveReminder(_ reminder: PeptideReminder) -> String? {
+        if let issue = reminder.issue { return issue }
+        guard canChange() else { return persistError }
+        if let index = reminders.firstIndex(where: { $0.id == reminder.id }) {
+            reminders[index] = reminder
+        } else {
+            reminders.append(reminder)
+        }
+        didChange()
+        return nil
+    }
+
+    /// Dismiss hides a reminder from Today and Week and cancels its
+    /// notification; the record stays. Returns why it was refused, or nil.
+    @discardableResult
+    func setReminderDismissed(id: String, dismissed: Bool) -> String? {
+        guard canChange() else { return persistError }
+        guard let index = reminders.firstIndex(where: { $0.id == id }) else { return "This reminder is no longer here." }
+        reminders[index].dismissed = dismissed
+        didChange()
+        return nil
+    }
+
+    /// Returns why the log refused the delete (nothing changed), or nil when it was made.
+    @discardableResult
+    func deleteReminder(id: String) -> String? {
+        guard canChange() else { return persistError }
+        reminders.removeAll { $0.id == id }
+        didChange()
+        return nil
+    }
+
     // MARK: Second profile
 
     /// Records an earlier build kept under a second profile, still waiting
@@ -253,10 +294,11 @@ final class PeptideLogStore {
     /// whose id is already here is left as it is) and the choice is saved.
     func keepHeldAside() {
         guard canChange(), !heldAside.isEmpty else { return }
-        let merged = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules).adding(heldAside)
+        let merged = ownRecords.adding(heldAside)
         entries = Self.sorted(merged.entries)
         vials = merged.vials
         schedules = merged.schedules
+        reminders = merged.reminders
         heldAside = PeptideRecordSet()
         didChange()
     }
@@ -298,6 +340,7 @@ final class PeptideLogStore {
             vials: vials,
             schedules: schedules,
             entries: entries,
+            reminders: reminders,
             heldAside: heldAside,
             syringeScale: syringeScale
         )
@@ -314,6 +357,7 @@ final class PeptideLogStore {
             newVials: new.own.vials.count,
             newSchedules: new.own.schedules.count,
             newEntries: new.own.entries.count,
+            newReminders: new.own.reminders.count,
             heldAside: new.heldAside.count,
             alreadyHere: file.own.count + file.heldAside.count - new.own.count - new.heldAside.count,
             skipped: archive.skipped
@@ -333,6 +377,7 @@ final class PeptideLogStore {
         entries += new.own.entries
         vials += new.own.vials
         schedules += new.own.schedules
+        reminders += new.own.reminders
         heldAside = heldAside.adding(new.heldAside)
         didChangeEntries()
         return summary
@@ -340,7 +385,7 @@ final class PeptideLogStore {
 
     /// `file`'s records whose id isn't on this phone, in the log or held aside.
     private func newRecords(in file: PeptideRecordsByProfile) -> PeptideRecordsByProfile {
-        let here = PeptideRecordSet(entries: entries, vials: vials, schedules: schedules).adding(heldAside)
+        let here = ownRecords.adding(heldAside)
         let own = here.newRecords(in: file.own)
         return PeptideRecordsByProfile(own: own, heldAside: here.adding(own).newRecords(in: file.heldAside))
     }
@@ -358,6 +403,7 @@ final class PeptideLogStore {
         vials = replacement.own.vials
         schedules = replacement.own.schedules
         entries = replacement.own.entries
+        reminders = replacement.own.reminders
         heldAside = replacement.heldAside
         syringeScale = archive.syringeScale
         persistError = nil
@@ -371,6 +417,7 @@ final class PeptideLogStore {
         entries = []
         vials = []
         schedules = []
+        reminders = []
         heldAside = PeptideRecordSet()
         syringeScale = nil
         persistError = nil
@@ -402,6 +449,11 @@ final class PeptideLogStore {
         guard let refusal = readOnly?.refusal else { return true }
         persistError = refusal
         return false
+    }
+
+    /// The user's own records, as one set.
+    private var ownRecords: PeptideRecordSet {
+        PeptideRecordSet(entries: entries, vials: vials, schedules: schedules, reminders: reminders)
     }
 
     private func didChangeEntries() {
@@ -441,11 +493,14 @@ final class PeptideLogStore {
             setAsideUnreadable(data)
             return
         }
-        if version == Self.fileVersion || version == 2 {
+        if version >= 2 && version <= Self.fileVersion {
             guard let snapshot = try? JSONDecoder().decode(PeptideLogSnapshot.self, from: data) else {
                 setAsideUnreadable(data)
                 return
             }
+            // Versions 3 and 4 read the same way: a version-3 log has no
+            // reminders, and its schedules no slot or planned dose. The next
+            // change saves version 4.
             // Records skipped now are dropped by the next save, so they join the count saved with it.
             apply(snapshot.records, omitted: snapshot.omitted + snapshot.skipped)
             syringeScale = snapshot.syringeScale
@@ -505,6 +560,7 @@ final class PeptideLogStore {
         entries = Self.sorted(records.own.entries)
         vials = records.own.vials
         schedules = records.own.schedules
+        reminders = records.own.reminders
         heldAside = records.heldAside
         self.omitted = omitted
         if omitted > 0 {
@@ -515,10 +571,7 @@ final class PeptideLogStore {
 
     private func persist() {
         if file.isInMemory || readOnly != nil { return }
-        let records = PeptideRecordsByProfile(
-            own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules),
-            heldAside: heldAside
-        )
+        let records = PeptideRecordsByProfile(own: ownRecords, heldAside: heldAside)
         switch save(records, scale: syringeScale) {
         case .success?:
             persistError = nil
@@ -540,6 +593,7 @@ final class PeptideLogStore {
             entries: records.own.entries,
             vials: records.own.vials,
             schedules: records.own.schedules,
+            reminders: records.own.reminders,
             heldAside: records.heldAside,
             omitted: omitted
         )
@@ -589,7 +643,7 @@ enum PeptideLogReadOnly: Equatable {
     }
 }
 
-/// The saved file (version 3; version 2 reads the same way). One unreadable
+/// The saved file (version 4; versions 2 and 3 read the same way). One unreadable
 /// record never drops the rest. Records a version-2 save tagged with the
 /// second profile, and those in `held_aside`, are held aside.
 struct PeptideLogSnapshot: Codable {
@@ -597,6 +651,8 @@ struct PeptideLogSnapshot: Codable {
     var entries: [PeptideLogEntry]
     var vials: [PeptideVial]
     var schedules: [PeptideUserSchedule]
+    /// Version 4. Absent in older saves: none.
+    var reminders: [PeptideReminder] = []
     /// Waiting for the user to keep or delete them. Saved only when there are some.
     var heldAside = PeptideRecordSet()
     /// Settings → Syringe scale. Saved only when recorded.
@@ -609,11 +665,14 @@ struct PeptideLogSnapshot: Codable {
     var skipped = 0
 
     var records: PeptideRecordsByProfile {
-        PeptideRecordsByProfile(own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules), heldAside: heldAside)
+        PeptideRecordsByProfile(
+            own: PeptideRecordSet(entries: entries, vials: vials, schedules: schedules, reminders: reminders),
+            heldAside: heldAside
+        )
     }
 
     enum CodingKeys: String, CodingKey {
-        case version, entries, vials, schedules, omitted
+        case version, entries, vials, schedules, reminders, omitted
         case heldAside = "held_aside"
         case syringeScale = "syringe_scale"
     }
@@ -627,6 +686,7 @@ struct PeptideLogSnapshot: Codable {
         entries: [PeptideLogEntry],
         vials: [PeptideVial],
         schedules: [PeptideUserSchedule],
+        reminders: [PeptideReminder] = [],
         heldAside: PeptideRecordSet = PeptideRecordSet(),
         omitted: Int = 0
     ) {
@@ -634,6 +694,7 @@ struct PeptideLogSnapshot: Codable {
         self.entries = entries
         self.vials = vials
         self.schedules = schedules
+        self.reminders = reminders
         self.heldAside = heldAside
         self.omitted = omitted
     }
@@ -645,6 +706,7 @@ struct PeptideLogSnapshot: Codable {
         let lossyEntries = Self.list(PeptideProfiled<PeptideLogEntry>.self, in: container, .entries, malformed: &malformed)
         let lossyVials = Self.list(PeptideProfiled<PeptideVial>.self, in: container, .vials, malformed: &malformed)
         let lossySchedules = Self.list(PeptideProfiled<PeptideUserSchedule>.self, in: container, .schedules, malformed: &malformed)
+        let lossyReminders = Self.list(PeptideReminder.self, in: container, .reminders, malformed: &malformed)
         let sorted = PeptideRecordsByProfile(
             entries: lossyEntries.compactMap(\.value),
             vials: lossyVials.compactMap(\.value),
@@ -653,6 +715,7 @@ struct PeptideLogSnapshot: Codable {
         entries = sorted.own.entries
         vials = sorted.own.vials
         schedules = sorted.own.schedules
+        reminders = lossyReminders.compactMap(\.value)
         var held = sorted.heldAside
         var heldLossy = 0
         if (try? container.decodeNil(forKey: .heldAside)) == false {
@@ -669,8 +732,8 @@ struct PeptideLogSnapshot: Codable {
             }
         }
         heldAside = held
-        let read = sorted.own.count + held.count
-        skipped = lossyEntries.count + lossyVials.count + lossySchedules.count + heldLossy - read + malformed
+        let read = sorted.own.count + reminders.count + held.count
+        skipped = lossyEntries.count + lossyVials.count + lossySchedules.count + lossyReminders.count + heldLossy - read + malformed
         omitted = max((try? container.decodeIfPresent(Int.self, forKey: .omitted)) ?? 0, 0)
         let scale = (try? container.decodeIfPresent(Int.self, forKey: .syringeScale)).flatMap { $0 }
         syringeScale = scale.flatMap(PeptideSyringeScale.init(rawValue:))
@@ -699,6 +762,7 @@ struct PeptideLogSnapshot: Codable {
         try container.encode(entries, forKey: .entries)
         try container.encode(vials, forKey: .vials)
         try container.encode(schedules, forKey: .schedules)
+        try container.encode(reminders, forKey: .reminders)
         if !heldAside.isEmpty {
             var held = container.nestedContainer(keyedBy: HeldAsideKeys.self, forKey: .heldAside)
             try held.encode(heldAside.entries, forKey: .entries)

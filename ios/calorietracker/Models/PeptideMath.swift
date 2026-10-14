@@ -449,6 +449,9 @@ nonisolated enum PeptideMath {
             let count = Int(frequency.n ?? 0)
             return count == 1 ? "1× per week" : "\(count)× per week"
         }
+        if frequency.type == "weekly", let day = frequency.days.first, ReconMath.weekdayShort.indices.contains(day) {
+            return "weekly on " + ReconMath.weekdayShort[day]
+        }
         let text = ReconMath.frequencyText(frequency)
         return text.isEmpty ? "—" : text
     }
@@ -577,6 +580,9 @@ nonisolated enum PeptideMath {
         case "daily":
             return true
         case "weekly":
+            // Build 72: weekly on one weekday. Earlier weekly schedules have
+            // no day and repeat every 7 days from their start.
+            if !frequency.days.isEmpty { return frequency.days.contains(ReconMath.weekday(date)) }
             return offset % 7 == 0
         case "weekdays":
             return frequency.days.contains(ReconMath.weekday(date))

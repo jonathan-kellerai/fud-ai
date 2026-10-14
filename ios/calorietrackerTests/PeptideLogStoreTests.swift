@@ -344,7 +344,8 @@ struct PeptideLogStoreTests {
         let url = tempURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let newer = Data(#"{"version":4,"entries":[],"doses":[{"id":"x"}]}"#.utf8)
+        // One version past this app's, whatever this app's is.
+        let newer = Data(#"{"version":\#(PeptideLogStore.fileVersion + 1),"entries":[],"doses":[{"id":"x"}]}"#.utf8)
         try newer.write(to: url)
         let store = PeptideLogStore(persistence: .file(url))
         #expect(store.storageNote != nil)
