@@ -791,17 +791,25 @@ nonisolated enum PeptideMath {
 
     struct DueItem: Identifiable, Equatable {
         var schedule: PeptideUserSchedule
-        var taken: Bool
+        /// The entry that logged this schedule on the date, if any.
+        var entry: PeptideLogEntry?
         /// For "perWeek" schedules: logged so far this week.
         var weekCount: Int?
         var id: String { schedule.id }
+        var taken: Bool { entry != nil }
+    }
+
+    /// The first entry that counts as logging `schedule` on `date`.
+    static func loggedEntry(for schedule: PeptideUserSchedule, on date: String, entries: [PeptideLogEntry]) -> PeptideLogEntry? {
+        let key = compoundKey(schedule.compound)
+        return entries.first { $0.countsAsTaken && $0.civilDate == date && compoundKey($0.compound) == key }
     }
 
     /// Items the user's own schedules name for `date`.
     static func dueItems(date: String, schedules: [PeptideUserSchedule], entries: [PeptideLogEntry]) -> [DueItem] {
         var items: [DueItem] = []
         for schedule in schedules where schedule.active {
-            let taken = takenDates(compound: schedule.compound, entries: entries)
+            let logged = loggedEntry(for: schedule, on: date, entries: entries)
             if schedule.frequency.type == "perWeek" {
                 guard date >= schedule.startDate, schedule.endDate.map({ date <= $0 }) ?? true else { continue }
                 let monday = ReconMath.mondayOf(date)
@@ -813,11 +821,11 @@ nonisolated enum PeptideMath {
                     to: ReconMath.addDays(monday, 6)
                 )
                 let perWeek = Int(schedule.frequency.n ?? 0)
-                if weekCount < perWeek || taken.contains(date) {
-                    items.append(DueItem(schedule: schedule, taken: taken.contains(date), weekCount: weekCount))
+                if weekCount < perWeek || logged != nil {
+                    items.append(DueItem(schedule: schedule, entry: logged, weekCount: weekCount))
                 }
             } else if !occurrences(schedule, from: date, to: date).isEmpty {
-                items.append(DueItem(schedule: schedule, taken: taken.contains(date), weekCount: nil))
+                items.append(DueItem(schedule: schedule, entry: logged, weekCount: nil))
             }
         }
         return items
