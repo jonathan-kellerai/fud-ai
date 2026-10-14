@@ -193,7 +193,7 @@ struct PeptideNoNetworkTests {
                 _ = store.supply(for: vial)
             }
             let reminder = try #require(store.reminders.first)
-            #expect(!PeptideReminder.notificationPlans(store.reminders, now: now.addingTimeInterval(-3600)).isEmpty)
+            #expect(!PeptideReminder.notificationPlans(store.reminders, now: now.addingTimeInterval(-2 * 86_400)).isEmpty)
             #expect(store.setReminderDismissed(id: reminder.id, dismissed: true) == nil)
             #expect(store.deleteReminder(id: reminder.id) == nil)
             _ = try store.archive(exportedAt: nil).encoded()
