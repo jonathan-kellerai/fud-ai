@@ -1481,6 +1481,9 @@ final class VisualQAStores {
         if VisualQAFixtures.holdsSecondProfileRecords {
             VisualQAFixtures.holdSecondProfileRecords(peptides)
         }
+        if VisualQAFixtures.loadsOwnPeptideSchedule {
+            VisualQAFixtures.loadOwnPeptideSchedule(peptides)
+        }
 
         for entry in VisualQAFixtures.sampleFoodEntries() {
             _ = food.addEntry(entry)

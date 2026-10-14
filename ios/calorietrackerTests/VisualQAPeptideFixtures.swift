@@ -252,3 +252,26 @@ extension VisualQAFixtures {
         _ = store.replaceAll(with: archive, now: peptideReferenceDate)
     }
 }
+
+extension VisualQAFixtures {
+    /// Build 72: the own-schedule preset loaded from Mon 2026-12-28, with three
+    /// synthetic Tesamorelin taps (28-30 Dec) so its vial asks to remix. The
+    /// preset data is the user's schedule; the taps are made up.
+    static var loadsOwnPeptideSchedule = false
+
+    /// Thu 2026-12-31 07:30 New York: the lab-reminder morning.
+    static var peptideScheduleReferenceDate: Date {
+        PeptideMath.date(civil: "2026-12-31", minutes: 7 * 60 + 30) ?? referenceNow
+    }
+
+    static func loadOwnPeptideSchedule(_ store: PeptideLogStore) {
+        let start = PeptideMath.date(civil: "2026-12-28", minutes: 9 * 60) ?? referenceNow
+        store.loadPreset(.own, today: "2026-12-28", now: start)
+        for day in ["2026-12-28", "2026-12-29", "2026-12-30"] {
+            if let evening = PeptideMath.date(civil: day, minutes: 21 * 60) {
+                store.logPlanned(scheduleID: "preset-tesamorelin", now: evening)
+                store.logPlanned(scheduleID: "preset-bpc157", now: evening)
+            }
+        }
+    }
+}
