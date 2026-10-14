@@ -2232,103 +2232,103 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "حجم التنزيل 2.59 غيغابايت. يتحقق Fud AI من توفر مساحة إضافية خالية قدرها 1 غيغابايت للتثبيت."
+            "value": "حجم التنزيل 2.59 غيغابايت. يتحقق JL Physical من توفر مساحة إضافية خالية قدرها 1 غيغابايت للتثبيت."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Endirmə ölçüsü 2,59 GB-dır. Fud AI quraşdırma üçün əlavə 1 GB boş yerin olmasını yoxlayır."
+            "value": "Endirmə ölçüsü 2,59 GB-dır. JL Physical quraşdırma üçün əlavə 1 GB boş yerin olmasını yoxlayır."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "2,59 GB Download. Fud AI prüft, ob zusätzlich 1 GB freier Speicher für die Installation verfügbar ist."
+            "value": "2,59 GB Download. JL Physical prüft, ob zusätzlich 1 GB freier Speicher für die Installation verfügbar ist."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "2.59 GB download. Fud AI checks for an additional 1 GB of free installation headroom."
+            "value": "2.59 GB download. JL Physical checks for an additional 1 GB of free installation headroom."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descarga de 2,59 GB. Fud AI comprueba que haya 1 GB adicional de espacio libre para la instalación."
+            "value": "Descarga de 2,59 GB. JL Physical comprueba que haya 1 GB adicional de espacio libre para la instalación."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Téléchargement de 2,59 Go. Fud AI vérifie qu’un espace libre supplémentaire de 1 Go est disponible pour l’installation."
+            "value": "Téléchargement de 2,59 Go. JL Physical vérifie qu’un espace libre supplémentaire de 1 Go est disponible pour l’installation."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "2.59 GB का डाउनलोड। Fud AI इंस्टॉलेशन के लिए 1 GB अतिरिक्त खाली जगह की जांच करता है।"
+            "value": "2.59 GB का डाउनलोड। JL Physical इंस्टॉलेशन के लिए 1 GB अतिरिक्त खाली जगह की जांच करता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Download da 2,59 GB. Fud AI verifica che sia disponibile 1 GB aggiuntivo di spazio libero per l’installazione."
+            "value": "Download da 2,59 GB. JL Physical verifica che sia disponibile 1 GB aggiuntivo di spazio libero per l’installazione."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "2.59 GB のダウンロードです。Fud AI はインストール用にさらに 1 GB の空き容量があることを確認します。"
+            "value": "2.59 GB のダウンロードです。JL Physical はインストール用にさらに 1 GB の空き容量があることを確認します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "2.59GB 다운로드입니다. Fud AI는 설치 여유 공간으로 1GB가 추가로 비어 있는지 확인합니다."
+            "value": "2.59GB 다운로드입니다. JL Physical는 설치 여유 공간으로 1GB가 추가로 비어 있는지 확인합니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Download van 2,59 GB. Fud AI controleert of er 1 GB extra vrije installatieruimte beschikbaar is."
+            "value": "Download van 2,59 GB. JL Physical controleert of er 1 GB extra vrije installatieruimte beschikbaar is."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pobieranie 2,59 GB. Fud AI sprawdza, czy dostępny jest dodatkowy 1 GB wolnego miejsca na instalację."
+            "value": "Pobieranie 2,59 GB. JL Physical sprawdza, czy dostępny jest dodatkowy 1 GB wolnego miejsca na instalację."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Download de 2,59 GB. O Fud AI verifica se há mais 1 GB de espaço livre para a instalação."
+            "value": "Download de 2,59 GB. O JL Physical verifica se há mais 1 GB de espaço livre para a instalação."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descărcare de 2,59 GB. Fud AI verifică dacă mai există 1 GB de spațiu liber pentru instalare."
+            "value": "Descărcare de 2,59 GB. JL Physical verifică dacă mai există 1 GB de spațiu liber pentru instalare."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Размер загрузки — 2,59 ГБ. Fud AI проверяет наличие ещё 1 ГБ свободного места для установки."
+            "value": "Размер загрузки — 2,59 ГБ. JL Physical проверяет наличие ещё 1 ГБ свободного места для установки."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Розмір завантаження — 2,59 ГБ. Fud AI перевірет наличие ещё 1 ГБ вільного місця для установки."
+            "value": "Розмір завантаження — 2,59 ГБ. JL Physical перевірет наличие ещё 1 ГБ вільного місця для установки."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下载大小为 2.59 GB。Fud AI 会检查是否另有 1 GB 可用安装空间。"
+            "value": "下载大小为 2.59 GB。JL Physical 会检查是否另有 1 GB 可用安装空间。"
           }
         }
       }
@@ -2550,103 +2550,103 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "جارٍ تنزيل نموذج Gemma 4 المثبّت الإصدار… أبقِ Fud AI مفتوحًا حتى يكتمل."
+            "value": "جارٍ تنزيل نموذج Gemma 4 المثبّت الإصدار… أبقِ JL Physical مفتوحًا حتى يكتمل."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sabitlənmiş Gemma 4 modeli endirilir… Tamamlanana qədər Fud AI-ni açıq saxlayın."
+            "value": "Sabitlənmiş Gemma 4 modeli endirilir… Tamamlanana qədər JL Physical-ni açıq saxlayın."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das festgelegte Gemma-4-Modell wird heruntergeladen… Lass Fud AI geöffnet, bis der Download abgeschlossen ist."
+            "value": "Das festgelegte Gemma-4-Modell wird heruntergeladen… Lass JL Physical geöffnet, bis der Download abgeschlossen ist."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Downloading the pinned Gemma 4 model… Keep Fud AI open until it finishes."
+            "value": "Downloading the pinned Gemma 4 model… Keep JL Physical open until it finishes."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descargando el modelo fijado de Gemma 4… Mantén Fud AI abierto hasta que termine."
+            "value": "Descargando el modelo fijado de Gemma 4… Mantén JL Physical abierto hasta que termine."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Téléchargement de la version épinglée du modèle Gemma 4… Gardez Fud AI ouvert jusqu’à la fin."
+            "value": "Téléchargement de la version épinglée du modèle Gemma 4… Gardez JL Physical ouvert jusqu’à la fin."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "पिन किया गया Gemma 4 मॉडल डाउनलोड हो रहा है… पूरा होने तक Fud AI खुला रखें।"
+            "value": "पिन किया गया Gemma 4 मॉडल डाउनलोड हो रहा है… पूरा होने तक JL Physical खुला रखें।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Download della versione fissata del modello Gemma 4… Mantieni Fud AI aperto fino al termine."
+            "value": "Download della versione fissata del modello Gemma 4… Mantieni JL Physical aperto fino al termine."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "固定バージョンの Gemma 4 モデルをダウンロード中… 完了するまで Fud AI を開いたままにしてください。"
+            "value": "固定バージョンの Gemma 4 モデルをダウンロード中… 完了するまで JL Physical を開いたままにしてください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "고정된 버전의 Gemma 4 모델을 다운로드하는 중… 완료될 때까지 Fud AI를 열어 두세요."
+            "value": "고정된 버전의 Gemma 4 모델을 다운로드하는 중… 완료될 때까지 JL Physical를 열어 두세요."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "De vastgezette versie van het Gemma 4-model wordt gedownload… Houd Fud AI open totdat dit is voltooid."
+            "value": "De vastgezette versie van het Gemma 4-model wordt gedownload… Houd JL Physical open totdat dit is voltooid."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pobieranie przypiętej wersji modelu Gemma 4… Nie zamykaj Fud AI do zakończenia."
+            "value": "Pobieranie przypiętej wersji modelu Gemma 4… Nie zamykaj JL Physical do zakończenia."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Baixando a versão fixada do modelo Gemma 4… Mantenha o Fud AI aberto até terminar."
+            "value": "Baixando a versão fixada do modelo Gemma 4… Mantenha o JL Physical aberto até terminar."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se descarcă versiunea fixată a modelului Gemma 4… Mențineți Fud AI deschis până la finalizare."
+            "value": "Se descarcă versiunea fixată a modelului Gemma 4… Mențineți JL Physical deschis până la finalizare."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Загрузка закреплённой версии модели Gemma 4… Не закрывайте Fud AI до завершения."
+            "value": "Загрузка закреплённой версии модели Gemma 4… Не закрывайте JL Physical до завершения."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Завантаження закріпленої версии модели Gemma 4… Не закривайте Fud AI до завершення."
+            "value": "Завантаження закріпленої версии модели Gemma 4… Не закривайте JL Physical до завершення."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在下载固定版本的 Gemma 4 模型… 完成前请保持 Fud AI 打开。"
+            "value": "正在下载固定版本的 Gemma 4 模型… 完成前请保持 JL Physical 打开。"
           }
         }
       }

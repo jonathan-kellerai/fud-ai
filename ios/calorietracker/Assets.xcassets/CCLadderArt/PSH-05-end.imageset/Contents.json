@@ -1,0 +1,16 @@
+{
+  "images": [
+    {
+      "filename": "PSH-05-end.svg",
+      "idiom": "universal",
+      "scale": "1x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  },
+  "properties": {
+    "preserves-vector-representation": true
+  }
+}

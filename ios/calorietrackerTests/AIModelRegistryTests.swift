@@ -15,6 +15,9 @@ struct AIModelRegistryTests {
                 "gemini-3.1-pro-preview",
             ]),
             (.openai, [
+                "gpt-6-luna",
+                "gpt-6-sol",
+                "gpt-6-astra",
                 "gpt-5.4-mini",
                 "gpt-5.6-sol",
                 "gpt-5.6-terra",
@@ -27,13 +30,17 @@ struct AIModelRegistryTests {
             ]),
             (.anthropic, [
                 "claude-sonnet-5",
+                "claude-opus-5-5",
+                "claude-fable-5-1",
                 "claude-opus-5",
                 "claude-fable-5",
                 "claude-opus-4-8",
                 "claude-haiku-4-5",
             ]),
             (.xai, [
+                "grok-4.7",
                 "grok-4.6",
+                "grok-4.5",
                 "grok-4.3",
             ]),
             (.openrouter, [
@@ -55,7 +62,7 @@ struct AIModelRegistryTests {
                 "MiniMaxAI/MiniMax-M3",
             ]),
             (.groq, [
-                "qwen/qwen3.6-27b",
+                "qwen/qwen3.8-27b",
             ]),
             (.huggingface, [
                 "google/gemma-4-31B-it",
@@ -84,6 +91,9 @@ struct AIModelRegistryTests {
                 "mistral-large-2512",
                 "ministral-14b-2512",
             ]),
+            (.deepseek, [
+                "deepseek-flash",
+            ]),
             (.ollama, [
                 "qwen3-vl",
                 "qwen3.8",
@@ -109,18 +119,20 @@ struct AIModelRegistryTests {
     @Test func textProvidersExposeCurrentTextOnlyChoicesWithoutEnteringVisionRegistry() {
         #expect(AIProvider.textProviders == AIProvider.allCases.filter(\.isAvailableOnCurrentDevice))
         #expect(!AIProvider.visionProviders.contains(.appleIntelligence))
-        #expect(!AIProvider.visionProviders.contains(.deepseek))
+        #expect(AIProvider.visionProviders.contains(.deepseek))
         #expect(!AIProvider.visionProviders.contains(.cerebras))
         #expect(AIProvider.appleIntelligence.textModels == ["System Language Model"])
         #expect(!AIProvider.appleIntelligence.requiresAPIKey)
         #expect(AIProvider.gemma4Local.models == [Gemma4LocalModelManager.modelID])
         #expect(!AIProvider.gemma4Local.requiresAPIKey)
-        #expect(AIProvider.deepseek.textModels == ["deepseek-v4-flash", "deepseek-v4-pro"])
-        #expect(AIProvider.cerebras.textModels == ["gpt-oss-120b", "gemma-4-31b"])
+        #expect(AIProvider.deepseek.textModels == ["deepseek-flash", "deepseek-v4-pro"])
+        #expect(AIProvider.cerebras.textModels == ["gpt-oss-120b", "qwen-3.8-27b"])
         #expect(AIProvider.groq.defaultTextModel == "openai/gpt-oss-20b")
         #expect(AIProvider.groq.textModels.contains("openai/gpt-oss-120b"))
+        #expect(!AIProvider.groq.textModels.contains("llama-3.3-70b-versatile"))
         #expect(AIProvider.togetherai.textModels.contains("deepseek-ai/DeepSeek-V4-Pro"))
-        #expect(AIProvider.deepseek.supportedTextModelOrDefault("retired-model") == "deepseek-v4-flash")
+        #expect(AIProvider.deepseek.supportedTextModelOrDefault("company/private-text-model") == "company/private-text-model")
+        #expect(AIProvider.upgradedLegacyModel(for: .deepseek, model: "deepseek-v4-flash") == AIProvider.deepseek.defaultTextModel)
     }
 
     @Test func removedPresetsHaveProviderScopedReplacements() {
@@ -130,6 +142,11 @@ struct AIModelRegistryTests {
         #expect(AIProvider.upgradedLegacyModel(for: .mistral, model: "mistral-medium-2604") == "mistral-medium-3-5")
         #expect(AIProvider.upgradedLegacyModel(for: .anthropic, model: "claude-sonnet-4-6") == "claude-sonnet-5")
         #expect(AIProvider.upgradedLegacyModel(for: .anthropic, model: "claude-opus-4-7") == "claude-opus-5")
+        #expect(AIProvider.upgradedLegacyModel(for: .groq, model: "qwen/qwen3.6-27b") == AIProvider.groq.defaultModel)
+        #expect(AIProvider.upgradedLegacyModel(for: .groq, model: "llama-3.1-8b-instant") == "openai/gpt-oss-20b")
+        #expect(AIProvider.upgradedLegacyModel(for: .groq, model: "llama-3.3-70b-versatile") == "openai/gpt-oss-120b")
+        #expect(AIProvider.upgradedLegacyModel(for: .cerebras, model: "gemma-4-31b") == AIProvider.cerebras.defaultTextModel)
+        #expect(AIProvider.upgradedLegacyModel(for: .deepseek, model: "deepseek-v4-flash") == "deepseek-flash")
 
         #expect(AIProvider.upgradedLegacyModel(for: .openrouter, model: "gemini-3.1-flash-lite") == nil)
         #expect(AIProvider.upgradedLegacyModel(for: .openai, model: "gpt-5.4-mini") == nil)
@@ -144,6 +161,11 @@ struct AIModelRegistryTests {
             (.mistral, "mistral-medium-2604", "mistral-medium-3-5"),
             (.anthropic, "claude-sonnet-4-6", "claude-sonnet-5"),
             (.anthropic, "claude-opus-4-7", "claude-opus-5"),
+            (.groq, "qwen/qwen3.6-27b", "qwen/qwen3.8-27b"),
+            (.groq, "llama-3.1-8b-instant", "openai/gpt-oss-20b"),
+            (.groq, "llama-3.3-70b-versatile", "openai/gpt-oss-120b"),
+            (.cerebras, "gemma-4-31b", "gpt-oss-120b"),
+            (.deepseek, "deepseek-v4-flash", "deepseek-flash"),
         ]
 
         for migration in migrations {
@@ -178,7 +200,10 @@ struct AIModelRegistryTests {
         #expect(AIProvider.customOpenAI.supportedModelOrDefault(customModel) == customModel)
         #expect(AIProvider.openrouter.supportedModelOrDefault(customModel) == customModel)
         #expect(AIProvider.huggingface.supportedModelOrDefault(customModel) == customModel)
-        #expect(AIProvider.openai.supportedModelOrDefault(customModel) == AIProvider.openai.defaultModel)
+        #expect(AIProvider.openai.supportedModelOrDefault(customModel) == customModel)
+        #expect(AIProvider.openai.acceptsCustomModelID)
+        #expect(!AIProvider.gemma4Local.acceptsCustomModelID)
+        #expect(AIProvider.gemma4Local.supportedModelOrDefault(customModel) == AIProvider.gemma4Local.defaultModel)
     }
 
     @Test func modelRegistryMigrationPreservesCustomPrimaryAndFallbackModels() throws {
@@ -231,7 +256,7 @@ struct AIModelRegistryTests {
     }
 
     @Test func openAI56ModelsUseTheCompletionTokenLimitKey() {
-        for model in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+        for model in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol", "gpt-6-astra"] {
             #expect(AIProvider.openai.openAICompatibleTokenLimitKey(for: model) == "max_completion_tokens")
             #expect(AIProvider.customOpenAI.openAICompatibleTokenLimitKey(for: "openai/\(model)") == "max_completion_tokens")
         }

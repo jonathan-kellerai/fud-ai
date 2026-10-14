@@ -2,17 +2,45 @@ import SwiftUI
 
 struct Gemma4ModelSettingsView: View {
     let onAvailabilityChange: () -> Void
+    /// Visual QA only: draw a fixed install state (e.g. mid-download) instead of
+    /// the shared manager's live state. Nil in the app; the manager is untouched.
+    private let previewState: Gemma4LocalModelManager.InstallState?
 
     @State private var modelManager = Gemma4LocalModelManager.shared
     @State private var showDeleteConfirmation = false
 
+    init(
+        previewState: Gemma4LocalModelManager.InstallState? = nil,
+        onAvailabilityChange: @escaping () -> Void
+    ) {
+        self.previewState = previewState
+        self.onAvailabilityChange = onAvailabilityChange
+    }
+
+    private var state: Gemma4LocalModelManager.InstallState {
+        previewState ?? modelManager.state
+    }
+
+    private var isEligible: Bool {
+        previewState != nil || modelManager.isEligible
+    }
+
+    private var downloadProgress: Double? {
+        guard case .downloading(let progress) = state else { return nil }
+        return progress
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(localized("gemma.name", "Gemma 4 E2B"), systemImage: "cpu")
-                    .font(.body.weight(.medium))
-                Spacer()
-                Text(statusLabel)
+            AdaptiveLabelValue {
+                Label {
+                    UnbrokenText(localized("gemma.name", "Gemma 4 E2B"))
+                } icon: {
+                    Image(systemName: "cpu")
+                }
+                .font(.body.weight(.medium))
+            } value: {
+                UnbrokenText(statusLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(statusColor)
             }
@@ -21,12 +49,12 @@ struct Gemma4ModelSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let progress = modelManager.downloadProgress {
+            if let progress = downloadProgress {
                 ProgressView(value: progress)
                     .tint(AppColors.calorie)
                     .accessibilityLabel(localized("gemma.downloadProgress", "Gemma 4 download progress"))
                     .accessibilityValue(Text(progress, format: .percent))
-            } else if modelManager.state == .verifying {
+            } else if state == .verifying {
                 ProgressView()
                     .tint(AppColors.calorie)
                     .accessibilityLabel(localized("gemma.verifyingDownload", "Verifying Gemma 4 download"))
@@ -51,9 +79,9 @@ struct Gemma4ModelSettingsView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(AppColors.calorie)
                     .disabled(
-                        !modelManager.isEligible
-                            || modelManager.state.isBusy
-                            || modelManager.state == .ready
+                        !isEligible
+                            || state.isBusy
+                            || state == .ready
                     )
                 }
 
@@ -62,7 +90,7 @@ struct Gemma4ModelSettingsView: View {
                         showDeleteConfirmation = true
                     }
                     .buttonStyle(.bordered)
-                    .disabled(modelManager.state.isBusy)
+                    .disabled(state.isBusy)
                 }
             }
 
@@ -99,10 +127,10 @@ struct Gemma4ModelSettingsView: View {
     }
 
     private var statusLabel: String {
-        guard modelManager.isEligible else {
+        guard isEligible else {
             return localized("gemma.requires8GB", "Requires an 8 GB RAM device")
         }
-        switch modelManager.state {
+        switch state {
         case .notDownloaded:
             return localized("common.notDownloaded", "Not downloaded")
         case .downloaded:
@@ -123,8 +151,8 @@ struct Gemma4ModelSettingsView: View {
     }
 
     private var statusColor: Color {
-        guard modelManager.isEligible else { return .secondary }
-        switch modelManager.state {
+        guard isEligible else { return .secondary }
+        switch state {
         case .downloaded, .ready:
             return .green
         case .failed:
@@ -135,18 +163,20 @@ struct Gemma4ModelSettingsView: View {
     }
 
     private var statusDescription: String {
-        guard modelManager.isEligible else {
+        guard isEligible else {
             return localized(
                 "gemma.unsupportedDescription",
                 "This on-device image and text model is available on iPhones with at least 8 GB of physical memory."
             )
         }
 
-        switch modelManager.state {
+        switch state {
         case .notDownloaded:
+            // New key: the LocalModels catalog still carries the old "Fud AI"
+            // English value under "gemma.downloadDescription".
             return localized(
-                "gemma.downloadDescription",
-                "2.59 GB download. Fud AI checks for an additional 1 GB of free installation headroom."
+                "gemma.downloadDescription.jlPhysical",
+                "2.59 GB download. JL Physical checks for an additional 1 GB of free installation headroom."
             )
         case .downloaded:
             if let size = modelManager.installedSizeDescription {
@@ -162,8 +192,8 @@ struct Gemma4ModelSettingsView: View {
             )
         case .downloading:
             return localized(
-                "gemma.downloading",
-                "Downloading the pinned Gemma 4 model… Keep Fud AI open until it finishes."
+                "gemma.downloading.jlPhysical",
+                "Downloading the pinned Gemma 4 model… Keep JL Physical open until it finishes."
             )
         case .verifying:
             return localized(
@@ -188,7 +218,7 @@ struct Gemma4ModelSettingsView: View {
     }
 
     private var downloadButtonTitle: String {
-        switch modelManager.state {
+        switch state {
         case .ready:
             return localized("common.ready", "Ready")
         default:
@@ -199,7 +229,7 @@ struct Gemma4ModelSettingsView: View {
     }
 
     private var isDownloading: Bool {
-        if case .downloading = modelManager.state { return true }
+        if case .downloading = state { return true }
         return false
     }
 

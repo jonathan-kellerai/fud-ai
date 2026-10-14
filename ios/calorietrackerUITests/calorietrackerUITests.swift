@@ -10,7 +10,7 @@ import XCTest
 final class calorietrackerUITests: XCTestCase {
 
     private func openSettingsCategory(_ identifier: String, in app: XCUIApplication) {
-        let settings = app.tabBars.buttons["Settings"]
+        let settings = app.tabBars.buttons["More"]
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
         settings.tap()
 
@@ -88,9 +88,9 @@ final class calorietrackerUITests: XCTestCase {
         ]
         app.launch()
 
-        openSettingsCategory("speechToText", in: app)
+        openSettingsCategory("aiProviders", in: app)
 
-        let speechSection = app.staticTexts["Speech-to-Text"]
+        let speechSection = app.staticTexts["Voice Input"]
         for _ in 0..<12 where !speechSection.exists {
             app.swipeUp()
         }
@@ -106,67 +106,41 @@ final class calorietrackerUITests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsHubShowsFiveFocusedAppInfoCategories() throws {
+    func testSettingsHubShowsSevenRowsAndNoFudLinks() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)"]
         app.launch()
 
-        let categories = [
-            ("appUpdates", "App & Updates", "Open Source (MIT)"),
-            ("support", "Support Fud AI", "Rate the App"),
-            ("helpFeedback", "Help & Feedback", "Report an Issue"),
-            ("community", "Community", "Join Discord"),
-            ("legal", "Legal", "Privacy Policy"),
-        ]
-
-        let settings = app.tabBars.buttons["Settings"]
+        let settings = app.tabBars.buttons["More"]
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
         settings.tap()
 
-        let creatorFooter = app.staticTexts["Made by Apoorv Darshan"]
-        for _ in 0..<12 where !creatorFooter.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(creatorFooter.waitForExistence(timeout: 3), "Missing creator footer on Settings")
-        XCTAssertTrue(creatorFooter.isHittable, "Creator footer is not visible on Settings")
-
-        for (identifier, title, expectedAction) in categories {
+        let identifiers = [
+            "reconBench",
+            "training",
+            "foodAI",
+            "bodyHealth",
+            "dataSync",
+            "notifications",
+            "about",
+        ]
+        var previousMinY = -CGFloat.greatestFiniteMagnitude
+        for identifier in identifiers {
             let category = app.buttons["settings.category.\(identifier)"]
-            for _ in 0..<12 where !category.isHittable {
+            for _ in 0..<8 where !category.isHittable {
                 app.swipeUp()
             }
-            XCTAssertTrue(category.waitForExistence(timeout: 3), "Missing Settings category \(identifier)")
-            XCTAssertTrue(category.isHittable, "Settings category \(identifier) is not tappable")
-            category.tap()
-
-            let navigationBar = app.navigationBars[title]
-            XCTAssertTrue(navigationBar.waitForExistence(timeout: 3), "Missing \(title) detail page")
-
-            let action = app.staticTexts[expectedAction]
-            for _ in 0..<6 where !action.exists {
-                app.swipeUp()
-            }
-            XCTAssertTrue(action.waitForExistence(timeout: 3), "Missing \(expectedAction) in \(title)")
-
-            if identifier == "community" {
-                XCTAssertTrue(app.staticTexts["Join Discord"].exists)
-                XCTAssertTrue(app.staticTexts["Follow on X"].exists)
-                XCTAssertTrue(app.staticTexts["Follow on Instagram"].exists)
-                XCTAssertTrue(app.staticTexts["Follow on LinkedIn"].exists)
-            }
-
-            if identifier == "legal" {
-                XCTAssertFalse(
-                    app.staticTexts["Made by Apoorv Darshan"].isHittable,
-                    "Creator footer should live on the main Settings page"
-                )
-            }
-
-            let backButton = navigationBar.buttons.firstMatch
-            XCTAssertTrue(backButton.exists)
-            backButton.tap()
-            XCTAssertTrue(app.buttons["settings.category.\(identifier)"].waitForExistence(timeout: 3))
+            XCTAssertTrue(category.waitForExistence(timeout: 3), "Missing More row \(identifier)")
+            XCTAssertTrue(category.isHittable, "More row \(identifier) is not tappable")
+            XCTAssertGreaterThan(category.frame.minY, previousMinY, "More rows are out of order at \(identifier)")
+            previousMinY = category.frame.minY
         }
+
+        for identifier in ["aiAccess", "appUpdates", "support", "helpFeedback", "community", "legal"] {
+            XCTAssertFalse(app.buttons["settings.category.\(identifier)"].exists, "Fud row \(identifier) is still on More")
+        }
+        XCTAssertFalse(app.staticTexts["Made by Apoorv Darshan"].exists)
+        XCTAssertFalse(app.staticTexts["!"].exists)
     }
 
     @MainActor
@@ -180,14 +154,14 @@ final class calorietrackerUITests: XCTestCase {
         ]
         app.launch()
 
-        openSettingsCategory("aiProviders", in: app)
+        openSettingsCategory("advancedAI", in: app)
 
         let textProviderSection = app.staticTexts["Text AI"]
         for _ in 0..<10 where !textProviderSection.exists {
             app.swipeUp()
         }
         XCTAssertTrue(textProviderSection.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["AI Providers & Fallbacks"].exists)
+        XCTAssertTrue(app.navigationBars["Advanced AI"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.switches["Use Separate Text Provider"].value as? String, "1")
         XCTAssertTrue(app.staticTexts["DeepSeek"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["deepseek-v4-flash"].waitForExistence(timeout: 3))
@@ -204,13 +178,14 @@ final class calorietrackerUITests: XCTestCase {
         ]
         app.launch()
 
-        openSettingsCategory("aiProviders", in: app)
+        openSettingsCategory("advancedAI", in: app)
 
         let textProviderSection = app.staticTexts["Text AI"]
         for _ in 0..<10 where !textProviderSection.exists {
             app.swipeUp()
         }
         XCTAssertTrue(textProviderSection.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Advanced AI"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Apple Intelligence (On-Device)"].waitForExistence(timeout: 3))
         let systemModel = app.staticTexts["System Language Model"]
         for _ in 0..<4 where !systemModel.exists {

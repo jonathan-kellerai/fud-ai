@@ -27,7 +27,7 @@ struct ImportDiaryView: View {
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                 } footer: {
-                    Text("Choose a JSON file previously exported by Fud AI. The file is validated before any diary entry is changed.")
+                    Text("Choose a JSON file previously exported by JL Physical. The file is validated before any diary entry is changed.")
                 }
 
                 if let preview {

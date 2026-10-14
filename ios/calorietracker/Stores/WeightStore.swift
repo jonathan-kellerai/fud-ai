@@ -54,19 +54,25 @@ class WeightStore {
         addEntry(WeightEntry(date: .now, weightKg: weightKg))
     }
 
+    /// Total body weight only. Lean body mass stays in `entries` for Weight History
+    /// and must not move the chart, profile weight, or goal checks.
+    var bodyWeightEntries: [WeightEntry] {
+        entries.filter { !$0.isLeanBodyMass }
+    }
+
     var latestEntry: WeightEntry? {
-        entries.sorted { $0.date > $1.date }.first
+        bodyWeightEntries.max { $0.date < $1.date }
     }
 
     func entries(in range: ClosedRange<Date>) -> [WeightEntry] {
-        entries
+        bodyWeightEntries
             .filter { range.contains($0.date) }
             .sorted { $0.date < $1.date }
     }
 
     func addEntry(_ entry: WeightEntry) {
         guard !isPersistenceBlocked else { return }
-        let previousLatest = entries.sorted { $0.date > $1.date }.first
+        let previousLatest = latestEntry
         entries.append(entry)
         saveEntries()
         onEntryAdded?(entry)
@@ -74,7 +80,7 @@ class WeightStore {
         syncProfileWeightToLatest()
 
         // Detect goal-weight crossing — fire only on the transition, not on every weight past goal.
-        if let profile = UserProfile.load(), let goalKg = profile.goalWeightKg, let previous = previousLatest {
+        if !entry.isLeanBodyMass, let profile = UserProfile.load(), let goalKg = profile.goalWeightKg, let previous = previousLatest {
             let crossed: Bool
             switch profile.goal {
             case .lose:    crossed = previous.weightKg > goalKg && entry.weightKg <= goalKg
@@ -101,7 +107,7 @@ class WeightStore {
     /// — we still need some weightKg for BMR/TDEE math; user can log a new one.
     private func syncProfileWeightToLatest() {
         guard var profile = UserProfile.load(),
-              let newest = entries.sorted(by: { $0.date > $1.date }).first else { return }
+              let newest = latestEntry else { return }
         if abs(profile.weightKg - newest.weightKg) > 0.01 {
             profile.weightKg = newest.weightKg
             profile.save()
@@ -118,21 +124,29 @@ class WeightStore {
         saveEntries()
     }
 
-    /// Bulk-import weight samples discovered from HealthKit (e.g. years of
-    /// scale history that predate Fud AI). Bypasses onEntryAdded so the
-    /// imported externals don't echo back to HK as fresh writes — these
-    /// samples already exist there. Saves + syncs profile once at the end.
-    /// Samples whose id is already in the store (a restore that raced a
-    /// live observer write, or the same batch delivered twice) are skipped so
-    /// the list never accumulates duplicate ids.
+    /// Bulk-import weight samples discovered from HealthKit. Bypasses onEntryAdded
+    /// so the imported rows don't echo back to HealthKit. Dedupes by entry id and
+    /// by HealthKit sample UUID so a repeated sync does not double-count.
     func importExternalEntries(_ external: [WeightEntry]) {
         guard !isPersistenceBlocked else { return }
-        var seen = Set(entries.map(\.id))
-        let fresh = external.filter { seen.insert($0.id).inserted }
+        var seenIDs = Set(entries.map(\.id))
+        var seenHealthUUIDs = Set(entries.compactMap(\.healthKitSampleUUID))
+        let fresh = external.filter { entry in
+            if let sampleUUID = entry.healthKitSampleUUID,
+               seenHealthUUIDs.contains(sampleUUID) || seenIDs.contains(sampleUUID) {
+                return false
+            }
+            guard seenIDs.insert(entry.id).inserted else { return false }
+            if let sampleUUID = entry.healthKitSampleUUID {
+                seenHealthUUIDs.insert(sampleUUID)
+            }
+            return true
+        }
         guard !fresh.isEmpty else { return }
         entries.append(contentsOf: fresh)
         saveEntries()
         syncProfileWeightToLatest()
+        Self.postExternalChangeNotification()
     }
 
     /// Upserts by id; duplicate ids resolve newest-wins instead of trapping.

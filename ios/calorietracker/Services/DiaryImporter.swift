@@ -30,7 +30,7 @@ enum DiaryImportError: LocalizedError {
         case .fileTooLarge:
             return "This file is too large to import."
         case .invalidDocument:
-            return "This is not a valid Fud AI food diary JSON file."
+            return "This is not a valid JL Physical food diary JSON file."
         case .unsupportedDocument:
             return "This food diary format is not supported."
         case .noEntries:
@@ -48,6 +48,12 @@ enum DiaryImportError: LocalizedError {
 }
 
 enum DiaryImporter {
+    /// Older exports used the upstream app name. Both still import.
+    static func acceptsDiaryApp(_ name: String) -> Bool {
+        name.caseInsensitiveCompare("Fud AI") == .orderedSame
+            || name.caseInsensitiveCompare("JL Physical") == .orderedSame
+    }
+
     static let maximumFileSize = 20 * 1_024 * 1_024
 
     private struct Document: Decodable {
@@ -140,7 +146,7 @@ enum DiaryImporter {
             throw DiaryImportError.invalidDocument
         }
 
-        guard document.export.app.caseInsensitiveCompare("Fud AI") == .orderedSame else {
+        guard acceptsDiaryApp(document.export.app) else {
             throw DiaryImportError.invalidDocument
         }
         guard let major = Int(document.export.format_version.split(separator: ".").first ?? ""),

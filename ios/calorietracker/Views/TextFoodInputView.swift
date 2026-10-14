@@ -15,6 +15,8 @@ struct TextFoodInputView: View {
         "Domino's pepperoni pizza, 2 slices",
         "Greek yogurt with granola and blueberries",
     ]
+    /// Visual QA passes false so the placeholder stays on the first example.
+    var rotatesPlaceholder = true
 
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
@@ -71,7 +73,7 @@ struct TextFoodInputView: View {
         .frame(width: 320)
         .onAppear { isFocused = true }
         .onReceive(timer) { _ in
-            guard foodDescription.isEmpty else { return }
+            guard rotatesPlaceholder, foodDescription.isEmpty else { return }
             withAnimation(.easeInOut(duration: 0.3)) {
                 placeholderIndex = (placeholderIndex + 1) % placeholders.count
             }

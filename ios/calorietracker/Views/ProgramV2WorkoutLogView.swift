@@ -1,0 +1,702 @@
+//
+//  ProgramV2WorkoutLogView.swift
+//  calorietracker
+//
+//  Workout logging for Program V2 with RIR-first entry and rest timer
+//
+
+import SwiftUI
+
+struct ProgramV2WorkoutLogView: View {
+    let day: ProgramV2Day
+    let onSaved: () -> Void
+    /// Advances the next-in-cycle day as soon as the workout is saved.
+    private let progress: TrainProgressStore
+
+    init(day: ProgramV2Day, progress: TrainProgressStore = .shared, onSaved: @escaping () -> Void = {}) {
+        self.day = day
+        self.progress = progress
+        self.onSaved = onSaved
+        _entry = State(initialValue: WorkoutSetEntry(day: day))
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(WorkoutDraftStore.self) private var draftStore
+    @Environment(WorkoutLogStore.self) private var workoutLog
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isReordering = false
+    @State private var showingRestTimer = false
+    @State private var restSession = RestSession(driver: RestTimerService())
+    @State private var entry: WorkoutSetEntry
+    @State private var isSaving = false
+    @State private var showingSaveConfirmation = false
+    @State private var saveError: String?
+    @State private var plausibilityMessage: String?
+    
+    @State private var showingDiscardConfirmation = false
+    @State private var showingReplaceDraftPrompt = false
+    /// The session date is the day the logger was opened, even if it is saved after midnight.
+    @State private var openedAt = Date()
+    /// CC ladder state for graduate-at hints on ladder finishers. Starts from
+    /// the Ladders screen's memory cache and refreshes once per open.
+    @State private var ccLadders: CCLaddersResponse? = CCLadderMemoryCache.last
+    /// The ladder step whose form sheet is open.
+    @State private var ladderForm: CCFormSelection?
+
+    /// Logged sets live in the app-level draft store so they survive tab
+    /// switches, dismissal and relaunch until the workout log saves them.
+    private var workoutSets: [String: [LoggedSet]] {
+        draftStore.existingDraft(for: day)?.sets ?? [:]
+    }
+
+    private var conditioningCompleted: Bool {
+        draftStore.existingDraft(for: day)?.conditioningCompleted ?? false
+    }
+
+    private var blocks: [ExerciseBlock] {
+        sessionOrder.blocks
+    }
+
+    private var sessionOrder: SessionOrder {
+        entry.order(in: draftStore)
+    }
+
+    private func updateDraft(_ change: (inout WorkoutDraft) -> Void) {
+        draftStore.update(day, startedAt: openedAt, change)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    if let weekNote = day.weekNote {
+                        Text(weekNote)
+                            .font(.subheadline)
+                            .foregroundStyle(IronTheme.brass)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if draftStore.persistError != nil {
+                        persistErrorBanner
+                    }
+
+                    conditioningCard(day.conditioning)
+                        .disabled(isSaving)
+
+                    ForEach(blocks) { block in
+                        blockCard(block)
+                            .disabled(isSaving)
+                    }
+
+                    saveButton
+
+                    if draftStore.existingDraft(for: day) != nil {
+                        discardButton
+                    }
+                }
+                .padding()
+                .animation(reduceMotion ? nil : IronTheme.motion, value: sessionOrder.exerciseOrder)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(IronTheme.canvas)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 0) {
+                LoggerRestBar(session: restSession) {
+                    entry.refreshRestEntry(in: draftStore, rest: restSession)
+                    showingRestTimer = true
+                }
+                if let deletion = entry.deletion {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        if deletion.canRestore(at: context.date) {
+                            HStack {
+                                Text("Set \(deletion.index + 1) deleted")
+                                Spacer()
+                                Button("Undo") { entry.undo(in: draftStore, startedAt: openedAt) }
+                                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                    .foregroundStyle(IronTheme.brass)
+                            }.padding(.horizontal).background(IronTheme.surfaceRaised)
+                        }
+                    }
+                }
+                }
+            }
+            .navigationTitle(day.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    // Logged sets stay in the draft; closing never loses them.
+                    Button("Close") {
+                        restSession.stop()
+                        dismiss()
+                    }.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(isReordering ? "Done" : "Reorder") { isReordering.toggle() }
+                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        .disabled(isSaving)
+                }
+            }
+            .sheet(isPresented: $showingRestTimer) {
+                NavigationStack {
+                    RestTimerSheet(session: restSession,
+                        next: entry.restDetails(in: draftStore, isHold: nextIsHold),
+                        onChange: { entry.editNext($0) },
+                        onStep: { entry.stepNext(load: $0, direction: $1, isHold: nextIsHold) },
+                        onLog: { entry.logNext(in: draftStore, startedAt: openedAt, rest: restSession) },
+                        onSkip: { entry.skipNext(in: draftStore, rest: restSession) })
+                }
+            }
+            .sheet(item: $ladderForm) { selection in
+                if let series = ccLadders?.series.first(where: { $0.series == selection.series }) {
+                    CCStepFormSheet(series: series, rule: ccLadders?.rule, step: selection.step)
+                }
+            }
+            .task {
+                entry.lastPerformances = ExerciseHistoryLoader.load(programDay: day.id, log: workoutLog)
+                entry.refreshPrefilledLoads(in: draftStore, startedAt: openedAt)
+                entry.refreshRestEntry(in: draftStore, rest: restSession)
+                await loadLaddersIfNeeded()
+            }
+            .onAppear {
+                if draftStore.hasDraft(otherThan: day) {
+                    showingReplaceDraftPrompt = true
+                }
+            }
+            .onDisappear { restSession.stop() }
+            .alert("Unsaved Workout", isPresented: $showingReplaceDraftPrompt) {
+                Button("Discard and Start", role: .destructive) {
+                    draftStore.discard()
+                }
+                Button("Keep It (Resume from Train)", role: .cancel) {
+                    dismiss()
+                }
+            } message: {
+                Text("You have an unsaved \(draftStore.draft?.title ?? "workout") session. Starting \(day.title) discards it. Resume it from Today or Train instead.")
+            }
+            .confirmationDialog("Discard this workout?", isPresented: $showingDiscardConfirmation, titleVisibility: .visible) {
+                Button("Discard Workout", role: .destructive) {
+                    restSession.stop()
+                    draftStore.discard()
+                    dismiss()
+                }
+            } message: {
+                Text("Every set logged in this session will be deleted.")
+            }
+            .alert("Workout Saved", isPresented: $showingSaveConfirmation) {
+                Button("OK") {
+                    onSaved()
+                    dismiss()
+                }
+            } message: {
+                Text("Saved on this phone.")
+            }
+            .plausibilityConfirmation(
+                title: "Double-check before saving",
+                message: plausibilityMessage,
+                onSave: {
+                    plausibilityMessage = nil
+                    Task {
+                        await JevRouter.shared.report(.plausibility, .userOverride, preview: "workout")
+                        await saveWorkout()
+                    }
+                },
+                onEdit: { plausibilityMessage = nil }
+            )
+            .alert("Could Not Save", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button("OK") { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
+            }
+        }
+    }
+
+    /// Non-blocking: the sets stay in memory and can still be saved.
+    private var persistErrorBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(IronTheme.bloodText)
+            Text("Couldn't save this workout on the phone. Your sets are still here; keep the app open and tap Save Workout.")
+                .font(.subheadline)
+                .foregroundStyle(IronTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button {
+                draftStore.dismissPersistError()
+            } label: {
+                Image(systemName: "xmark")
+                    .foregroundStyle(IronTheme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding()
+        .ironCard(rule: true)
+    }
+
+    private func conditioningCard(_ conditioning: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(IronTheme.bloodText)
+                Text("Conditioning · Do first")
+                    .font(.system(size: 15, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .tracking(1.0)
+                    .textCase(.uppercase)
+                    .foregroundStyle(IronTheme.textPrimary)
+            }
+
+            Text(conditioning)
+                .font(.subheadline)
+
+            if !day.conditioningMinimum.isEmpty {
+                Text("Minimum: \(day.conditioningMinimum)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Toggle("Completed", isOn: Binding(
+                get: { conditioningCompleted },
+                set: { newValue in updateDraft { $0.conditioningCompleted = newValue } }
+            ))
+                .toggleStyle(.switch)
+        }
+        .padding()
+        .ironCard(rule: true)
+    }
+
+    @ViewBuilder
+    private func blockCard(_ block: ExerciseBlock) -> some View {
+        if block.isSuperset {
+            supersetCard(block)
+        } else if let exercise = block.exercises.first {
+            exerciseCard(exercise, in: block)
+        }
+    }
+
+    private func exerciseCard(_ exercise: ProgramV2Exercise, in block: ExerciseBlock) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if isReordering { reorderControls(block) }
+            exerciseHeader(exercise, badge: nil)
+            setRows(exercise)
+            addSetButton(exercise)
+        }
+        .padding()
+        .ironCard()
+    }
+
+    private func supersetCard(_ block: ExerciseBlock) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if isReordering { reorderControls(block) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SUPERSET · \(block.exercises.map(\.name).joined(separator: " + "))")
+                    .font(.system(size: 15, weight: .heavy))
+                    .fontWidth(.condensed)
+                    .tracking(1.0)
+                    .foregroundStyle(IronTheme.bloodText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(supersetSubtitle(block))
+                    .font(.caption)
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let next = SupersetGrouping.nextUp(in: block, sets: workoutSets) {
+                Label(
+                    "Next: \(block.memberLabel(for: next.exerciseName) ?? "")\(next.setIndex + 1) \(next.exerciseName)",
+                    systemImage: "arrow.right.circle.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(IronTheme.brass)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ForEach(Array(block.exercises.enumerated()), id: \.element.id) { index, exercise in
+                if index > 0 {
+                    Rectangle()
+                        .fill(IronTheme.hairline)
+                        .frame(height: 1)
+                }
+                exerciseHeader(exercise, badge: ExerciseBlock.memberLabel(at: index))
+                setRows(exercise)
+                addSetButton(exercise)
+            }
+
+            Button {
+                addRound(to: block)
+            } label: {
+                Label("Add Round", systemImage: "plus.square.on.square")
+                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(IronCompactButtonStyle())
+        }
+        .padding()
+        .ironCard(rule: true)
+    }
+
+    private func reorderControls(_ block: ExerciseBlock) -> some View {
+        LoggerReorderControls(name: block.exercises.map(\.name).joined(separator: " + "),
+            canMoveUp: entry.canMove(block, direction: .up, in: draftStore),
+            canMoveDown: entry.canMove(block, direction: .down, in: draftStore),
+            onMoveUp: { entry.move(block, direction: .up, in: draftStore, startedAt: openedAt, rest: restSession) },
+            onMoveDown: { entry.move(block, direction: .down, in: draftStore, startedAt: openedAt, rest: restSession) })
+    }
+
+    private func supersetSubtitle(_ block: ExerciseBlock) -> String {
+        let labels = block.exercises.indices.map { ExerciseBlock.memberLabel(at: $0) }
+        let members: String
+        if labels.count == 2 {
+            members = "\(labels[0]) and \(labels[1])"
+        } else {
+            members = labels.dropLast().joined(separator: ", ") + " and " + (labels.last ?? "")
+        }
+        let rest = SupersetGrouping.supersetRestSeconds(for: block)
+        let unit = block.exercises.count == 2 ? "pair" : "round"
+        return "Alternate \(members) · rest \(rest) s after each \(unit)"
+    }
+
+    private func exerciseHeader(_ exercise: ProgramV2Exercise, badge: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 13, weight: .heavy).monospacedDigit())
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(IronTheme.blood, in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius))
+                }
+                Text(exercise.name)
+                    .font(IronTheme.heavyHeadline)
+                    .fontWidth(.condensed)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                    .foregroundStyle(IronTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+
+            if let note = entry.preExhaustionNote(for: exercise, in: draftStore) {
+                Text(note).font(.caption).foregroundStyle(IronTheme.brass)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let hint = ladderHint(for: exercise) {
+                Label(hint.text, systemImage: hint.isHold ? "timer" : "flag.checkered")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(IronTheme.brass)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Independent of the hint: an unstarted ladder has no hint but still opens the logged step's form.
+            if let selection = ladderFormSelection(for: exercise) {
+                CCFormButton { ladderForm = selection }
+                    .disabled(isSaving)
+            }
+
+            HStack(spacing: 16) {
+                Text("\(exercise.setsLabel ?? String(exercise.sets)) sets × \(exercise.reps)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(IronTheme.textSecondary)
+
+                if lastPerformance(for: exercise) == nil {
+                    loadChip(exercise.startLoadLb.map { "Start: \(LoggerFormatting.load($0))lb" } ?? "Select load")
+                }
+            }
+
+            if let last = lastPerformance(for: exercise), let lastLine = LoggerFormatting.lastLine(last) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        lastLabel(lastLine)
+                        nextChip(for: exercise)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        lastLabel(lastLine)
+                        nextChip(for: exercise)
+                    }
+                }
+            }
+
+            if !exercise.loadNote.isEmpty {
+                Text(exercise.loadNote)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !exercise.notes.isEmpty {
+                Text(exercise.notes)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !exercise.rirTarget.isEmpty {
+                Text("RIR Target: \(exercise.rirTarget)")
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+    }
+
+    private func lastLabel(_ text: String) -> some View {
+        Label(text, systemImage: "clock.arrow.circlepath")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(IronTheme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func nextChip(for exercise: ProgramV2Exercise) -> some View {
+        if let suggestion = suggestedLoad(for: exercise) {
+            loadChip("Next: \(LoggerFormatting.load(suggestion)) lb")
+        }
+    }
+
+    private func loadChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(IronTheme.brass)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(IronTheme.surfaceRaised)
+            .clipShape(RoundedRectangle(cornerRadius: IronTheme.buttonRadius))
+    }
+
+    @ViewBuilder
+    private func setRows(_ exercise: ProgramV2Exercise) -> some View {
+        let sets = workoutSets[exercise.name] ?? []
+        ForEach(0..<SetEntryLogic.plannedRowCount(exercise: exercise, sets: sets), id: \.self) { index in
+            setRow(exercise: exercise, setIndex: index,
+                   set: entry.row(for: exercise, at: index, in: draftStore))
+        }
+    }
+
+    private func addSetButton(_ exercise: ProgramV2Exercise) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let source = entry.repeatSource(for: exercise, in: draftStore) {
+                Button {
+                    if let index = entry.repeatLast(exercise, in: draftStore, startedAt: openedAt) {
+                        logSet(exercise, setIndex: index)
+                    }
+                } label: { Label("Repeat set \(source + 1)", systemImage: "arrow.clockwise") }
+                .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                .buttonStyle(.plain).foregroundStyle(IronTheme.textPrimary)
+            }
+            Button { addSet(for: exercise) } label: {
+                Label("Add Set", systemImage: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(IronTheme.bloodText)
+            }.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+        }
+    }
+
+    private func setRow(exercise: ProgramV2Exercise, setIndex: Int, set: LoggedSet) -> some View {
+        let kind = SetEntryLogic.rowKind(at: setIndex, sets: workoutSets[exercise.name] ?? [],
+            editing: entry.editingStep == ExerciseStep(exerciseName: exercise.name, setIndex: setIndex))
+        return LoggerSetRow(
+            setIndex: setIndex, set: set, startLoadLb: exercise.startLoadLb,
+            isHold: ladderHint(for: exercise)?.isHold == true,
+            kind: kind,
+            // PR marks only sets actually logged, never a prefilled target or the row being edited.
+            isPersonalRecord: kind == .logged
+                && SetEntryLogic.isPersonalRecord(set: set, previous: lastPerformance(for: exercise)),
+            targetText: exercise.reps,
+            targetChips: SetEntryLogic.targetChips(for: exercise, at: setIndex),
+            loadStep: SetEntryLogic.loadStep(set.weight),
+            onEdit: { entry.editingStep = ExerciseStep(exerciseName: exercise.name, setIndex: setIndex) },
+            onChange: { field, edit in entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt, field: field, edit) },
+            onStep: { load, direction in
+                entry.edit(exercise, at: setIndex, in: draftStore, startedAt: openedAt, field: load ? .load : .reps) {
+                    $0 = SetEntryLogic.stepped($0, load: load, direction: direction, isHold: ladderHint(for: exercise)?.isHold == true)
+                }
+            },
+            onLog: {
+                if let index = entry.log(exercise, at: setIndex, in: draftStore, startedAt: openedAt) {
+                    logSet(exercise, setIndex: index)
+                }
+            },
+            onRemove: {
+                entry.remove(exercise, at: setIndex, in: draftStore, startedAt: openedAt)
+            }
+        )
+    }
+
+    private func ladderHint(for exercise: ProgramV2Exercise) -> CCLoggerLadderHint? {
+        guard CCLadderLogic.isLadderExerciseName(exercise.name) else { return nil }
+        return CCLadderLogic.loggerHint(exerciseKey: exercise.key, exerciseName: exercise.name, in: ccLadders)
+    }
+
+    private func ladderFormSelection(for exercise: ProgramV2Exercise) -> CCFormSelection? {
+        guard CCLadderLogic.isLadderExerciseName(exercise.name) else { return nil }
+        return CCLadderLogic.formSelection(exerciseKey: exercise.key, exerciseName: exercise.name, in: ccLadders)
+    }
+
+    /// Best effort: without the bridge the logger simply shows no ladder hint.
+    private func loadLaddersIfNeeded() async {
+        guard day.exercises.contains(where: { CCLadderLogic.isLadderExerciseName($0.name) }) else { return }
+        guard let fresh = try? await CCLadderClient.fetchLadders(settings: NeonBridgeService.shared.settings),
+              !Task.isCancelled
+        else { return }
+        ccLadders = fresh
+        CCLadderMemoryCache.last = fresh
+    }
+
+    private func lastPerformance(for exercise: ProgramV2Exercise) -> LastPerformance? {
+        entry.lastPerformance(for: exercise)
+    }
+
+    private func suggestedLoad(for exercise: ProgramV2Exercise) -> Double? {
+        entry.suggestedLoad(for: exercise, in: draftStore)
+    }
+
+    /// Starts the rest timer when the rest policy asks for one. In a superset
+    /// that is once per round, after the last member's set.
+    private func logSet(_ exercise: ProgramV2Exercise, setIndex: Int) {
+        entry.startRestAfterLogging(exercise, at: setIndex, in: draftStore, rest: restSession)
+        showingRestTimer = true
+    }
+
+    private var nextIsHold: Bool {
+        guard let name = entry.restStep?.exerciseName,
+              let exercise = day.exercises.first(where: { $0.name == name }) else { return false }
+        return ladderHint(for: exercise)?.isHold == true
+    }
+
+    private func addRound(to block: ExerciseBlock) {
+        for exercise in block.exercises {
+            addSet(for: exercise)
+        }
+    }
+
+    /// Uses the last logged set, never an unfinished row. Prefilled reps stay
+    /// outside the draft so only entered reps count as logged.
+    private func addSet(for exercise: ProgramV2Exercise) {
+        entry.add(exercise, in: draftStore, startedAt: openedAt)
+    }
+
+    private var saveButton: some View {
+        Button {
+            Task { await reviewThenSave() }
+        } label: {
+            if isSaving {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else {
+                Text("Save Workout")
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .buttonStyle(IronPrimaryButtonStyle(enabled: canSave && !isSaving))
+        .disabled(!canSave || isSaving)
+    }
+
+    private var discardButton: some View {
+        Button(role: .destructive) {
+            showingDiscardConfirmation = true
+        } label: {
+            Text("Discard Workout")
+                .font(.system(size: 15, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(0.8)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.bloodText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .disabled(isSaving)
+    }
+
+    private var canSave: Bool {
+        conditioningCompleted || !workoutSets.isEmpty
+    }
+    
+    private func reviewThenSave() async {
+        var flags: [PlausibilityFlag] = []
+        for exercise in day.exercises {
+            let sets = workoutSets[exercise.name] ?? []
+            let loads = sets.map(\.weight)
+            let previousLb = lastPerformance(for: exercise)?.heaviestLoad
+            for (index, set) in sets.enumerated() {
+                let others = loads.enumerated().filter { $0.offset != index }.map(\.element)
+                flags.append(contentsOf: PlausibilityRules.sets(
+                    name: exercise.name,
+                    loadKg: set.weight / 2.2046226218,
+                    reps: set.reps,
+                    referenceLoadsKg: previousLb.map { [$0 / 2.2046226218] } ?? [],
+                    referenceReps: [],
+                    sessionLoadsKg: others.map { $0 / 2.2046226218 }
+                ))
+            }
+        }
+        let visible = await PlausibilityReview.visible(flags)
+        if visible.isEmpty {
+            await saveWorkout()
+        } else {
+            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+        }
+    }
+
+    private func saveWorkout() async {
+        restSession.stop()
+        isSaving = true
+        defer { isSaving = false }
+
+        // The draft clears only after the on-device log has saved it. On failure the draft stays.
+        do {
+            try draftStore.save(to: workoutLog)
+            progress.adopt(workoutLog, days: (ActiveProgramCache.load()?.body ?? .bundledV2()).days)
+            showingSaveConfirmation = true
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+}
+
+/// Today/Train entry point for an unsaved logger session.
+struct ResumeWorkoutCard: View {
+    let draft: WorkoutDraft
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Resume workout")
+                .font(.system(size: 15, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.0)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.bloodText)
+            Text(draft.title)
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .foregroundStyle(IronTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(draft.loggedSetCount) sets logged · \(SessionDateFormatting.displayString(from: draft.sessionDate)) · not saved")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onResume) {
+                Label("Resume", systemImage: "play.fill")
+            }
+            .buttonStyle(IronCompactButtonStyle())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+#if DEBUG
+extension ProgramV2WorkoutLogView {
+    /// Visual QA seeds the real owner models rather than reproducing logger
+    /// layouts or reaching into private state through UI automation. Release
+    /// builds keep only the normal day-based initializer.
+    init(visualQAEntry entry: WorkoutSetEntry, restSession: RestSession,
+         openedAt: Date, initiallyReordering: Bool = false, showsSaveConfirmation: Bool = false) {
+        day = entry.day
+        onSaved = {}
+        progress = .shared
+        _entry = State(initialValue: entry)
+        _restSession = State(initialValue: restSession)
+        _openedAt = State(initialValue: openedAt)
+        _isReordering = State(initialValue: initiallyReordering)
+        _showingSaveConfirmation = State(initialValue: showsSaveConfirmation)
+    }
+}
+#endif

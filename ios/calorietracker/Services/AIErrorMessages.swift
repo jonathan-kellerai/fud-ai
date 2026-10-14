@@ -21,6 +21,7 @@ enum AIErrorKind: String, CaseIterable {
     case unsupportedDevice = "ai.error.unsupported_device"
     case truncated = "ai.error.truncated"
     case textOnly = "ai.error.text_only"
+    case unsupportedImageInput = "ai.error.unsupported_image"
 
     var defaultMessage: String {
         switch self {
@@ -43,6 +44,7 @@ enum AIErrorKind: String, CaseIterable {
         case .unsupportedDevice: "Apple Intelligence requires iOS 26 or later on a supported iPhone."
         case .truncated: "The AI response was truncated twice. Try a shorter input or another model."
         case .textOnly: "Apple Intelligence is available for text-only requests."
+        case .unsupportedImageInput: "This model can't read photos. Choose a vision model in Settings → AI Provider."
         }
     }
     var message: String {
@@ -56,6 +58,16 @@ enum AIErrorKind: String, CaseIterable {
         if status == 402 || has("insufficient credits", "insufficient credit", "credit balance is too low", "out of credits", "billing_hard_limit_reached") { return .credits }
         if has("quota", "limit", "resource_exhausted") && has("daily", "per day", "per_day", "perday", "requestsperday") { return .dailyQuota }
         if has("quota exceeded", "quota_exceeded", "exceeded your current quota", "insufficient_quota") { return .quota }
+        if status == 400 && has(
+            "does not support image",
+            "do not support image",
+            "doesn't support image",
+            "images are not supported",
+            "image content blocks are not supported",
+            "image_url is only supported",
+            "unsupported image",
+            "not a vision model"
+        ) { return .unsupportedImageInput }
         if status == 404 { return .modelUnavailable }
         if status == 429 { return .rateLimited }
         if status == 503 || status == 529 { return .overloaded }

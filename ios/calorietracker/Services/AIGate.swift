@@ -11,6 +11,10 @@ enum AIModeSettings {
 
     static var mode: AIMode {
         get {
+            // Read-time override. The stored aiAccessMode value is left alone.
+            if !JLFeatureFlags.fudHostedAI {
+                return .byok
+            }
             guard let raw = UserDefaults.standard.string(forKey: modeKey),
                   let value = AIMode(rawValue: raw) else {
                 return .byok

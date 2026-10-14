@@ -4,15 +4,17 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:www.fud-ai.app</string>
+		<string>applinks:jl-physical.app</string>
 	</array>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
+	<key>com.apple.developer.healthkit.access</key>
+	<array/>
 	<key>com.apple.developer.healthkit.background-delivery</key>
 	<true/>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
-		<string>iCloud.com.apoorvdarshan.calorietracker</string>
+		<string>iCloud.$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	</array>
 	<key>com.apple.developer.icloud-services</key>
 	<array>

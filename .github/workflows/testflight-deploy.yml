@@ -1,0 +1,641 @@
+name: TestFlight Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Upload to TestFlight
+    runs-on: macos-15  # Latest macOS runner for Xcode 26
+
+    steps:
+    - name: Check required secrets
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        # Admin key when both new secrets are set. Otherwise the original key.
+        # Log the label only. Do not print key ids or .p8 contents.
+        admin_id="$(printf '%s' "${ADMIN_KEY_ID}" | tr -d '[:space:]')"
+        fallback_id="$(printf '%s' "${KEY_ID}" | tr -d '[:space:]')"
+        admin_key_present=0
+        fallback_key_present=0
+        if [ -n "$(printf '%s' "${ADMIN_AUTH_KEY}" | tr -d '[:space:]')" ]; then
+          admin_key_present=1
+        fi
+        if [ -n "$(printf '%s' "${AUTH_KEY}" | tr -d '[:space:]')" ]; then
+          fallback_key_present=1
+        fi
+        if [ -n "${admin_id}" ] && [ "${admin_key_present}" -eq 1 ]; then
+          chosen_id="${admin_id}"
+          label="admin"
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        elif [ -n "${fallback_id}" ] && [ "${fallback_key_present}" -eq 1 ]; then
+          chosen_id="${fallback_id}"
+          label="default"
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        else
+          echo "ERROR: Set ADMIN_KEY_ID and ADMIN_AUTH_KEY, or KEY_ID and AUTH_KEY."
+          exit 1
+        fi
+        if [ -z "${ISSUER_ID}" ]; then
+          echo "ERROR: ISSUER_ID secret is empty or not set"
+          exit 1
+        fi
+        if ! printf '%s' "${chosen_id}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: The selected API key id must be 10 letters or digits."
+          echo "Selected key id length=$(printf '%s' "${chosen_id}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        if ! printf '%s' "${ISSUER_ID}" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+          echo "ERROR: ISSUER_ID must be the Issuer ID UUID from App Store Connect → Users and Access → Integrations → Keys."
+          echo "It is not Team ID 2UMNXHG36N and not the Key ID."
+          echo "ISSUER_ID length=$(printf '%s' "${ISSUER_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        echo "Selected API key id shape ok (10 alphanumeric). ISSUER_ID shape ok (UUID)."
+        {
+          echo "KEY_ID<<ASC_KEY_EOF"
+          printf '%s\n' "${chosen_id}"
+          echo "ASC_KEY_EOF"
+          echo "ASC_KEY_ID<<ASC_KEY_EOF"
+          printf '%s\n' "${chosen_id}"
+          echo "ASC_KEY_EOF"
+          echo "ASC_KEY_LABEL=${label}"
+        } >> "$GITHUB_ENV"
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: List available Xcode versions
+      run: find /Applications -maxdepth 1 -name 'Xcode*.app' -exec ls -ld {} +
+
+    - name: Select latest Xcode 26
+      run: |
+        shopt -s nullglob
+        candidates=(/Applications/Xcode_26*.app)
+        if [ "${#candidates[@]}" -eq 0 ]; then
+          echo "ERROR: No Xcode 26.x found. Project requires Swift 6.2 (Xcode 26+)"
+          exit 1
+        fi
+        LATEST_XCODE=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)
+        echo "Selected: ${LATEST_XCODE}"
+        sudo xcode-select -s "${LATEST_XCODE}/Contents/Developer"
+
+    - name: Show Xcode version
+      run: |
+        xcodebuild -version
+        swift --version
+
+    - name: Create API Key file
+      env:
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        # KEY_ID and ASC_KEY_LABEL were selected in the previous step.
+        # altool reads ~/private_keys/AuthKey_<selected key id>.p8
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          export AUTH_KEY="${ADMIN_AUTH_KEY}"
+          export ASC_KEY_SECRET_NAME="ADMIN_AUTH_KEY"
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          export ASC_KEY_SECRET_NAME="AUTH_KEY"
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
+        unset ADMIN_AUTH_KEY
+        if ! printf '%s' "${KEY_ID}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: The selected API key id must be 10 letters or digits."
+          echo "Selected key id length=$(printf '%s' "${KEY_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+
+        mkdir -p "${HOME}/private_keys"
+        key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
+        export KEY_FILE="${key_file}"
+        python3 - << 'PY'
+        import os
+        import re
+        import sys
+        from pathlib import Path
+
+        raw = os.environ.get("AUTH_KEY", "")
+        text = raw.replace("\r\n", "\n").replace("\r", "\n")
+        if text.startswith("\ufeff"):
+            text = text.lstrip("\ufeff")
+        text = text.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+            inner = text[1:-1]
+            if "BEGIN" in inner:
+                text = inner.strip()
+        # A one-line GitHub secret sometimes stores the PEM with literal \n.
+        if "-----BEGIN" in text and text.count("\n") == 0 and "\\n" in text:
+            text = text.replace("\\n", "\n").strip()
+        if text and not text.endswith("\n"):
+            text += "\n"
+
+        Path(os.environ["KEY_FILE"]).write_text(text)
+        nonempty = [line for line in text.splitlines() if line.strip()]
+        begin = nonempty[0] if nonempty else ""
+        end = nonempty[-1] if nonempty else ""
+        begin_ok = begin in (
+            "-----BEGIN PRIVATE KEY-----",
+            "-----BEGIN EC PRIVATE KEY-----",
+        )
+        end_ok = end in (
+            "-----END PRIVATE KEY-----",
+            "-----END EC PRIVATE KEY-----",
+        )
+        body = nonempty[1:-1] if len(nonempty) >= 2 else []
+        body_ok = bool(body) and all(re.fullmatch(r"[A-Za-z0-9+/=]+", line) for line in body)
+        print(
+            f"PEM nonempty_lines={len(nonempty)} begin_ok={str(begin_ok).lower()} "
+            f"end_ok={str(end_ok).lower()} body_lines={len(body)}"
+        )
+        secret_name = os.environ.get("ASC_KEY_SECRET_NAME", "AUTH_KEY")
+        if not (begin_ok and end_ok and body_ok):
+            print(f"ERROR: {secret_name} is not a PEM private key.")
+            print(f"Paste the .p8 file into the {secret_name} secret, including the BEGIN and END lines.")
+            print("Do not add quotes around the secret, and do not paste only the base64 body.")
+            sys.exit(1)
+        PY
+        chmod 600 "${key_file}"
+        if ! openssl pkey -in "${key_file}" -noout 2>"${RUNNER_TEMP}/pkey.err"; then
+          echo "ERROR: ${ASC_KEY_SECRET_NAME} has PEM headers but OpenSSL could not read a private key."
+          sed 's/.*PRIVATE KEY.*/[redacted]/' "${RUNNER_TEMP}/pkey.err" || true
+          exit 1
+        fi
+        echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<selected key id>.p8"
+        # xcodebuild and altool also search these directories by AuthKey_<KEY_ID>.p8 name.
+        mkdir -p "${HOME}/.private_keys" "${HOME}/.appstoreconnect/private_keys"
+        cp "${key_file}" "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8"
+        cp "${key_file}" "${HOME}/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+        chmod 600 \
+          "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8" \
+          "${HOME}/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+
+    - name: Check App Store Connect API authentication
+      env:
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
+        # --list-providers does not accept API keys. Sign an ES256 JWT and call the API.
+        # KEY_ID is the selected key id from the secrets step, not a fresh secrets.KEY_ID.
+        python3 -m venv "${RUNNER_TEMP}/asc-venv"
+        "${RUNNER_TEMP}/asc-venv/bin/pip" install --disable-pip-version-check pyjwt cryptography
+        "${RUNNER_TEMP}/asc-venv/bin/python" - << 'PY'
+        import json
+        import os
+        import subprocess
+        import time
+        from pathlib import Path
+
+        import jwt
+
+        key_id = os.environ["KEY_ID"]
+        issuer_id = os.environ["ISSUER_ID"]
+        private_key = Path.home().joinpath("private_keys", f"AuthKey_{key_id}.p8").read_text()
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "iss": issuer_id,
+                "iat": now,
+                "exp": now + 15 * 60,
+                "aud": "appstoreconnect-v1",
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": key_id, "typ": "JWT"},
+        )
+        if isinstance(token, bytes):
+            token = token.decode()
+        header_file = Path(os.environ["RUNNER_TEMP"]) / "asc-auth-header"
+        header_file.write_text(f"Authorization: Bearer {token}\n")
+        header_file.chmod(0o600)
+        print("Signed ES256 JWT for App Store Connect (token not printed).")
+
+        # GET /v1/apps succeeding does not mean this key can cloud-sign.
+        # Archive used to request an iOS App Development profile. Export requests
+        # an App Store profile, which needs Certificates, Identifiers & Profiles.
+        requests = (
+            (
+                "bundleIds-app",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=10&filter[identifier]=com.jonathanbowe.jlphysical",
+                True,
+            ),
+            (
+                "bundleIds-widgets",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=5&filter[identifier]=com.jonathanbowe.jlphysical.FudAIWidgetsExtension",
+                False,
+            ),
+            (
+                "bundleIds-share",
+                "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=5&filter[identifier]=com.jonathanbowe.jlphysical.calorietrackerShare",
+                False,
+            ),
+            (
+                "apps",
+                "https://api.appstoreconnect.apple.com/v1/apps?limit=5&filter[bundleId]=com.jonathanbowe.jlphysical",
+                True,
+            ),
+            (
+                "certificates",
+                "https://api.appstoreconnect.apple.com/v1/certificates?limit=20",
+                False,
+            ),
+            (
+                "profiles",
+                "https://api.appstoreconnect.apple.com/v1/profiles?limit=20",
+                False,
+            ),
+        )
+
+        def redact(text):
+            return text.replace(token, "[redacted]")
+
+        def error_parts(body):
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                return None
+            errors = payload.get("errors")
+            if not isinstance(errors, list):
+                return None
+            parts = []
+            for item in errors:
+                if not isinstance(item, dict):
+                    continue
+                parts.append(
+                    "code={code} title={title} detail={detail}".format(
+                        code=item.get("code") or "",
+                        title=item.get("title") or "",
+                        detail=item.get("detail") or "",
+                    )
+                )
+            return parts
+
+        def resource_summary(body):
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                return "unparsed"
+            resources = payload.get("data")
+            if not isinstance(resources, list):
+                return "resources=0"
+            parts = []
+            for item in resources:
+                if not isinstance(item, dict):
+                    continue
+                attributes = item.get("attributes")
+                if not isinstance(attributes, dict):
+                    attributes = {}
+                name = (
+                    attributes.get("identifier")
+                    or attributes.get("certificateType")
+                    or attributes.get("profileType")
+                    or attributes.get("bundleId")
+                    or attributes.get("name")
+                    or item.get("type")
+                    or "resource"
+                )
+                parts.append(str(name))
+            shown = ", ".join(parts[:12])
+            extra = ""
+            if len(parts) > 12:
+                extra = f" (+{len(parts) - 12} more)"
+            return f"resources={len(resources)} [{shown}]{extra}"
+
+        failed = False
+        for label, url, require_resources in requests:
+            body_path = Path(os.environ["RUNNER_TEMP"]) / f"asc-{label}.json"
+            result = subprocess.run(
+                [
+                    "curl",
+                    "--globoff",
+                    "-sS",
+                    "-H",
+                    f"@{header_file}",
+                    "-o",
+                    str(body_path),
+                    "-w",
+                    "%{http_code}",
+                    "--url",
+                    url,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            status_text = result.stdout.strip()
+            if result.returncode != 0 or not status_text.isdigit():
+                print(f"ERROR: {label} request failed before Apple returned a status.")
+                print(redact(result.stderr.strip()))
+                failed = True
+                continue
+            status = int(status_text)
+            body = body_path.read_text()
+            parts = error_parts(body) or []
+            if parts:
+                for part in parts:
+                    print(f"{label} HTTP {status} {redact(part)}")
+            else:
+                print(f"{label} HTTP {status}")
+            if status == 401:
+                print(
+                    "ERROR: Apple rejected the token (401). The selected key id does not match this .p8, "
+                    "ISSUER_ID is not that key's issuer, or the key was revoked."
+                )
+                failed = True
+                continue
+            if status == 403:
+                print(
+                    "ERROR: Apple refused this key (403). The role is insufficient for cloud signing. "
+                    "GET /v1/apps and GET /v1/bundleIds can succeed for App Manager while "
+                    "GET /v1/certificates and GET /v1/profiles return 403. "
+                    "xcodebuild -allowProvisioningUpdates then reports "
+                    "'Authentication failed: Make sure a bearer token was provided'. "
+                    "The key needs the Admin role (Account Holder or Admin) and "
+                    "Access to Certificates, Identifiers & Profiles."
+                )
+                failed = True
+                continue
+            if status != 200:
+                print(f"ERROR: {label} returned HTTP {status}.")
+                failed = True
+                continue
+            summary = resource_summary(body)
+            print(f"{label} {summary}")
+            if require_resources and "resources=0" in summary:
+                print(
+                    f"ERROR: App Store Connect returned no {label} records. "
+                    "The token was accepted. Register that bundle ID and app on team 2UMNXHG36N."
+                )
+                failed = True
+                continue
+            if label in ("bundleIds-widgets", "bundleIds-share") and "resources=0" in summary:
+                print(
+                    f"WARNING: {label} is not registered yet. "
+                    "Register that bundle ID on team 2UMNXHG36N before export."
+                )
+            if label == "certificates" and "resources=0" in summary:
+                print(
+                    "certificates: none listed yet. Export creates an Apple Distribution "
+                    "certificate with this API key and installs it on the runner. "
+                    "It does not use Xcode cloud-managed certificates."
+                )
+
+        header_file.unlink(missing_ok=True)
+        if failed:
+            raise SystemExit(1)
+        print("App Store Connect API authentication succeeded.")
+        PY
+
+    - name: Set build number
+      run: |
+        # github.run_number becomes CFBundleVersion via CURRENT_PROJECT_VERSION
+        # on the archive command, so the app and extensions stay in sync.
+        BUILD_NUMBER="${{ github.run_number }}"
+        echo "BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
+        echo "Setting build number to ${BUILD_NUMBER}"
+
+    - name: Build and archive for App Store
+      run: |
+        set -o pipefail
+        cd ios
+        mkdir -p build
+
+        # Bundle IDs stay on the per-target values in project.pbxproj.
+        # A command-line PRODUCT_BUNDLE_IDENTIFIER would apply to every target.
+        #
+        # Archive unsigned. Automatic signing here asks for an iOS App Development
+        # profile (GatherProvisioningInputs). A fresh runner has no development
+        # certificate, so Xcode tries to mint one and then reports
+        # "Authentication failed: bearer token" plus "No profiles for
+        # com.jonathanbowe.jlphysical". Distribution signing happens at export,
+        # which uses the App Store profile and the API key.
+        xcodebuild archive \
+          -project calorietracker.xcodeproj \
+          -scheme calorietracker \
+          -configuration Release \
+          -archivePath build/JLPhysical.xcarchive \
+          -destination 'generic/platform=iOS' \
+          DEVELOPMENT_TEAM=2UMNXHG36N \
+          CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          | tee build_archive.log
+
+        if [ ! -d "build/JLPhysical.xcarchive" ]; then
+          echo "ERROR: Archive was not created"
+          exit 1
+        fi
+
+        echo "Archive created successfully"
+
+    - name: Export IPA for App Store
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+        # Stored-certificate path: when both DIST_CERT_P12_* secrets are set, the
+        # script imports that p12 and never creates or deletes a certificate.
+        # Without them it creates one (deleting the oldest DISTRIBUTION
+        # certificate once if Apple's limit is hit) and, if the
+        # DIST_CERT_EXPORT_PUBLIC_KEY variable is set, writes an encrypted copy
+        # for the operator. See docs/TESTFLIGHT.md "Distribution certificate".
+        DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+        DIST_CERT_P12_PASSWORD: ${{ secrets.DIST_CERT_P12_PASSWORD }}
+        DIST_CERT_ID: ${{ secrets.DIST_CERT_ID }}
+        DIST_CERT_EXPORT_PUBLIC_KEY: ${{ vars.DIST_CERT_EXPORT_PUBLIC_KEY }}
+      run: |
+        set -o pipefail
+        cd ios
+        mkdir -p build
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
+
+        # destination=export writes a local IPA. altool performs the upload.
+        # Do not pass -allowProvisioningUpdates. Run 39 had HTTP 200 for certificates
+        # and profiles, then export failed with "Cloud signing permission error"
+        # because cloud-managed distribution certificates are a separate permission.
+        # prepare_appstore_signing.py creates a DISTRIBUTION certificate and
+        # IOS_APP_STORE profiles for the app, widget, and share extension.
+        if [ ! -x "${RUNNER_TEMP}/asc-venv/bin/python" ]; then
+          python3 -m venv "${RUNNER_TEMP}/asc-venv"
+          "${RUNNER_TEMP}/asc-venv/bin/pip" install --disable-pip-version-check pyjwt cryptography
+        fi
+        export EXPORT_OPTIONS_PLIST="${PWD}/build/ExportOptions.plist"
+        "${RUNNER_TEMP}/asc-venv/bin/python" "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py"
+
+        # The archive is unsigned, so Xcode never wrote archived-expanded-entitlements.xcent.
+        # Run 46 wrote that file and Xcode 26 export still signed without HealthKit.
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py" \
+          --write-archive-entitlements "${PWD}/build/JLPhysical.xcarchive"
+
+        xcodebuild -exportArchive \
+          -archivePath build/JLPhysical.xcarchive \
+          -exportPath build/output \
+          -exportOptionsPlist build/ExportOptions.plist \
+          | tee build_export.log
+
+        # IPA filename follows PRODUCT_NAME ($(TARGET_NAME) -> calorietracker).
+        shopt -s nullglob
+        ipa_files=(build/output/*.ipa)
+        if [ "${#ipa_files[@]}" -ne 1 ]; then
+          echo "ERROR: Expected exactly one IPA in build/output, found ${#ipa_files[@]}"
+          ls -la build/output/ || true
+          exit 1
+        fi
+        echo "IPA_PATH=${ipa_files[0]}" >> "$GITHUB_ENV"
+        echo "IPA exported successfully"
+        ls -lh "${ipa_files[0]}"
+
+        # Export signs from the profile defaults and drops HealthKit. Re-sign the
+        # app and appexes with the expanded entitlements before the gate.
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py" \
+          --resign-ipa "${ipa_files[0]}"
+
+        # Fail before the upload step unless the signed app and its profile
+        # both carry the HealthKit entitlement.
+        entitlement_dir="${RUNNER_TEMP}/ipa-entitlements"
+        rm -rf "${entitlement_dir}"
+        mkdir -p "${entitlement_dir}"
+        unzip -q "${ipa_files[0]}" -d "${entitlement_dir}/unzipped"
+        app_path="$(find "${entitlement_dir}/unzipped/Payload" -maxdepth 1 -name '*.app' -type d | head -n 1)"
+        if [ -z "${app_path}" ]; then
+          echo "ERROR: IPA has no Payload/*.app"
+          exit 1
+        fi
+        # `--xml` asks for a plist. Without it, Xcode 26 prints [Dict]/[Key] text.
+        # The Executable= line is stderr and is not part of the plist.
+        # If this codesign has no --xml, the text dump is still accepted below.
+        dump_signed_entitlements() {
+          local target="$1"
+          local output="$2"
+          if ! codesign -d --entitlements - --xml "${target}" \
+            > "${output}" \
+            2> "${entitlement_dir}/codesign-entitlements.stderr"; then
+            echo "codesign --xml entitlements dump failed for ${target}; retrying without --xml"
+            cat "${entitlement_dir}/codesign-entitlements.stderr"
+            if ! codesign -d --entitlements - "${target}" \
+              > "${output}" \
+              2> "${entitlement_dir}/codesign-entitlements.stderr"; then
+              echo "ERROR: codesign entitlements dump failed for ${target}"
+              cat "${entitlement_dir}/codesign-entitlements.stderr"
+              exit 1
+            fi
+          fi
+        }
+        dump_signed_entitlements "${app_path}" "${entitlement_dir}/signed-entitlements.plist"
+        appex_args=()
+        if [ -d "${app_path}/PlugIns" ]; then
+          while IFS= read -r appex_path; do
+            [ -z "${appex_path}" ] && continue
+            appex_name="$(basename "${appex_path}")"
+            dump_signed_entitlements "${appex_path}" "${entitlement_dir}/${appex_name}.entitlements"
+            appex_args+=(--appex-entitlements "${entitlement_dir}/${appex_name}.entitlements")
+          done < <(find "${app_path}/PlugIns" -maxdepth 1 -name '*.appex' -type d | sort)
+        fi
+        if ! security cms -D -i "${app_path}/embedded.mobileprovision" \
+          > "${entitlement_dir}/embedded.plist" \
+          2> "${entitlement_dir}/cms-profile.stderr"; then
+          echo "ERROR: embedded.mobileprovision is not a CMS blob"
+          cat "${entitlement_dir}/cms-profile.stderr"
+          exit 1
+        fi
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" \
+          --signed-entitlements "${entitlement_dir}/signed-entitlements.plist" \
+          --provisioning-profile "${entitlement_dir}/embedded.plist" \
+          "${appex_args[@]}"
+
+    # Only the encrypted export (*.enc) is uploaded; it exists only when this run
+    # created a certificate and DIST_CERT_EXPORT_PUBLIC_KEY is set. hashFiles()
+    # cannot see runner.temp (it only reads the workspace), so the step runs
+    # always() and if-no-files-found: ignore makes it a no-op otherwise.
+    - name: Upload encrypted distribution certificate export
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-cert-export-encrypted
+        path: ${{ runner.temp }}/dist-cert-export/*.enc
+        retention-days: 3
+        if-no-files-found: ignore
+
+    - name: Upload to TestFlight
+      env:
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        set -eo pipefail
+        cd ios
+
+        if [ -z "${IPA_PATH:-}" ] || [ ! -f "${IPA_PATH}" ]; then
+          echo "ERROR: IPA was not found for upload"
+          exit 1
+        fi
+
+        # altool --validate-app is not available on Linux. This checks the built IPA
+        # for the usage strings, version match, and background-task keys Apple rejected.
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/check_appstore_plist.py" --ipa "${IPA_PATH}"
+
+        # --upload-app accepts --apiKey/--apiIssuer. --list-providers does not.
+        # altool loads ~/private_keys/AuthKey_<selected key id>.p8
+        # Run 44 printed "Upload to TestFlight initiated" after altool reported
+        # UPLOAD FAILED and the step still exited 0.
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
+        upload_log="${RUNNER_TEMP}/altool-upload.log"
+        set +e
+        xcrun altool --upload-app \
+          --type ios \
+          --file "${IPA_PATH}" \
+          --apiKey "${ASC_KEY_ID}" \
+          --apiIssuer "${ISSUER_ID}" \
+          --verbose 2>&1 | tee "${upload_log}"
+        altool_status=${PIPESTATUS[0]}
+        set -e
+        if grep -E -q 'UPLOAD FAILED|Failed to upload package' "${upload_log}" || [ "${altool_status}" -ne 0 ]; then
+          echo "ERROR: altool upload failed (exit ${altool_status})."
+          exit 1
+        fi
+
+        echo "Upload to TestFlight initiated"
+        echo ""
+        echo "The build will appear in App Store Connect → TestFlight within 5-15 minutes."
+        echo "You will receive an email when processing is complete."
+
+    - name: Upload build logs as artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          ios/build_archive.log
+          ios/build_export.log
+        retention-days: 30
+
+    - name: Clean up API key
+      if: always()
+      run: |
+        rm -rf "${HOME}/private_keys"
+        rm -f "${HOME}/.private_keys"/AuthKey_*.p8
+        rm -f "${HOME}/.appstoreconnect/private_keys"/AuthKey_*.p8
+        if [ -f "${RUNNER_TEMP}/jl-appstore-signing/jl-keychain-path" ]; then
+          security delete-keychain "$(cat "${RUNNER_TEMP}/jl-appstore-signing/jl-keychain-path")" || true
+        fi
+        echo "API key file removed"

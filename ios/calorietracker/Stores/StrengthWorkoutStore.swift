@@ -525,7 +525,7 @@ final class StrengthWorkoutStore {
         if let deletedBurnID { onWorkoutBurnDeleted?(deletedBurnID) }
     }
 
-    /// Restores Fud AI-authored burn samples after a reinstall or new phone.
+    /// Restores JL Physical-authored burn samples after a reinstall or new phone.
     /// This merge never fires write callbacks, so imported samples are not
     /// echoed back to Apple Health.
     func importWorkoutBurnSessions(_ imported: [StrengthWorkoutSession]) {
@@ -804,7 +804,7 @@ final class StrengthWorkoutStore {
     }
 
     static let persistenceBlockedMessage =
-        "Your saved workout history is being protected and can't be changed right now. Update Fud AI to the latest version or restart the app and try again."
+        "Your saved workout history is being protected and can't be changed right now. Update JL Physical to the latest version or restart the app and try again."
 
     /// Applies `mutate` to memory and persists the result as one unit.
     ///

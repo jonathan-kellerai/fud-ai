@@ -12,6 +12,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         QuickActionSettings.registerApplicationShortcuts()
         WatchSnapshotSync.shared.activate()
+        // BGAppRefresh registration has to finish before launch returns.
+        StepsTrackingService.registerBackgroundTask()
+        StepsTrackingService.scheduleBackgroundTask()
         return true
     }
 

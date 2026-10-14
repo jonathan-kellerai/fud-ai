@@ -96,7 +96,13 @@ struct ChatService {
             workoutAccessEnabled: workoutAccessEnabled
         )
 
-        let config = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
+        let baseConfig = AIProviderSettings.currentConfig(requiresVision: imageData != nil)
+        // Messages with an image always keep the cloud config; text may use a cheaper or on-device tier.
+        let tierPlan = await JevTierRouter.plan(
+            imageData == nil ? JevTierRequest.coachChat(newUserMessage) : JevTierRequest.coachPhoto(newUserMessage),
+            base: baseConfig
+        )
+        let config = tierPlan.primary
         func request(
             provider: AIProvider,
             model: String,
@@ -147,40 +153,28 @@ struct ChatService {
             }
         }
 
-        do {
-            return try await request(
-                provider: config.provider,
-                model: config.model,
-                baseURL: config.baseURL,
-                apiKey: config.apiKey
-            )
-        } catch {
-            if error is CancellationError { throw error }
-            let fallback = imageData == nil
-                ? AIProviderSettings.currentTextFallbackConfig(
-                    excludingPrimary: config.provider,
-                    model: config.model
-                )
-                : AIProviderSettings.currentImageFallbackConfig(
-                    excludingPrimary: config.provider,
-                    model: config.model
-                )
-            guard let fallback else { throw error }
-            do {
-                return try await request(
-                    provider: fallback.provider,
-                    model: fallback.model,
-                    baseURL: fallback.baseURL,
-                    apiKey: fallback.apiKey
-                )
-            } catch let fallbackError {
-                if fallbackError is CancellationError { throw fallbackError }
-                throw AIRequestErrorPolicy.errorToSurface(
+        // A cheaper or on-device tier that fails retries once on the strong config.
+        return try await JevTierRouter.runWithFallback(
+            tierPlan,
+            fallback: { primary in
+                imageData == nil
+                    ? AIProviderSettings.currentTextFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+                    : AIProviderSettings.currentImageFallbackConfig(excludingPrimary: primary.provider, model: primary.model)?.requestConfig
+            },
+            surface: { primaryError, _, fallbackError in
+                AIRequestErrorPolicy.errorToSurface(
                     primaryProvider: config.provider,
-                    primaryError: error,
+                    primaryError: primaryError,
                     fallbackError: fallbackError
                 )
             }
+        ) { tier in
+            try await request(
+                provider: tier.provider,
+                model: tier.model,
+                baseURL: tier.baseURL,
+                apiKey: tier.apiKey
+            )
         }
     }
 

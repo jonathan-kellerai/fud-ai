@@ -47,7 +47,7 @@ struct WatchCaloriesWidget: Widget {
             WatchCaloriesWidgetView(snapshot: entry.snapshot)
                 .containerBackground(.clear, for: .widget)
         }
-        .configurationDisplayName("Fud AI Calories")
+        .configurationDisplayName("JL Physical Calories")
         .description("Today's calories on your watch face.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
@@ -61,7 +61,7 @@ struct WatchProteinWidget: Widget {
             WatchProteinWidgetView(snapshot: entry.snapshot)
                 .containerBackground(.clear, for: .widget)
         }
-        .configurationDisplayName("Fud AI Protein")
+        .configurationDisplayName("JL Physical Protein")
         .description("Today's protein on your watch face.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
@@ -75,7 +75,7 @@ struct WatchMacrosWidget: Widget {
             WatchMacrosWidgetView(snapshot: entry.snapshot)
                 .containerBackground(.clear, for: .widget)
         }
-        .configurationDisplayName("Fud AI Macros")
+        .configurationDisplayName("JL Physical Macros")
         .description("Protein, carbs, and fat on your watch face.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
     }

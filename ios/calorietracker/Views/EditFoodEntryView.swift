@@ -9,6 +9,7 @@ struct EditFoodEntryView: View {
     @Environment(FoodStore.self) private var foodStore
     @Environment(ProfileStore.self) private var profileStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // Base values (the entry's nutrition at its logged serving size)
     @State private var baseCalories: Int
@@ -379,9 +380,16 @@ struct EditFoodEntryView: View {
                     }
 
                     Section("Serving") {
-                        HStack {
+                        // Stack label over editor at accessibility sizes; side by
+                        // side, "Quantity" broke mid-word ("Qua / nti- / ty").
+                        let quantityLayout = dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                            : AnyLayout(HStackLayout())
+                        quantityLayout {
                             Text("Quantity")
-                            Spacer()
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Spacer()
+                            }
                             ServingUnitEditor(
                                 quantityText: $servingSizeText,
                                 servingSizeGrams: $servingSizeGrams,
@@ -540,7 +548,7 @@ struct EditFoodEntryView: View {
                         }
                         .tint(AppColors.calorie)
                     } footer: {
-                        Text("Send this meal to a friend — they can add it to their Fud AI in one tap.")
+                        Text("Send this meal to a friend — they can add it to their JL Physical app in one tap.")
                     }
 
                 }

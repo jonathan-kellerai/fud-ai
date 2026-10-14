@@ -48,20 +48,26 @@ struct ProfileInfoRow: View {
         Button {
             action?()
         } label: {
-            HStack {
+            AdaptiveLabelValue {
                 Label {
                     Text(LocalizedDisplayText.text(label))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 } icon: {
                     Image(systemName: icon)
                         .foregroundStyle(AppColors.calorie)
                 }
-                Spacer()
-                Text(value)
-                    .foregroundStyle(.secondary)
-                if action != nil {
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+            } value: {
+                HStack(spacing: 6) {
+                    Text(value)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(.secondary)
+                    if action != nil {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
         }
@@ -209,13 +215,16 @@ struct WeightPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     let currentWeightKg: Double
+    var previous: WeightEntry? = nil
     let onSave: (Double) -> Void
 
     @State private var wholeNumber: Int
     @State private var decimal: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentWeightKg: Double, onSave: @escaping (Double) -> Void) {
+    init(currentWeightKg: Double, previous: WeightEntry? = nil, onSave: @escaping (Double) -> Void) {
         self.currentWeightKg = currentWeightKg
+        self.previous = previous
         self.onSave = onSave
         // Respect the stored preference at the time the sheet is created.
         let metric = UserDefaults.standard.string(forKey: "weightUnit") == "kg"
@@ -288,8 +297,17 @@ struct WeightPickerSheet: View {
                 Button {
                     let value = Double(wholeNumber) + Double(decimal) / 10.0
                     let weightKg = useMetric ? value : value / 2.20462
-                    onSave(weightKg)
-                    dismiss()
+                    let days = previous.map { max(1, Calendar.current.dateComponents([.day], from: $0.date, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.weight(newKg: weightKg, previousKg: previous?.weightKg, days: days)
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(weightKg)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -313,6 +331,25 @@ struct WeightPickerSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .plausibilityConfirmation(
+            title: "Save \(weightPrompt)?",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                let value = Double(wholeNumber) + Double(decimal) / 10.0
+                let weightKg = useMetric ? value : value / 2.20462
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "weight") }
+                onSave(weightKg)
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
+    }
+
+    private var weightPrompt: String {
+        let value = Double(wholeNumber) + Double(decimal) / 10.0
+        return String(format: "%.1f %@", value, useMetric ? "kg" : "lb")
     }
 }
 
@@ -727,6 +764,7 @@ struct MealTimeSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("Meal Times")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: repairInvalidScheduleIfNeeded)
@@ -901,6 +939,7 @@ struct NutritionPickerSheet: View {
     let guidanceUpperLimit: Int?
     let customValueDetail: ((Int) -> String?)?
     let onSave: (Int) -> Void
+    var shouldSave: ((Int) async -> Bool)? = nil
     /// Optional callback to revert this macro to auto-balanced (custom value cleared).
     /// When provided, a button labeled `resetLabel` appears in the sheet.
     var onResetToAuto: (() -> Void)? = nil
@@ -925,6 +964,7 @@ struct NutritionPickerSheet: View {
         guidanceUpperLimit: Int? = nil,
         customValueDetail: ((Int) -> String?)? = nil,
         onSave: @escaping (Int) -> Void,
+        shouldSave: ((Int) async -> Bool)? = nil,
         onResetToAuto: (() -> Void)? = nil,
         resetLabel: String = "Reset to Auto-balance",
         onValueChange: ((Int) -> Void)? = nil
@@ -938,6 +978,7 @@ struct NutritionPickerSheet: View {
         self.guidanceUpperLimit = guidanceUpperLimit
         self.customValueDetail = customValueDetail
         self.onSave = onSave
+        self.shouldSave = shouldSave
         self.onResetToAuto = onResetToAuto
         self.resetLabel = resetLabel
         self.onValueChange = onValueChange
@@ -1051,8 +1092,12 @@ struct NutritionPickerSheet: View {
 
                 Button {
                     guard let valueToSave else { return }
-                    onSave(valueToSave)
-                    dismiss()
+                    let save = shouldSave
+                    Task {
+                        if let save, await save(valueToSave) == false { return }
+                        onSave(valueToSave)
+                        dismiss()
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -1140,13 +1185,18 @@ struct NotificationSettingsView: View {
         List {
             // Master toggle
             Section {
-                Toggle(isOn: $notificationsEnabled) {
+                AdaptiveLabelValue {
                     Label {
                         Text("Notifications")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     } icon: {
                         Image(systemName: "bell.fill")
                             .foregroundStyle(AppColors.calorie)
                     }
+                } value: {
+                    Toggle("", isOn: $notificationsEnabled)
+                        .labelsHidden()
                 }
                 .tint(AppColors.calorie)
                 .onChange(of: notificationsEnabled) { _, enabled in
@@ -1183,7 +1233,7 @@ struct NotificationSettingsView: View {
 
             if notificationsEnabled {
                 // Meal Reminders
-                Section("Meal Reminders") {
+                Section {
                     NotificationTimeRow(
                         label: "Breakfast",
                         icon: "sunrise.fill",
@@ -1216,11 +1266,13 @@ struct NotificationSettingsView: View {
                     .onChange(of: dinnerEnabled) { _, _ in applyMealReminders() }
                     .onChange(of: dinnerHour) { _, _ in applyMealReminders() }
                     .onChange(of: dinnerMinute) { _, _ in applyMealReminders() }
+                } header: {
+                    IronSectionTitle(title: "Meal Reminders")
                 }
                 .listRowBackground(AppColors.appCard)
 
                 if waterTrackingEnabled {
-                    Section("Water") {
+                    Section {
                         NotificationTimeRow(
                             label: "Water Reminder",
                             icon: "drop.fill",
@@ -1231,6 +1283,8 @@ struct NotificationSettingsView: View {
                         .onChange(of: waterReminderEnabled) { _, _ in applyWaterReminder() }
                         .onChange(of: waterReminderHour) { _, _ in applyWaterReminder() }
                         .onChange(of: waterReminderMinute) { _, _ in applyWaterReminder() }
+                    } header: {
+                        IronSectionTitle(title: "Water")
                     }
                     .listRowBackground(AppColors.appCard)
                 }
@@ -1250,7 +1304,7 @@ struct NotificationSettingsView: View {
                             applyFastingGoalNotification()
                         }
                     } header: {
-                        Text("Fasting")
+                        IronSectionTitle(title: "Fasting")
                     } footer: {
                         Text("Notifies you once when the active fast reaches its goal. The timer continues until you end it.")
                             .font(.system(.caption, design: .rounded))
@@ -1275,7 +1329,15 @@ struct NotificationSettingsView: View {
                         hour: $summaryHour,
                         minute: $summaryMinute
                     )
+                } header: {
+                    IronSectionTitle(title: "Smart Notifications")
+                } footer: {
+                    Text("Streak and summary reminders skip firing on days you've already logged.")
+                        .font(.system(.caption, design: .rounded))
+                }
+                .listRowBackground(AppColors.appCard)
 
+                Section {
                     NotificationTimeRow(
                         label: "Log Weight",
                         icon: "scalemass.fill",
@@ -1292,14 +1354,14 @@ struct NotificationSettingsView: View {
                         minute: $bodyFatLogMinute
                     )
                 } header: {
-                    Text("Smart Notifications")
+                    IronSectionTitle(title: "Weigh-In Reminders")
                 } footer: {
-                    Text("All four reminders are smart — they skip firing on days you've already logged. Body fat default is off since most users don't measure daily.")
+                    Text("Manual logging. Not needed if your scale syncs to Apple Health.")
                         .font(.system(.caption, design: .rounded))
                 }
                 .listRowBackground(AppColors.appCard)
 
-                // App Updates
+                if JLFeatureFlags.fudUpdateCheck {
                 Section {
                     Toggle(isOn: $appUpdatesEnabled) {
                         Label {
@@ -1311,16 +1373,18 @@ struct NotificationSettingsView: View {
                     }
                     .tint(AppColors.calorie)
                 } header: {
-                    Text("App")
+                    IronSectionTitle(title: "App")
                 } footer: {
                     Text("Get notified when a new version is available. Tap the notification to open the App Store.")
                         .font(.system(.caption, design: .rounded))
                 }
                 .listRowBackground(AppColors.appCard)
+                }
             }
         }
         .scrollContentBackground(.hidden)
         .background(AppColors.appBackground)
+        .settingsFloatingTabClearance()
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task {

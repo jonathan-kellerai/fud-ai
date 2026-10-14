@@ -1,33 +1,26 @@
 import SwiftUI
 import WidgetKit
 
-/// Match the main app's pink/red theme without importing Theme.swift
-/// (which lives in the main app target).
+/// Iron & Blood widget colors. The extension target cannot import the app theme file,
+/// so these sRGB components match IronTheme.blood and IronTheme.bloodPressed.
 enum WidgetPalette {
-    static let calorie = Color(red: 0xFF / 255, green: 0x37 / 255, blue: 0x5F / 255)
-    static let calorieLight = Color(red: 0xFF / 255, green: 0x6B / 255, blue: 0x8A / 255)
+    static let calorie = Color(.sRGB, red: 179.0 / 255.0, green: 18.0 / 255.0, blue: 27.0 / 255.0, opacity: 1)
+    static let calorieLight = Color(.sRGB, red: 138.0 / 255.0, green: 14.0 / 255.0, blue: 21.0 / 255.0, opacity: 1)
+    static let canvas = Color(.sRGB, red: 11.0 / 255.0, green: 10.0 / 255.0, blue: 9.0 / 255.0, opacity: 1)
     static var calorieGradient: LinearGradient {
         LinearGradient(colors: [calorie, calorieLight], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
     static var background: some ShapeStyle {
-        Color(.systemBackground)
+        canvas
     }
 }
 
-extension Color {
-    init(hex: UInt) {
-        self.init(
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255
-        )
-    }
-}
-
-/// The user's theme gradient synced from the app; Fud Pink when absent.
+/// Widgets render the Iron & Blood accent. Snapshot theme integers stay in the payload.
 extension WidgetSnapshot {
     var themeColors: [Color] {
-        [Color(hex: themeStartHex ?? 0xFF375F), Color(hex: themeEndHex ?? 0xFF6B8A)]
+        _ = themeStartHex
+        _ = themeEndHex
+        return [WidgetPalette.calorie, WidgetPalette.calorieLight]
     }
     var themeColor: Color { themeColors[0] }
     var themeGradient: LinearGradient {
@@ -256,7 +249,7 @@ private struct LargeCalorieView: View {
 
                 Spacer()
 
-                Label("Fud AI", systemImage: "flame.fill")
+                Label("JL Physical", systemImage: "flame.fill")
                     .font(.system(.caption, design: .rounded, weight: .bold))
                     .foregroundStyle(snapshot.themeGradient)
                     .labelStyle(.titleAndIcon)

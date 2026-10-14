@@ -1,0 +1,338 @@
+//
+//  WorkoutDraftStore.swift
+//  calorietracker
+//
+//  In-progress JL workout, kept on disk until the on-device workout log saves it
+//
+
+import Foundation
+import Observation
+
+/// Everything the logger needs to rebuild an unsaved session, including a
+/// snapshot of the program day so it can be reopened from the Resume card.
+struct WorkoutDraft: Codable, Equatable {
+    struct Exercise: Codable, Equatable {
+        var key: String
+        var name: String
+        var sets: Int
+        var reps: String
+        var restLowerSeconds: Int
+        var restUpperSeconds: Int
+        var rirTarget: String
+        var startLoadLb: Double?
+        var notes: String
+        var loadNote: String
+        /// Optional so drafts written before supersets still decode.
+        var supersetGroup: String?
+        var setsLabel: String? = nil
+    }
+
+    var programDay: String
+    var title: String
+    var conditioning: String
+    var conditioningMinimum: String
+    var exercises: [Exercise]
+    /// Logged sets keyed by exercise name, same shape as the logger used.
+    var sets: [String: [LoggedSet]]
+    var conditioningCompleted: Bool
+    /// yyyy-MM-dd of the day the session was started.
+    var sessionDate: String
+    /// When the session was started. Optional so older drafts on disk still decode.
+    var startedAt: Date?
+    var updatedAt: Date
+    var weekNote: String? = nil
+    var holdLoads: Bool? = nil
+    /// Nil preserves the planned-order payload and the legacy JSON shape.
+    var exerciseOrder: [String]? = nil
+    /// The workout's id in the on-device log, set by the store on the first
+    /// edit so saving again replaces that workout. Nil before then, and in
+    /// drafts written before build 70.
+    var recordID: String? = nil
+
+    init(day: ProgramV2Day, now: Date = Date()) {
+        programDay = day.id
+        title = day.title
+        conditioning = day.conditioning
+        conditioningMinimum = day.conditioningMinimum
+        exercises = Self.exercises(of: day)
+        sets = [:]
+        conditioningCompleted = false
+        sessionDate = Self.sessionDateString(from: now)
+        startedAt = now
+        updatedAt = now
+        weekNote = day.weekNote
+        holdLoads = day.holdLoads ? true : nil
+    }
+
+    /// Keeps the day snapshot in step with the day the logger is showing, so
+    /// the payload lists exercises exactly as the logger did before drafts.
+    mutating func adopt(_ day: ProgramV2Day) {
+        title = day.title
+        conditioning = day.conditioning
+        conditioningMinimum = day.conditioningMinimum
+        exercises = Self.exercises(of: day)
+        weekNote = day.weekNote
+        holdLoads = day.holdLoads ? true : nil
+    }
+
+    private static func exercises(of day: ProgramV2Day) -> [Exercise] {
+        day.exercises.map { exercise in
+            Exercise(
+                key: exercise.key,
+                name: exercise.name,
+                sets: exercise.sets,
+                reps: exercise.reps,
+                restLowerSeconds: exercise.restSeconds.lowerBound,
+                restUpperSeconds: exercise.restSeconds.upperBound,
+                rirTarget: exercise.rirTarget,
+                startLoadLb: exercise.startLoadLb,
+                notes: exercise.notes,
+                loadNote: exercise.loadNote,
+                supersetGroup: exercise.supersetGroup,
+                setsLabel: exercise.setsLabel
+            )
+        }
+    }
+
+    var loggedSetCount: Int {
+        sets.values.reduce(0) { total, loggedSets in
+            total + loggedSets.filter { $0.reps > 0 }.count
+        }
+    }
+
+    /// Rebuilds the program day the draft was started from.
+    var programV2Day: ProgramV2Day {
+        ProgramV2Day(
+            id: programDay,
+            title: title,
+            conditioning: conditioning,
+            conditioningMinimum: conditioningMinimum,
+            exercises: exercises.map { exercise in
+                ProgramV2Exercise(
+                    key: exercise.key,
+                    name: exercise.name,
+                    sets: exercise.sets,
+                    reps: exercise.reps,
+                    restSeconds: min(exercise.restLowerSeconds, exercise.restUpperSeconds)...max(exercise.restLowerSeconds, exercise.restUpperSeconds),
+                    rirTarget: exercise.rirTarget,
+                    startLoadLb: exercise.startLoadLb,
+                    notes: exercise.notes,
+                    loadNote: exercise.loadNote,
+                    supersetGroup: exercise.supersetGroup,
+                    setsLabel: exercise.setsLabel
+                )
+            },
+            weekNote: weekNote,
+            holdLoads: holdLoads ?? false
+        )
+    }
+
+    /// The session as saved, built exactly as the logger built it before drafts existed.
+    /// The session date is the day the workout started, not the day it is saved.
+    func payload(now: Date = Date()) -> WorkoutPayload {
+        var allSets: [WorkoutSet] = []
+        var order = 0
+        let sessionOrder = SessionOrder(plannedBlocks: SupersetGrouping.blocks(for: programV2Day.exercises),
+                                        exerciseOrder: exerciseOrder)
+        let performedNames = sessionOrder.exerciseOrder
+        let orderedExercises = exerciseOrder == nil ? exercises : performedNames.compactMap { name in
+            exercises.first { $0.name == name }
+        }
+
+        for exercise in orderedExercises {
+            let position = exerciseOrder == nil ? nil : sessionOrder.position(for: exercise.name)
+            if let loggedSets = sets[exercise.name] {
+                for set in loggedSets {
+                    let rpe = Double(set.rpeText.replacingOccurrences(of: ",", with: "."))
+                    allSets.append(WorkoutSet(
+                        exercise: exercise.name,
+                        load: set.weight,
+                        reps: set.reps,
+                        rir: set.rir,
+                        rpe: rpe,
+                        order: order,
+                        exercisePosition: position?.performed,
+                        plannedPosition: position?.planned
+                    ))
+                    order += 1
+                }
+            }
+        }
+
+        // Sets logged under an exercise that has since left the day would
+        // otherwise be dropped from the payload and deleted on save.
+        let exerciseNames = Set(exercises.map(\.name))
+        let orphanNames = sets.keys.sorted().filter { !exerciseNames.contains($0) }
+        for (orphanIndex, name) in orphanNames.enumerated() {
+            // Orphans retain their alphabetical tail order. With explicit
+            // ordering, both positions follow all current planned exercises.
+            let position = exerciseOrder == nil ? nil : exercises.count + orphanIndex + 1
+            for set in sets[name] ?? [] {
+                let rpe = Double(set.rpeText.replacingOccurrences(of: ",", with: "."))
+                allSets.append(WorkoutSet(
+                    exercise: name,
+                    load: set.weight,
+                    reps: set.reps,
+                    rir: set.rir,
+                    rpe: rpe,
+                    order: order,
+                    exercisePosition: position,
+                    plannedPosition: position
+                ))
+                order += 1
+            }
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let recordedAt = formatter.string(from: now)
+        let openedAt = formatter.string(from: startedAt ?? now)
+
+        return WorkoutPayload(
+            kind: "COMPLETED",
+            programVersion: "program-v2",
+            programDay: programDay,
+            title: title,
+            units: "lb",
+            sessionDate: sessionDate,
+            conditioning: conditioningCompleted ? conditioning : nil,
+            notes: [],
+            recordedAtUtc: recordedAt,
+            openedAtUtc: openedAt,
+            source: "jl-fud-native",
+            sets: allSets
+        )
+    }
+
+    static func sessionDateString(from date: Date) -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+}
+
+/// What the Coach "log sets" handoff should do with today's program day.
+/// A draft for today just opens the logger, which resumes it; a draft for
+/// another day is offered back rather than pushed toward discard.
+enum WorkoutHandoffDecision {
+    case openToday(ProgramV2Day)
+    case offerResume(draft: WorkoutDraft, today: ProgramV2Day)
+
+    static func decide(draft: WorkoutDraft?, today: ProgramV2Day) -> WorkoutHandoffDecision {
+        guard let draft else { return .openToday(today) }
+        if draft.programDay == today.id { return .openToday(draft.programV2Day) }
+        return .offerResume(draft: draft, today: today)
+    }
+}
+
+@Observable
+final class WorkoutDraftStore {
+    static let fileName = "jl-workout-draft.json"
+
+    private(set) var draft: WorkoutDraft?
+    /// Set when the draft could not be written to disk; the in-memory draft is kept.
+    private(set) var persistError: String?
+
+    private let directory: URL
+    private var fileURL: URL { directory.appendingPathComponent(Self.fileName) }
+
+    /// `directory` defaults to Application Support; tests pass a temp dir.
+    init(directory: URL? = nil) {
+        self.directory = directory ?? URL.applicationSupportDirectory
+        draft = Self.load(from: self.directory.appendingPathComponent(Self.fileName))
+    }
+
+    /// The draft for `day`, or nil when there is none or it belongs to another day.
+    func existingDraft(for day: ProgramV2Day) -> WorkoutDraft? {
+        guard let draft, draft.programDay == day.id else { return nil }
+        return draft
+    }
+
+    /// One resolution boundary for Coach, Train Start and Home Start.
+    func dayToOpen(_ day: TrainingProgramDay, in body: TrainingProgramBody, on date: Date) -> ProgramV2Day {
+        if let draft = existingDraft(for: day.asProgramV2Day()) { return draft.programV2Day }
+        return body.programV2Day(for: day, on: date)
+    }
+
+    /// True when an unsaved session for a different program day is on disk.
+    func hasDraft(otherThan day: ProgramV2Day) -> Bool {
+        guard let draft else { return false }
+        return draft.programDay != day.id
+    }
+
+    /// Applies an edit to the draft for `day` (starting one if needed) and writes it to disk.
+    /// `startedAt` is only used when a new draft is started.
+    func update(_ day: ProgramV2Day, startedAt: Date = Date(), _ change: (inout WorkoutDraft) -> Void) {
+        var next = existingDraft(for: day) ?? WorkoutDraft(day: day, now: startedAt)
+        next.adopt(day)
+        if next.recordID == nil {
+            next.recordID = UUID().uuidString.lowercased()
+        }
+        change(&next)
+        next.updatedAt = Date()
+        draft = next
+        persist()
+    }
+
+    /// Saves the draft to the on-device workout log and clears it only once
+    /// the log has written it. A failure rethrows and leaves the draft on disk.
+    /// The draft's record id is on disk before the save, so saving again after
+    /// a crash replaces that workout instead of adding a second one.
+    func save(to log: WorkoutLogStore, now: Date = Date()) throws {
+        guard var snapshot = draft else { return }
+        let id: String
+        if let recordID = snapshot.recordID {
+            id = recordID
+        } else {
+            id = UUID().uuidString.lowercased()
+            snapshot.recordID = id
+            draft = snapshot
+            persist()
+        }
+        try log.save(snapshot.payload(now: now), id: id)
+        clear()
+    }
+
+    func discard() {
+        clear()
+    }
+
+    func dismissPersistError() {
+        persistError = nil
+    }
+
+    private func clear() {
+        draft = nil
+        persistError = nil
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+        } catch {
+            print("Failed to remove workout draft: \(error)")
+        }
+    }
+
+    private func persist() {
+        guard let draft else { return }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(draft)
+            try data.write(to: fileURL, options: .atomic)
+            persistError = nil
+        } catch {
+            print("Failed to save workout draft: \(error)")
+            persistError = error.localizedDescription
+        }
+    }
+
+    private static func load(from url: URL) -> WorkoutDraft? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        do {
+            return try JSONDecoder().decode(WorkoutDraft.self, from: data)
+        } catch {
+            print("Failed to decode workout draft: \(error)")
+            return nil
+        }
+    }
+}
