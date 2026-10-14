@@ -131,9 +131,10 @@ nonisolated enum PeptideMath {
         }
     }
 
-    /// Per component per mL, only from a confirmed mix with every number present.
+    /// Per component per mL, only from a confirmed mix (or a premixed vial's
+    /// label) with every number present.
     static func concentration(_ vial: PeptideVial) -> Concentration {
-        guard vial.concentrationConfirmed else {
+        guard vial.concentrationConfirmed || vial.isPremixed else {
             return .uncalculable("Concentration not confirmed. Tick “I mixed this vial with exactly this diluent volume.”")
         }
         guard let diluent = vial.diluentML, diluent > 0 else {
@@ -805,10 +806,15 @@ nonisolated enum PeptideMath {
         var taken: Bool { entry != nil }
     }
 
-    /// The first entry that counts as logging `schedule` on `date`.
+    /// The entry that counts as logging `schedule` on `date`: one logged from
+    /// this schedule (one tap), else one of the same compound logged on its
+    /// own. An entry logged from another schedule never counts here, so two
+    /// schedules of one compound on one day are told apart.
     static func loggedEntry(for schedule: PeptideUserSchedule, on date: String, entries: [PeptideLogEntry]) -> PeptideLogEntry? {
+        let onDate = entries.filter { $0.countsAsTaken && $0.civilDate == date }
+        if let own = onDate.first(where: { $0.scheduleID == schedule.id }) { return own }
         let key = compoundKey(schedule.compound)
-        return entries.first { $0.countsAsTaken && $0.civilDate == date && compoundKey($0.compound) == key }
+        return onDate.first { $0.scheduleID == nil && compoundKey($0.compound) == key }
     }
 
     /// Items the user's own schedules name for `date`.

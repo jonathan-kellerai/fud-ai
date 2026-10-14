@@ -97,6 +97,10 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
     var status: PeptideVialStatus
     var notes: String
     var createdAt: Date
+    /// Came mixed (testosterone): `diluentML` is the volume in the vial and
+    /// the label's amount needs no "I mixed this vial" tick. Nil in vials
+    /// saved before build 72: mixed by the user.
+    var premixed: Bool?
 
     init(
         id: String = UUID().uuidString,
@@ -110,7 +114,8 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         lowStockThresholdML: Double? = nil,
         status: PeptideVialStatus = .active,
         notes: String = "",
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        premixed: Bool? = nil
     ) {
         self.id = id
         self.compound = compound
@@ -124,7 +129,10 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
         self.status = status
         self.notes = notes
         self.createdAt = createdAt
+        self.premixed = premixed
     }
+
+    var isPremixed: Bool { premixed ?? false }
 
     var displayName: String {
         let trimmed = compound.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -163,7 +171,8 @@ nonisolated struct PeptideVial: Codable, Equatable, Identifiable, Hashable {
             lowStockThresholdML: existing?.lowStockThresholdML,
             status: existing?.status ?? .active,
             notes: existing?.notes ?? "",
-            createdAt: existing?.createdAt ?? now
+            createdAt: existing?.createdAt ?? now,
+            premixed: existing?.premixed
         )
     }
 
@@ -467,6 +476,10 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
     var vialIDAtSave: String?
     /// The schedule whose planned dose this logs (one tap on Today). Nil: logged on its own.
     var scheduleID: String?
+    /// The dose on a U-100 syringe (100 units = 1 mL), worked out once at
+    /// save from the draw or from the dose and the vial's numbers. Nil when
+    /// they couldn't say (no concentration for a non-mL dose).
+    var syringeUnitsAtSave: Double?
     /// yyyy-MM-dd in America/New_York, computed once from `date`.
     let civilDate: String?
 
@@ -483,6 +496,7 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         case concentrationConfirmedAtSave = "concentration_confirmed_at_save"
         case vialIDAtSave = "vial_id_at_save"
         case scheduleID = "schedule_id"
+        case syringeUnitsAtSave = "syringe_units_at_save"
     }
 
     init(
@@ -506,7 +520,8 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         vialConcentrationAtSave: Double? = nil,
         concentrationConfirmedAtSave: Bool = false,
         vialIDAtSave: String? = nil,
-        scheduleID: String? = nil
+        scheduleID: String? = nil,
+        syringeUnitsAtSave: Double? = nil
     ) {
         self.id = id
         self.compound = compound
@@ -529,6 +544,7 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         self.concentrationConfirmedAtSave = concentrationConfirmedAtSave
         self.vialIDAtSave = vialIDAtSave
         self.scheduleID = scheduleID
+        self.syringeUnitsAtSave = syringeUnitsAtSave
         self.civilDate = date.map(PeptideMath.civilDate)
     }
 
@@ -564,7 +580,8 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
             vialConcentrationAtSave: try container.decodeIfPresent(Double.self, forKey: .vialConcentrationAtSave),
             concentrationConfirmedAtSave: (try container.decodeIfPresent(Bool.self, forKey: .concentrationConfirmedAtSave)) ?? false,
             vialIDAtSave: try container.decodeIfPresent(String.self, forKey: .vialIDAtSave),
-            scheduleID: try container.decodeIfPresent(String.self, forKey: .scheduleID)
+            scheduleID: try container.decodeIfPresent(String.self, forKey: .scheduleID),
+            syringeUnitsAtSave: try container.decodeIfPresent(Double.self, forKey: .syringeUnitsAtSave)
         )
     }
 
@@ -590,6 +607,7 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         try container.encode(concentrationConfirmedAtSave, forKey: .concentrationConfirmedAtSave)
         try container.encodeIfPresent(vialIDAtSave, forKey: .vialIDAtSave)
         try container.encodeIfPresent(scheduleID, forKey: .scheduleID)
+        try container.encodeIfPresent(syringeUnitsAtSave, forKey: .syringeUnitsAtSave)
     }
 
     /// Counts toward logs, totals and adherence.
@@ -645,7 +663,8 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
             vialConcentrationAtSave: vialConcentrationAtSave,
             concentrationConfirmedAtSave: concentrationConfirmedAtSave,
             vialIDAtSave: vialIDAtSave,
-            scheduleID: scheduleID
+            scheduleID: scheduleID,
+            syringeUnitsAtSave: syringeUnitsAtSave
         )
     }
 

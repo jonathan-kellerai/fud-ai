@@ -147,8 +147,96 @@ final class PeptideLogStore {
             syringeScaleAtSave: draft.scaleOverride ?? syringeScale,
             vialConcentrationAtSave: linked.flatMap(PeptideMath.milligramsPerML),
             concentrationConfirmedAtSave: linked?.concentrationConfirmed ?? false,
-            vialIDAtSave: linked?.id
+            vialIDAtSave: linked?.id,
+            syringeUnitsAtSave: draft.draw.flatMap { draw in
+                draft.drawUnit.flatMap { PeptideMath.syringeUnits(draw: draw, unit: $0, scale: draft.scaleOverride ?? syringeScale) }
+            }
         )
+    }
+
+    // MARK: Planned doses
+
+    /// The day's AM and PM plan from the user's schedules and reminders.
+    func dayPlan(_ civil: String) -> PeptideDayPlan {
+        PeptideMath.dayPlan(date: civil, schedules: schedules, entries: entries, reminders: reminders)
+    }
+
+    /// The active vial a dose of `compound` is drawn from: the latest mixed.
+    func plannedVial(for compound: String) -> PeptideVial? {
+        vials
+            .filter { $0.status == .active && PeptideMath.sameCompound($0.compound, compound) }
+            .max { ($0.mixedOn ?? "", $0.createdAt) < ($1.mixedOn ?? "", $1.createdAt) }
+    }
+
+    /// The dose a vial's compound is planned at (its first active schedule with one).
+    func plannedDose(for vial: PeptideVial) -> PeptideDose? {
+        schedules.first { $0.active && $0.dose != nil && PeptideMath.sameCompound($0.compound, vial.compound) }?.dose
+    }
+
+    /// Planned doses left in a vial, and whether to remix soon. Nil when no
+    /// dose is planned for it or its numbers can't say.
+    func supply(for vial: PeptideVial) -> PeptideMath.VialSupply? {
+        plannedDose(for: vial).flatMap { PeptideMath.supply(vial: vial, entries: entries, dose: $0) }
+    }
+
+    /// One tap on Today: logs `schedule`'s planned dose now, exactly as the
+    /// user planned it, from its compound's vial, with the U-100 units its
+    /// numbers give. Tapping again the same day returns the entry already
+    /// logged. Nil when there's no planned dose or the log can't change.
+    @discardableResult
+    func logPlanned(scheduleID: String, now: Date = Date()) -> String? {
+        guard canChange(), let schedule = schedules.first(where: { $0.id == scheduleID }), let dose = schedule.dose else { return nil }
+        let civil = PeptideMath.civilDate(now)
+        if let logged = entries.first(where: { $0.scheduleID == scheduleID && $0.civilDate == civil && $0.countsAsTaken }) {
+            return logged.id
+        }
+        let entry = plannedEntry(schedule, dose: dose, id: UUID().uuidString.lowercased(), now: now)
+        entries.append(entry)
+        didChangeEntries()
+        return entry.id
+    }
+
+    /// The entry a planned dose saves: the dose and unit as planned (never
+    /// converted), the vial's snapshot, and its U-100 units.
+    func plannedEntry(_ schedule: PeptideUserSchedule, dose: PeptideDose, id: String, now: Date) -> PeptideLogEntry {
+        let datetime = PeptideMath.iso8601NewYork(now)
+        let linked = plannedVial(for: schedule.compound)
+        return PeptideLogEntry(
+            id: id,
+            compound: schedule.compound,
+            dose: dose.amount,
+            units: dose.unit.rawValue,
+            date: PeptideMath.parseISO8601(datetime),
+            datetimeRaw: datetime,
+            route: schedule.route,
+            vialID: linked?.id,
+            createdAt: datetime,
+            vialConcentrationAtSave: linked.flatMap(PeptideMath.milligramsPerML),
+            concentrationConfirmedAtSave: linked?.concentrationConfirmed ?? false,
+            vialIDAtSave: linked?.id,
+            scheduleID: schedule.id,
+            syringeUnitsAtSave: PeptideMath.syringeUnits(dose, vial: linked)
+        )
+    }
+
+    // MARK: Own schedule preset
+
+    /// "Load my schedule": every schedule and reminder an earlier load made
+    /// is replaced by `preset`'s, with its vials. Records the user added are
+    /// never touched, so loading twice saves the same records. Returns why
+    /// it was refused (nothing changed), or nil.
+    @discardableResult
+    func loadPreset(_ preset: PeptideOwnSchedulePreset, today: String, now: Date = Date()) -> String? {
+        guard canChange() else { return persistError }
+        let newSchedules = preset.schedules(startDate: today, existing: schedules, now: now)
+        let newVials = preset.vials(mixedOn: today, existing: vials, now: now)
+        let newReminders = preset.reminders(existing: reminders, now: now)
+        let vialIDs = Set(newVials.map(\.id))
+        schedules = schedules.filter { $0.origin != .preset } + newSchedules
+        vials = vials.filter { !vialIDs.contains($0.id) } + newVials
+        reminders = reminders.filter { $0.origin != .preset } + newReminders
+        didChange()
+        return nil
     }
 
     /// Settings → Syringe scale. Saved drafts keep the scale they were saved with.

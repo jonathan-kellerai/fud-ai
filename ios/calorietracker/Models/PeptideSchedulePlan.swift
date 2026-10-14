@@ -219,3 +219,122 @@ extension PeptideReminder {
         }
     }
 }
+
+// MARK: - U-100 syringe units and doses left in a vial
+
+extension PeptideMath {
+    /// U-100 syringes: 100 units = 1 mL.
+    static let u100UnitsPerML = 100.0
+
+    /// mL one dose takes from `vial`: an mL dose as typed, or the dose ÷ the
+    /// vial's confirmed concentration (its amount ÷ its water, same dimension;
+    /// IU never becomes mass). Nil when the vial's numbers can't say.
+    static func doseMilliliters(_ dose: PeptideDose, vial: PeptideVial?) -> Double? {
+        drawnML(dose: dose.amount, units: dose.unit.rawValue, drawnVolume: nil, drawnUnit: nil, scale: nil, vial: vial)
+    }
+
+    /// The dose on a U-100 syringe: its mL × 100. Arithmetic on the user's
+    /// own vial numbers, never a suggested dose. Nil without a concentration
+    /// (an mL dose needs none).
+    static func syringeUnits(_ dose: PeptideDose, vial: PeptideVial?) -> Double? {
+        doseMilliliters(dose, vial: vial).map { ReconMath.clean($0 * u100UnitsPerML) }
+    }
+
+    /// A typed draw on a U-100 syringe: its mL × 100. Nil for a units draw with no scale.
+    static func syringeUnits(draw: Double, unit: PeptideDrawUnit, scale: PeptideSyringeScale?) -> Double? {
+        drawMilliliters(draw: draw, unit: unit, scale: scale).map { ReconMath.clean($0 * u100UnitsPerML) }
+    }
+
+    /// "30 units".
+    static func syringeUnitsText(_ units: Double) -> String {
+        number(units) + " units"
+    }
+
+    /// How much of one planned dose is left in a vial.
+    struct VialSupply: Equatable {
+        var remainingML: Double
+        var totalML: Double
+        var doseML: Double
+        var dose: PeptideDose
+        /// Whole and part doses left, e.g. 3.57.
+        var dosesLeft: Double
+
+        /// Less than one more dose in the vial.
+        var remixSoon: Bool { dosesLeft < 1 - ReconMath.epsilon }
+
+        /// "3.6 doses left (1.4 mg each)".
+        var text: String {
+            "\(ReconMath.fmtTrim(dosesLeft, 1)) \(abs(dosesLeft - 1) < ReconMath.epsilon ? "dose" : "doses") left (\(dose.text) each)"
+        }
+    }
+
+    /// The vial's water (or, premixed, its volume) less every dose logged from
+    /// it since it was mixed, in `dose`s. Never estimated: nil when any of
+    /// those doses, or `dose` itself, can't be turned into mL from the
+    /// vial's own numbers.
+    static func supply(vial: PeptideVial, entries: [PeptideLogEntry], dose: PeptideDose) -> VialSupply? {
+        guard let total = vial.diluentML, total > 0,
+              let doseML = doseMilliliters(dose, vial: vial), doseML > 0 else { return nil }
+        var used = 0.0
+        for entry in entries where entry.vialID == vial.id && entry.countsAsTaken {
+            if let mixed = vial.mixedOn, let civil = entry.civilDate, civil < mixed { continue }
+            guard let volume = drawnML(for: entry, vial: vial) else { return nil }
+            used += volume
+        }
+        let left = max(ReconMath.clean(total - used), 0)
+        return VialSupply(remainingML: left, totalML: total, doseML: doseML, dose: dose, dosesLeft: ReconMath.clean(left / doseML))
+    }
+}
+
+// MARK: - The day's AM / PM plan
+
+/// One day's planned doses and reminders, in the two fixed slots.
+nonisolated struct PeptideDayPlan: Equatable {
+    enum Item: Equatable, Identifiable {
+        case reminder(PeptideReminder)
+        case dose(PeptideMath.DueItem)
+
+        var id: String {
+            switch self {
+            case .reminder(let reminder): "reminder-" + reminder.id
+            case .dose(let item): "dose-" + item.id
+            }
+        }
+    }
+
+    struct Slot: Equatable, Identifiable {
+        var slot: PeptideDoseSlot
+        var items: [Item]
+        var id: PeptideDoseSlot { slot }
+    }
+
+    /// yyyy-MM-dd.
+    var date: String
+    /// AM then PM, always both.
+    var slots: [Slot]
+
+    var isEmpty: Bool { slots.allSatisfy(\.items.isEmpty) }
+}
+
+extension PeptideMath {
+    /// What the user's schedules and reminders name for `date`, by slot.
+    /// In each slot the reminders come first (the lab draw sits above that
+    /// morning's testosterone), then doses in the order the schedules were saved.
+    static func dayPlan(
+        date: String,
+        schedules: [PeptideUserSchedule],
+        entries: [PeptideLogEntry],
+        reminders: [PeptideReminder]
+    ) -> PeptideDayPlan {
+        let due = dueItems(date: date, schedules: schedules, entries: entries)
+        let shown = reminders.filter { !$0.dismissed && $0.date == date }.sorted { $0.startMinutes < $1.startMinutes }
+        let slots = PeptideDoseSlot.allCases.map { slot in
+            PeptideDayPlan.Slot(
+                slot: slot,
+                items: shown.filter { $0.slot == slot }.map(PeptideDayPlan.Item.reminder)
+                    + due.filter { $0.schedule.daySlot == slot }.map(PeptideDayPlan.Item.dose)
+            )
+        }
+        return PeptideDayPlan(date: date, slots: slots)
+    }
+}

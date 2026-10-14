@@ -337,9 +337,11 @@ struct PeptideArchive: Equatable {
         var status: PeptideVialStatus
         var notes: String
         var createdAt: String?
+        /// Version 2. Absent: mixed by the user.
+        var premixed: Bool?
 
         enum CodingKeys: String, CodingKey {
-            case id, compound, components, status, notes
+            case id, compound, components, status, notes, premixed
             case isBlend = "is_blend"
             case diluentML = "diluent_ml"
             case mixedOn = "mixed_on"
@@ -369,6 +371,7 @@ struct PeptideArchive: Equatable {
             status = vial.status
             notes = vial.notes
             createdAt = PeptideMath.iso8601NewYork(vial.createdAt)
+            premixed = vial.premixed
         }
 
         /// `id` and `compound` are required; anything else missing reads as empty or off.
@@ -390,6 +393,7 @@ struct PeptideArchive: Equatable {
             status = (try? container.decodeIfPresent(PeptideVialStatus.self, forKey: .status)) ?? .active
             notes = (try container.decodeIfPresent(String.self, forKey: .notes)) ?? ""
             createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+            premixed = try? container.decodeIfPresent(Bool.self, forKey: .premixed)
         }
 
         /// The on-device vial.
@@ -408,7 +412,8 @@ struct PeptideArchive: Equatable {
                 lowStockThresholdML: lowStockThresholdML,
                 status: status,
                 notes: notes,
-                createdAt: createdAt.flatMap(PeptideMath.parseISO8601) ?? now
+                createdAt: createdAt.flatMap(PeptideMath.parseISO8601) ?? now,
+                premixed: premixed
             )
         }
     }
