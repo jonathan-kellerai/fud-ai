@@ -172,6 +172,35 @@ struct PeptideNoNetworkTests {
         }
         #expect(seen.isEmpty, "Peptide requests: \(seen)")
     }
+
+    /// Build 72: loading the user's own schedule, the AM/PM plan, one-tap
+    /// planned doses with their U-100 units, doses left in a vial, and the
+    /// lab reminder (its notification plan is local only).
+    @Test func theOwnScheduleOneTapDosesAndRemindersStayOnThePhone() async throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let seen = try await requests {
+            let store = PeptideLogStore(persistence: .file(url))
+            let now = PeptideMath.date(civil: "2026-12-31", minutes: 7 * 60)!
+            #expect(store.loadPreset(.own, today: "2026-12-01", now: now) == nil)
+            #expect(store.loadPreset(.own, today: "2026-12-01", now: now) == nil)
+            let plan = store.dayPlan("2026-12-31")
+            #expect(!plan.isEmpty)
+            for item in PeptideOwnSchedulePreset.own.items {
+                #expect(store.logPlanned(scheduleID: item.id, now: now) != nil)
+            }
+            for vial in store.vials {
+                _ = store.supply(for: vial)
+            }
+            let reminder = try #require(store.reminders.first)
+            #expect(!PeptideReminder.notificationPlans(store.reminders, now: now.addingTimeInterval(-3600)).isEmpty)
+            #expect(store.setReminderDismissed(id: reminder.id, dismissed: true) == nil)
+            #expect(store.deleteReminder(id: reminder.id) == nil)
+            _ = try store.archive(exportedAt: nil).encoded()
+            #expect(store.persistError == nil)
+        }
+        #expect(seen.isEmpty, "Peptide requests: \(seen)")
+    }
 }
 
 /// Lock-protected record of what the tripwire saw (URLSession calls
