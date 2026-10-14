@@ -42,7 +42,7 @@ struct PeptidesView: View {
                 storageNotes
                 switch tab {
                 case .today:
-                    PeptideTodayView(today: today) { compound in
+                    PeptideTodayView(today: today, referenceDate: referenceDate) { compound in
                         logRequest = PeptideLogRequest(compound: compound)
                     }
                 case .week:
@@ -68,10 +68,15 @@ struct PeptidesView: View {
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("Peptide settings")
-                .accessibilityHint("Syringe scale")
+                .accessibilityHint("Syringe scale and your schedule")
             }
         }
         .peptideLiveDate($now, fixed: referenceDate != nil)
+        .task(id: store.reminders) {
+            // Local notifications for reminders; Visual QA (fixed clock) leaves them alone.
+            guard referenceDate == nil else { return }
+            await PeptideReminderNotifier.sync(store.reminders)
+        }
         .sheet(item: $logRequest) { request in
             PeptideLogSheetHost(request: request)
         }

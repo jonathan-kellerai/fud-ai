@@ -59,8 +59,13 @@ struct PeptideEntryDetailView: View {
                 PeptideDetailRow(label: "Syringe scale", value: entry.syringeScaleAtSave?.label ?? "Not recorded")
             }
             PeptideDetailRow(label: "Site", value: nonEmpty(entry.route))
-            if entry.dose != nil || entry.units != nil {
+            if entry.scheduleID != nil, let dose = entry.doseText {
+                PeptideDetailRow(label: "Dose, as planned", value: dose)
+            } else if entry.dose != nil || entry.units != nil {
                 PeptideDetailRow(label: "Amount typed in an earlier version", value: PeptideMath.amountText(entry.dose, entry.units))
+            }
+            if let units = entry.syringeUnitsText {
+                PeptideDetailRow(label: "U-100 syringe", value: units)
             }
             if let source = entry.sourceVial, !source.isEmpty {
                 PeptideDetailRow(label: "Source vial", value: source)
@@ -118,7 +123,7 @@ struct PeptideEntryHeaderCard: View {
                 .textCase(.uppercase)
                 .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(entry.drawText ?? "Draw not recorded")
+            Text(entry.recordedText ?? "Draw not recorded")
                 .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
                 .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -226,6 +231,9 @@ struct PeptideEditEntrySheet: View {
     @State private var takenAt: Date
     @State private var drawText: String
     @State private var drawUnit: PeptideDrawUnit?
+    /// A planned dose (one tap on Today) is edited as a dose, not a draw.
+    @State private var doseText: String
+    @State private var doseUnit: PeptideDoseUnit?
     @State private var compound: String
     @State private var site: String
     @State private var notes: String
@@ -237,6 +245,8 @@ struct PeptideEditEntrySheet: View {
         _takenAt = State(initialValue: entry.date ?? Date())
         _drawText = State(initialValue: entry.drawnVolume.map(PeptideMath.number) ?? "")
         _drawUnit = State(initialValue: entry.drawnUnit)
+        _doseText = State(initialValue: entry.dose.map(PeptideMath.number) ?? "")
+        _doseUnit = State(initialValue: entry.units.flatMap(PeptideDoseUnit.init(rawValue:)))
         _compound = State(initialValue: entry.compound)
         _site = State(initialValue: entry.route ?? "")
         _notes = State(initialValue: entry.notes ?? "")
@@ -247,11 +257,21 @@ struct PeptideEditEntrySheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     PeptideInputField(title: "Compound", text: $compound)
-                    PeptideInputField(title: "Draw", text: $drawText, prompt: "Type what you drew", keyboard: .decimalPad, monospaced: true)
-                    PeptideFlowLayout(spacing: 8) {
-                        ForEach(PeptideDrawUnit.allCases) { unit in
-                            PeptideChoiceChip(title: unit.label, selected: drawUnit == unit) { drawUnit = unit }
-                                .accessibilityLabel(unit.spokenLabel)
+                    if isPlannedDose {
+                        PeptideInputField(title: "Dose", text: $doseText, prompt: "Type the dose you took", keyboard: .decimalPad, monospaced: true)
+                        PeptideFlowLayout(spacing: 8) {
+                            ForEach(PeptideDoseUnit.allCases) { unit in
+                                PeptideChoiceChip(title: unit.label, selected: doseUnit == unit) { doseUnit = unit }
+                                    .accessibilityLabel(unit.spokenLabel)
+                            }
+                        }
+                    } else {
+                        PeptideInputField(title: "Draw", text: $drawText, prompt: "Type what you drew", keyboard: .decimalPad, monospaced: true)
+                        PeptideFlowLayout(spacing: 8) {
+                            ForEach(PeptideDrawUnit.allCases) { unit in
+                                PeptideChoiceChip(title: unit.label, selected: drawUnit == unit) { drawUnit = unit }
+                                    .accessibilityLabel(unit.spokenLabel)
+                            }
                         }
                     }
                     VStack(alignment: .leading, spacing: 4) {
@@ -295,11 +315,20 @@ struct PeptideEditEntrySheet: View {
         }
     }
 
+    private var isPlannedDose: Bool { entry.scheduleID != nil && entry.drawnVolume == nil }
+
     private func save() {
         errorText = nil
         var changes = PeptideCorrectionChanges()
         let drawRaw = drawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !drawRaw.isEmpty || entry.drawnVolume != nil {
+        if isPlannedDose {
+            guard let dose = PeptideDose.typed(doseText, unit: doseUnit) else {
+                errorText = doseUnit == nil ? "Pick mL, IU, mg or mcg." : "The dose must be a number more than 0."
+                return
+            }
+            if dose.amount != entry.dose { changes.dose = dose.amount }
+            if dose.unit.rawValue != entry.units { changes.units = dose.unit.rawValue }
+        } else if !drawRaw.isEmpty || entry.drawnVolume != nil {
             if let problem = PeptideMath.drawIssue(drawRaw) {
                 errorText = problem
                 return

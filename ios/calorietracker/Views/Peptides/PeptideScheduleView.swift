@@ -2,9 +2,10 @@
 //  PeptideScheduleView.swift
 //  calorietracker
 //
-//  Schedules the user typed (device only), optional, under Peptides › Week.
-//  No amounts, no targets, no streaks. The app never generates or proposes a
-//  schedule, dose or protocol.
+//  Schedules the user typed (device only), under Peptides › Week, in the two
+//  fixed slots (AM / PM), with the dose the user planned and one-off
+//  reminders. "Load my schedule" saves the user's own schedule as records.
+//  No targets, no streaks. The app never generates or proposes a dose.
 //
 
 import SwiftUI
@@ -14,9 +15,16 @@ struct PeptideScheduleEditorTarget: Identifiable {
     var schedule: PeptideUserSchedule?
 }
 
+struct PeptideReminderEditorTarget: Identifiable {
+    let id = UUID().uuidString
+    var reminder: PeptideReminder?
+}
+
 struct PeptideScheduleView: View {
     @Environment(PeptideLogStore.self) private var store
     @State private var editorTarget: PeptideScheduleEditorTarget?
+    @State private var reminderTarget: PeptideReminderEditorTarget?
+    @State private var showsPreset = false
 
     /// Fixed "now" for adherence (Visual QA). Nil uses the live date,
     /// refreshed on foreground and when the day changes.
@@ -40,7 +48,11 @@ struct PeptideScheduleView: View {
                     Label("Add schedule", systemImage: "plus")
                 }
                 .buttonStyle(IronPrimaryButtonStyle())
+                Button("Load my schedule") { showsPreset = true }
+                    .buttonStyle(PeptideSecondaryButtonStyle())
+                    .accessibilityIdentifier("peptides.schedule.loadPreset")
                 schedulesSection
+                remindersSection
                 PeptideFooter()
             }
             .padding(16)
@@ -51,6 +63,12 @@ struct PeptideScheduleView: View {
         .peptideLiveDate($now, fixed: referenceDate != nil)
         .sheet(item: $editorTarget) { target in
             PeptideScheduleEditor(schedule: target.schedule)
+        }
+        .sheet(item: $reminderTarget) { target in
+            PeptideReminderEditor(reminder: target.reminder)
+        }
+        .sheet(isPresented: $showsPreset) {
+            PeptidePresetSheet(today: today, now: referenceDate)
         }
     }
 
@@ -65,11 +83,54 @@ struct PeptideScheduleView: View {
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(schedules) { schedule in
-                PeptideScheduleCard(schedule: schedule, today: today) {
-                    editorTarget = PeptideScheduleEditorTarget(schedule: schedule)
+            ForEach(PeptideDoseSlot.allCases) { slot in
+                let inSlot = schedules.filter { $0.daySlot == slot }
+                if !inSlot.isEmpty {
+                    PeptideFieldLabel(slot.label)
+                        .accessibilityLabel(slot.spokenLabel)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(inSlot) { schedule in
+                        PeptideScheduleCard(schedule: schedule, today: today) {
+                            editorTarget = PeptideScheduleEditorTarget(schedule: schedule)
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    private var remindersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            IronSectionTitle(title: "Reminders")
+            ForEach(store.reminders) { reminder in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(reminder.title)
+                            .font(.system(.headline, design: .rounded))
+                            .foregroundStyle(reminder.dismissed ? IronTheme.textTertiary : IronTheme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        if reminder.dismissed {
+                            PeptideTag(text: "Dismissed", tone: IronTheme.concrete, filled: true)
+                        }
+                    }
+                    Text(ReconMath.formatDate(reminder.date) + " · " + reminder.slot.label + " · " + reminder.timeText)
+                        .font(.system(.footnote, design: .rounded))
+                        .foregroundStyle(IronTheme.textSecondary)
+                    Button("Edit") { reminderTarget = PeptideReminderEditorTarget(reminder: reminder) }
+                        .buttonStyle(IronCompactButtonStyle())
+                        .accessibilityLabel("Edit reminder " + reminder.title)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .ironCard()
+            }
+            Button {
+                reminderTarget = PeptideReminderEditorTarget(reminder: nil)
+            } label: {
+                Label("Add reminder", systemImage: "bell")
+            }
+            .buttonStyle(PeptideSecondaryButtonStyle())
         }
     }
 }
@@ -91,11 +152,24 @@ struct PeptideScheduleCard: View {
                     .foregroundStyle(schedule.active ? IronTheme.textPrimary : IronTheme.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
+                if PeptideCompoundCatalog.isPrescription(schedule.compound) {
+                    PeptideTag(text: "Prescription", tone: IronTheme.brass)
+                }
                 if !schedule.active {
                     PeptideTag(text: "Paused", tone: IronTheme.concrete, filled: true)
                 }
             }
-            Text(PeptideMath.scheduleText(schedule))
+            Text(PeptideMath.plannedDoseText(schedule, vial: store.plannedVial(for: schedule.compound)))
+                .font(.system(.subheadline, design: .rounded, weight: .bold).monospacedDigit())
+                .foregroundStyle(IronTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            if !schedule.notes.isEmpty {
+                Text(schedule.notes)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(schedule.daySlot.label + " · " + PeptideMath.scheduleText(schedule))
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
                 .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -154,16 +228,25 @@ struct PeptideScheduleEditor: View {
     @State private var time: Date
     @State private var active: Bool
     @State private var notes: String
+    /// Nil until the user picks one (an earlier schedule starts on its derived slot).
+    @State private var slot: PeptideDoseSlot?
+    @State private var doseText: String
+    @State private var doseUnit: PeptideDoseUnit?
+    @State private var route: String
+    /// Weekly: the one weekday (0 Sunday … 6 Saturday). Nil: every 7 days from the start.
+    @State private var weeklyDay: Int?
     @State private var errorText: String?
     @State private var confirmDelete = false
 
     private static let frequencyOptions: [(type: String, title: String)] = [
         ("daily", "Daily"),
         ("weekdays", "Days of week"),
+        ("weekly", "Weekly"),
         ("everyN", "Every N days"),
         ("perWeek", "N× per week"),
-        ("weekly", "Weekly"),
     ]
+
+    private static let routeOptions = ["SQ", "IM"]
 
     init(schedule: PeptideUserSchedule?) {
         existing = schedule
@@ -178,6 +261,11 @@ struct PeptideScheduleEditor: View {
         _time = State(initialValue: schedule?.timeOfDay.map(PeptideViewDates.localDate(minutes:)) ?? Date())
         _active = State(initialValue: schedule?.active ?? true)
         _notes = State(initialValue: schedule?.notes ?? "")
+        _slot = State(initialValue: schedule?.daySlot)
+        _doseText = State(initialValue: schedule?.dose.map { PeptideMath.number($0.amount) } ?? "")
+        _doseUnit = State(initialValue: schedule?.dose?.unit)
+        _route = State(initialValue: schedule?.route ?? "")
+        _weeklyDay = State(initialValue: schedule?.frequency.type == "weekly" ? schedule?.frequency.days.first : nil)
     }
 
     var body: some View {
@@ -189,7 +277,10 @@ struct PeptideScheduleEditor: View {
                         .foregroundStyle(IronTheme.brass)
                         .fixedSize(horizontal: false, vertical: true)
                     compoundSection
+                    slotSection
                     frequencySection
+                    doseSection
+                    routeSection
                     datesSection
                     Toggle("Active", isOn: $active)
                         .font(.system(.subheadline, design: .rounded, weight: .semibold))
@@ -206,15 +297,15 @@ struct PeptideScheduleEditor: View {
                     if let errorText {
                         PeptideIssueText(text: errorText)
                     }
-                    if frequencyType == nil {
-                        Text("Pick how often before saving.")
+                    if frequencyType == nil || slot == nil {
+                        Text("Pick AM or PM and how often before saving.")
                             .font(.system(.footnote, design: .rounded))
                             .foregroundStyle(IronTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Button("Save schedule") { save() }
                         .buttonStyle(IronPrimaryButtonStyle())
-                        .disabled(frequencyType == nil)
+                        .disabled(frequencyType == nil || slot == nil)
                     if existing != nil {
                         Button("Delete schedule", role: .destructive) { confirmDelete = true }
                             .font(.system(size: 15, weight: .heavy))
@@ -255,11 +346,65 @@ struct PeptideScheduleEditor: View {
         return VStack(alignment: .leading, spacing: 8) {
             PeptideFieldLabel("Compound")
             PeptideFlowLayout(spacing: 8) {
-                ForEach(options, id: \.self) { option in
-                    PeptideChoiceChip(title: option, selected: compound == option) { compound = option }
+                ForEach(options + PeptideCompoundCatalog.names(notIn: options), id: \.self) { option in
+                    PeptideChoiceChip(
+                        title: option,
+                        subtitle: PeptideCompoundCatalog.compound(named: option).flatMap { $0.prescription ? "Prescription" : $0.note },
+                        selected: compound == option
+                    ) { pickCompound(option) }
                 }
             }
             PeptideInputField(title: "Compound name", text: $compound, prompt: "Or type a compound")
+        }
+    }
+
+    /// The catalog's unit for the compound fills in only while no unit is picked.
+    private func pickCompound(_ option: String) {
+        compound = option
+        if doseUnit == nil {
+            doseUnit = PeptideCompoundCatalog.compound(named: option)?.defaultUnit
+        }
+    }
+
+    private var slotSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PeptideFieldLabel("Slot")
+            PeptideFlowLayout(spacing: 8) {
+                ForEach(PeptideDoseSlot.allCases) { option in
+                    PeptideChoiceChip(title: option.label, selected: slot == option) { slot = option }
+                        .accessibilityLabel(option.spokenLabel)
+                }
+            }
+        }
+    }
+
+    /// The dose the user plans, with its unit. Optional; never filled in by the app.
+    private var doseSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PeptideInputField(title: "Dose (optional)", text: $doseText, prompt: "Your dose", keyboard: .decimalPad, monospaced: true)
+            PeptideFieldLabel("Unit")
+            PeptideFlowLayout(spacing: 8) {
+                ForEach(PeptideDoseUnit.allCases) { unit in
+                    PeptideChoiceChip(title: unit.label, selected: doseUnit == unit) { doseUnit = unit }
+                        .accessibilityLabel(unit.spokenLabel)
+                }
+            }
+            Text("Saved with the unit you pick. Nothing is converted.")
+                .font(.system(.caption, design: .rounded))
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var routeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PeptideFieldLabel("Route (optional)")
+            PeptideFlowLayout(spacing: 8) {
+                ForEach(Self.routeOptions, id: \.self) { option in
+                    PeptideChoiceChip(title: option, selected: route == option) { route = route == option ? "" : option }
+                }
+            }
+            PeptideInputField(title: "Route", text: $route, prompt: "Or type a route")
         }
     }
 
@@ -275,6 +420,9 @@ struct PeptideScheduleEditor: View {
             }
             if frequencyType == "weekdays" {
                 weekdayPicker
+            }
+            if frequencyType == "weekly" {
+                weeklyDayPicker
             }
             if frequencyType == "everyN" {
                 PeptideInputField(title: "Every how many days", text: $nText, prompt: "Days", keyboard: .numberPad, monospaced: true)
@@ -295,6 +443,25 @@ struct PeptideScheduleEditor: View {
                         weekdays.insert(day)
                     }
                 }
+            }
+        }
+    }
+
+    /// One weekday. With none picked, weekly repeats every 7 days from the start.
+    private var weeklyDayPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            PeptideFlowLayout(spacing: 6) {
+                ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { day in
+                    PeptideChoiceChip(title: ReconMath.weekdayShort[day], selected: weeklyDay == day) {
+                        weeklyDay = weeklyDay == day ? nil : day
+                    }
+                }
+            }
+            if weeklyDay == nil {
+                Text("No day picked: every 7 days from the start date.")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(IronTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -339,6 +506,21 @@ struct PeptideScheduleEditor: View {
             errorText = "Pick how often."
             return
         }
+        guard let slot else {
+            errorText = "Pick AM or PM."
+            return
+        }
+        let typedDose = doseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dose = PeptideDose.typed(typedDose, unit: doseUnit)
+        if !typedDose.isEmpty && dose == nil {
+            errorText = doseUnit == nil ? "Pick mL, IU, mg or mcg for the dose." : "The dose must be a number more than 0."
+            return
+        }
+        let trimmedRoute = route.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedRoute.count <= PeptideMath.maxRouteLength else {
+            errorText = "Route is longer than \(PeptideMath.maxRouteLength) characters."
+            return
+        }
         var frequency = ReconMath.Frequency(type: frequencyType)
         switch frequencyType {
         case "weekdays":
@@ -347,6 +529,8 @@ struct PeptideScheduleEditor: View {
                 return
             }
             frequency.days = weekdays.sorted()
+        case "weekly":
+            frequency.days = weeklyDay.map { [$0] } ?? []
         case "everyN", "perWeek":
             let value = ReconMath.toNumber(nText)
             let limit: Double = frequencyType == "perWeek" ? 7 : 365
@@ -376,7 +560,11 @@ struct PeptideScheduleEditor: View {
             timeOfDay: hasTime ? PeptideViewDates.minutes(fromLocal: time) : nil,
             active: active,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-            createdAt: existing?.createdAt ?? Date()
+            createdAt: existing?.createdAt ?? Date(),
+            dose: dose,
+            slot: slot,
+            route: trimmedRoute.isEmpty ? nil : trimmedRoute,
+            origin: existing?.origin
         )
         if let refusal = store.saveSchedule(schedule) {
             errorText = refusal

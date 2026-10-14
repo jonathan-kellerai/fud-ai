@@ -619,6 +619,19 @@ nonisolated struct PeptideLogEntry: Identifiable, Equatable, Codable {
         return PeptideMath.drawText(drawnVolume, drawnUnit)
     }
 
+    /// "250 mcg" / "0.3 mL": the dose as typed (a planned dose, or an
+    /// amount from an earlier version). Nil without one.
+    var doseText: String? {
+        guard let dose, let units = units?.trimmingCharacters(in: .whitespacesAndNewlines), !units.isEmpty else { return nil }
+        return PeptideMath.number(dose) + " " + units
+    }
+
+    /// What was logged, as typed: the draw, else the dose.
+    var recordedText: String? { drawText ?? doseText }
+
+    /// "15 units" on a U-100 syringe, worked out at save.
+    var syringeUnitsText: String? { syringeUnitsAtSave.map(PeptideMath.syringeUnitsText) }
+
     /// This entry with `changes` applied, each changed field added to the
     /// correction trail with the user's reason.
     func corrected(_ changes: PeptideCorrectionChanges, reason: String, at: String) -> PeptideLogEntry {

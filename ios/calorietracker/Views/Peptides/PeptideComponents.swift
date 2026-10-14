@@ -143,9 +143,10 @@ extension View {
     }
 }
 
-/// One saved draw, like a finished set: compound, the draw as typed, time,
-/// vial. Olive bar when its vial was confirmed at save, rust when not, brass
-/// with no vial. Never shows mg (not even to VoiceOver).
+/// One saved draw, like a finished set: compound, the draw (or planned dose)
+/// as typed, its U-100 units, time, vial. Olive bar when its vial was
+/// confirmed at save, rust when not, brass with no vial. Never works out mg;
+/// a dose the user planned in mg shows as they typed it.
 struct PeptideRecordCard: View {
     let entry: PeptideLogEntry
     var vialName: String?
@@ -157,7 +158,14 @@ struct PeptideRecordCard: View {
                 .fontWidth(.condensed)
                 .foregroundStyle(IronTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            PeptideDetailRow(label: "Draw", value: entry.drawText ?? "Not recorded")
+            if entry.drawText == nil, let dose = entry.doseText {
+                PeptideDetailRow(label: "Dose", value: dose)
+            } else {
+                PeptideDetailRow(label: "Draw", value: entry.drawText ?? "Not recorded")
+            }
+            if entry.drawnUnit != .units, let units = entry.syringeUnitsText {
+                PeptideDetailRow(label: "U-100", value: units)
+            }
             PeptideDetailRow(label: "Time", value: entry.date.map(PeptideMath.timeText) ?? entry.datetimeRaw)
             if let vialName {
                 PeptideDetailRow(label: "Vial", value: vialName)
@@ -185,8 +193,13 @@ struct PeptideRecordCard: View {
         var parts = [entry.compound]
         if let value = entry.drawnVolume, let unit = entry.drawnUnit {
             parts.append(PeptideMath.drawSpokenText(value, unit))
+        } else if let dose = entry.doseText {
+            parts.append(dose)
         } else {
             parts.append("draw not recorded")
+        }
+        if entry.drawnUnit != .units, let units = entry.syringeUnitsAtSave {
+            parts.append(PeptideMath.drawSpokenText(units, .units) + " on a U-100 syringe")
         }
         if let date = entry.date {
             parts.append(PeptideMath.timeText(date).replacingOccurrences(of: " ET", with: ""))

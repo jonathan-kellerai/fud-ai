@@ -175,6 +175,7 @@ struct PeptideVialCard: View {
             header(remaining)
             amountsBlock
             confirmationBlock(remaining)
+            supplyBlock
             Text(remaining.linkedCount == 1 ? "1 draw logged from this vial" : "\(remaining.linkedCount) draws logged from this vial")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
@@ -201,6 +202,8 @@ struct PeptideVialCard: View {
                 .accessibilityAddTraits(.isHeader)
             PeptideFlowLayout(spacing: 6) {
                 if vial.isBlend { PeptideTag(text: "Blend", tone: IronTheme.textSecondary) }
+                if vial.isPremixed { PeptideTag(text: "Premixed", tone: IronTheme.textSecondary) }
+                if PeptideCompoundCatalog.isPrescription(vial.compound) { PeptideTag(text: "Prescription", tone: IronTheme.brass) }
                 if vial.status == .finished { PeptideTag(text: "Finished", tone: IronTheme.textSecondary) }
                 if remaining.isLow && vial.status == .active { PeptideTag(text: "Low", tone: IronTheme.brass) }
             }
@@ -219,9 +222,9 @@ struct PeptideVialCard: View {
             if vial.components.isEmpty {
                 PeptideDetailRow(label: "Vial amount", value: "Not entered")
             }
-            PeptideDetailRow(label: "Diluent", value: vial.diluentML.map { PeptideMath.number($0) + " mL (you entered)" } ?? "Not entered")
+            PeptideDetailRow(label: vial.isPremixed ? "Volume" : "Diluent", value: vial.diluentML.map { PeptideMath.number($0) + " mL (you entered)" } ?? "Not entered")
             if let mixed = vial.mixedOn {
-                PeptideDetailRow(label: "Mixed", value: ReconMath.formatDate(mixed))
+                PeptideDetailRow(label: vial.isPremixed ? "Opened" : "Mixed", value: ReconMath.formatDate(mixed))
             }
         }
     }
@@ -249,12 +252,39 @@ struct PeptideVialCard: View {
                     .foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        } else if vial.isPremixed {
+            Text("Premixed. With no amount entered, no concentration or mg is worked out; mL doses are logged as entered.")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(IronTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         } else {
             Text("Concentration not confirmed. Remaining is not shown.")
                 .font(.system(.title3, design: .rounded, weight: .bold))
                 .foregroundStyle(IronTheme.rust)
                 .fixedSize(horizontal: false, vertical: true)
             PeptideDetailRow(label: "Left", value: "not tracked")
+        }
+    }
+
+    /// Doses of the planned amount left since mixing, its U-100 units, and
+    /// "Remix soon" under one dose. Only from the vial's own numbers.
+    @ViewBuilder
+    private var supplyBlock: some View {
+        if vial.status == .active, let supply = store.supply(for: vial) {
+            VStack(alignment: .leading, spacing: 6) {
+                PeptideDetailRow(label: "Doses left", value: supply.text)
+                if let units = PeptideMath.syringeUnits(supply.dose, vial: vial) {
+                    PeptideDetailRow(label: "Per dose", value: PeptideMath.syringeUnitsText(units) + " on a U-100 syringe")
+                }
+                if supply.remixSoon {
+                    PeptideBanner(
+                        title: "Remix soon",
+                        message: "Less than one \(supply.dose.text) dose is left in this vial.",
+                        tone: IronTheme.brass
+                    )
+                    .accessibilityIdentifier("peptides.vial.remixSoon")
+                }
+            }
         }
     }
 
@@ -302,6 +332,8 @@ struct PeptideVialEditor: View {
     @State private var isBlend: Bool
     @State private var components: [ComponentDraft]
     @State private var diluentText: String
+    /// Came mixed: the volume is typed instead of the water added, and no mixing tick is needed.
+    @State private var premixed: Bool
     @State private var mixedKnown: Bool
     @State private var mixedOn: Date
     @State private var confirmed: Bool
@@ -333,6 +365,7 @@ struct PeptideVialEditor: View {
         }
         _components = State(initialValue: drafts.isEmpty ? [ComponentDraft(id: UUID().uuidString, name: "", amountText: "", unit: nil)] : drafts)
         _diluentText = State(initialValue: vial?.diluentML.map(PeptideMath.number) ?? "")
+        _premixed = State(initialValue: vial?.isPremixed ?? false)
         _mixedKnown = State(initialValue: vial?.mixedOn != nil)
         _mixedOn = State(initialValue: vial?.mixedOn.map(PeptideViewDates.localDate(fromCivil:)) ?? Date())
         _confirmed = State(initialValue: vial?.concentrationConfirmed ?? false)
@@ -347,9 +380,21 @@ struct PeptideVialEditor: View {
                 VStack(alignment: .leading, spacing: 16) {
                     compoundSection
                     componentsSection
-                    PeptideInputField(title: "Diluent (mL)", text: $diluentText, prompt: "mL of water you added", keyboard: .decimalPad, monospaced: true)
+                    Toggle("Premixed (came ready to draw)", isOn: $premixed)
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .tint(IronTheme.olive)
+                    PeptideInputField(
+                        title: premixed ? "Volume in the vial (mL)" : "Bacteriostatic water (mL)",
+                        text: $diluentText,
+                        prompt: premixed ? "mL in the vial" : "mL of water you added",
+                        keyboard: .decimalPad,
+                        monospaced: true
+                    )
                     mixedSection
-                    confirmSection
+                    if !premixed {
+                        confirmSection
+                    }
                     thresholdSection
                     notesSection
                     if let errorText {
@@ -616,7 +661,8 @@ struct PeptideVialEditor: View {
             lowStockThresholdML: threshold.value,
             status: existing?.status ?? .active,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-            createdAt: existing?.createdAt ?? Date()
+            createdAt: existing?.createdAt ?? Date(),
+            premixed: premixed ? true : (existing?.premixed == nil ? nil : false)
         )
         if let refusal = store.saveVial(existing.map { $0.applyingEdit(edited) } ?? edited) {
             errorText = refusal

@@ -257,9 +257,23 @@ final class PeptideLogStore {
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "A reason is required." }
         guard !changes.isEmpty else { return "Nothing changed." }
-        entries[index] = entries[index].corrected(changes, reason: trimmed, at: PeptideMath.iso8601NewYork(now))
+        var corrected = entries[index].corrected(changes, reason: trimmed, at: PeptideMath.iso8601NewYork(now))
+        if changes.dose != nil || changes.units != nil || changes.draw != nil || changes.drawUnit != nil {
+            corrected.syringeUnitsAtSave = syringeUnits(of: corrected)
+        }
+        entries[index] = corrected
         didChangeEntries()
         return nil
+    }
+
+    /// U-100 units for an entry's draw (at its saved scale), else for its
+    /// dose from its vial's numbers. Nil when they can't say.
+    private func syringeUnits(of entry: PeptideLogEntry) -> Double? {
+        if let draw = entry.drawnVolume, let unit = entry.drawnUnit {
+            return PeptideMath.syringeUnits(draw: draw, unit: unit, scale: entry.syringeScaleAtSave)
+        }
+        guard let amount = entry.dose, let unit = entry.units.flatMap(PeptideDoseUnit.init(rawValue:)) else { return nil }
+        return PeptideMath.syringeUnits(PeptideDose(amount: amount, unit: unit), vial: vial(id: entry.vialID))
     }
 
     /// "Delete" means void with a reason: the entry stays in history, struck through.

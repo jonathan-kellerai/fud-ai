@@ -457,7 +457,7 @@ nonisolated enum PeptideMath {
         return text.isEmpty ? "—" : text
     }
 
-    /// How often and when. A schedule never shows an amount.
+    /// How often and when. The planned dose is `plannedDoseText`; the legacy amount is never shown.
     static func scheduleText(_ schedule: PeptideUserSchedule) -> String {
         var parts: [String] = [frequencyText(schedule.frequency)]
         if let minutes = schedule.timeOfDay {
@@ -916,16 +916,23 @@ nonisolated enum PeptideMath {
                 cell.shortText = drawShortText(value, unit)
                 cell.longText = drawText(value, unit)
                 cell.spoken = "\(dayName), \(compound), \(drawSpokenText(value, unit))"
+            } else if let units = entry.syringeUnitsAtSave {
+                // A planned dose: its U-100 units, so the week never shows mg.
+                cell.shortText = drawShortText(units, .units)
+                cell.longText = drawText(units, .units)
+                cell.spoken = "\(dayName), \(compound), \(drawSpokenText(units, .units))"
             } else {
                 cell.shortText = "1×"
                 cell.longText = "logged, draw not recorded"
                 cell.spoken = "\(dayName), \(compound), logged, draw not recorded"
             }
         } else if entries.count > 1 {
-            let texts = entries.map { $0.drawText ?? "draw not recorded" }
+            let texts = entries.map { entry in
+                entry.drawText ?? entry.syringeUnitsAtSave.map { drawText($0, .units) } ?? "draw not recorded"
+            }
             let spoken = entries.map { entry in
-                guard let value = entry.drawnVolume, let unit = entry.drawnUnit else { return "draw not recorded" }
-                return drawSpokenText(value, unit)
+                if let value = entry.drawnVolume, let unit = entry.drawnUnit { return drawSpokenText(value, unit) }
+                return entry.syringeUnitsAtSave.map { drawSpokenText($0, .units) } ?? "draw not recorded"
             }
             cell.shortText = "\(entries.count)×"
             cell.longText = "\(entries.count) draws: " + texts.joined(separator: ", ")

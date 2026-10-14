@@ -2,14 +2,15 @@
 //  PeptideSettingsView.swift
 //  calorietracker
 //
-//  Peptides → Settings. One setting: the syringe scale the user draws with.
-//  Each draw in units records the scale in force when it's saved.
+//  Peptides → Settings: the syringe scale the user draws with (each draw in
+//  units records the scale in force when it's saved), and "Load my schedule".
 //
 
 import SwiftUI
 
 struct PeptideSettingsView: View {
     @Environment(PeptideLogStore.self) private var store
+    @State private var showsPreset = false
 
     var body: some View {
         ScrollView {
@@ -40,6 +41,15 @@ struct PeptideSettingsView: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("peptides.settings.syringeScale")
+                VStack(alignment: .leading, spacing: 10) {
+                    IronSectionTitle(title: "Your schedule")
+                    Text("Save your own or prescribed schedule, its vials and the lab reminder as records in one step. You see the full list first.")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(IronTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Load my schedule") { showsPreset = true }
+                        .buttonStyle(PeptideSecondaryButtonStyle())
+                }
                 if let error = store.persistError {
                     PeptideIssueText(text: error)
                 }
@@ -50,6 +60,9 @@ struct PeptideSettingsView: View {
         .background(IronTheme.canvas)
         .navigationTitle("Peptide settings")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showsPreset) {
+            PeptidePresetSheet(today: PeptideMath.civilDate(Date()))
+        }
     }
 
     private func scaleRow(title: String, detail: String, selected: Bool, action: @escaping () -> Void) -> some View {

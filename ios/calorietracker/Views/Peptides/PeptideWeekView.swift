@@ -4,8 +4,9 @@
 //
 //  Peptides › Week: seven day cells per compound, draws as typed (units or
 //  mL), a dash for an empty day. At accessibility text sizes, or when seven
-//  cells don't fit, each compound becomes a stacked day list. Then the week's
-//  history and the optional schedule row. No targets, no streak advice, no mg.
+//  cells don't fit, each compound becomes a stacked day list. Then each day's
+//  AM / PM plan (one tap logs today's planned doses), the week's history and
+//  the schedule row. No targets, no streak advice, no mg.
 //
 
 import SwiftUI
@@ -38,8 +39,29 @@ struct PeptideWeekView: View {
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+            planSection
             PeptideHistoryView(from: shownWeek, to: ReconMath.addDays(shownWeek, 6))
             scheduleRow
+        }
+    }
+
+    /// Days with something planned, Monday first, each in AM and PM.
+    @ViewBuilder
+    private var planSection: some View {
+        let plans = (0..<7).map { store.dayPlan(ReconMath.addDays(shownWeek, $0)) }.filter { !$0.isEmpty }
+        if !plans.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                IronSectionTitle(title: "Planned")
+                ForEach(plans, id: \.date) { plan in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(ReconMath.formatDate(plan.date) + (plan.date == today ? " · Today" : ""))
+                            .font(.system(.headline, design: .rounded))
+                            .foregroundStyle(plan.date == today ? IronTheme.brass : IronTheme.textPrimary)
+                            .accessibilityAddTraits(.isHeader)
+                        PeptideDayPlanView(plan: plan, canLog: plan.date == today, referenceDate: referenceDate)
+                    }
+                }
+            }
         }
     }
 

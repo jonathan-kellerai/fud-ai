@@ -338,3 +338,17 @@ extension PeptideMath {
         return PeptideDayPlan(date: date, slots: slots)
     }
 }
+
+extension PeptideMath {
+    /// "0.3 mL · SQ · 30 units (U-100)", "1.4 mg · 14 units (U-100)", or
+    /// "No dose planned". Units only when the vial's own numbers give them.
+    static func plannedDoseText(_ schedule: PeptideUserSchedule, vial: PeptideVial?) -> String {
+        guard let dose = schedule.dose else { return "No dose planned" }
+        var parts = [dose.text]
+        if let route = schedule.route?.trimmingCharacters(in: .whitespacesAndNewlines), !route.isEmpty { parts.append(route) }
+        if let units = syringeUnits(dose, vial: vial) {
+            parts.append(syringeUnitsText(units) + " (U-100)")
+        }
+        return parts.joined(separator: " · ")
+    }
+}

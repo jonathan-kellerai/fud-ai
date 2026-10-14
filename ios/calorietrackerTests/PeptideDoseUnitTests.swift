@@ -165,6 +165,53 @@ struct PeptideDoseUnitTests {
         #expect(PeptideLogStore(persistence: .file(url)).vials == store.vials)
     }
 
+    @Test func correctingAPlannedDoseWorksItsUnitsOutAgain() throws {
+        let store = loaded()
+        let mt2 = try schedule(store, "MT2")
+        let id = try #require(store.logPlanned(scheduleID: mt2.id, now: now))
+        #expect(store.entry(id: id)?.syringeUnitsAtSave == 5)
+        let entry = try #require(store.entry(id: id))
+        #expect(store.correct(entry, reason: "Took a bit more", changes: PeptideCorrectionChanges(dose: 300), now: now) == nil)
+        let corrected = try #require(store.entry(id: id))
+        #expect(corrected.dose == 300 && corrected.units == "mcg")
+        #expect(corrected.syringeUnitsAtSave == 6)
+        #expect(corrected.corrections.map(\.field) == ["dose"])
+        // A change that isn't the amount leaves them as saved.
+        #expect(store.correct(corrected, reason: "Site", changes: PeptideCorrectionChanges(route: "Abdomen L"), now: now) == nil)
+        #expect(store.entry(id: id)?.syringeUnitsAtSave == 6)
+    }
+
+    @Test func plannedDoseTextShowsTheDoseRouteAndUnitsAsSaved() throws {
+        let store = loaded()
+        let text = { (compound: String) in
+            PeptideMath.plannedDoseText(try self.schedule(store, compound), vial: store.plannedVial(for: compound))
+        }
+        #expect(try text("Testosterone") == "0.3 mL · SQ · 30 units (U-100)")
+        #expect(try text("Tesamorelin") == "1.4 mg · 14 units (U-100)")
+        #expect(try text("BPC-157") == "500 mcg · 15 units (U-100)")
+        #expect(PeptideMath.plannedDoseText(try schedule(store, "MT2"), vial: nil) == "250 mcg")
+        let none = PeptideUserSchedule(compound: "X", frequency: ReconMath.Frequency(type: "daily"), startDate: "2026-12-01")
+        #expect(PeptideMath.plannedDoseText(none, vial: nil) == "No dose planned")
+    }
+
+    @Test func theWeekGridShowsAPlannedDoseInUnitsNeverMg() throws {
+        let store = loaded()
+        for item in PeptideOwnSchedulePreset.own.items {
+            store.logPlanned(scheduleID: item.id, now: now)
+        }
+        // Tue 2026-12-01 is the second cell of the week of Mon 30 Nov.
+        let rows = PeptideMath.weekRows(entries: store.entries, weekStart: "2026-11-30")
+        let cells = Dictionary(uniqueKeysWithValues: rows.map { ($0.compound, $0.cells[1]) })
+        #expect(cells["Tesamorelin"]?.shortText == "14u")
+        #expect(cells["Tesamorelin"]?.spoken == "Tuesday, Tesamorelin, 14 units")
+        #expect(cells["Testosterone"]?.longText == "30 units")
+        let all = rows.flatMap(\.cells).flatMap { [$0.shortText, $0.longText, $0.spoken] }
+        #expect(!all.contains { $0.contains("mg") || $0.contains("milligram") })
+        // The record card's text is the dose as typed.
+        let tesa = try #require(store.entries.first { $0.compound == "Tesamorelin" })
+        #expect(tesa.recordedText == "1.4 mg" && tesa.syringeUnitsText == "14 units")
+    }
+
     @Test func dosesRoundTripWithTheirUnitsThroughTheLogAndTheArchive() throws {
         for unit in PeptideDoseUnit.allCases {
             let dose = PeptideDose(amount: 1.25, unit: unit)
