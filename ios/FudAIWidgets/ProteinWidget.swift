@@ -33,7 +33,7 @@ struct ProteinWidget: Widget {
             ProteinWidgetView(entry: entry)
                 .containerBackground(WidgetPalette.background, for: .widget)
         }
-        .configurationDisplayName("Fud AI Protein")
+        .configurationDisplayName("JL Physical Protein")
         .description("See today's protein progress at a glance.")
         .supportedFamilies([
             .systemSmall,

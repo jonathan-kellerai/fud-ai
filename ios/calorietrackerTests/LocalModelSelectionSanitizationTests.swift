@@ -41,6 +41,30 @@ struct LocalModelSelectionSanitizationTests {
         #expect(!defaults.bool(forKey: "speechFallbackEnabled"))
     }
 
+    @Test func retiredModelsMapToTheProviderDefault() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(AIProvider.groq.rawValue, forKey: "selectedAIProvider")
+        defaults.set("qwen/qwen3.6-27b", forKey: "selectedAIModel")
+        defaults.set(AIProvider.cerebras.rawValue, forKey: "selectedTextAIProvider")
+        defaults.set("gemma-4-31b", forKey: "selectedTextAIModel")
+        defaults.set(AIProvider.deepseek.rawValue, forKey: "selectedTextFallbackAIProvider")
+        defaults.set("deepseek-v4-flash", forKey: "selectedTextFallbackAIModel")
+        defaults.set("keep-me", forKey: "unrelatedUserData")
+
+        AIProviderSettings.migrateModelRegistryIfNeeded(defaults: defaults)
+
+        #expect(defaults.string(forKey: "selectedAIModel") == AIProvider.groq.defaultModel)
+        #expect(defaults.string(forKey: "selectedTextAIModel") == AIProvider.cerebras.defaultTextModel)
+        #expect(defaults.string(forKey: "selectedTextFallbackAIModel") == AIProvider.deepseek.defaultTextModel)
+        #expect(defaults.string(forKey: "unrelatedUserData") == "keep-me")
+
+        defaults.set("qwen/qwen3.6-27b", forKey: "selectedAIModel")
+        AIProviderSettings.migrateModelRegistryIfNeeded(defaults: defaults)
+        #expect(defaults.string(forKey: "selectedAIModel") == "qwen/qwen3.6-27b")
+    }
+
     private func makeDefaults() throws -> (UserDefaults, String) {
         let suite = "LocalModelSelectionSanitizationTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

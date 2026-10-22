@@ -16,6 +16,88 @@ enum WeeklyChallengeSessionPolicy {
     }
 }
 
+/// JL Physical does not use the upstream Weekly Challenge. A profile joined on
+/// an earlier build is deleted from fud-ai.app once, automatically, at launch.
+enum WeeklyChallengeAutoDelete {
+    static let doneKey = "jl.weeklyChallengeAutoDelete.v1.done"
+    static let outcomeKey = "jl.weeklyChallengeAutoDelete.v1.outcome"
+
+    enum Decision: Equatable {
+        /// Already finished on an earlier launch.
+        case skip
+        /// A bearer token is in Keychain: delete the remote profile.
+        case delete
+        /// No token, so nothing exists remotely that this device can reach.
+        case markNothingToDelete
+    }
+
+    enum Result: String, Codable, Equatable {
+        case deleted
+        case nothingToDelete
+        case failed
+        /// 401/403: the server no longer accepts the token. Done, but not confirmed deleted.
+        case tokenRejected
+    }
+
+    static let tokenRejectedText = "token rejected (profile likely already removed by the 90-day inactivity purge)"
+
+    struct Outcome: Codable, Equatable {
+        var date: Date
+        var participantID: String?
+        var result: Result
+        /// Short, token-free reason for a failure.
+        var reason: String?
+    }
+
+    static func decision(isDone: Bool, hasToken: Bool) -> Decision {
+        if isDone { return .skip }
+        return hasToken ? .delete : .markNothingToDelete
+    }
+
+    /// One read-only line for Settings.
+    static func statusLine(_ outcome: Outcome) -> String {
+        let date = outcome.date.formatted(date: .abbreviated, time: .omitted)
+        let participant = outcome.participantID.map { " (participant \($0))" } ?? ""
+        switch outcome.result {
+        case .deleted:
+            return "Old Weekly Challenge profile\(participant) deleted from fud-ai.app on \(date)."
+        case .nothingToDelete:
+            return "No Weekly Challenge profile to delete (checked \(date))."
+        case .failed:
+            let reason = outcome.reason.map { ": \($0)" } ?? ""
+            return "Deleting the old Weekly Challenge profile\(participant) failed on \(date)\(reason). It retries at next launch."
+        case .tokenRejected:
+            return "Old Weekly Challenge profile\(participant): \(tokenRejectedText) on \(date). The local credential was cleared."
+        }
+    }
+
+    /// A delete error that still finishes the cleanup: 404 means the profile is gone;
+    /// 401/403 means the token can't be retried. Anything else is a failure that retries.
+    static func completedResult(for error: Error) -> Result? {
+        guard let apiError = error as? WeeklyChallengeAPIError,
+              case .server(let statusCode, _, _) = apiError
+        else {
+            return nil
+        }
+        switch statusCode {
+        case 404: return .deleted
+        case 401, 403: return .tokenRejected
+        default: return nil
+        }
+    }
+
+    /// Never includes the token or a server message body.
+    static func shortReason(for error: Error) -> String {
+        guard let apiError = error as? WeeklyChallengeAPIError else { return "unexpected error" }
+        switch apiError {
+        case .invalidRequest: return "invalid request"
+        case .invalidResponse: return "invalid response"
+        case .transport(let urlError): return apiError.isOffline ? "offline" : "network error \(urlError.code.rawValue)"
+        case .server(let statusCode, _, _): return "HTTP \(statusCode)"
+        }
+    }
+}
+
 struct WeeklyChallengeLeaderboardCache: Codable, Equatable {
     struct Entry: Codable, Equatable {
         let response: WeeklyChallengeLeaderboardResponse
@@ -92,6 +174,7 @@ final class WeeklyChallengeStore {
     private(set) var errorMessage: String?
     private(set) var hasPendingDeletion = false
     private(set) var blockedParticipantIDs: Set<String> = []
+    private(set) var autoDeleteOutcome: WeeklyChallengeAutoDelete.Outcome?
 
     private let defaults: UserDefaults
     private let api: WeeklyChallengeAPIClient
@@ -117,6 +200,10 @@ final class WeeklyChallengeStore {
         hasPendingDeletion = KeychainHelper.load(key: Self.pendingDeletionKey) == "1"
         blockedParticipantIDs = Set(
             defaults.stringArray(forKey: Self.blockedParticipantIDsKey) ?? []
+        )
+        autoDeleteOutcome = Self.decode(
+            WeeklyChallengeAutoDelete.Outcome.self,
+            from: defaults.data(forKey: WeeklyChallengeAutoDelete.outcomeKey)
         )
         if let cache = Self.decode(
             WeeklyChallengeLeaderboardCache.self,
@@ -149,7 +236,82 @@ final class WeeklyChallengeStore {
         } else if participantID != nil, bearerToken == nil {
             clearLocalIdentity()
         } else if participantID == nil, bearerToken != nil {
-            KeychainHelper.delete(key: Self.tokenKey)
+            // JL Physical: keep the orphaned bearer and queue a remote delete
+            // so the old fud-ai.app profile is removed instead of stranded.
+            markDeletionPending()
+        }
+    }
+
+    /// One-time launch cleanup. Returns true when it attempted a remote delete,
+    /// so the caller can skip the separate pending-deletion retry this launch.
+    @discardableResult
+    func runOneTimeAutoDeleteIfNeeded() async -> Bool {
+        let decision = WeeklyChallengeAutoDelete.decision(
+            isDone: defaults.bool(forKey: WeeklyChallengeAutoDelete.doneKey),
+            hasToken: bearerToken != nil
+        )
+        switch decision {
+        case .skip:
+            return false
+        case .markNothingToDelete:
+            clearLocalIdentity()
+            recordAutoDelete(.nothingToDelete, participantID: nil, reason: nil, done: true)
+            return false
+        case .delete:
+            guard let token = bearerToken else { return false }
+            let knownParticipantID = participantID
+            markDeletionPending()
+            do {
+                // Not deleteRemoteProfile: it treats 401 as deleted, and this records which it was.
+                let response = try await api.deleteProfile(token: token)
+                guard response.deleted else { throw WeeklyChallengeAPIError.invalidResponse }
+                clearLocalIdentity()
+                isOffline = false
+                recordAutoDelete(.deleted, participantID: knownParticipantID, reason: nil, done: true)
+            } catch is CancellationError {
+                // The pending marker and credential stay in Keychain.
+            } catch let error where WeeklyChallengeAutoDelete.completedResult(for: error) != nil {
+                clearLocalIdentity()
+                isOffline = false
+                recordAutoDelete(
+                    WeeklyChallengeAutoDelete.completedResult(for: error) ?? .failed,
+                    participantID: knownParticipantID,
+                    reason: nil,
+                    done: true
+                )
+            } catch {
+                // Not done: the pending marker and credential stay in Keychain
+                // and the next launch tries again.
+                if let apiError = error as? WeeklyChallengeAPIError, apiError.isOffline {
+                    isOffline = true
+                }
+                recordAutoDelete(
+                    .failed,
+                    participantID: knownParticipantID,
+                    reason: WeeklyChallengeAutoDelete.shortReason(for: error),
+                    done: false
+                )
+            }
+            return true
+        }
+    }
+
+    private func recordAutoDelete(
+        _ result: WeeklyChallengeAutoDelete.Result,
+        participantID: String?,
+        reason: String?,
+        done: Bool
+    ) {
+        let outcome = WeeklyChallengeAutoDelete.Outcome(
+            date: .now,
+            participantID: participantID,
+            result: result,
+            reason: reason
+        )
+        autoDeleteOutcome = outcome
+        persist(outcome, key: WeeklyChallengeAutoDelete.outcomeKey)
+        if done {
+            defaults.set(true, forKey: WeeklyChallengeAutoDelete.doneKey)
         }
     }
 

@@ -3,7 +3,7 @@ import Charts
 
 // MARK: - Time Range
 
-enum TimeRange: String, CaseIterable {
+nonisolated enum TimeRange: String, CaseIterable, Sendable {
     case week = "1W"
     case month = "1M"
     case threeMonths = "3M"
@@ -22,368 +22,41 @@ enum TimeRange: String, CaseIterable {
         }
     }
 
+    /// Inclusive through the end of today. Ending at midnight dropped every entry
+    /// logged today, so 1W could be empty while Weight History still had a row.
     func dateRange() -> ClosedRange<Date> {
         let calendar = Calendar.current
-        let end = calendar.startOfDay(for: .now)
-        let start = calendar.date(byAdding: .day, value: -(days - 1), to: end)!
+        let startOfToday = calendar.startOfDay(for: .now)
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: startOfToday)!
+        let end = calendar.date(byAdding: .day, value: 1, to: startOfToday)!.addingTimeInterval(-1)
         return start...end
     }
-}
 
-// MARK: - Weight Chart Section
-
-// MARK: - Trend chart plotting helpers (shared by Weight + Body Fat charts)
-
-/// One plotted point on a trend chart — either a raw entry or the average of
-/// a date bucket when the range is too dense to draw every reading.
-private struct TrendPoint: Identifiable, Equatable {
-    let date: Date
-    let value: Double
-    var id: Date { date }
-}
-
-/// Averages a date-sorted series into equal date buckets once it outgrows
-/// `maxPoints`. Hundreds of raw readings drew every dot on top of its
-/// neighbours and turned the line into a solid band — ~60 bucket averages
-/// keep the trend shape readable. Sparse series pass through untouched.
-private func downsampled(_ points: [TrendPoint], maxPoints: Int = 60) -> [TrendPoint] {
-    guard let first = points.first?.date, let last = points.last?.date else { return points }
-    let calendar = Calendar.current
-    let spanDays = max(1, calendar.dateComponents([.day], from: first, to: last).day ?? 1)
-    let rangeLimit: Int
-    switch spanDays {
-    case ...45: rangeLimit = 60
-    case ...100: rangeLimit = 48
-    case ...200: rangeLimit = 36
-    case ...400: rangeLimit = 30
-    default: rangeLimit = 24
-    }
-    let adaptiveLimit = min(maxPoints, rangeLimit)
-    guard points.count > adaptiveLimit else { return points }
-    let bucketDays = max(1, Int((Double(spanDays) / Double(adaptiveLimit)).rounded(.up)))
-    var buckets: [Int: (dateSum: TimeInterval, valueSum: Double, count: Int)] = [:]
-    for point in points {
-        let day = calendar.dateComponents([.day], from: first, to: point.date).day ?? 0
-        var bucket = buckets[day / bucketDays] ?? (0, 0, 0)
-        bucket.dateSum += point.date.timeIntervalSince1970
-        bucket.valueSum += point.value
-        bucket.count += 1
-        buckets[day / bucketDays] = bucket
-    }
-    return buckets.keys.sorted().map { index in
-        let bucket = buckets[index]!
-        return TrendPoint(
-            date: Date(timeIntervalSince1970: bucket.dateSum / Double(bucket.count)),
-            value: bucket.valueSum / Double(bucket.count)
-        )
-    }
-}
-
-/// X-axis policy for the trend charts. Strides derive from the plotted DATE
-/// SPAN — the old entry-count strides collapsed once users logged multiple
-/// readings per day (506 entries over 2 years still picked a 60-day stride
-/// and mashed the "All" labels into each other). Labels pick up the year
-/// whenever a longer range crosses a calendar-year boundary, so "going back
-/// into 2025" reads "Sep 2025" instead of an ambiguous "Sep 20".
-private struct TrendXAxis {
-    private let spanDays: Int
-    private let showsYear: Bool
-
-    init(first: Date?, last: Date?) {
-        guard let first, let last else {
-            spanDays = 1
-            showsYear = false
-            return
+    var rangeDescription: String {
+        switch self {
+        case .week: "the last 7 days"
+        case .month: "the last 30 days"
+        case .threeMonths: "the last 3 months"
+        case .sixMonths: "the last 6 months"
+        case .year: "the last year"
+        case .allTime: "the selected range"
         }
-        spanDays = max(1, Calendar.current.dateComponents([.day], from: first, to: last).day ?? 1)
-        showsYear = spanDays > 150
-            && !Calendar.current.isDate(first, equalTo: last, toGranularity: .year)
-    }
-
-    var strideDays: Int {
-        if showsYear { return max(75, spanDays / 4) }
-        if spanDays <= 8 { return 1 }
-        if spanDays <= 35 { return 5 }
-        if spanDays <= 100 { return 14 }
-        if spanDays <= 200 { return 30 }
-        return 60
-    }
-
-    var labelFormat: Date.FormatStyle {
-        showsYear ? .dateTime.month(.abbreviated).year() : .dateTime.month(.abbreviated).day()
     }
 }
 
-private struct ProgressCardStyle: ViewModifier {
-    let cornerRadius: CGFloat
+// Weight / Body Fat / Lean Mass charts live in Views/ProgressV2.
 
+/// Iron card for the Progress cards and history links in this file. The
+/// radius argument is kept for existing call sites; every card is squared.
+private struct ProgressCardStyle: ViewModifier {
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        content
-            .background(AppColors.appCard)
-            .overlay {
-                shape.stroke(AppColors.calorie.opacity(0.09), lineWidth: 0.75)
-            }
-            .compositingGroup()
-            .clipShape(shape)
+        content.ironCard()
     }
 }
 
 private extension View {
-    func progressCardStyle(cornerRadius: CGFloat = 20) -> some View {
-        modifier(ProgressCardStyle(cornerRadius: cornerRadius))
-    }
-}
-
-struct WeightChartSection: View {
-    let weightEntries: [WeightEntry]
-    let goalWeightKg: Double?
-    let currentWeightKg: Double?
-    let onLogWeight: () -> Void
-    @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
-    @State private var inspectedPoint: TrendPoint?
-
-    private var useMetric: Bool { weightUnitRaw == "kg" }
-
-    private func displayWeight(_ kg: Double) -> Double {
-        useMetric ? kg : kg * 2.20462
-    }
-
-    private var unit: String { useMetric ? "kg" : "lbs" }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Weight")
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                Spacer()
-                Button(action: onLogWeight) {
-                    Label("Log Weight", systemImage: "plus.circle.fill")
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
-                        .foregroundStyle(AppColors.calorie)
-                }
-            }
-
-            if weightEntries.isEmpty {
-                emptyState("Log your first weight to see trends")
-            } else {
-                let chartPoints = plottedPoints
-
-                HStack(spacing: 8) {
-                    if let current = currentWeightKg {
-                        StatBadge(label: "Current", value: String(format: "%.1f %@", displayWeight(current), unit))
-                    }
-                    if let goal = goalWeightKg {
-                        StatBadge(label: "Goal", value: String(format: "%.1f %@", displayWeight(goal), unit))
-                    }
-                    StatBadge(label: "Net Change", value: formattedWeightChange)
-                    StatBadge(label: "Average", value: formattedAverageWeight)
-                }
-
-                Chart {
-                    ForEach(chartPoints) { point in
-                        AreaMark(
-                            x: .value("Date", point.date, unit: .day),
-                            yStart: .value("Visible range minimum", weightYDomain.lowerBound),
-                            yEnd: .value("Weight", point.value)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [AppColors.calorie.opacity(0.12), AppColors.calorie.opacity(0.01)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .interpolationMethod(.catmullRom)
-
-                        LineMark(
-                            x: .value("Date", point.date, unit: .day),
-                            y: .value("Weight", point.value)
-                        )
-                        .foregroundStyle(AppColors.calorie)
-                        .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-
-                        if chartPoints.count <= 31 {
-                            PointMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value("Weight", point.value)
-                            )
-                            .foregroundStyle(AppColors.calorie)
-                            .symbolSize(38)
-                        }
-                    }
-
-                    if let goalKg = goalWeightKg {
-                        RuleMark(y: .value("Goal", displayWeight(goalKg)))
-                            .foregroundStyle(.green.opacity(0.7))
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                    }
-
-                    if let inspectedPoint {
-                        RuleMark(x: .value("Selected date", inspectedPoint.date))
-                            .foregroundStyle(AppColors.calorie.opacity(0.6))
-                            .lineStyle(StrokeStyle(lineWidth: 1.25, dash: [3, 3]))
-
-                        PointMark(
-                            x: .value("Selected date", inspectedPoint.date, unit: .day),
-                            y: .value("Selected weight", inspectedPoint.value)
-                        )
-                        .foregroundStyle(.primary)
-                        .symbolSize(115)
-
-                        PointMark(
-                            x: .value("Selected date", inspectedPoint.date, unit: .day),
-                            y: .value("Selected weight", inspectedPoint.value)
-                        )
-                        .foregroundStyle(AppColors.calorie)
-                        .symbolSize(52)
-                    }
-                }
-                .chartYScale(domain: weightYDomain)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day, count: xAxis.strideDays)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
-                            .foregroundStyle(Color.primary.opacity(0.11))
-                        AxisValueLabel(format: xAxis.labelFormat)
-                            .foregroundStyle(Color.secondary)
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 5)) {
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(Color.primary.opacity(0.10))
-                        AxisValueLabel()
-                            .foregroundStyle(Color.secondary)
-                    }
-                }
-                .chartPlotStyle { plotArea in
-                    plotArea.background(
-                        AppColors.calorie.opacity(0.025),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                }
-                .frame(height: 190)
-                .clipped()
-                .chartOverlay { proxy in
-                    GeometryReader { geometry in
-                        let plotFrame = proxy.plotFrame.map { geometry[$0] }
-
-                        ZStack(alignment: .topLeading) {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .simultaneousGesture(
-                                    DragGesture(minimumDistance: 6)
-                                        .onChanged { value in
-                                            guard abs(value.translation.width) > abs(value.translation.height),
-                                                  let plotFrame else { return }
-                                            inspectWeight(
-                                                at: value.location.x - plotFrame.minX,
-                                                proxy: proxy,
-                                                points: chartPoints
-                                            )
-                                        }
-                                        .onEnded { _ in
-                                            withAnimation(.easeOut(duration: 0.16)) {
-                                                inspectedPoint = nil
-                                            }
-                                        }
-                                )
-
-                            if let inspectedPoint,
-                               let plotFrame,
-                               let pointX = proxy.position(forX: inspectedPoint.date) {
-                                weightInspectorLabel(for: inspectedPoint)
-                                    .fixedSize()
-                                    .position(
-                                        x: min(max(plotFrame.minX + pointX, plotFrame.minX + 56), plotFrame.maxX - 56),
-                                        y: plotFrame.minY + 26
-                                    )
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            }
-                        }
-                    }
-                }
-                .animation(.snappy(duration: 0.16), value: inspectedPoint?.date)
-            }
-        }
-        .padding()
-        .progressCardStyle()
-    }
-
-    /// What actually gets drawn: every entry for short ranges, bucket
-    /// averages for dense ones. Dots only render while each reading is
-    /// still individually distinguishable.
-    private var plottedPoints: [TrendPoint] {
-        downsampled(sortedWeightEntries.map { TrendPoint(date: $0.date, value: displayWeight($0.weightKg)) })
-    }
-
-    private var xAxis: TrendXAxis {
-        TrendXAxis(first: sortedWeightEntries.first?.date, last: sortedWeightEntries.last?.date)
-    }
-
-    private var weightYDomain: ClosedRange<Double> {
-        var weights = weightEntries.map { displayWeight($0.weightKg) }
-        if let goalKg = goalWeightKg { weights.append(displayWeight(goalKg)) }
-        guard let minW = weights.min(), let maxW = weights.max() else { return 0...200 }
-        let padding = max((maxW - minW) * 0.15, 2)
-        return (minW - padding)...(maxW + padding)
-    }
-
-    private var sortedWeightEntries: [WeightEntry] {
-        weightEntries.sorted { $0.date < $1.date }
-    }
-
-    private var netWeightChange: Double {
-        guard let first = sortedWeightEntries.first,
-              let last = sortedWeightEntries.last else { return 0 }
-        return displayWeight(last.weightKg) - displayWeight(first.weightKg)
-    }
-
-    private var averageWeight: Double {
-        let values = sortedWeightEntries.map { displayWeight($0.weightKg) }
-        guard !values.isEmpty else { return 0 }
-        return values.reduce(0, +) / Double(values.count)
-    }
-
-    private var formattedWeightChange: String {
-        let sign = netWeightChange > 0 ? "+" : ""
-        return String(format: "%@%.1f %@", sign, netWeightChange, unit)
-    }
-
-    private var formattedAverageWeight: String {
-        String(format: "%.1f %@", averageWeight, unit)
-    }
-
-    private func inspectWeight(at plotX: CGFloat, proxy: ChartProxy, points: [TrendPoint]) {
-        guard let date: Date = proxy.value(atX: plotX), !points.isEmpty else { return }
-        let nearest = points.min {
-            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
-        }
-        guard let nearest, nearest != inspectedPoint else { return }
-
-        inspectedPoint = nearest
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    @ViewBuilder
-    private func weightInspectorLabel(for point: TrendPoint) -> some View {
-        VStack(spacing: 1) {
-            Text(point.date.formatted(date: .abbreviated, time: .omitted))
-                .font(.system(.caption2, design: .rounded, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(String(format: "%.1f %@", point.value, unit))
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(AppColors.calorie.opacity(0.22), lineWidth: 0.75)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+    func progressCardStyle(cornerRadius: CGFloat = 6) -> some View {
+        modifier(ProgressCardStyle())
     }
 }
 
@@ -392,23 +65,27 @@ struct WeightChartSection: View {
 struct CalorieChartSection: View {
     let dailyCalories: [(date: Date, calories: Int)]
     let calorieGoal: Int
+    var rangeDescription: String = "the selected range"
+
+    private var averageCalories: Int {
+        dailyCalories.reduce(0) { $0 + $1.calories } / max(dailyCalories.count, 1)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Calories")
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                Spacer()
-                if !dailyCalories.isEmpty {
-                    let avg = dailyCalories.reduce(0) { $0 + $1.calories } / max(dailyCalories.count, 1)
-                    Text("Avg: \(avg.formatted()) kcal")
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
+            ProgressV2SectionTitle(
+                title: String(localized: "Calories"),
+                detail: dailyCalories.isEmpty
+                    ? nil
+                    : String(localized: "Average \(averageCalories.formatted()) kcal on logged days · goal \(calorieGoal.formatted())")
+            )
 
             if dailyCalories.isEmpty {
-                emptyState("No food logged yet")
+                ProgressV2EmptyState(
+                    title: String(localized: "No food logged in \(rangeDescription)"),
+                    message: String(localized: "Log meals on Home to see daily calories against your goal."),
+                    systemImage: "fork.knife"
+                )
             } else {
                 Chart {
                     ForEach(dailyCalories, id: \.date) { item in
@@ -416,52 +93,40 @@ struct CalorieChartSection: View {
                             x: .value("Date", item.date, unit: .day),
                             y: .value("Calories", item.calories)
                         )
-                        .foregroundStyle(
-                            LinearGradient(colors: AppColors.calorieGradient, startPoint: .bottom, endPoint: .top)
-                        )
-                        .cornerRadius(4)
+                        .foregroundStyle(IronTheme.blood)
                     }
 
                     RuleMark(y: .value("Goal", calorieGoal))
-                        .foregroundStyle(AppColors.calorie.opacity(0.6))
+                        .foregroundStyle(IronTheme.brass)
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                 }
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .day, count: calorieXStride)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
-                            .foregroundStyle(Color.primary.opacity(0.11))
+                    AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                            .foregroundStyle(IronTheme.hairline)
                         AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 5)) {
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(Color.primary.opacity(0.10))
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) {
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(IronTheme.hairline)
                         AxisValueLabel()
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(IronTheme.textSecondary)
                     }
                 }
-                .chartPlotStyle { plotArea in
-                    plotArea.background(
-                        AppColors.calorie.opacity(0.025),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                }
                 .frame(height: 190)
+                // Axis labels in a fixed-height plot overlapped ("SepS26S28")
+                // at accessibility sizes; cap only the chart's type size.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(localized: "Calories chart"))
+                .accessibilityValue(String(localized: "\(dailyCalories.count) logged days. Average \(averageCalories.formatted()) kilocalories. Goal \(calorieGoal.formatted())."))
             }
         }
-        .padding()
+        .padding(14)
         .progressCardStyle()
-    }
-
-    private var calorieXStride: Int {
-        let count = dailyCalories.count
-        if count <= 7 { return 1 }
-        if count <= 30 { return 5 }
-        if count <= 90 { return 14 }
-        if count <= 180 { return 30 }
-        return 60
     }
 }
 
@@ -475,6 +140,8 @@ struct ProgressFoodRangeStats {
     let avgCarbs: Double
     let avgFat: Double
     let nutrientItems: [NutrientAverageItem]
+    /// Days in the range with at least one food entry.
+    var loggedDays: Int = 0
 
     static let empty = ProgressFoodRangeStats(
         dailyCalories: [],
@@ -488,10 +155,11 @@ struct ProgressFoodRangeStats {
         entries: [FoodEntry],
         dayCount: Int,
         profile: UserProfile,
-        optionalGoals: OptionalNutrientGoals
+        optionalGoals: OptionalNutrientGoals,
+        now: Date = .now,
+        calendar: Calendar = .current
     ) -> ProgressFoodRangeStats {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
+        let today = calendar.startOfDay(for: now)
         guard let rangeStart = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today) else {
             return .empty
         }
@@ -559,7 +227,8 @@ struct ProgressFoodRangeStats {
             avgProtein: totalP / divisor,
             avgCarbs: totalC / divisor,
             avgFat: totalF / divisor,
-            nutrientItems: nutrientItems
+            nutrientItems: nutrientItems,
+            loggedDays: loggedDays
         )
     }
 }
@@ -568,13 +237,13 @@ struct ProgressNutritionLoadingCard: View {
     var body: some View {
         HStack(spacing: 12) {
             ProgressView()
-                .tint(AppColors.calorie)
+                .tint(IronTheme.bloodText)
             Text(LocalizedDisplayText.text("Loading nutrition…", polish: "Ładowanie wartości odżywczych…"))
-                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .foregroundStyle(IronTheme.textSecondary)
             Spacer(minLength: 0)
         }
-        .padding()
+        .padding(14)
         .progressCardStyle()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(LocalizedDisplayText.text("Loading nutrition…", polish: "Ładowanie wartości odżywczych…"))
@@ -588,17 +257,28 @@ struct MacroAveragesSection: View {
     let proteinGoal: Int
     let carbsGoal: Int
     let fatGoal: Int
+    var hasLoggedDays: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Macro Averages")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+            ProgressV2SectionTitle(
+                title: String(localized: "Macro Averages"),
+                detail: hasLoggedDays ? String(localized: "Per logged day") : nil
+            )
 
-            MacroProgressRow(label: "Protein", current: avgProtein, goal: proteinGoal, unit: "g", color: AppColors.protein, gradientColors: AppColors.proteinGradient)
-            MacroProgressRow(label: "Carbs", current: avgCarbs, goal: carbsGoal, unit: "g", color: AppColors.carbs, gradientColors: AppColors.carbsGradient)
-            MacroProgressRow(label: "Fat", current: avgFat, goal: fatGoal, unit: "g", color: AppColors.fat, gradientColors: AppColors.fatGradient)
+            if hasLoggedDays {
+                MacroProgressRow(label: "Protein", current: avgProtein, goal: proteinGoal, unit: "g", color: IronTheme.bloodText, gradientColors: [IronTheme.blood])
+                MacroProgressRow(label: "Carbs", current: avgCarbs, goal: carbsGoal, unit: "g", color: IronTheme.brass, gradientColors: [IronTheme.brass])
+                MacroProgressRow(label: "Fat", current: avgFat, goal: fatGoal, unit: "g", color: IronTheme.olive, gradientColors: [IronTheme.olive])
+            } else {
+                ProgressV2EmptyState(
+                    title: String(localized: "No food logged in this range"),
+                    message: String(localized: "Protein, carbs and fat averages appear once meals are logged."),
+                    systemImage: "fork.knife"
+                )
+            }
         }
-        .padding()
+        .padding(14)
         .progressCardStyle()
     }
 }
@@ -616,22 +296,31 @@ struct NutrientAveragesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Nutrient Averages")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+            ProgressV2SectionTitle(
+                title: String(localized: "Nutrient Averages"),
+                detail: String(localized: "Per logged day")
+            )
 
-            ForEach(items) { item in
-                MacroProgressRow(
-                    label: item.label,
-                    current: item.current,
-                    goal: item.goal,
-                    unit: item.unit,
-                    color: AppColors.calorie,
-                    gradientColors: AppColors.calorieGradient,
-                    localizeLabel: false
+            if items.isEmpty {
+                ProgressV2EmptyState(
+                    title: String(localized: "No nutrients to average in this range"),
+                    systemImage: "fork.knife"
                 )
+            } else {
+                ForEach(items) { item in
+                    MacroProgressRow(
+                        label: item.label,
+                        current: item.current,
+                        goal: item.goal,
+                        unit: item.unit,
+                        color: IronTheme.textSecondary,
+                        gradientColors: [IronTheme.textSecondary],
+                        localizeLabel: false
+                    )
+                }
             }
         }
-        .padding()
+        .padding(14)
         .progressCardStyle()
     }
 }
@@ -657,30 +346,41 @@ struct MacroProgressRow: View {
         return amount
     }
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+            layout {
                 Text(localizeLabel ? LocalizedDisplayText.text(label) : label)
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
-                Spacer()
+                    .font(.system(.subheadline, weight: .semibold))
+                    .foregroundStyle(IronTheme.textPrimary)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 8)
+                }
                 Text(valueText)
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(IronTheme.textSecondary)
             }
+            .fixedSize(horizontal: false, vertical: true)
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(color.opacity(0.12))
+                    Rectangle()
+                        .fill(IronTheme.surfaceRaised)
 
-                    Capsule()
-                        .fill(LinearGradient(colors: gradientColors, startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(6, geo.size.width * progress))
-                        .shadow(color: color.opacity(0.3), radius: 4, y: 2)
+                    Rectangle()
+                        .fill(gradientColors.first ?? color)
+                        .frame(width: max(4, geo.size.width * progress))
                 }
             }
             .frame(height: 8)
+            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+            .accessibilityHidden(true)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -695,18 +395,21 @@ struct StatsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Streaks & Stats")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .font(.system(size: 13, weight: .heavy))
+                .fontWidth(.condensed)
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.textSecondary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                StatTile(icon: "flame.fill", label: "Current Streak", value: String(localized: "\(streak) days"), color: AppColors.calorie)
-                StatTile(icon: "trophy.fill", label: "Best Streak", value: String(localized: "\(bestStreak) days"), color: AppColors.carbs)
+                StatTile(icon: "flame.fill", label: "Current Streak", value: String(localized: "\(streak) days"), color: IronTheme.brass)
+                StatTile(icon: "trophy.fill", label: "Best Streak", value: String(localized: "\(bestStreak) days"), color: IronTheme.brass)
                 StatTile(icon: "target", label: "Days on Target", value: "\(daysOnTarget)", color: AppColors.protein)
                 StatTile(icon: "fork.knife", label: "Total Entries", value: "\(totalEntries)", color: AppColors.fat)
             }
         }
         .padding()
-        .background(AppColors.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .ironCard()
     }
 }
 
@@ -744,21 +447,27 @@ struct StatBadge: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .font(.system(.subheadline, weight: .bold).monospacedDigit())
+                .foregroundStyle(IronTheme.textPrimary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.5)
             Text(LocalizedDisplayText.text(label))
-                .font(.system(.caption2, design: .rounded))
-                .foregroundStyle(.secondary)
+                .font(.system(.caption2, weight: .heavy))
+                .fontWidth(.condensed)
+                .textCase(.uppercase)
+                .foregroundStyle(IronTheme.textSecondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.5)
         }
+        // Three badges share one row; beyond accessibility1 the values were
+        // truncating to "202.3…" / "Net Ch…" even at the minimum scale.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
         .padding(.vertical, 8)
         .background(
-            AppColors.calorie.opacity(0.055),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            IronTheme.surfaceRaised,
+            in: RoundedRectangle(cornerRadius: IronTheme.buttonRadius, style: .continuous)
         )
     }
 }
@@ -769,13 +478,16 @@ struct LogWeightSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("weightUnit") private var weightUnitRaw = "lbs"
     let currentWeightKg: Double
+    var previous: WeightEntry? = nil
     let onSave: (Double) -> Void
 
     @State private var wholeNumber: Int
     @State private var decimal: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentWeightKg: Double, onSave: @escaping (Double) -> Void) {
+    init(currentWeightKg: Double, previous: WeightEntry? = nil, onSave: @escaping (Double) -> Void) {
         self.currentWeightKg = currentWeightKg
+        self.previous = previous
         self.onSave = onSave
         // Respect @AppStorage at the time the sheet is created.
         let metric = UserDefaults.standard.string(forKey: "weightUnit") == "kg"
@@ -796,7 +508,7 @@ struct LogWeightSheet: View {
         useMetric ? selectedValue : selectedValue / 2.20462
     }
 
-    private var unit: String { useMetric ? "kg" : "lbs" }
+    private var unit: String { useMetric ? "kg" : "lb" }
     private var wholeRange: ClosedRange<Int> { useMetric ? 20...250 : 50...500 }
 
     var body: some View {
@@ -807,7 +519,7 @@ struct LogWeightSheet: View {
 
                 Picker("Unit", selection: $weightUnitRaw) {
                     Text("kg").tag("kg")
-                    Text("lbs").tag("lbs")
+                    Text("lb").tag("lbs")
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
@@ -857,8 +569,17 @@ struct LogWeightSheet: View {
                 }
 
                 Button {
-                    onSave(selectedKg)
-                    dismiss()
+                    let days = previous.map { max(1, Calendar.current.dateComponents([.day], from: $0.date, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.weight(newKg: selectedKg, previousKg: previous?.weightKg, days: days)
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(selectedKg)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -882,6 +603,23 @@ struct LogWeightSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .plausibilityConfirmation(
+            title: "Save \(weightPrompt)?",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                let kg = selectedKg
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "weight") }
+                onSave(kg)
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
+    }
+
+    private var weightPrompt: String {
+        String(format: "%.1f %@", selectedValue, useMetric ? "kg" : "lb")
     }
 }
 
@@ -939,7 +677,7 @@ struct AllWeightHistoryView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(displayWeight(entry.weightKg, useMetric: useMetric))
                                 .font(.system(.body, design: .rounded, weight: .medium))
-                            Text(weightHistoryFormatter.string(from: entry.date))
+                            Text(weightHistoryCaption(entry))
                                 .font(.system(.caption, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
@@ -990,6 +728,17 @@ private let weightHistoryFormatter: DateFormatter = {
     f.timeStyle = .none
     return f
 }()
+
+private func weightHistoryCaption(_ entry: WeightEntry) -> String {
+    var parts = [weightHistoryFormatter.string(from: entry.date)]
+    if entry.isLeanBodyMass {
+        parts.append("Lean body mass")
+    }
+    if let source = entry.healthSourceName {
+        parts.append(source)
+    }
+    return parts.joined(separator: " · ")
+}
 
 private func displayWeight(_ kg: Double, useMetric: Bool) -> String {
     if useMetric {
@@ -1050,7 +799,7 @@ struct AllBodyFatHistoryView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(displayBodyFat(entry.bodyFatFraction))
                                 .font(.system(.body, design: .rounded, weight: .medium))
-                            Text(weightHistoryFormatter.string(from: entry.date))
+                            Text(bodyFatHistoryCaption(entry))
                                 .font(.system(.caption, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
@@ -1095,349 +844,16 @@ struct AllBodyFatHistoryView: View {
     }
 }
 
+private func bodyFatHistoryCaption(_ entry: BodyFatEntry) -> String {
+    var parts = [weightHistoryFormatter.string(from: entry.date)]
+    if let source = entry.healthSourceName {
+        parts.append(source)
+    }
+    return parts.joined(separator: " · ")
+}
+
 private func displayBodyFat(_ fraction: Double) -> String {
     String(format: "%.1f%%", fraction * 100)
-}
-
-// MARK: - Body Metrics Section (Weight / Body Fat toggle)
-
-enum BodyMetric: String, CaseIterable, Identifiable {
-    case weight, bodyFat
-    var id: String { rawValue }
-    var displayName: String {
-        switch self {
-        case .weight: LocalizedDisplayText.text("Weight", polish: "Waga")
-        case .bodyFat: LocalizedDisplayText.text("Body Fat", polish: "Tkanka tłuszczowa")
-        }
-    }
-}
-
-/// Single card with a segmented Weight / Body Fat toggle at the top and the
-/// matching chart below — replaces the two stacked cards. The toggle is only
-/// rendered when both metrics are available; users without body-fat data see
-/// the bare WeightChartSection (no toggle, identical to the v3.1 layout) so
-/// nothing changes for users who never opted into body-fat tracking.
-struct BodyMetricsSection: View {
-    let weightEntries: [WeightEntry]
-    let goalWeightKg: Double?
-    let currentWeightKg: Double?
-    let onLogWeight: () -> Void
-
-    let bodyFatEntries: [BodyFatEntry]
-    let goalBodyFatFraction: Double?
-    let currentBodyFatFraction: Double?
-    let onLogBodyFat: () -> Void
-
-    /// True when the user has opted into body-fat tracking — drives whether
-    /// the segmented toggle renders at all.
-    let bodyFatAvailable: Bool
-
-    @State private var metric: BodyMetric = .weight
-
-    var body: some View {
-        VStack(spacing: 10) {
-            if bodyFatAvailable {
-                Picker("Metric", selection: $metric.animation(.snappy)) {
-                    ForEach(BodyMetric.allCases) { m in
-                        Text(m.displayName).tag(m)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .tint(AppColors.calorie)
-            }
-
-            // Render the active metric. Both children carry their own card
-            // background, so the parent VStack just stacks them naturally.
-            switch metric {
-            case .weight:
-                WeightChartSection(
-                    weightEntries: weightEntries,
-                    goalWeightKg: goalWeightKg,
-                    currentWeightKg: currentWeightKg,
-                    onLogWeight: onLogWeight
-                )
-                // Swipe right to flip to Body Fat (only when available).
-                .gesture(
-                    bodyFatAvailable
-                        ? DragGesture(minimumDistance: 30)
-                            .onEnded { value in
-                                if value.translation.width < -50 {
-                                    withAnimation(.snappy) { metric = .bodyFat }
-                                }
-                            }
-                        : nil
-                )
-            case .bodyFat:
-                BodyFatChartSection(
-                    entries: bodyFatEntries,
-                    goalBodyFatFraction: goalBodyFatFraction,
-                    currentBodyFatFraction: currentBodyFatFraction,
-                    onLogBodyFat: onLogBodyFat
-                )
-                // Swipe left to flip back to Weight.
-                .gesture(
-                    DragGesture(minimumDistance: 30)
-                        .onEnded { value in
-                            if value.translation.width > 50 {
-                                withAnimation(.snappy) { metric = .weight }
-                            }
-                        }
-                )
-            }
-        }
-    }
-}
-
-// MARK: - Body Fat Chart Section
-
-/// Visual twin of WeightChartSection for body-fat % readings. Goal line is
-/// drawn as a dashed RuleMark in green if `goalBodyFatFraction` is set. The
-/// goal value is purely visual — it never enters BMR / TDEE / macro math.
-struct BodyFatChartSection: View {
-    let entries: [BodyFatEntry]
-    let goalBodyFatFraction: Double?
-    let currentBodyFatFraction: Double?
-    let onLogBodyFat: () -> Void
-    @State private var inspectedPoint: TrendPoint?
-
-    private func displayPercent(_ fraction: Double) -> Double {
-        fraction * 100
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Body Fat")
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                Spacer()
-                Button(action: onLogBodyFat) {
-                    Label("Log Body Fat", systemImage: "plus.circle.fill")
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
-                        .foregroundStyle(AppColors.calorie)
-                }
-            }
-
-            if entries.isEmpty {
-                emptyState("Log your first body fat % to see trends")
-            } else {
-                HStack(spacing: 8) {
-                    if let current = currentBodyFatFraction {
-                        StatBadge(label: "Current", value: String(format: "%.1f%%", displayPercent(current)))
-                    }
-                    if let goal = goalBodyFatFraction {
-                        StatBadge(label: "Goal", value: String(format: "%.1f%%", displayPercent(goal)))
-                    }
-                    StatBadge(label: "Net Change", value: formattedBodyFatChange)
-                    StatBadge(label: "Average", value: formattedAverageBodyFat)
-                }
-
-                Chart {
-                    ForEach(plottedPoints) { point in
-                        AreaMark(
-                            x: .value("Date", point.date, unit: .day),
-                            yStart: .value("Visible range minimum", bodyFatYDomain.lowerBound),
-                            yEnd: .value("Body Fat", point.value)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [AppColors.calorie.opacity(0.12), AppColors.calorie.opacity(0.01)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .interpolationMethod(.catmullRom)
-
-                        LineMark(
-                            x: .value("Date", point.date, unit: .day),
-                            y: .value("Body Fat", point.value)
-                        )
-                        .foregroundStyle(AppColors.calorie)
-                        .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-
-                        if showsPointMarks {
-                            PointMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value("Body Fat", point.value)
-                            )
-                            .foregroundStyle(AppColors.calorie)
-                            .symbolSize(38)
-                        }
-                    }
-
-                    if let goalFraction = goalBodyFatFraction {
-                        RuleMark(y: .value("Goal", displayPercent(goalFraction)))
-                            .foregroundStyle(.green.opacity(0.7))
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                    }
-
-                    if let inspectedPoint {
-                        RuleMark(x: .value("Selected date", inspectedPoint.date))
-                            .foregroundStyle(AppColors.calorie.opacity(0.6))
-                            .lineStyle(StrokeStyle(lineWidth: 1.25, dash: [3, 3]))
-
-                        PointMark(
-                            x: .value("Selected date", inspectedPoint.date, unit: .day),
-                            y: .value("Selected body fat", inspectedPoint.value)
-                        )
-                        .foregroundStyle(.primary)
-                        .symbolSize(115)
-
-                        PointMark(
-                            x: .value("Selected date", inspectedPoint.date, unit: .day),
-                            y: .value("Selected body fat", inspectedPoint.value)
-                        )
-                        .foregroundStyle(AppColors.calorie)
-                        .symbolSize(52)
-                    }
-                }
-                .chartYScale(domain: bodyFatYDomain)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day, count: xAxis.strideDays)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6, dash: [3, 4]))
-                            .foregroundStyle(Color.primary.opacity(0.11))
-                        AxisValueLabel(format: xAxis.labelFormat)
-                            .foregroundStyle(Color.secondary)
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 5)) {
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(Color.primary.opacity(0.10))
-                        AxisValueLabel()
-                            .foregroundStyle(Color.secondary)
-                    }
-                }
-                .chartPlotStyle { plotArea in
-                    plotArea.background(
-                        AppColors.calorie.opacity(0.025),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                }
-                .frame(height: 190)
-                .clipped()
-                .chartOverlay { proxy in
-                    GeometryReader { geometry in
-                        let plotFrame = proxy.plotFrame.map { geometry[$0] }
-
-                        ZStack(alignment: .topLeading) {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .simultaneousGesture(
-                                    DragGesture(minimumDistance: 6)
-                                        .onChanged { value in
-                                            guard abs(value.translation.width) > abs(value.translation.height),
-                                                  let plotFrame else { return }
-                                            inspectBodyFat(
-                                                at: value.location.x - plotFrame.minX,
-                                                proxy: proxy,
-                                                points: plottedPoints
-                                            )
-                                        }
-                                        .onEnded { _ in
-                                            withAnimation(.easeOut(duration: 0.16)) {
-                                                inspectedPoint = nil
-                                            }
-                                        }
-                                )
-
-                            if let inspectedPoint,
-                               let plotFrame,
-                               let pointX = proxy.position(forX: inspectedPoint.date) {
-                                bodyFatInspectorLabel(for: inspectedPoint)
-                                    .fixedSize()
-                                    .position(
-                                        x: min(max(plotFrame.minX + pointX, plotFrame.minX + 56), plotFrame.maxX - 56),
-                                        y: plotFrame.minY + 26
-                                    )
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            }
-                        }
-                    }
-                }
-                .animation(.snappy(duration: 0.16), value: inspectedPoint?.date)
-            }
-        }
-        .padding()
-        .progressCardStyle()
-    }
-
-    /// Same plotting policy as WeightChartSection — raw entries for short
-    /// ranges, bucket averages once the series gets dense, dots only while
-    /// each reading is distinguishable.
-    private var plottedPoints: [TrendPoint] {
-        downsampled(sortedEntries.map { TrendPoint(date: $0.date, value: displayPercent($0.bodyFatFraction)) })
-    }
-
-    private var showsPointMarks: Bool { plottedPoints.count <= 31 }
-
-    private var xAxis: TrendXAxis {
-        TrendXAxis(first: sortedEntries.first?.date, last: sortedEntries.last?.date)
-    }
-
-    private var bodyFatYDomain: ClosedRange<Double> {
-        var values = entries.map { displayPercent($0.bodyFatFraction) }
-        if let goal = goalBodyFatFraction { values.append(displayPercent(goal)) }
-        guard let minV = values.min(), let maxV = values.max() else { return 0...60 }
-        let padding = max((maxV - minV) * 0.15, 1)
-        return max(0, minV - padding)...(maxV + padding)
-    }
-
-    private var sortedEntries: [BodyFatEntry] {
-        entries.sorted { $0.date < $1.date }
-    }
-
-    private var netBodyFatChange: Double {
-        guard let first = sortedEntries.first,
-              let last = sortedEntries.last else { return 0 }
-        return displayPercent(last.bodyFatFraction) - displayPercent(first.bodyFatFraction)
-    }
-
-    private var averageBodyFat: Double {
-        let values = sortedEntries.map { displayPercent($0.bodyFatFraction) }
-        guard !values.isEmpty else { return 0 }
-        return values.reduce(0, +) / Double(values.count)
-    }
-
-    private var formattedBodyFatChange: String {
-        let sign = netBodyFatChange > 0 ? "+" : ""
-        return String(format: "%@%.1f%%", sign, netBodyFatChange)
-    }
-
-    private var formattedAverageBodyFat: String {
-        String(format: "%.1f%%", averageBodyFat)
-    }
-
-    private func inspectBodyFat(at plotX: CGFloat, proxy: ChartProxy, points: [TrendPoint]) {
-        guard let date: Date = proxy.value(atX: plotX), !points.isEmpty else { return }
-        let nearest = points.min {
-            abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
-        }
-        guard let nearest, nearest != inspectedPoint else { return }
-
-        inspectedPoint = nearest
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    @ViewBuilder
-    private func bodyFatInspectorLabel(for point: TrendPoint) -> some View {
-        VStack(spacing: 1) {
-            Text(point.date.formatted(date: .abbreviated, time: .omitted))
-                .font(.system(.caption2, design: .rounded, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(String(format: "%.1f%%", point.value))
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(AppColors.calorie.opacity(0.22), lineWidth: 0.75)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-    }
 }
 
 // MARK: - Log Body Fat Sheet
@@ -1448,12 +864,17 @@ struct BodyFatChartSection: View {
 struct LogBodyFatSheet: View {
     @Environment(\.dismiss) private var dismiss
     let currentFraction: Double
+    var previousFraction: Double? = nil
+    var previousDate: Date? = nil
     let onSave: (Double) -> Void
 
     @State private var percentage: Int
+    @State private var plausibilityMessage: String?
 
-    init(currentFraction: Double, onSave: @escaping (Double) -> Void) {
+    init(currentFraction: Double, previousFraction: Double? = nil, previousDate: Date? = nil, onSave: @escaping (Double) -> Void) {
         self.currentFraction = currentFraction
+        self.previousFraction = previousFraction
+        self.previousDate = previousDate
         self.onSave = onSave
         _percentage = State(initialValue: Int(currentFraction * 100))
     }
@@ -1482,8 +903,22 @@ struct LogBodyFatSheet: View {
                 }
 
                 Button {
-                    onSave(Double(percentage) / 100.0)
-                    dismiss()
+                    let fraction = Double(percentage) / 100.0
+                    let days = previousDate.map { max(1, Calendar.current.dateComponents([.day], from: $0, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.bodyFat(
+                        newPercent: Double(percentage),
+                        previousPercent: previousFraction.map { $0 * 100 },
+                        days: days
+                    )
+                    Task {
+                        let visible = await PlausibilityReview.visible(flags)
+                        if visible.isEmpty {
+                            onSave(fraction)
+                            dismiss()
+                        } else {
+                            plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                        }
+                    }
                 } label: {
                     Text("Save")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -1507,16 +942,20 @@ struct LogBodyFatSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .plausibilityConfirmation(
+            title: "Save \(percentage)% body fat?",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                let fraction = Double(percentage) / 100.0
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "body fat") }
+                onSave(fraction)
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
-}
-
-// MARK: - Helpers
-
-private func emptyState(_ message: String) -> some View {
-    Text(message)
-        .font(.system(.subheadline, design: .rounded))
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, minHeight: 80)
 }
 
 // MARK: - Body Measurements
@@ -1607,7 +1046,7 @@ struct BodyMeasurementsDetailView: View {
             } header: {
                 Text("Measurements")
             } footer: {
-                Text("Optional. Fud AI turns these into waist-to-hip, waist-to-height, body-fat %, and frame size, and reads them when it recalculates your goals and in Coach.")
+                Text("Optional. JL Physical turns these into waist-to-hip, waist-to-height, body-fat %, and frame size, and reads them when it recalculates your goals and in Coach.")
             }
             .listRowBackground(AppColors.appCard)
 
@@ -1658,6 +1097,8 @@ struct BodyMeasurementsDetailView: View {
             MeasurementEditSheet(
                 site: site,
                 currentCm: latest?.value(for: site),
+                previousCm: previousMeasurement(site, in: store)?.cm,
+                previousDate: previousMeasurement(site, in: store)?.date,
                 onSave: { cm in store.setValue(site, cm: cm) },
                 onClear: { store.setValue(site, cm: nil) }
             )
@@ -1674,6 +1115,15 @@ struct BodyMeasurementsDetailView: View {
     }
 }
 
+/// Latest value for a site before today, for the plausibility check.
+private func previousMeasurement(_ site: BodyMeasurement.Site, in store: BodyMeasurementStore) -> (cm: Double, date: Date)? {
+    for entry in store.sortedEntries {
+        guard let value = entry.value(for: site), !Calendar.current.isDateInToday(entry.date) else { continue }
+        return (value, entry.date)
+    }
+    return nil
+}
+
 /// Editor for one measurement site. The cm|in switcher persists the shared
 /// length standard (same pref as the Height editor), and — matching the
 /// height/weight editors — flipping it converts the value currently on the
@@ -1681,20 +1131,29 @@ struct BodyMeasurementsDetailView: View {
 private struct MeasurementEditSheet: View {
     let site: BodyMeasurement.Site
     let hasCurrent: Bool
+    var previousCm: Double? = nil
+    var previousDate: Date? = nil
     let onSave: (Double) -> Void
     let onClear: () -> Void
 
     @AppStorage("heightUnit") private var heightUnitRaw = "ftin"
     @State private var displayValue: Int
+    @State private var plausibilityMessage: String?
+    @State private var pendingCm: Double?
+    @Environment(\.dismiss) private var dismiss
 
     init(
         site: BodyMeasurement.Site,
         currentCm: Double?,
+        previousCm: Double? = nil,
+        previousDate: Date? = nil,
         onSave: @escaping (Double) -> Void,
         onClear: @escaping () -> Void
     ) {
         self.site = site
         self.hasCurrent = currentCm != nil
+        self.previousCm = previousCm
+        self.previousDate = previousDate
         self.onSave = onSave
         self.onClear = onClear
         let metric = UserDefaults.standard.string(forKey: "heightUnit") == "cm"
@@ -1737,7 +1196,19 @@ private struct MeasurementEditSheet: View {
                 currentValue: displayValue,
                 range: useMetric ? 10...250 : 4...100,
                 step: 1,
-                onSave: { value in onSave(useMetric ? Double(value) : Double(value) * 2.54) },
+                onSave: { value in
+                    onSave(useMetric ? Double(value) : Double(value) * 2.54)
+                },
+                shouldSave: { value in
+                    let cm = useMetric ? Double(value) : Double(value) * 2.54
+                    let days = previousDate.map { max(1, Calendar.current.dateComponents([.day], from: $0, to: .now).day ?? 1) } ?? 1
+                    let flags = PlausibilityRules.measurement(newCm: cm, previousCm: previousCm, days: days)
+                    let visible = await PlausibilityReview.visible(flags)
+                    if visible.isEmpty { return true }
+                    pendingCm = cm
+                    plausibilityMessage = visible.prefix(3).map(\.message).joined(separator: "\n")
+                    return false
+                },
                 onResetToAuto: hasCurrent ? onClear : nil,
                 resetLabel: "Clear",
                 onValueChange: { displayValue = $0 }
@@ -1746,6 +1217,18 @@ private struct MeasurementEditSheet: View {
             // converted above (its selection state is set once, in init).
             .id(heightUnitRaw)
         }
+        .plausibilityConfirmation(
+            title: "Double-check before saving",
+            message: plausibilityMessage,
+            saveTitle: "Save",
+            onSave: {
+                if let pendingCm { onSave(pendingCm) }
+                plausibilityMessage = nil
+                Task { await JevRouter.shared.report(.plausibility, .userOverride, preview: "measurement") }
+                dismiss()
+            },
+            onEdit: { plausibilityMessage = nil }
+        )
     }
 }
 

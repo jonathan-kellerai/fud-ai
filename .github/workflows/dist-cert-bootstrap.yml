@@ -1,0 +1,250 @@
+# Distribution certificate bootstrap.
+#
+# The certificate's private key is generated and kept off-CI, on the operator's
+# box. Only the CSR is committed (.github/dist-cert/request.csr on branch
+# ops/dist-cert-bootstrap). This workflow asks App Store Connect for one
+# DISTRIBUTION certificate for that CSR and uploads the public certificate as
+# artifact dist-cert-public. The p12 is assembled off-CI from the private key
+# and that certificate, then saved with `gh secret set DIST_CERT_P12_BASE64`
+# and `gh secret set DIST_CERT_P12_PASSWORD`. Once those secrets exist, a run
+# verifies the stored certificate instead and creates nothing.
+#
+# This workflow never builds or uploads the app and never deletes certificates.
+# See docs/TESTFLIGHT.md "Distribution certificate".
+name: Distribution certificate bootstrap
+
+on:
+  push:
+    branches: ['ops/dist-cert-bootstrap']
+    paths:
+      - .github/dist-cert/**
+      - .github/workflows/dist-cert-bootstrap.yml
+      - .github/scripts/prepare_appstore_signing.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Create or verify the distribution certificate
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check required secrets
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        # Admin key when both new secrets are set. Otherwise the original key.
+        # Log the label only. Do not print key ids or .p8 contents.
+        admin_id="$(printf '%s' "${ADMIN_KEY_ID}" | tr -d '[:space:]')"
+        fallback_id="$(printf '%s' "${KEY_ID}" | tr -d '[:space:]')"
+        admin_key_present=0
+        fallback_key_present=0
+        if [ -n "$(printf '%s' "${ADMIN_AUTH_KEY}" | tr -d '[:space:]')" ]; then
+          admin_key_present=1
+        fi
+        if [ -n "$(printf '%s' "${AUTH_KEY}" | tr -d '[:space:]')" ]; then
+          fallback_key_present=1
+        fi
+        if [ -n "${admin_id}" ] && [ "${admin_key_present}" -eq 1 ]; then
+          chosen_id="${admin_id}"
+          label="admin"
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        elif [ -n "${fallback_id}" ] && [ "${fallback_key_present}" -eq 1 ]; then
+          chosen_id="${fallback_id}"
+          label="default"
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        else
+          echo "ERROR: Set ADMIN_KEY_ID and ADMIN_AUTH_KEY, or KEY_ID and AUTH_KEY."
+          exit 1
+        fi
+        if [ -z "${ISSUER_ID}" ]; then
+          echo "ERROR: ISSUER_ID secret is empty or not set"
+          exit 1
+        fi
+        if ! printf '%s' "${chosen_id}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: The selected API key id must be 10 letters or digits."
+          echo "Selected key id length=$(printf '%s' "${chosen_id}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        if ! printf '%s' "${ISSUER_ID}" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+          echo "ERROR: ISSUER_ID must be the Issuer ID UUID from App Store Connect → Users and Access → Integrations → Keys."
+          echo "It is not Team ID 2UMNXHG36N and not the Key ID."
+          echo "ISSUER_ID length=$(printf '%s' "${ISSUER_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+        echo "Selected API key id shape ok (10 alphanumeric). ISSUER_ID shape ok (UUID)."
+        {
+          echo "KEY_ID<<ASC_KEY_EOF"
+          printf '%s\n' "${chosen_id}"
+          echo "ASC_KEY_EOF"
+          echo "ASC_KEY_ID<<ASC_KEY_EOF"
+          printf '%s\n' "${chosen_id}"
+          echo "ASC_KEY_EOF"
+          echo "ASC_KEY_LABEL=${label}"
+        } >> "$GITHUB_ENV"
+
+    - name: Create API Key file
+      env:
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+      run: |
+        # KEY_ID and ASC_KEY_LABEL were selected in the previous step.
+        # altool reads ~/private_keys/AuthKey_<selected key id>.p8
+        if [ "${ASC_KEY_LABEL}" = "admin" ]; then
+          export AUTH_KEY="${ADMIN_AUTH_KEY}"
+          export ASC_KEY_SECRET_NAME="ADMIN_AUTH_KEY"
+          echo "Using App Store Connect API key: admin (ADMIN_KEY_ID / ADMIN_AUTH_KEY)"
+        else
+          export ASC_KEY_SECRET_NAME="AUTH_KEY"
+          echo "Using App Store Connect API key: default (KEY_ID / AUTH_KEY)"
+        fi
+        unset ADMIN_AUTH_KEY
+        if ! printf '%s' "${KEY_ID}" | grep -Eq '^[A-Za-z0-9]{10}$'; then
+          echo "ERROR: The selected API key id must be 10 letters or digits."
+          echo "Selected key id length=$(printf '%s' "${KEY_ID}" | wc -c | tr -d ' ')"
+          exit 1
+        fi
+
+        mkdir -p "${HOME}/private_keys"
+        key_file="${HOME}/private_keys/AuthKey_${KEY_ID}.p8"
+        export KEY_FILE="${key_file}"
+        python3 - << 'PY'
+        import os
+        import re
+        import sys
+        from pathlib import Path
+
+        raw = os.environ.get("AUTH_KEY", "")
+        text = raw.replace("\r\n", "\n").replace("\r", "\n")
+        if text.startswith("\ufeff"):
+            text = text.lstrip("\ufeff")
+        text = text.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+            inner = text[1:-1]
+            if "BEGIN" in inner:
+                text = inner.strip()
+        # A one-line GitHub secret sometimes stores the PEM with literal \n.
+        if "-----BEGIN" in text and text.count("\n") == 0 and "\\n" in text:
+            text = text.replace("\\n", "\n").strip()
+        if text and not text.endswith("\n"):
+            text += "\n"
+
+        Path(os.environ["KEY_FILE"]).write_text(text)
+        nonempty = [line for line in text.splitlines() if line.strip()]
+        begin = nonempty[0] if nonempty else ""
+        end = nonempty[-1] if nonempty else ""
+        begin_ok = begin in (
+            "-----BEGIN PRIVATE KEY-----",
+            "-----BEGIN EC PRIVATE KEY-----",
+        )
+        end_ok = end in (
+            "-----END PRIVATE KEY-----",
+            "-----END EC PRIVATE KEY-----",
+        )
+        body = nonempty[1:-1] if len(nonempty) >= 2 else []
+        body_ok = bool(body) and all(re.fullmatch(r"[A-Za-z0-9+/=]+", line) for line in body)
+        print(
+            f"PEM nonempty_lines={len(nonempty)} begin_ok={str(begin_ok).lower()} "
+            f"end_ok={str(end_ok).lower()} body_lines={len(body)}"
+        )
+        secret_name = os.environ.get("ASC_KEY_SECRET_NAME", "AUTH_KEY")
+        if not (begin_ok and end_ok and body_ok):
+            print(f"ERROR: {secret_name} is not a PEM private key.")
+            print(f"Paste the .p8 file into the {secret_name} secret, including the BEGIN and END lines.")
+            print("Do not add quotes around the secret, and do not paste only the base64 body.")
+            sys.exit(1)
+        PY
+        chmod 600 "${key_file}"
+        if ! openssl pkey -in "${key_file}" -noout 2>"${RUNNER_TEMP}/pkey.err"; then
+          echo "ERROR: ${ASC_KEY_SECRET_NAME} has PEM headers but OpenSSL could not read a private key."
+          sed 's/.*PRIVATE KEY.*/[redacted]/' "${RUNNER_TEMP}/pkey.err" || true
+          exit 1
+        fi
+        echo "API key file is a readable PEM private key at ~/private_keys/AuthKey_<selected key id>.p8"
+        # xcodebuild and altool also search these directories by AuthKey_<KEY_ID>.p8 name.
+        mkdir -p "${HOME}/.private_keys" "${HOME}/.appstoreconnect/private_keys"
+        cp "${key_file}" "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8"
+        cp "${key_file}" "${HOME}/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+        chmod 600 \
+          "${HOME}/.private_keys/AuthKey_${KEY_ID}.p8" \
+          "${HOME}/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+
+    - name: Create Python venv
+      run: |
+        python3 -m venv "${RUNNER_TEMP}/asc-venv"
+        "${RUNNER_TEMP}/asc-venv/bin/pip" install --disable-pip-version-check pyjwt cryptography
+
+    - name: Mode
+      env:
+        KEY_ID: ${{ secrets.KEY_ID }}
+        AUTH_KEY: ${{ secrets.AUTH_KEY }}
+        ADMIN_KEY_ID: ${{ secrets.ADMIN_KEY_ID }}
+        ADMIN_AUTH_KEY: ${{ secrets.ADMIN_AUTH_KEY }}
+        ISSUER_ID: ${{ secrets.ISSUER_ID }}
+        DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+        DIST_CERT_P12_PASSWORD: ${{ secrets.DIST_CERT_P12_PASSWORD }}
+        DIST_CERT_ID: ${{ secrets.DIST_CERT_ID }}
+      run: |
+        set -eo pipefail
+        script="${GITHUB_WORKSPACE}/.github/scripts/prepare_appstore_signing.py"
+        python="${RUNNER_TEMP}/asc-venv/bin/python"
+        # Presence only. Never print the secret values or their lengths.
+        p12_present=0
+        password_present=0
+        if [ -n "$(printf '%s' "${DIST_CERT_P12_BASE64}" | tr -d '[:space:]')" ]; then
+          p12_present=1
+        fi
+        if [ -n "$(printf '%s' "${DIST_CERT_P12_PASSWORD}" | tr -d '[:space:]')" ]; then
+          password_present=1
+        fi
+        csr=".github/dist-cert/request.csr"
+        if [ "${p12_present}" -eq 1 ] && [ "${password_present}" -eq 1 ]; then
+          echo "Mode: verify the stored distribution certificate (read-only in App Store Connect)"
+          "${python}" "${script}" --verify-stored-certificate
+        elif [ "${p12_present}" -eq 1 ] || [ "${password_present}" -eq 1 ]; then
+          echo "ERROR: Only one of DIST_CERT_P12_BASE64 / DIST_CERT_P12_PASSWORD is set."
+          echo "Refusing to create another certificate. Set both secrets (or remove both) and re-run."
+          echo "See docs/TESTFLIGHT.md \"Distribution certificate\"."
+          exit 1
+        elif [ -f "${csr}" ]; then
+          echo "Mode: create one DISTRIBUTION certificate from ${csr}"
+          unset DIST_CERT_P12_BASE64 DIST_CERT_P12_PASSWORD
+          mkdir -p "${RUNNER_TEMP}/dist-cert"
+          "${python}" "${script}" --create-certificate-from-csr "${csr}" \
+            --out "${RUNNER_TEMP}/dist-cert/certificate.json"
+        else
+          echo "ERROR: Nothing to do."
+          echo "DIST_CERT_P12_BASE64 / DIST_CERT_P12_PASSWORD are not both set, and ${csr} does not exist."
+          echo "Generate a private key and CSR off-CI, commit only the CSR to ${csr} on branch"
+          echo "ops/dist-cert-bootstrap, and push. See docs/TESTFLIGHT.md \"Distribution certificate\"."
+          exit 1
+        fi
+
+    # Public certificate only (no private key). Present only in create mode.
+    - name: Upload public certificate
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-cert-public
+        path: ${{ runner.temp }}/dist-cert/certificate.json
+        retention-days: 3
+        if-no-files-found: ignore
+
+    - name: Clean up API key
+      if: always()
+      run: |
+        rm -rf "${HOME}/private_keys"
+        rm -f "${HOME}/.private_keys"/AuthKey_*.p8
+        rm -f "${HOME}/.appstoreconnect/private_keys"/AuthKey_*.p8
+        echo "API key file removed"

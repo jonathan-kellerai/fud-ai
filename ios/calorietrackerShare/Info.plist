@@ -5,7 +5,7 @@
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_IDENTIFIER)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fud AI Import</string>
+	<string>JL Physical Import</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionAttributes</key>

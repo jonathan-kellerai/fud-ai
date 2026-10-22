@@ -13,6 +13,9 @@ struct AIErrorMessagesTests {
         #expect(AIErrorKind.classify(status: 400, raw: "Credit balance is too low") == .credits)
         #expect(AIErrorKind.classify(status: 400, raw: "INSUFFICIENT CREDITS") == .credits)
         #expect(AIErrorKind.classify(status: 404, raw: "unknown endpoint") == .modelUnavailable)
+        #expect(AIErrorKind.classify(status: 400, raw: "This model does not support image inputs") == .unsupportedImageInput)
+        #expect(AIErrorKind.classify(status: 400, raw: "image_url is only supported by certain models") == .unsupportedImageInput)
+        #expect(AIErrorKind.unsupportedImageInput.message.contains("vision model"))
         #expect(AIErrorKind.classify(status: 429, raw: "too many requests") == .rateLimited)
         for status in [503, 529] { #expect(AIErrorKind.classify(status: status, raw: "") == .overloaded) }
     }

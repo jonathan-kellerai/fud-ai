@@ -1,0 +1,341 @@
+{
+  "id": "33ab9178-ceed-40ca-89fd-5e2fce99fa28",
+  "lineage_id": "33ab9178-ceed-40ca-89fd-5e2fce99fa28",
+  "version": 1,
+  "name": "Program V3",
+  "status": "active",
+  "parent_id": null,
+  "body": {
+    "days": [
+      {
+        "name": "Lower A",
+        "weekday": "mon",
+        "day_index": 1,
+        "exercises": [
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Leg press",
+            "reps": "10-15",
+            "sets": 3,
+            "notes": "Rest: 90-120. RIR target: sets 1-2: 2-3 RIR; last set 1-2 RIR. Anchor. Full depth you own; 2-3 s lowering. Baseline: 2026-10-06: 180x12 x3 @ RIR 3/3/3. Derivation: R1: in range at RIR 3 -> hold, add reps. First session: 180 x 13-15. App key: leg press.",
+            "order": 1,
+            "rest_sec": null,
+            "load_note": "Start load: 180 lb. First session: 180 x 13-15.",
+            "substitutions": [
+              "hack squat",
+              "pendulum"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Lying or seated leg curl",
+            "reps": "10-15",
+            "sets": 3,
+            "notes": "Rest: 60-90. RIR target: 2-3 RIR, cap 1 RIR. Seated curl preferred (lengthened hamstring) if available. Baseline: 2026-10-06: 80x12 @ RIR 3/2/0. Derivation: R4: a set hit 0 RIR -> hold load, cap at 1 RIR, full rest. First session: 80 x 12-14. App key: leg curl.",
+            "order": 2,
+            "rest_sec": null,
+            "load_note": "Start load: 80 lb. First session: 80 x 12-14.",
+            "substitutions": [
+              "standing single-leg curl"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Chest-supported row",
+            "reps": "8-12",
+            "sets": 3,
+            "notes": "Rest: 90. RIR target: 2-3 RIR; last set 1-2. Baseline: 2026-09-30: 55x10 @ RIR 3/2. Derivation: R1: in range -> hold, add reps. First session: 55 x 11-12. App key: chest-supported row.",
+            "order": 3,
+            "rest_sec": null,
+            "load_note": "Start load: 55 lb. First session: 55 x 11-12.",
+            "substitutions": [
+              "seated cable row"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "CC squat ladder - step 2 Jackknife squat",
+            "reps": "10-20",
+            "sets": 2,
+            "notes": "Rest: 60. RIR target: 2-3 RIR. Bodyweight; doubles as hip mobility. Skip if over 45 min. Baseline: V2 ladder step 2 (no newer CC event visible). Derivation: CC rule: advance after 2 consecutive sessions at top of step range <=2 RIR. First session: 2 x top of range. App key: cc squat.",
+            "order": 4,
+            "rest_sec": null,
+            "load_note": "Start load: 0 (bodyweight). First session: 2 x top of range.",
+            "substitutions": [
+              "regress to step 1 if form breaks"
+            ]
+          }
+        ],
+        "conditioning": {
+          "minutes": 8,
+          "description": "8 min steady: bike or incline walk, RPE 5-6/10. Placement: FIRST. Minimum if late: 5 min. Log as: \"bike 8 min steady\". Then mobility (5 min, before lifting): 5 min mobility (hips/hamstrings): 90/90 hip switches 2x6/side, half-kneeling hip-flexor stretch 2x30 s/side, active straight-leg raise 2x8/side."
+        }
+      },
+      {
+        "name": "Upper A",
+        "weekday": "tue",
+        "day_index": 2,
+        "exercises": [
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Chest press machine",
+            "reps": "8-12",
+            "sets": 3,
+            "notes": "Rest: 90-120. RIR target: 2-3 RIR; last set 1-2. Anchor. Baseline: 2026-10-07: 100x12 @ RIR 3/3/1. Derivation: R2 would allow +5; held at 100 for the first V3 week (fresh start, intro week); auto-check after set 1. First session: 100 x 12; if set 1 is 12 @ RIR >=4 go 105. App key: chest press.",
+            "order": 1,
+            "rest_sec": null,
+            "load_note": "Start load: 100 lb. First session: 100 x 12; if set 1 is 12 @ RIR >=4 go 105.",
+            "substitutions": [
+              "chest press variant"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Lat pulldown (neutral or long bar)",
+            "reps": "10-12",
+            "sets": 3,
+            "notes": "Rest: 60-90. RIR target: 2 RIR. Baseline: 2026-09-30: 85x10 @ RIR 3/3. Derivation: R1: hold, add reps. First session: 85 x 11-12. App key: lat pulldown.",
+            "order": 2,
+            "rest_sec": null,
+            "load_note": "Start load: 85 lb. First session: 85 x 11-12.",
+            "substitutions": [
+              "assisted pull-up machine"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Overhead press machine",
+            "reps": "10-12",
+            "sets": 2,
+            "notes": "Rest: 75-90. RIR target: 2-3 RIR. Baseline: 2026-10-07: 90x12 @ RIR 3/2. Derivation: R1: top of range at RIR 2-3 -> hold; +5 when both sets 12 @ <=2. First session: 90 x 12. App key: overhead press.",
+            "order": 3,
+            "rest_sec": null,
+            "load_note": "Start load: 90 lb. First session: 90 x 12.",
+            "substitutions": [
+              "DB seated press"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Cable or DB curl",
+            "reps": "12-15",
+            "sets": 3,
+            "notes": "Rest: 60 after each pair. RIR target: 2-3 RIR. Baseline: Curl: no logged history. Pressdown 2026-10-07: 140x12 @ RIR 2. Derivation: Curl R6 pick by feel (~17-rep weight, settle at 2-3 RIR); pressdown R1 hold, add reps. First session: curl by feel; pressdown 140 x 13-15. App key: superset curl + pressdown. Superset part 1 of 2; rest 60 s after each pair.",
+            "order": 4,
+            "rest_sec": 0,
+            "load_note": "Start load: pick by feel (~17-rep weight). First session: curl by feel; pressdown 140 x 13-15.",
+            "substitutions": [
+              "EZ-bar",
+              "hammer curl; rope pressdown"
+            ],
+            "superset_group": "v3d2ss"
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Triceps pressdown",
+            "reps": "12-15",
+            "sets": 3,
+            "notes": "Rest: 60 after each pair. RIR target: 2-3 RIR. Baseline: Curl: no logged history. Pressdown 2026-10-07: 140x12 @ RIR 2. Derivation: Curl R6 pick by feel (~17-rep weight, settle at 2-3 RIR); pressdown R1 hold, add reps. First session: curl by feel; pressdown 140 x 13-15. App key: superset curl + pressdown. Superset part 2 of 2; rest 60 s after each pair.",
+            "order": 5,
+            "rest_sec": 60,
+            "load_note": "Start load: 140 lb. First session: curl by feel; pressdown 140 x 13-15.",
+            "substitutions": [
+              "EZ-bar",
+              "hammer curl; rope pressdown"
+            ],
+            "superset_group": "v3d2ss"
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "CC leg raise ladder - step 1 Knee tuck",
+            "reps": "10-25",
+            "sets": 2,
+            "notes": "Rest: 45-60. RIR target: 2-3 RIR. Skip if over 45 min. Baseline: 2026-09-15: 0x10 @ RIR 3. Derivation: CC rule. First session: 2 x 12+. App key: cc leg raise.",
+            "order": 6,
+            "rest_sec": null,
+            "load_note": "Start load: 0 (bodyweight). First session: 2 x 12+.",
+            "substitutions": []
+          }
+        ],
+        "conditioning": {
+          "minutes": 8,
+          "description": "8 min steady: bike or incline walk, RPE 5-6/10. Placement: FIRST. Minimum if late: 5 min. Log as: \"incline walk 8 min steady\". Then mobility (4 min, before lifting): 4 min: hip-flexor stretch 2x30 s/side, thoracic open-book 2x6/side, active straight-leg raise 2x8/side."
+        }
+      },
+      {
+        "name": "Lower B",
+        "weekday": "thu",
+        "day_index": 3,
+        "exercises": [
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Cable pull-through",
+            "reps": "8-12",
+            "sets": 3,
+            "notes": "Rest: 90-120. RIR target: set 1 ~3 RIR; sets 2-3 2 RIR. Anchor. Slow, deep hip hinge = loaded hamstring/hip mobility. Baseline: 2026-09-30: 35x12 x3 @ RIR 3. Derivation: R1: top of range but RIR 3 (not <=2) -> hold; +5 when 12s at <=2 RIR. First session: 35 x 12 @ 2 RIR. App key: cable pull-through.",
+            "order": 1,
+            "rest_sec": null,
+            "load_note": "Start load: 35 lb. First session: 35 x 12 @ 2 RIR.",
+            "substitutions": [
+              "DB Romanian deadlift (pick by feel)"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Hip thrust machine / glute drive",
+            "reps": "10-15",
+            "sets": 3,
+            "notes": "Rest: 90. RIR target: 2-3 RIR. Baseline: 2026-09-24: 50x10 @ RIR 3 x2 (older, V1). Derivation: R1: hold, add reps; auto-check after set 1. First session: 50 x 12-15. App key: hip thrust.",
+            "order": 2,
+            "rest_sec": null,
+            "load_note": "Start load: 50 lb. First session: 50 x 12-15.",
+            "substitutions": [
+              "glute bridge with DB"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Leg extension",
+            "reps": "12-15",
+            "sets": 2,
+            "notes": "Rest: 60-90. RIR target: 2-3 RIR. Baseline: 2026-10-06: 80x12 @ RIR 3/3. Derivation: R1: hold, add reps. First session: 80 x 13-15. App key: leg extension.",
+            "order": 3,
+            "rest_sec": null,
+            "load_note": "Start load: 80 lb. First session: 80 x 13-15.",
+            "substitutions": [
+              "split squat (pick by feel)"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "CC bridge ladder - step 1 Short bridge",
+            "reps": "10-25",
+            "sets": 2,
+            "notes": "Rest: 60-90. RIR target: 2-3 RIR. Hip extension through full range. Baseline: 2026-09-21: 0x8 @ RIR 2. Derivation: CC rule. First session: 2 x 10+. App key: cc bridge.",
+            "order": 4,
+            "rest_sec": null,
+            "load_note": "Start load: 0 (bodyweight). First session: 2 x 10+.",
+            "substitutions": []
+          }
+        ],
+        "conditioning": {
+          "minutes": 12,
+          "description": "12 min bike: 2 easy + 5 x (1 min hard RPE 7-8 / 1 min easy). Placement: FIRST. Minimum if late: 2 easy + 3 rounds. Log as: \"bike 12 min intervals\". Then mobility (4 min, before lifting): 5 min mobility (hamstrings/hips): seated or standing hamstring stretch 2x30 s/side, adductor rock-back 2x8, glute bridge hold 2x20 s."
+        }
+      },
+      {
+        "name": "Upper B",
+        "weekday": "fri",
+        "day_index": 4,
+        "exercises": [
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Incline chest press machine",
+            "reps": "10-12",
+            "sets": 3,
+            "notes": "Rest: 90. RIR target: 2-3 RIR; last set 1-2. Baseline: 2026-10-01: 100x12 x3 @ RIR 3. Derivation: R1: top of range at RIR 3 -> hold, last set to 2 RIR; +5 when 12s at <=2. First session: 100 x 12, last set 2 RIR. App key: incline chest press.",
+            "order": 1,
+            "rest_sec": null,
+            "load_note": "Start load: 100 lb. First session: 100 x 12, last set 2 RIR.",
+            "substitutions": [
+              "incline DB press"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Reverse pec deck / rear-delt machine",
+            "reps": "12-15",
+            "sets": 2,
+            "notes": "Rest: 60-75. RIR target: 2-3 RIR. Baseline: 2026-10-01: 15x12 x3 @ RIR 3. Derivation: R1: hold, add reps. First session: 15 x 13-15. App key: reverse pec deck.",
+            "order": 2,
+            "rest_sec": null,
+            "load_note": "Start load: 15 lb. First session: 15 x 13-15.",
+            "substitutions": [
+              "cable rear-delt fly"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Cable lateral raise",
+            "reps": "12-15",
+            "sets": 2,
+            "notes": "Rest: 60. RIR target: 2-3 RIR. Baseline: 2026-10-01: 15x12 x2 @ RIR 3. Derivation: R1: hold, add reps. First session: 15 x 13-15. App key: cable lateral raise.",
+            "order": 3,
+            "rest_sec": null,
+            "load_note": "Start load: 15 lb. First session: 15 x 13-15.",
+            "substitutions": [
+              "DB lateral raise"
+            ]
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Cable or DB curl",
+            "reps": "12-15",
+            "sets": 3,
+            "notes": "Rest: 60 after each pair. RIR target: 2-3 RIR. Baseline: Curl: no logged history. OH ext 2026-10-07: 20x10 @ RIR 2. Derivation: Curl R6 pick by feel; OH ext R1 hold, add reps. First session: curl by feel; OH ext 20 x 11-13. App key: superset curl + overhead ext. Superset part 1 of 2; rest 60 s after each pair.",
+            "order": 4,
+            "rest_sec": 0,
+            "load_note": "Start load: pick by feel (~17-rep weight). First session: curl by feel; OH ext 20 x 11-13.",
+            "substitutions": [
+              "EZ-bar",
+              "hammer curl; DB overhead ext"
+            ],
+            "superset_group": "v3d4ss"
+          },
+          {
+            "rir": null,
+            "rpe": null,
+            "name": "Overhead triceps extension (cable or DB)",
+            "reps": "10-15",
+            "sets": 3,
+            "notes": "Rest: 60 after each pair. RIR target: 2-3 RIR. Baseline: Curl: no logged history. OH ext 2026-10-07: 20x10 @ RIR 2. Derivation: Curl R6 pick by feel; OH ext R1 hold, add reps. First session: curl by feel; OH ext 20 x 11-13. App key: superset curl + overhead ext. Superset part 2 of 2; rest 60 s after each pair.",
+            "order": 5,
+            "rest_sec": 60,
+            "load_note": "Start load: 20 lb. First session: curl by feel; OH ext 20 x 11-13.",
+            "substitutions": [
+              "EZ-bar",
+              "hammer curl; DB overhead ext"
+            ],
+            "superset_group": "v3d4ss"
+          }
+        ],
+        "conditioning": {
+          "minutes": 10,
+          "description": "10 min steady: incline walk or bike, RPE 5-6/10. Placement: FIRST. Minimum if late: 5 min. Log as: \"incline walk 10 min steady\". Then mobility (4 min, before lifting): 4 min: 90/90 hip switches 2x6/side, hamstring stretch 2x30 s/side."
+        }
+      }
+    ],
+    "notes": "program-v3, approved 2026-10-15, starts Mon 2026-10-19 (activation is manual; V2 stays active until then). Units: lb. RIR primary. 4 days: Mon Lower A, Tue Upper A, Thu Lower B, Fri Upper B. <=45 min: conditioning first, 4-5 min hip/hamstring mobility, then lifting. 10k steps daily; CC ladders kept. Week 1 (10/19-10/25) = intro/reduction week (anchors 2 sets, accessories 1-2, 3-4 RIR); full progression from 10/26; reduction week 6 (11/23-11/29), review 11/29. Progression as V2 (double progression, +5 lb, -5 after two misses below range). Weight via Apple Health. Order beats calendar; make-up Wed or Sat.",
+    "weeks": null,
+    "start_date": "2026-10-19",
+    "rest_weekdays": [
+      "wed",
+      "sat",
+      "sun"
+    ],
+    "reduction_week": 6,
+    "daily_steps_target": 10000
+  },
+  "change_reason": "Seeded from approved Program V3 (2026-10-15). 4-day fat-loss + mobility restart; starts Mon 2026-10-19. Loaded as draft; activate on 10/19.",
+  "created_by": "seed",
+  "created_at": "2026-10-15T15:36:33.970Z",
+  "activated_at": "2026-10-18T20:17:17.316Z"
+}

@@ -6,11 +6,15 @@ import UIKit
 @Suite(.serialized)
 struct AIRequestConfigurationTests {
     @Test func settingsHubKeepsEveryFocusedCategory() {
-        #expect(ProfileSettingsCategory.allCases.count == 16)
-        #expect(Set(ProfileSettingsCategory.allCases.map(\.rawValue)).count == 16)
-        #expect(ProfileSettingsCategory.preferenceCases.count == 11)
-        #expect(ProfileSettingsCategory.appInfoCases.count == 5)
+        #expect(ProfileSettingsCategory.allCases.count == 23)
+        #expect(Set(ProfileSettingsCategory.allCases.map(\.rawValue)).count == 23)
+        #expect(ProfileSettingsCategory.preferenceCases == [.training, .foodAI, .bodyHealth, .dataSync])
+        #expect(ProfileSettingsCategory.appInfoCases == [.notifications, .about])
         #expect(ProfileSettingsCategory.allCases.compactMap(\.aboutCategory).count == 5)
+        let hidden: Set<ProfileSettingsCategory> = [.aiAccess, .appUpdates, .support, .helpFeedback, .community, .legal]
+        #expect(hidden.isSubset(of: Set(ProfileSettingsCategory.allCases)))
+        #expect(Set(ProfileSettingsCategory.preferenceCases).isDisjoint(with: hidden))
+        #expect(Set(ProfileSettingsCategory.appInfoCases).isDisjoint(with: hidden))
     }
 
     @Test func appInfoKeepsEveryFocusedCategory() {

@@ -4,7 +4,7 @@ import Foundation
 struct LogFoodIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Food"
     static let description = IntentDescription(
-        "Log a food entry in Fud AI by describing what you ate.",
+        "Log a food entry in JL Physical by describing what you ate.",
         categoryName: "Nutrition"
     )
     static let openAppWhenRun = false
@@ -62,7 +62,7 @@ struct CalorieSummaryIntent: AppIntent {
 struct LogWeightIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Weight"
     static let description = IntentDescription(
-        "Log your current weight in Fud AI.",
+        "Log your current weight in JL Physical.",
         categoryName: "Body Metrics"
     )
     static let openAppWhenRun = false
@@ -99,21 +99,21 @@ private func performQuickAction(slot: Int) -> some IntentResult {
 
 struct QuickActionOneIntent: AppIntent {
     static let title: LocalizedStringResource = "Quick Action 1"
-    static let description = IntentDescription("Open your first configurable Fud AI quick action.")
+    static let description = IntentDescription("Open your first configurable JL Physical quick action.")
     static let openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult { performQuickAction(slot: 0) }
 }
 
 struct QuickActionTwoIntent: AppIntent {
     static let title: LocalizedStringResource = "Quick Action 2"
-    static let description = IntentDescription("Open your second configurable Fud AI quick action.")
+    static let description = IntentDescription("Open your second configurable JL Physical quick action.")
     static let openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult { performQuickAction(slot: 1) }
 }
 
 struct QuickActionThreeIntent: AppIntent {
     static let title: LocalizedStringResource = "Quick Action 3"
-    static let description = IntentDescription("Open your third configurable Fud AI quick action.")
+    static let description = IntentDescription("Open your third configurable JL Physical quick action.")
     static let openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult { performQuickAction(slot: 2) }
 }

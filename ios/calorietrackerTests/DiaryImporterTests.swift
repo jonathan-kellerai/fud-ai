@@ -69,6 +69,13 @@ struct DiaryImporterTests {
         #expect(imported.imageFilename == "meal.jpg")
     }
 
+    @Test func jlPhysicalExportAppIsAccepted() throws {
+        let renamed = validDiary.replacingOccurrences(of: "\"app\": \"Fud AI\"", with: "\"app\": \"JL Physical\"")
+        let preview = try DiaryImporter.parse(Data(renamed.utf8))
+        #expect(preview.entryCount == 1)
+        #expect(preview.entries.first?.name == "Rice bowl")
+    }
+
     @Test func legacyFoodDiaryPreservesWater() throws {
         let preview = try DiaryImporter.parse(Data(validDiary.utf8))
         let water = WaterEntry(date: preview.startDate, milliliters: 250)

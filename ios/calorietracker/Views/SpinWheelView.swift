@@ -83,9 +83,9 @@ struct SpinWheelView: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(hex: 0x8B2942),
-                    Color(hex: 0xFF375F),
-                    Color(hex: 0x8B2942)
+                    IronTheme.bloodPressed,
+                    IronTheme.blood,
+                    IronTheme.bloodPressed
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -139,10 +139,10 @@ struct SpinWheelView: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(hex: 0x2A2A2A),
-                    Color(hex: 0x1A1A1A),
-                    Color(hex: 0x333333),
-                    Color(hex: 0x1A1A1A)
+                    IronTheme.surfaceRaised,
+                    IronTheme.canvas,
+                    IronTheme.hairline,
+                    IronTheme.surface
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing

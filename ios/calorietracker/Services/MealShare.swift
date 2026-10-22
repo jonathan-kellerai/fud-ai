@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 /// Encodes/decodes a logged meal into a `fudai://add-meal?d=<base64url>` deep link so it
-/// can be shared (AirDrop, Messages, any app) and imported directly into Fud AI — including
+/// can be shared (AirDrop, Messages, any app) and imported directly into JL Physical — including
 /// cross-platform. The payload schema is byte-identical to the Android `MealShare`, so a
 /// link produced on one platform imports on the other.
 enum MealShare {
@@ -82,7 +82,7 @@ enum MealShare {
         }
         if let link = shareLink ?? link(for: entries) {
             lines.append("")
-            lines.append("Open in Fud AI to add:")
+            lines.append("Open in JL Physical to add:")
             lines.append(link.absoluteString)
         }
         return lines.joined(separator: "\n")

@@ -615,6 +615,7 @@ struct CalorieGauge: View {
                     .textCase(.uppercase)
                     .tracking(0.5)
                     .foregroundStyle(.secondary)
+                    .avoidsMidWordBreak()
 
                 Text(eaten.formatted())
                     .font(.system(size: 50, weight: .bold, design: .rounded))

@@ -111,12 +111,12 @@
         }
       }
     },
-    "Removes the Fud AI file from iCloud. This iPhone is unchanged.": {
+    "Removes the JL Physical file from iCloud. This iPhone is unchanged.": {
       "localizations": {
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Видаляє файл Fud AI з iCloud. Цей iPhone залишається без змін."
+            "value": "Видаляє файл JL Physical з iCloud. Цей iPhone залишається без змін."
           }
         }
       }
@@ -3504,109 +3504,109 @@
         }
       }
     },
-    "Fud AI is now completely free — the optional Premium subscription has been removed.": {
+    "JL Physical is now completely free — the optional Premium subscription has been removed.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أصبح Fud AI الآن مجانيًا بالكامل — تمت إزالة اشتراك Premium الاختياري."
+            "value": "أصبح JL Physical الآن مجانيًا بالكامل — تمت إزالة اشتراك Premium الاختياري."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI artıq tamamilə pulsuzdur — istəyə bağlı Premium abunəliyi silindi."
+            "value": "JL Physical artıq tamamilə pulsuzdur — istəyə bağlı Premium abunəliyi silindi."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI ist jetzt komplett kostenlos — das optionale Premium-Abo wurde entfernt."
+            "value": "JL Physical ist jetzt komplett kostenlos — das optionale Premium-Abo wurde entfernt."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI ahora es completamente gratis — se ha eliminado la suscripción Premium opcional."
+            "value": "JL Physical ahora es completamente gratis — se ha eliminado la suscripción Premium opcional."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI est désormais entièrement gratuit — l'abonnement Premium optionnel a été supprimé."
+            "value": "JL Physical est désormais entièrement gratuit — l'abonnement Premium optionnel a été supprimé."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI अब पूरी तरह मुफ़्त है — वैकल्पिक Premium सब्सक्रिप्शन हटा दिया गया है।"
+            "value": "JL Physical अब पूरी तरह मुफ़्त है — वैकल्पिक Premium सब्सक्रिप्शन हटा दिया गया है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI ora è completamente gratis — l'abbonamento Premium opzionale è stato rimosso."
+            "value": "JL Physical ora è completamente gratis — l'abbonamento Premium opzionale è stato rimosso."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIが完全に無料になりました — オプションのPremiumサブスクリプションは廃止されました。"
+            "value": "JL Physicalが完全に無料になりました — オプションのPremiumサブスクリプションは廃止されました。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI가 이제 완전 무료예요 — 선택 사항이던 Premium 구독은 사라졌어요."
+            "value": "JL Physical가 이제 완전 무료예요 — 선택 사항이던 Premium 구독은 사라졌어요."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI is nu volledig gratis — het optionele Premium-abonnement is verwijderd."
+            "value": "JL Physical is nu volledig gratis — het optionele Premium-abonnement is verwijderd."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI jest teraz całkowicie darmowe — opcjonalna subskrypcja Premium została usunięta."
+            "value": "JL Physical jest teraz całkowicie darmowe — opcjonalna subskrypcja Premium została usunięta."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Fud AI agora é totalmente gratuito — a assinatura Premium opcional foi removida."
+            "value": "O JL Physical agora é totalmente gratuito — a assinatura Premium opcional foi removida."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI este acum complet gratuit — abonamentul Premium opțional a fost eliminat."
+            "value": "JL Physical este acum complet gratuit — abonamentul Premium opțional a fost eliminat."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI теперь полностью бесплатное — необязательная подписка Premium удалена."
+            "value": "JL Physical теперь полностью бесплатное — необязательная подписка Premium удалена."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI теперь полностью бесплатное — необязательная подписка Premium удалена."
+            "value": "JL Physical теперь полностью бесплатное — необязательная подписка Premium удалена."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 现在完全免费 — 可选的高级版订阅已移除。"
+            "value": "JL Physical 现在完全免费 — 可选的高级版订阅已移除。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI je teď úplně zdarma — volitelné předplatné Premium bylo odstraněno."
+            "value": "JL Physical je teď úplně zdarma — volitelné předplatné Premium bylo odstraněno."
           }
         }
       }
@@ -6735,108 +6735,108 @@
         }
       }
     },
-    "About once a week when you open the app, Fud AI automatically re-runs the full goal calculation — the same one the Recalculate button uses — from your profile, recent logged food, and weight trend. If Energy Burn is on, it uses your measured burn as the maintenance anchor. It skips silently if the AI is unavailable. Turning this off restores the targets from before Adaptive Goals first changed them. This is not medical advice.": {
+    "About once a week when you open the app, JL Physical automatically re-runs the full goal calculation — the same one the Recalculate button uses — from your profile, recent logged food, and weight trend. If Energy Burn is on, it uses your measured burn as the maintenance anchor. It skips silently if the AI is unavailable. Turning this off restores the targets from before Adaptive Goals first changed them. This is not medical advice.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "مرة واحدة تقريبًا في الأسبوع عند فتح التطبيق، يعيد Fud AI تلقائيًا تشغيل حساب الأهداف الكامل — وهو نفس الحساب الذي يستخدمه زر إعادة الحساب — استنادًا إلى ملفك الشخصي والطعام المسجّل مؤخرًا واتجاه وزنك. إذا كان Energy Burn مفعّلًا، يُستخدم حرقك المقاس كمرجع لسعرات الثبات. إذا لم يكن الذكاء الاصطناعي متاحًا، يتم التخطي بصمت. عند إيقاف هذه الميزة تُستعاد الأهداف التي كانت قبل أول تغيير أجرته. هذه ليست نصيحة طبية."
+            "value": "مرة واحدة تقريبًا في الأسبوع عند فتح التطبيق، يعيد JL Physical تلقائيًا تشغيل حساب الأهداف الكامل — وهو نفس الحساب الذي يستخدمه زر إعادة الحساب — استنادًا إلى ملفك الشخصي والطعام المسجّل مؤخرًا واتجاه وزنك. إذا كان Energy Burn مفعّلًا، يُستخدم حرقك المقاس كمرجع لسعرات الثبات. إذا لم يكن الذكاء الاصطناعي متاحًا، يتم التخطي بصمت. عند إيقاف هذه الميزة تُستعاد الأهداف التي كانت قبل أول تغيير أجرته. هذه ليست نصيحة طبية."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Təxminən həftədə bir dəfə, tətbiqi açanda Fud AI profilinizə, son qeyd olunmuş yeməklərə və çəki trendinizə əsasən tam hədəf hesablamasını — Yenidən Hesabla düyməsinin istifadə etdiyi eyni hesablamanı — avtomatik yenidən işə salır. Energy Burn aktivdirsə, ölçülmüş sərfiyyatınız saxlanma kalorisi üçün istinad kimi istifadə olunur. Sİ əlçatan olmadıqda addım səssizcə ötürülür. Bunu söndürdükdə bu funksiyanın ilk dəyişikliyindən əvvəlki hədəflər bərpa olunur. Bu, tibbi məsləhət deyil."
+            "value": "Təxminən həftədə bir dəfə, tətbiqi açanda JL Physical profilinizə, son qeyd olunmuş yeməklərə və çəki trendinizə əsasən tam hədəf hesablamasını — Yenidən Hesabla düyməsinin istifadə etdiyi eyni hesablamanı — avtomatik yenidən işə salır. Energy Burn aktivdirsə, ölçülmüş sərfiyyatınız saxlanma kalorisi üçün istinad kimi istifadə olunur. Sİ əlçatan olmadıqda addım səssizcə ötürülür. Bunu söndürdükdə bu funksiyanın ilk dəyişikliyindən əvvəlki hədəflər bərpa olunur. Bu, tibbi məsləhət deyil."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Etwa einmal pro Woche führt Fud AI beim Öffnen der App automatisch die vollständige Zielberechnung erneut aus — dieselbe wie die Schaltfläche „Neu berechnen“ — auf Basis deines Profils, deiner zuletzt protokollierten Mahlzeiten und deines Gewichtstrends. Wenn Energy Burn aktiviert ist, dient dein gemessener Verbrauch als Erhaltungs-Anker. Ist die KI nicht verfügbar, wird der Lauf still übersprungen. Beim Ausschalten werden die Ziele von vor der ersten Änderung durch diese Funktion wiederhergestellt. Dies ist keine medizinische Beratung."
+            "value": "Etwa einmal pro Woche führt JL Physical beim Öffnen der App automatisch die vollständige Zielberechnung erneut aus — dieselbe wie die Schaltfläche „Neu berechnen“ — auf Basis deines Profils, deiner zuletzt protokollierten Mahlzeiten und deines Gewichtstrends. Wenn Energy Burn aktiviert ist, dient dein gemessener Verbrauch als Erhaltungs-Anker. Ist die KI nicht verfügbar, wird der Lauf still übersprungen. Beim Ausschalten werden die Ziele von vor der ersten Änderung durch diese Funktion wiederhergestellt. Dies ist keine medizinische Beratung."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aproximadamente una vez a la semana, al abrir la app, Fud AI vuelve a ejecutar automáticamente el cálculo completo de objetivos — el mismo que usa el botón Recalcular — a partir de tu perfil, tus comidas registradas recientes y tu tendencia de peso. Si Energy Burn está activado, usa tu gasto medido como ancla de mantenimiento. Si la IA no está disponible, se omite silenciosamente. Al desactivarlo se restauran los objetivos previos al primer cambio hecho por esta función. Esto no es un consejo médico."
+            "value": "Aproximadamente una vez a la semana, al abrir la app, JL Physical vuelve a ejecutar automáticamente el cálculo completo de objetivos — el mismo que usa el botón Recalcular — a partir de tu perfil, tus comidas registradas recientes y tu tendencia de peso. Si Energy Burn está activado, usa tu gasto medido como ancla de mantenimiento. Si la IA no está disponible, se omite silenciosamente. Al desactivarlo se restauran los objetivos previos al primer cambio hecho por esta función. Esto no es un consejo médico."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Environ une fois par semaine, à l'ouverture de l'app, Fud AI relance automatiquement le calcul complet des objectifs — le même que le bouton Recalculer — à partir de votre profil, de vos repas récemment enregistrés et de votre tendance de poids. Si Energy Burn est activé, votre dépense mesurée sert d'ancre de maintenance. Si l'IA est indisponible, l'exécution est ignorée silencieusement. La désactivation restaure les objectifs antérieurs au premier changement effectué par cette fonction. Ceci n'est pas un avis médical."
+            "value": "Environ une fois par semaine, à l'ouverture de l'app, JL Physical relance automatiquement le calcul complet des objectifs — le même que le bouton Recalculer — à partir de votre profil, de vos repas récemment enregistrés et de votre tendance de poids. Si Energy Burn est activé, votre dépense mesurée sert d'ancre de maintenance. Si l'IA est indisponible, l'exécution est ignorée silencieusement. La désactivation restaure les objectifs antérieurs au premier changement effectué par cette fonction. Ceci n'est pas un avis médical."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "हफ़्ते में लगभग एक बार, ऐप खोलने पर Fud AI आपकी प्रोफ़ाइल, हाल में लॉग किए गए खाने और वज़न के ट्रेंड के आधार पर पूरा लक्ष्य कैलकुलेशन अपने आप दोबारा चलाता है — वही जो पुनः गणना करें बटन चलाता है। अगर Energy Burn चालू है, तो आपकी मापी गई बर्न को मेंटेनेंस का आधार बनाया जाता है। AI उपलब्ध न होने पर यह चुपचाप छूट जाता है। इसे बंद करने पर वे लक्ष्य वापस आ जाते हैं जो इस फ़ीचर के पहले बदलाव से पहले थे। यह चिकित्सा सलाह नहीं है।"
+            "value": "हफ़्ते में लगभग एक बार, ऐप खोलने पर JL Physical आपकी प्रोफ़ाइल, हाल में लॉग किए गए खाने और वज़न के ट्रेंड के आधार पर पूरा लक्ष्य कैलकुलेशन अपने आप दोबारा चलाता है — वही जो पुनः गणना करें बटन चलाता है। अगर Energy Burn चालू है, तो आपकी मापी गई बर्न को मेंटेनेंस का आधार बनाया जाता है। AI उपलब्ध न होने पर यह चुपचाप छूट जाता है। इसे बंद करने पर वे लक्ष्य वापस आ जाते हैं जो इस फ़ीचर के पहले बदलाव से पहले थे। यह चिकित्सा सलाह नहीं है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Circa una volta a settimana, all'apertura dell'app, Fud AI riesegue automaticamente il calcolo completo degli obiettivi — lo stesso del pulsante Ricalcola — in base al tuo profilo, ai pasti registrati di recente e al trend del peso. Se Energy Burn è attivo, usa il tuo consumo misurato come àncora di mantenimento. Se l'IA non è disponibile, l'esecuzione viene saltata in silenzio. Disattivandolo vengono ripristinati gli obiettivi precedenti alla prima modifica fatta da questa funzione. Questo non è un consiglio medico."
+            "value": "Circa una volta a settimana, all'apertura dell'app, JL Physical riesegue automaticamente il calcolo completo degli obiettivi — lo stesso del pulsante Ricalcola — in base al tuo profilo, ai pasti registrati di recente e al trend del peso. Se Energy Burn è attivo, usa il tuo consumo misurato come àncora di mantenimento. Se l'IA non è disponibile, l'esecuzione viene saltata in silenzio. Disattivandolo vengono ripristinati gli obiettivi precedenti alla prima modifica fatta da questa funzione. Questo non è un consiglio medico."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "週に1回ほど、アプリを開いたときに、Fud AIがプロフィール・最近の食事記録・体重トレンドをもとに、「再計算」ボタンと同じ目標計算全体を自動で再実行します。Energy Burnがオンの場合は、実測の消費カロリーを維持カロリーの基準として使います。AIが利用できないときは何もせずスキップします。オフにすると、この機能が最初に変更する前の目標に戻ります。これは医療アドバイスではありません。"
+            "value": "週に1回ほど、アプリを開いたときに、JL Physicalがプロフィール・最近の食事記録・体重トレンドをもとに、「再計算」ボタンと同じ目標計算全体を自動で再実行します。Energy Burnがオンの場合は、実測の消費カロリーを維持カロリーの基準として使います。AIが利用できないときは何もせずスキップします。オフにすると、この機能が最初に変更する前の目標に戻ります。これは医療アドバイスではありません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "일주일에 한 번 정도 앱을 열 때 Fud AI가 프로필, 최근 기록한 음식, 체중 추세를 바탕으로 전체 목표 계산을 자동으로 다시 실행합니다 — 다시 계산 버튼과 동일한 계산입니다. Energy Burn이 켜져 있으면 측정된 소모 칼로리를 유지 기준으로 사용합니다. AI를 사용할 수 없으면 조용히 건너뜁니다. 끄면 이 기능이 처음 변경하기 전의 목표로 복원됩니다. 이는 의학적 조언이 아닙니다."
+            "value": "일주일에 한 번 정도 앱을 열 때 JL Physical가 프로필, 최근 기록한 음식, 체중 추세를 바탕으로 전체 목표 계산을 자동으로 다시 실행합니다 — 다시 계산 버튼과 동일한 계산입니다. Energy Burn이 켜져 있으면 측정된 소모 칼로리를 유지 기준으로 사용합니다. AI를 사용할 수 없으면 조용히 건너뜁니다. 끄면 이 기능이 처음 변경하기 전의 목표로 복원됩니다. 이는 의학적 조언이 아닙니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ongeveer één keer per week, wanneer je de app opent, voert Fud AI automatisch de volledige doelberekening opnieuw uit — dezelfde als de knop Opnieuw berekenen — op basis van je profiel, recent gelogde voeding en je gewichtstrend. Als Energy Burn aanstaat, wordt je gemeten verbruik gebruikt als onderhoudsanker. Als de AI niet beschikbaar is, wordt de run stilletjes overgeslagen. Bij uitschakelen worden de doelen hersteld van vóór de eerste wijziging door deze functie. Dit is geen medisch advies."
+            "value": "Ongeveer één keer per week, wanneer je de app opent, voert JL Physical automatisch de volledige doelberekening opnieuw uit — dezelfde als de knop Opnieuw berekenen — op basis van je profiel, recent gelogde voeding en je gewichtstrend. Als Energy Burn aanstaat, wordt je gemeten verbruik gebruikt als onderhoudsanker. Als de AI niet beschikbaar is, wordt de run stilletjes overgeslagen. Bij uitschakelen worden de doelen hersteld van vóór de eerste wijziging door deze functie. Dit is geen medisch advies."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mniej więcej raz w tygodniu, po otwarciu aplikacji, Fud AI automatycznie ponawia pełne obliczanie celów — to samo, którego używa przycisk Przelicz — na podstawie Twojego profilu, ostatnio zapisanych posiłków i trendu wagi. Jeśli Energy Burn jest włączone, zmierzone spalanie służy jako punkt odniesienia podtrzymania. Gdy AI jest niedostępne, uruchomienie jest pomijane po cichu. Wyłączenie przywraca cele sprzed pierwszej zmiany dokonanej przez tę funkcję. To nie jest porada medyczna."
+            "value": "Mniej więcej raz w tygodniu, po otwarciu aplikacji, JL Physical automatycznie ponawia pełne obliczanie celów — to samo, którego używa przycisk Przelicz — na podstawie Twojego profilu, ostatnio zapisanych posiłków i trendu wagi. Jeśli Energy Burn jest włączone, zmierzone spalanie służy jako punkt odniesienia podtrzymania. Gdy AI jest niedostępne, uruchomienie jest pomijane po cichu. Wyłączenie przywraca cele sprzed pierwszej zmiany dokonanej przez tę funkcję. To nie jest porada medyczna."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cerca de uma vez por semana, ao abrir o app, o Fud AI reexecuta automaticamente o cálculo completo de metas — o mesmo do botão Recalcular — com base no seu perfil, nas refeições registradas recentemente e na tendência de peso. Se o Energy Burn estiver ativado, usa seu gasto medido como âncora de manutenção. Se a IA estiver indisponível, a execução é ignorada silenciosamente. Ao desativar, são restauradas as metas de antes da primeira alteração feita por este recurso. Isto não é aconselhamento médico."
+            "value": "Cerca de uma vez por semana, ao abrir o app, o JL Physical reexecuta automaticamente o cálculo completo de metas — o mesmo do botão Recalcular — com base no seu perfil, nas refeições registradas recentemente e na tendência de peso. Se o Energy Burn estiver ativado, usa seu gasto medido como âncora de manutenção. Se a IA estiver indisponível, a execução é ignorada silenciosamente. Ao desativar, são restauradas as metas de antes da primeira alteração feita por este recurso. Isto não é aconselhamento médico."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aproximativ o dată pe săptămână, la deschiderea aplicației, Fud AI reia automat calculul complet al obiectivelor — același folosit de butonul Recalculează — pe baza profilului tău, a alimentelor înregistrate recent și a tendinței greutății. Dacă Energy Burn este activat, consumul tău măsurat este folosit ca ancoră de întreținere. Dacă IA nu este disponibilă, rularea este omisă silențios. Dezactivarea restaurează obiectivele de dinainte de prima modificare făcută de această funcție. Acesta nu este un sfat medical."
+            "value": "Aproximativ o dată pe săptămână, la deschiderea aplicației, JL Physical reia automat calculul complet al obiectivelor — același folosit de butonul Recalculează — pe baza profilului tău, a alimentelor înregistrate recent și a tendinței greutății. Dacă Energy Burn este activat, consumul tău măsurat este folosit ca ancoră de întreținere. Dacă IA nu este disponibilă, rularea este omisă silențios. Dezactivarea restaurează obiectivele de dinainte de prima modificare făcută de această funcție. Acesta nu este un sfat medical."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Примерно раз в неделю при открытии приложения Fud AI автоматически заново выполняет полный расчёт целей — тот же, что и кнопка «Пересчитать», — на основе вашего профиля, недавно записанной еды и тренда веса. Если включён Energy Burn, измеренный расход используется как ориентир поддержания. Если ИИ недоступен, запуск тихо пропускается. При выключении восстанавливаются цели, действовавшие до первого изменения этой функцией. Это не медицинская рекомендация."
+            "value": "Примерно раз в неделю при открытии приложения JL Physical автоматически заново выполняет полный расчёт целей — тот же, что и кнопка «Пересчитать», — на основе вашего профиля, недавно записанной еды и тренда веса. Если включён Energy Burn, измеренный расход используется как ориентир поддержания. Если ИИ недоступен, запуск тихо пропускается. При выключении восстанавливаются цели, действовавшие до первого изменения этой функцией. Это не медицинская рекомендация."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Приблизно раз на тиждень, коли ви відкриваєте застосунок, Fud AI автоматично повторно запускає повний розрахунок цілей — той самий, що й кнопка «Перерахувати» — на основі вашого профілю, останніх записаних прийомів їжі та динаміки ваги. Якщо ввімкнено «Спалювання енергії», він використовує виміряне спалювання як основу. Процес тихо пропускається, якщо ШІ недоступний. Вимкнення цієї функції відновлює цілі, які були до того, як Адаптивні цілі змінили їх уперше. Це не є медичною порадою."
+            "value": "Приблизно раз на тиждень, коли ви відкриваєте застосунок, JL Physical автоматично повторно запускає повний розрахунок цілей — той самий, що й кнопка «Перерахувати» — на основі вашого профілю, останніх записаних прийомів їжі та динаміки ваги. Якщо ввімкнено «Спалювання енергії», він використовує виміряне спалювання як основу. Процес тихо пропускається, якщо ШІ недоступний. Вимкнення цієї функції відновлює цілі, які були до того, як Адаптивні цілі змінили їх уперше. Це не є медичною порадою."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "大约每周一次，当你打开应用时，Fud AI 会根据你的资料、最近记录的饮食和体重趋势，自动重新运行完整的目标计算（与“重新计算”按钮相同）。如果已开启 Energy Burn，则会以实测消耗作为维持热量的基准。若 AI 不可用则静默跳过。关闭后会恢复到该功能首次更改前的目标。这不是医疗建议。"
+            "value": "大约每周一次，当你打开应用时，JL Physical 会根据你的资料、最近记录的饮食和体重趋势，自动重新运行完整的目标计算（与“重新计算”按钮相同）。如果已开启 Energy Burn，则会以实测消耗作为维持热量的基准。若 AI 不可用则静默跳过。关闭后会恢复到该功能首次更改前的目标。这不是医疗建议。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Přibližně jednou týdně při otevření aplikace Fud AI automaticky znovu spustí celý výpočet cílů — stejný, jaký používá tlačítko Přepočítat — z tvého profilu, nedávno zapsaného jídla a trendu váhy. Pokud je zapnutá Spálená energie, použije jako základ udržovacího příjmu naměřený výdej. Když AI není dostupná, kontrola se tiše přeskočí. Vypnutím se obnoví hodnoty z doby, než je Adaptivní cíle poprvé změnily. Nejde o lékařské doporučení."
+            "value": "Přibližně jednou týdně při otevření aplikace JL Physical automaticky znovu spustí celý výpočet cílů — stejný, jaký používá tlačítko Přepočítat — z tvého profilu, nedávno zapsaného jídla a trendu váhy. Pokud je zapnutá Spálená energie, použije jako základ udržovacího příjmu naměřený výdej. Když AI není dostupná, kontrola se tiše přeskočí. Vypnutím se obnoví hodnoty z doby, než je Adaptivní cíle poprvé změnily. Nejde o lékařské doporučení."
           }
         }
       }
@@ -10772,109 +10772,109 @@
         }
       }
     },
-    "Before Fud AI sends data to a third-party AI provider, we need your permission.": {
+    "Before JL Physical sends data to a third-party AI provider, we need your permission.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "قبل أن يرسل Fud AI البيانات إلى مزوّد ذكاء اصطناعي خارجي، نحتاج إلى إذنك."
+            "value": "قبل أن يرسل JL Physical البيانات إلى مزوّد ذكاء اصطناعي خارجي، نحتاج إلى إذنك."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI üçüncü tərəf AI provayderinə məlumat göndərməzdən əvvəl icazəniz lazımdır."
+            "value": "JL Physical üçüncü tərəf AI provayderinə məlumat göndərməzdən əvvəl icazəniz lazımdır."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bevor Fud AI Daten an einen externen KI-Anbieter sendet, benötigen wir deine Zustimmung."
+            "value": "Bevor JL Physical Daten an einen externen KI-Anbieter sendet, benötigen wir deine Zustimmung."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Antes de que Fud AI envíe datos a un proveedor de IA externo, necesitamos tu permiso."
+            "value": "Antes de que JL Physical envíe datos a un proveedor de IA externo, necesitamos tu permiso."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Avant que Fud AI n'envoie des données à un fournisseur d'IA tiers, nous avons besoin de votre autorisation."
+            "value": "Avant que JL Physical n'envoie des données à un fournisseur d'IA tiers, nous avons besoin de votre autorisation."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI द्वारा किसी तृतीय-पक्ष AI प्रदाता को डेटा भेजने से पहले, हमें आपकी अनुमति चाहिए।"
+            "value": "JL Physical द्वारा किसी तृतीय-पक्ष AI प्रदाता को डेटा भेजने से पहले, हमें आपकी अनुमति चाहिए।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prima che Fud AI invii dati a un fornitore di IA di terze parti, abbiamo bisogno del tuo permesso."
+            "value": "Prima che JL Physical invii dati a un fornitore di IA di terze parti, abbiamo bisogno del tuo permesso."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIがサードパーティのAIプロバイダーにデータを送信する前に、許可が必要です。"
+            "value": "JL PhysicalがサードパーティのAIプロバイダーにデータを送信する前に、許可が必要です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI가 타사 AI 제공업체로 데이터를 보내기 전에 사용자의 동의가 필요합니다."
+            "value": "JL Physical가 타사 AI 제공업체로 데이터를 보내기 전에 사용자의 동의가 필요합니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Voordat Fud AI gegevens naar een externe AI-provider stuurt, hebben we je toestemming nodig."
+            "value": "Voordat JL Physical gegevens naar een externe AI-provider stuurt, hebben we je toestemming nodig."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zanim Fud AI wyśle dane do zewnętrznego dostawcy AI, potrzebujemy Twojej zgody."
+            "value": "Zanim JL Physical wyśle dane do zewnętrznego dostawcy AI, potrzebujemy Twojej zgody."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Antes de o Fud AI enviar dados para um provedor de IA de terceiros, precisamos da sua permissão."
+            "value": "Antes de o JL Physical enviar dados para um provedor de IA de terceiros, precisamos da sua permissão."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Înainte ca Fud AI să trimită date către un furnizor de IA terț, avem nevoie de permisiunea ta."
+            "value": "Înainte ca JL Physical să trimită date către un furnizor de IA terț, avem nevoie de permisiunea ta."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Прежде чем Fud AI отправит данные стороннему провайдеру ИИ, нам нужно ваше разрешение."
+            "value": "Прежде чем JL Physical отправит данные стороннему провайдеру ИИ, нам нужно ваше разрешение."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Прежде чем Fud AI отправит данние стороннему провайдеру ШІ, нам нужно ваше разрешение."
+            "value": "Прежде чем JL Physical отправит данние стороннему провайдеру ШІ, нам нужно ваше разрешение."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Fud AI 向第三方 AI 提供商发送数据之前,我们需要获得你的许可。"
+            "value": "在 JL Physical 向第三方 AI 提供商发送数据之前,我们需要获得你的许可。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Než Fud AI odešle data AI poskytovateli třetí strany, potřebujeme tvůj souhlas."
+            "value": "Než JL Physical odešle data AI poskytovateli třetí strany, potřebujeme tvůj souhlas."
           }
         }
       }
@@ -21085,499 +21085,499 @@
         }
       }
     },
-    "Fud AI — AI Calorie Tracker": {
+    "JL Physical — AI Calorie Tracker": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — متتبع السعرات الحرارية بالذكاء الاصطناعي"
+            "value": "JL Physical — متتبع السعرات الحرارية بالذكاء الاصطناعي"
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — Süni Zəkalı Kalori İzləyicisi"
+            "value": "JL Physical — Süni Zəkalı Kalori İzləyicisi"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — KI-Kalorienzähler"
+            "value": "JL Physical — KI-Kalorienzähler"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AI Calorie Tracker"
+            "value": "JL Physical — AI Calorie Tracker"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — Contador de calorías con IA"
+            "value": "JL Physical — Contador de calorías con IA"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — Suivi des calories par IA"
+            "value": "JL Physical — Suivi des calories par IA"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AI कैलोरी ट्रैकर"
+            "value": "JL Physical — AI कैलोरी ट्रैकर"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — Contatore di calorie con IA"
+            "value": "JL Physical — Contatore di calorie con IA"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AIカロリートラッカー"
+            "value": "JL Physical — AIカロリートラッカー"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AI 칼로리 트래커"
+            "value": "JL Physical — AI 칼로리 트래커"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AI-calorieënteller"
+            "value": "JL Physical — AI-calorieënteller"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — tracker kalorii AI"
+            "value": "JL Physical — tracker kalorii AI"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — Contador de calorias com IA"
+            "value": "JL Physical — Contador de calorias com IA"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — Tracker de calorii cu AI"
+            "value": "JL Physical — Tracker de calorii cu AI"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — ИИ-трекер калорий"
+            "value": "JL Physical — ИИ-трекер калорий"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — ШІ-трекер калорий"
+            "value": "JL Physical — ШІ-трекер калорий"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AI 卡路里追踪器"
+            "value": "JL Physical — AI 卡路里追踪器"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — AI počítadlo kalorií"
+            "value": "JL Physical — AI počítadlo kalorií"
           }
         }
       }
     },
-    "Fud AI 4.4": {
-      "comment": "A version number of Fud AI.",
+    "JL Physical 4.4": {
+      "comment": "A version number of JL Physical.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 4.4"
+            "value": "JL Physical 4.4"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 4.4"
+            "value": "JL Physical 4.4"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 4.4"
+            "value": "JL Physical 4.4"
           }
         }
       }
     },
-    "Fud AI is an estimation tool, not a clinical instrument. Predictive equations carry inherent error (typically ±10% for BMR). Consult a registered dietitian, physician, or sports medicine professional before significant diet changes — especially if you have a medical condition, are pregnant or breastfeeding, are under 18, or are managing an eating disorder.": {
+    "JL Physical is an estimation tool, not a clinical instrument. Predictive equations carry inherent error (typically ±10% for BMR). Consult a registered dietitian, physician, or sports medicine professional before significant diet changes — especially if you have a medical condition, are pregnant or breastfeeding, are under 18, or are managing an eating disorder.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI أداة تقديرية وليس جهازًا طبيًا. تحمل المعادلات التنبؤية خطأً متأصلًا (عادةً ±10% لمعدل الأيض الأساسي). استشر اختصاصي تغذية مُسجَّلًا أو طبيبًا أو متخصصًا في طب الرياضة قبل إجراء تغييرات كبيرة في النظام الغذائي — خاصةً إذا كانت لديك حالة طبية، أو كنتِ حاملًا أو مرضعة، أو كان عمرك أقل من 18 عامًا، أو كنت تتعامل مع اضطراب في الأكل."
+            "value": "JL Physical أداة تقديرية وليس جهازًا طبيًا. تحمل المعادلات التنبؤية خطأً متأصلًا (عادةً ±10% لمعدل الأيض الأساسي). استشر اختصاصي تغذية مُسجَّلًا أو طبيبًا أو متخصصًا في طب الرياضة قبل إجراء تغييرات كبيرة في النظام الغذائي — خاصةً إذا كانت لديك حالة طبية، أو كنتِ حاملًا أو مرضعة، أو كان عمرك أقل من 18 عامًا، أو كنت تتعامل مع اضطراب في الأكل."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI bir qiymətləndirmə alətidir, klinik cihaz deyil. Proqnoz tənliklərində daxili xəta var (BMR üçün adətən ±10%). Pəhrizdə ciddi dəyişikliklər etməzdən əvvəl qeydiyyatdan keçmiş diyetoloq, həkim və ya idman təbabəti mütəxəssisi ilə məsləhətləşin — xüsusilə tibbi vəziyyətiniz varsa, hamiləsinizsə və ya əmizdirirsinizsə, 18 yaşdan kiçiksinizsə və ya yemək pozuntusu ilə mübarizə aparırsınızsa."
+            "value": "JL Physical bir qiymətləndirmə alətidir, klinik cihaz deyil. Proqnoz tənliklərində daxili xəta var (BMR üçün adətən ±10%). Pəhrizdə ciddi dəyişikliklər etməzdən əvvəl qeydiyyatdan keçmiş diyetoloq, həkim və ya idman təbabəti mütəxəssisi ilə məsləhətləşin — xüsusilə tibbi vəziyyətiniz varsa, hamiləsinizsə və ya əmizdirirsinizsə, 18 yaşdan kiçiksinizsə və ya yemək pozuntusu ilə mübarizə aparırsınızsa."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI ist ein Schätzwerkzeug, kein klinisches Instrument. Prädiktive Gleichungen haben einen inhärenten Fehler (typischerweise ±10 % beim Grundumsatz). Konsultiere vor wesentlichen Ernährungsumstellungen eine qualifizierte Ernährungsfachkraft, einen Arzt oder einen Sportmediziner — insbesondere wenn du eine medizinische Erkrankung hast, schwanger bist oder stillst, unter 18 Jahre alt bist oder mit einer Essstörung umgehst."
+            "value": "JL Physical ist ein Schätzwerkzeug, kein klinisches Instrument. Prädiktive Gleichungen haben einen inhärenten Fehler (typischerweise ±10 % beim Grundumsatz). Konsultiere vor wesentlichen Ernährungsumstellungen eine qualifizierte Ernährungsfachkraft, einen Arzt oder einen Sportmediziner — insbesondere wenn du eine medizinische Erkrankung hast, schwanger bist oder stillst, unter 18 Jahre alt bist oder mit einer Essstörung umgehst."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI es una herramienta de estimación, no un instrumento clínico. Las ecuaciones predictivas tienen un error inherente (normalmente ±10 % en el BMR). Consulta a un dietista titulado, a un médico o a un especialista en medicina deportiva antes de hacer cambios importantes en tu dieta, especialmente si tienes una condición médica, estás embarazada o en período de lactancia, eres menor de 18 años, o estás gestionando un trastorno alimentario."
+            "value": "JL Physical es una herramienta de estimación, no un instrumento clínico. Las ecuaciones predictivas tienen un error inherente (normalmente ±10 % en el BMR). Consulta a un dietista titulado, a un médico o a un especialista en medicina deportiva antes de hacer cambios importantes en tu dieta, especialmente si tienes una condición médica, estás embarazada o en período de lactancia, eres menor de 18 años, o estás gestionando un trastorno alimentario."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI est un outil d'estimation, pas un instrument clinique. Les équations prédictives comportent une erreur inhérente (généralement ±10 % pour le BMR). Consultez un diététicien diplômé, un médecin ou un médecin du sport avant tout changement important de régime — surtout si vous avez une condition médicale, êtes enceinte ou allaitez, avez moins de 18 ans, ou gérez un trouble du comportement alimentaire."
+            "value": "JL Physical est un outil d'estimation, pas un instrument clinique. Les équations prédictives comportent une erreur inhérente (généralement ±10 % pour le BMR). Consultez un diététicien diplômé, un médecin ou un médecin du sport avant tout changement important de régime — surtout si vous avez une condition médicale, êtes enceinte ou allaitez, avez moins de 18 ans, ou gérez un trouble du comportement alimentaire."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI एक अनुमान उपकरण है, नैदानिक उपकरण नहीं। पूर्वानुमान समीकरणों में अंतर्निहित त्रुटि होती है (BMR के लिए आमतौर पर ±10%)। आहार में महत्वपूर्ण परिवर्तन करने से पहले किसी पंजीकृत आहार विशेषज्ञ, चिकित्सक या खेल चिकित्सा पेशेवर से परामर्श करें — विशेष रूप से यदि आपको कोई चिकित्सा स्थिति है, गर्भवती हैं या स्तनपान करा रही हैं, 18 वर्ष से कम आयु के हैं, या किसी खाने के विकार का प्रबंधन कर रहे हैं।"
+            "value": "JL Physical एक अनुमान उपकरण है, नैदानिक उपकरण नहीं। पूर्वानुमान समीकरणों में अंतर्निहित त्रुटि होती है (BMR के लिए आमतौर पर ±10%)। आहार में महत्वपूर्ण परिवर्तन करने से पहले किसी पंजीकृत आहार विशेषज्ञ, चिकित्सक या खेल चिकित्सा पेशेवर से परामर्श करें — विशेष रूप से यदि आपको कोई चिकित्सा स्थिति है, गर्भवती हैं या स्तनपान करा रही हैं, 18 वर्ष से कम आयु के हैं, या किसी खाने के विकार का प्रबंधन कर रहे हैं।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI è uno strumento di stima, non uno strumento clinico. Le equazioni predittive hanno un errore intrinseco (tipicamente ±10% per il BMR). Consulta un dietista registrato, un medico o uno specialista in medicina dello sport prima di apportare modifiche significative alla dieta — soprattutto se hai una condizione medica, sei incinta o stai allattando, hai meno di 18 anni o stai gestendo un disturbo alimentare."
+            "value": "JL Physical è uno strumento di stima, non uno strumento clinico. Le equazioni predittive hanno un errore intrinseco (tipicamente ±10% per il BMR). Consulta un dietista registrato, un medico o uno specialista in medicina dello sport prima di apportare modifiche significative alla dieta — soprattutto se hai una condizione medica, sei incinta o stai allattando, hai meno di 18 anni o stai gestendo un disturbo alimentare."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIは推定ツールであり、臨床機器ではありません。予測式には固有の誤差があります(BMRで通常±10%)。食事を大きく変更する前に、登録栄養士、医師、またはスポーツ医学の専門家に相談してください。特に、持病がある、妊娠中または授乳中、18歳未満、もしくは摂食障害を抱えている場合は必ずご相談ください。"
+            "value": "JL Physicalは推定ツールであり、臨床機器ではありません。予測式には固有の誤差があります(BMRで通常±10%)。食事を大きく変更する前に、登録栄養士、医師、またはスポーツ医学の専門家に相談してください。特に、持病がある、妊娠中または授乳中、18歳未満、もしくは摂食障害を抱えている場合は必ずご相談ください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI는 추정 도구이며 임상 기기가 아닙니다. 예측 방정식에는 고유한 오차가 있습니다(BMR의 경우 일반적으로 ±10%). 식단을 크게 바꾸기 전에 등록 영양사, 의사 또는 스포츠 의학 전문가와 상의하세요 — 특히 의학적 상태가 있거나, 임신 중이거나 모유 수유 중이거나, 18세 미만이거나, 섭식 장애를 관리 중인 경우 반드시 상담하시기 바랍니다."
+            "value": "JL Physical는 추정 도구이며 임상 기기가 아닙니다. 예측 방정식에는 고유한 오차가 있습니다(BMR의 경우 일반적으로 ±10%). 식단을 크게 바꾸기 전에 등록 영양사, 의사 또는 스포츠 의학 전문가와 상의하세요 — 특히 의학적 상태가 있거나, 임신 중이거나 모유 수유 중이거나, 18세 미만이거나, 섭식 장애를 관리 중인 경우 반드시 상담하시기 바랍니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI is een schattingsinstrument, geen klinisch instrument. Voorspellende vergelijkingen bevatten een inherente foutmarge (meestal ±10% voor BMR). Raadpleeg een geregistreerde diëtist, arts of sportarts voordat je grote dieetwijzigingen doorvoert — zeker als je een medische aandoening hebt, zwanger bent of borstvoeding geeft, jonger bent dan 18 of een eetstoornis behandelt."
+            "value": "JL Physical is een schattingsinstrument, geen klinisch instrument. Voorspellende vergelijkingen bevatten een inherente foutmarge (meestal ±10% voor BMR). Raadpleeg een geregistreerde diëtist, arts of sportarts voordat je grote dieetwijzigingen doorvoert — zeker als je een medische aandoening hebt, zwanger bent of borstvoeding geeft, jonger bent dan 18 of een eetstoornis behandelt."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI jest narzędziem szacującym, a nie instrumentem klinicznym. Równania predykcyjne mają wrodzony błąd (zwykle ±10% dla BMR). Skonsultuj się z dietetykiem, lekarzem lub specjalistą medycyny sportowej przed dużymi zmianami diety — zwłaszcza jeśli masz chorobę, jesteś w ciąży lub karmisz piersią, masz mniej niż 18 lat albo leczysz zaburzenia odżywiania."
+            "value": "JL Physical jest narzędziem szacującym, a nie instrumentem klinicznym. Równania predykcyjne mają wrodzony błąd (zwykle ±10% dla BMR). Skonsultuj się z dietetykiem, lekarzem lub specjalistą medycyny sportowej przed dużymi zmianami diety — zwłaszcza jeśli masz chorobę, jesteś w ciąży lub karmisz piersią, masz mniej niż 18 lat albo leczysz zaburzenia odżywiania."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Fud AI é uma ferramenta de estimativa, não um instrumento clínico. Equações preditivas têm um erro inerente (tipicamente ±10% para o BMR). Consulte um nutricionista, médico ou profissional de medicina esportiva antes de fazer mudanças significativas na dieta — especialmente se você tem uma condição médica, está grávida ou amamentando, tem menos de 18 anos ou está lidando com um transtorno alimentar."
+            "value": "O JL Physical é uma ferramenta de estimativa, não um instrumento clínico. Equações preditivas têm um erro inerente (tipicamente ±10% para o BMR). Consulte um nutricionista, médico ou profissional de medicina esportiva antes de fazer mudanças significativas na dieta — especialmente se você tem uma condição médica, está grávida ou amamentando, tem menos de 18 anos ou está lidando com um transtorno alimentar."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI este un instrument de estimare, nu un instrument clinic. Ecuațiile predictive au o eroare inerentă (de obicei ±10% pentru BMR). Consultă un dietetician înregistrat, un medic sau un specialist în medicină sportivă înainte de a face schimbări semnificative în dietă — mai ales dacă ai o afecțiune medicală, ești însărcinată sau alăptezi, ai sub 18 ani sau gestionezi o tulburare de alimentație."
+            "value": "JL Physical este un instrument de estimare, nu un instrument clinic. Ecuațiile predictive au o eroare inerentă (de obicei ±10% pentru BMR). Consultă un dietetician înregistrat, un medic sau un specialist în medicină sportivă înainte de a face schimbări semnificative în dietă — mai ales dacă ai o afecțiune medicală, ești însărcinată sau alăptezi, ai sub 18 ani sau gestionezi o tulburare de alimentație."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — это инструмент оценки, а не клинический прибор. В прогностических уравнениях есть внутренняя погрешность (обычно ±10% для BMR). Перед существенными изменениями рациона проконсультируйтесь с дипломированным диетологом, врачом или спортивным врачом — особенно если у вас есть заболевание, вы беременны или кормите грудью, вам меньше 18 лет, или вы справляетесь с расстройством пищевого поведения."
+            "value": "JL Physical — это инструмент оценки, а не клинический прибор. В прогностических уравнениях есть внутренняя погрешность (обычно ±10% для BMR). Перед существенными изменениями рациона проконсультируйтесь с дипломированным диетологом, врачом или спортивным врачом — особенно если у вас есть заболевание, вы беременны или кормите грудью, вам меньше 18 лет, или вы справляетесь с расстройством пищевого поведения."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — це інструмент для оцінювання, а не клінічний прилад. Прогностичні рівняння мають властиву їм похибку (зазвичай ±10%% для BMR). Проконсультуйтеся з лікарем або дієтологом перед значними змінами в дієті, особливо якщо ви маєте медичні протипоказання, вагітні, годуєте грудьми, вам не виповнилося 18 років або ви маєте розлади харчової поведінки."
+            "value": "JL Physical — це інструмент для оцінювання, а не клінічний прилад. Прогностичні рівняння мають властиву їм похибку (зазвичай ±10%% для BMR). Проконсультуйтеся з лікарем або дієтологом перед значними змінами в дієті, особливо якщо ви маєте медичні протипоказання, вагітні, годуєте грудьми, вам не виповнилося 18 років або ви маєте розлади харчової поведінки."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 是一款估算工具,而非临床设备。预测公式存在固有误差(BMR 通常约为 ±10%)。在对饮食做出重大改变之前,请咨询注册营养师、医生或运动医学专业人士 — 尤其是当你患有疾病、正在怀孕或哺乳、未满 18 岁或正在应对饮食失调问题时。"
+            "value": "JL Physical 是一款估算工具,而非临床设备。预测公式存在固有误差(BMR 通常约为 ±10%)。在对饮食做出重大改变之前,请咨询注册营养师、医生或运动医学专业人士 — 尤其是当你患有疾病、正在怀孕或哺乳、未满 18 岁或正在应对饮食失调问题时。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI je odhadovací nástroj, ne klinický přístroj. Predikční rovnice mají přirozenou chybu (u BMR typicky ±10 %). Před zásadními změnami stravy se poraď s nutričním terapeutem, lékařem nebo sportovním lékařem — zvlášť pokud máš zdravotní potíže, čekáš dítě nebo kojíš, je ti méně než 18, nebo řešíš poruchu příjmu potravy."
+            "value": "JL Physical je odhadovací nástroj, ne klinický přístroj. Predikční rovnice mají přirozenou chybu (u BMR typicky ±10 %). Před zásadními změnami stravy se poraď s nutričním terapeutem, lékařem nebo sportovním lékařem — zvlášť pokud máš zdravotní potíže, čekáš dítě nebo kojíš, je ti méně než 18, nebo řešíš poruchu příjmu potravy."
           }
         }
       }
     },
-    "Fud AI is free and open source — no subscriptions, no paywalls, everything already unlocked. If it's helped you, a tip keeps it that way.": {
+    "JL Physical is free and open source — no subscriptions, no paywalls, everything already unlocked. If it's helped you, a tip keeps it that way.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "‏Fud AI مجاني ومفتوح المصدر — بلا اشتراكات ولا جدران دفع، وكل شيء مفتوح بالفعل. إذا أفادك التطبيق، فإكراميتك تُبقيه كذلك."
+            "value": "‏JL Physical مجاني ومفتوح المصدر — بلا اشتراكات ولا جدران دفع، وكل شيء مفتوح بالفعل. إذا أفادك التطبيق، فإكراميتك تُبقيه كذلك."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI pulsuz və açıq mənbəlidir — abunə yoxdur, ödəniş divarı yoxdur, hər şey artıq açıqdır. Sizə kömək edibsə, bəxşiş onu belə saxlayır."
+            "value": "JL Physical pulsuz və açıq mənbəlidir — abunə yoxdur, ödəniş divarı yoxdur, hər şey artıq açıqdır. Sizə kömək edibsə, bəxşiş onu belə saxlayır."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI ist kostenlos und Open Source — keine Abos, keine Paywalls, alles bereits freigeschaltet. Wenn dir die App hilft, sorgt ein Trinkgeld dafür, dass das so bleibt."
+            "value": "JL Physical ist kostenlos und Open Source — keine Abos, keine Paywalls, alles bereits freigeschaltet. Wenn dir die App hilft, sorgt ein Trinkgeld dafür, dass das so bleibt."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI es gratis y de código abierto — sin suscripciones, sin muros de pago, todo ya desbloqueado. Si te ha ayudado, una propina hace que siga así."
+            "value": "JL Physical es gratis y de código abierto — sin suscripciones, sin muros de pago, todo ya desbloqueado. Si te ha ayudado, una propina hace que siga así."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI est gratuit et open source — pas d'abonnements, pas de paywall, tout est déjà débloqué. Si l'app vous a aidé, un pourboire l'aide à le rester."
+            "value": "JL Physical est gratuit et open source — pas d'abonnements, pas de paywall, tout est déjà débloqué. Si l'app vous a aidé, un pourboire l'aide à le rester."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI मुफ़्त और ओपन सोर्स है — न सब्सक्रिप्शन, न पेवॉल, सब कुछ पहले से अनलॉक। अगर इसने आपकी मदद की है, तो एक टिप इसे ऐसा ही बनाए रखती है।"
+            "value": "JL Physical मुफ़्त और ओपन सोर्स है — न सब्सक्रिप्शन, न पेवॉल, सब कुछ पहले से अनलॉक। अगर इसने आपकी मदद की है, तो एक टिप इसे ऐसा ही बनाए रखती है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI è gratuita e open source — niente abbonamenti, niente paywall, tutto già sbloccato. Se ti è stata utile, una mancia la mantiene così."
+            "value": "JL Physical è gratuita e open source — niente abbonamenti, niente paywall, tutto già sbloccato. Se ti è stata utile, una mancia la mantiene così."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIは無料・オープンソースです。サブスクリプションもペイウォールもなく、すべて最初から開放されています。役に立ったなら、チップがこのままの形を支えます。"
+            "value": "JL Physicalは無料・オープンソースです。サブスクリプションもペイウォールもなく、すべて最初から開放されています。役に立ったなら、チップがこのままの形を支えます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI는 무료 오픈소스입니다 — 구독도, 유료 장벽도 없이 모든 기능이 이미 열려 있습니다. 도움이 되었다면 팁이 이 상태를 지켜줍니다."
+            "value": "JL Physical는 무료 오픈소스입니다 — 구독도, 유료 장벽도 없이 모든 기능이 이미 열려 있습니다. 도움이 되었다면 팁이 이 상태를 지켜줍니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI is gratis en open source — geen abonnementen, geen betaalmuren, alles is al ontgrendeld. Heeft de app je geholpen? Een fooi houdt het zo."
+            "value": "JL Physical is gratis en open source — geen abonnementen, geen betaalmuren, alles is al ontgrendeld. Heeft de app je geholpen? Een fooi houdt het zo."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI jest darmowe i open source — bez subskrypcji, bez paywalli, wszystko już odblokowane. Jeśli Ci pomogło, napiwek pomoże, by tak zostało."
+            "value": "JL Physical jest darmowe i open source — bez subskrypcji, bez paywalli, wszystko już odblokowane. Jeśli Ci pomogło, napiwek pomoże, by tak zostało."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Fud AI é gratuito e de código aberto — sem assinaturas, sem paywall, tudo já desbloqueado. Se ele te ajudou, uma gorjeta o mantém assim."
+            "value": "O JL Physical é gratuito e de código aberto — sem assinaturas, sem paywall, tudo já desbloqueado. Se ele te ajudou, uma gorjeta o mantém assim."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI este gratuită și open source — fără abonamente, fără paywall, totul este deja deblocat. Dacă ți-a fost de ajutor, un bacșiș o menține așa."
+            "value": "JL Physical este gratuită și open source — fără abonamente, fără paywall, totul este deja deblocat. Dacă ți-a fost de ajutor, un bacșiș o menține așa."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — бесплатное приложение с открытым кодом: без подписок и пейволов, всё уже разблокировано. Если оно вам помогло, чаевые помогут ему таким и оставаться."
+            "value": "JL Physical — бесплатное приложение с открытым кодом: без подписок и пейволов, всё уже разблокировано. Если оно вам помогло, чаевые помогут ему таким и оставаться."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI — бесплатное приложение с откритим кодом: без подписок и пейволов, всё уже разблокировано. Если оно вам помогло, чаевие помогут ему таким и оставаться."
+            "value": "JL Physical — бесплатное приложение с откритим кодом: без подписок и пейволов, всё уже разблокировано. Если оно вам помогло, чаевие помогут ему таким и оставаться."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 免费且开源 — 没有订阅、没有付费墙，一切功能都已解锁。如果它帮到了你，一份小费能让它保持下去。"
+            "value": "JL Physical 免费且开源 — 没有订阅、没有付费墙，一切功能都已解锁。如果它帮到了你，一份小费能让它保持下去。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI je zdarma a open source — žádné předplatné, žádné paywally, všechno už je odemčené. Pokud ti pomohla, spropitné ji tak pomůže udržet."
+            "value": "JL Physical je zdarma a open source — žádné předplatné, žádné paywally, všechno už je odemčené. Pokud ti pomohla, spropitné ji tak pomůže udržet."
           }
         }
       }
     },
-    "Fud AI would like to send you Notifications": {
+    "JL Physical would like to send you Notifications": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يرغب Fud AI في إرسال إشعارات إليك"
+            "value": "يرغب JL Physical في إرسال إشعارات إليك"
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI sizə Bildirişlər göndərmək istəyir"
+            "value": "JL Physical sizə Bildirişlər göndərmək istəyir"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI möchte dir Mitteilungen senden"
+            "value": "JL Physical möchte dir Mitteilungen senden"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI would like to send you Notifications"
+            "value": "JL Physical would like to send you Notifications"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI quiere enviarte notificaciones"
+            "value": "JL Physical quiere enviarte notificaciones"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI souhaite vous envoyer des notifications"
+            "value": "JL Physical souhaite vous envoyer des notifications"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI आपको सूचनाएँ भेजना चाहता है"
+            "value": "JL Physical आपको सूचनाएँ भेजना चाहता है"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI desidera inviarti notifiche"
+            "value": "JL Physical desidera inviarti notifiche"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIが通知の送信を求めています"
+            "value": "JL Physicalが通知の送信を求めています"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI에서 알림을 보내려고 합니다"
+            "value": "JL Physical에서 알림을 보내려고 합니다"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI wil je meldingen sturen"
+            "value": "JL Physical wil je meldingen sturen"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI chce wysyłać Ci powiadomienia"
+            "value": "JL Physical chce wysyłać Ci powiadomienia"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI deseja enviar notificações para você"
+            "value": "JL Physical deseja enviar notificações para você"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI dorește să îți trimită notificări"
+            "value": "JL Physical dorește să îți trimită notificări"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI хочет отправлять вам уведомления"
+            "value": "JL Physical хочет отправлять вам уведомления"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI хочет отправлять вам уведомления"
+            "value": "JL Physical хочет отправлять вам уведомления"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 想要向你发送通知"
+            "value": "JL Physical 想要向你发送通知"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI ti chce posílat oznámení"
+            "value": "JL Physical ti chce posílat oznámení"
           }
         }
       }
     },
-    "Fud Pink": {
+    "JL Physical Pink": {
       "extractionState": "manual",
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rosa Fud"
+            "value": "Rosa JL Physical"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Róż Fud"
+            "value": "Róż JL Physical"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Розовый Fud"
+            "value": "Розовый JL Physical"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Рожевий Fud"
+            "value": "Рожевий JL Physical"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud růžová"
+            "value": "JL Physical růžová"
           }
         }
       }
@@ -23258,7 +23258,7 @@
       }
     },
     "Hey Siri, %@": {
-      "comment": "A Siri phrase that can be spoken to trigger a specific feature in Fud AI.",
+      "comment": "A Siri phrase that can be spoken to trigger a specific feature in JL Physical.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
@@ -23321,38 +23321,38 @@
         }
       }
     },
-    "Hide Fud AI meal reminders while a Focus is active.": {
-      "comment": "Description of the intent that hides Fud AI meal reminders while a Focus is active.",
+    "Hide JL Physical meal reminders while a Focus is active.": {
+      "comment": "Description of the intent that hides JL Physical meal reminders while a Focus is active.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nascondi i promemoria dei pasti di Fud AI mentre è attiva una Full immersion."
+            "value": "Nascondi i promemoria dei pasti di JL Physical mentre è attiva una Full immersion."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ukryj przypomnienia Fud AI o posiłkach, gdy Tryb skupienia jest aktywny."
+            "value": "Ukryj przypomnienia JL Physical o posiłkach, gdy Tryb skupienia jest aktywny."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Скрывать напоминания Fud AI о приемах пищи, пока активен фокус."
+            "value": "Скрывать напоминания JL Physical о приемах пищи, пока активен фокус."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Скривать напоминания Fud AI о приемах пищи, пока активен фокус."
+            "value": "Скривать напоминания JL Physical о приемах пищи, пока активен фокус."
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skrýt připomenutí jídel Fud AI, dokud je aktivní režim soustředění."
+            "value": "Skrýt připomenutí jídel JL Physical, dokud je aktivní režim soustředění."
           }
         }
       }
@@ -24135,217 +24135,217 @@
         }
       }
     },
-    "How Fud AI calculates your numbers": {
+    "How JL Physical calculates your numbers": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كيف يحسب Fud AI أرقامك"
+            "value": "كيف يحسب JL Physical أرقامك"
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI rəqəmlərinizi necə hesablayır"
+            "value": "JL Physical rəqəmlərinizi necə hesablayır"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wie Fud AI deine Werte berechnet"
+            "value": "Wie JL Physical deine Werte berechnet"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cómo Fud AI calcula tus cifras"
+            "value": "Cómo JL Physical calcula tus cifras"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comment Fud AI calcule vos chiffres"
+            "value": "Comment JL Physical calcule vos chiffres"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI आपके आँकड़े कैसे गणना करता है"
+            "value": "JL Physical आपके आँकड़े कैसे गणना करता है"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Come Fud AI calcola i tuoi numeri"
+            "value": "Come JL Physical calcola i tuoi numeri"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIがあなたの数値を計算する方法"
+            "value": "JL Physicalがあなたの数値を計算する方法"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI가 수치를 계산하는 방법"
+            "value": "JL Physical가 수치를 계산하는 방법"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hoe Fud AI je cijfers berekent"
+            "value": "Hoe JL Physical je cijfers berekent"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jak Fud AI oblicza Twoje liczby"
+            "value": "Jak JL Physical oblicza Twoje liczby"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Como o Fud AI calcula seus números"
+            "value": "Como o JL Physical calcula seus números"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cum calculează Fud AI cifrele tale"
+            "value": "Cum calculează JL Physical cifrele tale"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Как Fud AI рассчитывает ваши показатели"
+            "value": "Как JL Physical рассчитывает ваши показатели"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Как Fud AI рассчитивает ваши показатели"
+            "value": "Как JL Physical рассчитивает ваши показатели"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 如何计算你的数据"
+            "value": "JL Physical 如何计算你的数据"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jak Fud AI počítá tvoje čísla"
+            "value": "Jak JL Physical počítá tvoje čísla"
           }
         }
       }
     },
-    "How Fud AI sets your numbers": {
-      "comment": "A heading for a screen that explains how Fud AI calculates your daily calorie and macro goals.",
+    "How JL Physical sets your numbers": {
+      "comment": "A heading for a screen that explains how JL Physical calculates your daily calorie and macro goals.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كيف يحدد Fud AI أرقامك"
+            "value": "كيف يحدد JL Physical أرقامك"
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI rəqəmlərinizi necə təyin edir"
+            "value": "JL Physical rəqəmlərinizi necə təyin edir"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wie Fud AI deine Werte festlegt"
+            "value": "Wie JL Physical deine Werte festlegt"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cómo Fud AI establece tus números"
+            "value": "Cómo JL Physical establece tus números"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comment Fud AI définit vos chiffres"
+            "value": "Comment JL Physical définit vos chiffres"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI आपके आँकड़े कैसे तय करता है"
+            "value": "JL Physical आपके आँकड़े कैसे तय करता है"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Come Fud AI imposta i tuoi numeri"
+            "value": "Come JL Physical imposta i tuoi numeri"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIが数値を決める仕組み"
+            "value": "JL Physicalが数値を決める仕組み"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI가 수치를 정하는 방법"
+            "value": "JL Physical가 수치를 정하는 방법"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hoe Fud AI je getallen bepaalt"
+            "value": "Hoe JL Physical je getallen bepaalt"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jak Fud AI ustala Twoje wartości"
+            "value": "Jak JL Physical ustala Twoje wartości"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Como o Fud AI define seus números"
+            "value": "Como o JL Physical define seus números"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cum îți stabilește Fud AI valorile"
+            "value": "Cum îți stabilește JL Physical valorile"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Как Fud AI рассчитывает ваши показатели"
+            "value": "Как JL Physical рассчитывает ваши показатели"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Как Fud AI рассчитивает ваши показатели"
+            "value": "Как JL Physical рассчитивает ваши показатели"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 如何设定你的数值"
+            "value": "JL Physical 如何设定你的数值"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jak Fud AI nastavuje tvoje čísla"
+            "value": "Jak JL Physical nastavuje tvoje čísla"
           }
         }
       }
@@ -24867,115 +24867,115 @@
         }
       }
     },
-    "I've been tracking my meals with Fud AI — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app": {
+    "I've been tracking my meals with JL Physical — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أتتبّع وجباتي مع Fud AI — التقط صورة أو تحدّث أو اكتب، والذكاء الاصطناعي يسجّل السعرات الحرارية. التطبيق مجاني ومفتوح المصدر، وتبقى بياناتك على جهازك.\n\nنزّله: https://fud-ai.app"
+            "value": "أتتبّع وجباتي مع JL Physical — التقط صورة أو تحدّث أو اكتب، والذكاء الاصطناعي يسجّل السعرات الحرارية. التطبيق مجاني ومفتوح المصدر، وتبقى بياناتك على جهازك.\n\nنزّله: https://fud-ai.app"
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yeməklərimi Fud AI ilə izləyirəm — şəkil çək, danış və ya yaz, süni zəka kaloriləri qeyd etsin. Pulsuz, açıq mənbəlidir və məlumatların cihazında qalır.\n\nEndir: https://fud-ai.app"
+            "value": "Yeməklərimi JL Physical ilə izləyirəm — şəkil çək, danış və ya yaz, süni zəka kaloriləri qeyd etsin. Pulsuz, açıq mənbəlidir və məlumatların cihazında qalır.\n\nEndir: https://fud-ai.app"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ich tracke meine Mahlzeiten mit Fud AI — fotografieren, einsprechen oder eintippen, die KI erfasst die Kalorien. Kostenlos, Open Source, alle Daten bleiben auf deinem Gerät.\n\nHerunterladen: https://fud-ai.app"
+            "value": "Ich tracke meine Mahlzeiten mit JL Physical — fotografieren, einsprechen oder eintippen, die KI erfasst die Kalorien. Kostenlos, Open Source, alle Daten bleiben auf deinem Gerät.\n\nHerunterladen: https://fud-ai.app"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "I've been tracking my meals with Fud AI — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app"
+            "value": "I've been tracking my meals with JL Physical — snap a photo, speak it, or type it, and the AI logs the calories. It's free, open source, and your data stays on your device.\n\nDownload: https://fud-ai.app"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Llevo el control de mis comidas con Fud AI — haz una foto, dícela o escríbela, y la IA registra las calorías. Es gratis, de código abierto, y tus datos se quedan en tu dispositivo.\n\nDescargar: https://fud-ai.app"
+            "value": "Llevo el control de mis comidas con JL Physical — haz una foto, dícela o escríbela, y la IA registra las calorías. Es gratis, de código abierto, y tus datos se quedan en tu dispositivo.\n\nDescargar: https://fud-ai.app"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Je suis mes repas avec Fud AI — prends une photo, parle ou tape, l'IA enregistre les calories. C'est gratuit, open source, et tes données restent sur ton appareil.\n\nTélécharger : https://fud-ai.app"
+            "value": "Je suis mes repas avec JL Physical — prends une photo, parle ou tape, l'IA enregistre les calories. C'est gratuit, open source, et tes données restent sur ton appareil.\n\nTélécharger : https://fud-ai.app"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "मैं अपने भोजन को Fud AI से ट्रैक करता हूँ — फोटो लो, बोलो या टाइप करो, AI कैलोरी रिकॉर्ड कर लेगा। यह मुफ्त है, ओपन सोर्स है, और आपका डेटा आपके डिवाइस पर रहता है।\n\nडाउनलोड करें: https://fud-ai.app"
+            "value": "मैं अपने भोजन को JL Physical से ट्रैक करता हूँ — फोटो लो, बोलो या टाइप करो, AI कैलोरी रिकॉर्ड कर लेगा। यह मुफ्त है, ओपन सोर्स है, और आपका डेटा आपके डिवाइस पर रहता है।\n\nडाउनलोड करें: https://fud-ai.app"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tengo traccia dei miei pasti con Fud AI — scatta una foto, parlalo o scrivilo, e l'IA registra le calorie. È gratis, open source, e i tuoi dati restano sul tuo dispositivo.\n\nScarica: https://fud-ai.app"
+            "value": "Tengo traccia dei miei pasti con JL Physical — scatta una foto, parlalo o scrivilo, e l'IA registra le calorie. È gratis, open source, e i tuoi dati restano sul tuo dispositivo.\n\nScarica: https://fud-ai.app"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "食事の記録は Fud AI で。写真を撮るか話すか入力するだけで、AI がカロリーを記録します。無料・オープンソースで、データは端末内に残ります。\n\nダウンロード: https://fud-ai.app"
+            "value": "食事の記録は JL Physical で。写真を撮るか話すか入力するだけで、AI がカロリーを記録します。無料・オープンソースで、データは端末内に残ります。\n\nダウンロード: https://fud-ai.app"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI로 식단을 기록하고 있어요 — 사진을 찍거나 말하거나 입력하면 AI가 칼로리를 기록해 줍니다. 무료에 오픈소스이고, 데이터는 모두 기기 안에만 저장돼요.\n\n다운로드: https://fud-ai.app"
+            "value": "JL Physical로 식단을 기록하고 있어요 — 사진을 찍거나 말하거나 입력하면 AI가 칼로리를 기록해 줍니다. 무료에 오픈소스이고, 데이터는 모두 기기 안에만 저장돼요.\n\n다운로드: https://fud-ai.app"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ik volg mijn maaltijden met Fud AI — maak een foto, spreek het in of typ het, en de AI registreert de calorieën. Gratis, open source, en je gegevens blijven op je apparaat.\n\nDownloaden: https://fud-ai.app"
+            "value": "Ik volg mijn maaltijden met JL Physical — maak een foto, spreek het in of typ het, en de AI registreert de calorieën. Gratis, open source, en je gegevens blijven op je apparaat.\n\nDownloaden: https://fud-ai.app"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Śledzę posiłki z Fud AI — zrób zdjęcie, powiedz albo wpisz posiłek, a AI zapisze kalorie. To darmowa aplikacja open source, a Twoje dane zostają na urządzeniu.\n\nPobierz: https://fud-ai.app"
+            "value": "Śledzę posiłki z JL Physical — zrób zdjęcie, powiedz albo wpisz posiłek, a AI zapisze kalorie. To darmowa aplikacja open source, a Twoje dane zostają na urządzeniu.\n\nPobierz: https://fud-ai.app"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eu acompanho minhas refeições com o Fud AI — tire uma foto, fale ou digite, e a IA registra as calorias. É grátis, código aberto, e seus dados ficam no seu dispositivo.\n\nBaixar: https://fud-ai.app"
+            "value": "Eu acompanho minhas refeições com o JL Physical — tire uma foto, fale ou digite, e a IA registra as calorias. É grátis, código aberto, e seus dados ficam no seu dispositivo.\n\nBaixar: https://fud-ai.app"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Îmi urmăresc mesele cu Fud AI — fă o poză, spune-o sau tasteaz-o, iar AI înregistrează caloriile. E gratuit, open source, iar datele rămân pe dispozitivul tău.\n\nDescarcă: https://fud-ai.app"
+            "value": "Îmi urmăresc mesele cu JL Physical — fă o poză, spune-o sau tasteaz-o, iar AI înregistrează caloriile. E gratuit, open source, iar datele rămân pe dispozitivul tău.\n\nDescarcă: https://fud-ai.app"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Я слежу за питанием с помощью Fud AI — сфотографируй блюдо, наговори его или введи текстом, и ИИ запишет калории. Бесплатно, с открытым кодом, все данные остаются на твоём устройстве.\n\nСкачать: https://fud-ai.app"
+            "value": "Я слежу за питанием с помощью JL Physical — сфотографируй блюдо, наговори его или введи текстом, и ИИ запишет калории. Бесплатно, с открытым кодом, все данные остаются на твоём устройстве.\n\nСкачать: https://fud-ai.app"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Я слежу за питанием с помощью Fud AI — сфотографируй блюдо, наговори его или введи текстом, и ШІ запишет калории. Бесплатно, с откритим кодом, все данние остаются на твоём устройстве.\n\nСкачать: https://fud-ai.app"
+            "value": "Я слежу за питанием с помощью JL Physical — сфотографируй блюдо, наговори его или введи текстом, и ШІ запишет калории. Бесплатно, с откритим кодом, все данние остаются на твоём устройстве.\n\nСкачать: https://fud-ai.app"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "我用 Fud AI 记录每一餐——拍照、说话或输入，AI 自动记录卡路里。完全免费、开源，所有数据都保存在你的设备上。\n\n下载：https://fud-ai.app"
+            "value": "我用 JL Physical 记录每一餐——拍照、说话或输入，AI 自动记录卡路里。完全免费、开源，所有数据都保存在你的设备上。\n\n下载：https://fud-ai.app"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleduju svoje jídlo s Fud AI — vyfotíš, řekneš nebo napíšeš, a AI zapíše kalorie. Je zdarma, open source a data zůstávají v tvém zařízení.\n\nStáhnout: https://fud-ai.app"
+            "value": "Sleduju svoje jídlo s JL Physical — vyfotíš, řekneš nebo napíšeš, a AI zapíše kalorie. Je zdarma, open source a data zůstávají v tvém zařízení.\n\nStáhnout: https://fud-ai.app"
           }
         }
       }
@@ -27437,38 +27437,38 @@
         }
       }
     },
-    "Log a food entry in Fud AI by describing what you ate.": {
-      "comment": "Description of an intent that logs a food entry in Fud AI by describing what was eaten.",
+    "Log a food entry in JL Physical by describing what you ate.": {
+      "comment": "Description of an intent that logs a food entry in JL Physical by describing what was eaten.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Registra un alimento in Fud AI descrivendo cosa hai mangiato."
+            "value": "Registra un alimento in JL Physical descrivendo cosa hai mangiato."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dodaj wpis jedzenia w Fud AI, opisując, co zjadłeś/zjadłaś."
+            "value": "Dodaj wpis jedzenia w JL Physical, opisując, co zjadłeś/zjadłaś."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавьте запись еды в Fud AI, описав, что вы съели."
+            "value": "Добавьте запись еды в JL Physical, описав, что вы съели."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавьте запись еди в Fud AI, описав, что ви сели."
+            "value": "Добавьте запись еди в JL Physical, описав, что ви сели."
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zapiš jídlo do Fud AI tak, že popíšeš, co bylo k jídlu."
+            "value": "Zapiš jídlo do JL Physical tak, že popíšeš, co bylo k jídlu."
           }
         }
       }
@@ -27875,38 +27875,38 @@
         }
       }
     },
-    "Log your current weight in Fud AI.": {
+    "Log your current weight in JL Physical.": {
       "comment": "Intent description for the Log Weight intent.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Registra il tuo peso attuale in Fud AI."
+            "value": "Registra il tuo peso attuale in JL Physical."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dodaj swoją aktualną wagę w Fud AI."
+            "value": "Dodaj swoją aktualną wagę w JL Physical."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Запишите текущий вес в Fud AI."
+            "value": "Запишите текущий вес в JL Physical."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Запишите текущий вес в Fud AI."
+            "value": "Запишите текущий вес в JL Physical."
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zapiš svou aktuální váhu do Fud AI."
+            "value": "Zapiš svou aktuální váhu do JL Physical."
           }
         }
       }
@@ -31048,38 +31048,38 @@
         }
       }
     },
-    "No API key needed.\nAI food scans, voice logging, and Coach run through Fud AI.": {
-      "comment": "A description of Fud AI Premium.",
+    "No API key needed.\nAI food scans, voice logging, and Coach run through JL Physical.": {
+      "comment": "A description of JL Physical Premium.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nessuna chiave API richiesta.\nScansione alimenti con IA, inserimento vocale e Coach funzionano tramite Fud AI."
+            "value": "Nessuna chiave API richiesta.\nScansione alimenti con IA, inserimento vocale e Coach funzionano tramite JL Physical."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Klucz API nie jest potrzebny.\nSkanowanie jedzenia AI, logowanie głosem i Trener działają przez Fud AI."
+            "value": "Klucz API nie jest potrzebny.\nSkanowanie jedzenia AI, logowanie głosem i Trener działają przez JL Physical."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ключ API не нужен.\nСканирование еды ИИ, голосовой ввод и тренер работают через Fud AI."
+            "value": "Ключ API не нужен.\nСканирование еды ИИ, голосовой ввод и тренер работают через JL Physical."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ключ API не нужен.\nСканирование еди ШІ, голосовой ввод и тренер работают через Fud AI."
+            "value": "Ключ API не нужен.\nСканирование еди ШІ, голосовой ввод и тренер работают через JL Physical."
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Není potřeba žádný API klíč.\nAI skenování jídla, hlasové zápisy i Kouč běží přes Fud AI."
+            "value": "Není potřeba žádný API klíč.\nAI skenování jídla, hlasové zápisy i Kouč běží přes JL Physical."
           }
         }
       }
@@ -33216,110 +33216,110 @@
         }
       }
     },
-    "Optional. Fud AI turns these into waist-to-hip, waist-to-height, body-fat %, and frame size, and reads them when it recalculates your goals and in Coach.": {
+    "Optional. JL Physical turns these into waist-to-hip, waist-to-height, body-fat %, and frame size, and reads them when it recalculates your goals and in Coach.": {
       "comment": "Footer for the Body Measurements screen.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "اختياري. يحوّل Fud AI هذه القياسات إلى نسبة الخصر إلى الورك، ونسبة الخصر إلى الطول، ونسبة دهون الجسم، وحجم البنية، ويقرأها عند إعادة حساب أهدافك وفي المدرب."
+            "value": "اختياري. يحوّل JL Physical هذه القياسات إلى نسبة الخصر إلى الورك، ونسبة الخصر إلى الطول، ونسبة دهون الجسم، وحجم البنية، ويقرأها عند إعادة حساب أهدافك وفي المدرب."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "İstəyə bağlı. Fud AI bunları bel-omba, bel-boy nisbətlərinə, bədən yağı faizinə və bədən quruluşu ölçüsünə çevirir, hədəflərinizi yenidən hesablayanda və Məşqçidə onlardan istifadə edir."
+            "value": "İstəyə bağlı. JL Physical bunları bel-omba, bel-boy nisbətlərinə, bədən yağı faizinə və bədən quruluşu ölçüsünə çevirir, hədəflərinizi yenidən hesablayanda və Məşqçidə onlardan istifadə edir."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Optional. Fud AI berechnet daraus Taille-Hüft-Verhältnis, Taille-Größe-Verhältnis, Körperfettanteil und Körperbau und nutzt sie beim Neuberechnen deiner Ziele und im Coach."
+            "value": "Optional. JL Physical berechnet daraus Taille-Hüft-Verhältnis, Taille-Größe-Verhältnis, Körperfettanteil und Körperbau und nutzt sie beim Neuberechnen deiner Ziele und im Coach."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opcional. Fud AI los convierte en cintura-cadera, cintura-altura, % de grasa corporal y complexión, y los usa al recalcular tus objetivos y en el Coach."
+            "value": "Opcional. JL Physical los convierte en cintura-cadera, cintura-altura, % de grasa corporal y complexión, y los usa al recalcular tus objetivos y en el Coach."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Facultatif. Fud AI en déduit les ratios taille-hanches et taille-hauteur, le % de masse grasse et la corpulence, et les utilise lors du recalcul de vos objectifs et dans Coach."
+            "value": "Facultatif. JL Physical en déduit les ratios taille-hanches et taille-hauteur, le % de masse grasse et la corpulence, et les utilise lors du recalcul de vos objectifs et dans Coach."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "वैकल्पिक। Fud AI इन्हें कमर-कूल्हा, कमर-लंबाई, बॉडी-फ़ैट % और शारीरिक बनावट में बदलता है, और आपके लक्ष्य दोबारा कैलकुलेट करते समय व Coach में इन्हें पढ़ता है।"
+            "value": "वैकल्पिक। JL Physical इन्हें कमर-कूल्हा, कमर-लंबाई, बॉडी-फ़ैट % और शारीरिक बनावट में बदलता है, और आपके लक्ष्य दोबारा कैलकुलेट करते समय व Coach में इन्हें पढ़ता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Facoltativo. Fud AI li trasforma in rapporto vita-fianchi, vita-altezza, % di grasso corporeo e corporatura, e li usa quando ricalcola i tuoi obiettivi e nel Coach."
+            "value": "Facoltativo. JL Physical li trasforma in rapporto vita-fianchi, vita-altezza, % di grasso corporeo e corporatura, e li usa quando ricalcola i tuoi obiettivi e nel Coach."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "任意。Fud AIはこれらをウエスト/ヒップ比、ウエスト/身長比、体脂肪率、体格に変換し、目標の再計算時やコーチで参照します。"
+            "value": "任意。JL Physicalはこれらをウエスト/ヒップ比、ウエスト/身長比、体脂肪率、体格に変換し、目標の再計算時やコーチで参照します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "선택 사항입니다. Fud AI는 이를 허리-엉덩이 비율, 허리-신장 비율, 체지방률, 체격으로 변환하고 목표 재계산 시와 코치에서 활용합니다."
+            "value": "선택 사항입니다. JL Physical는 이를 허리-엉덩이 비율, 허리-신장 비율, 체지방률, 체격으로 변환하고 목표 재계산 시와 코치에서 활용합니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Optioneel. Fud AI zet deze om in taille-heupverhouding, taille-lengteverhouding, vetpercentage en lichaamsbouw, en gebruikt ze bij het herberekenen van je doelen en in Coach."
+            "value": "Optioneel. JL Physical zet deze om in taille-heupverhouding, taille-lengteverhouding, vetpercentage en lichaamsbouw, en gebruikt ze bij het herberekenen van je doelen en in Coach."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opcjonalne. Fud AI przelicza je na stosunek talia-biodra, talia-wzrost, % tkanki tłuszczowej i budowę ciała oraz korzysta z nich przy ponownym obliczaniu celów i w Trenerze."
+            "value": "Opcjonalne. JL Physical przelicza je na stosunek talia-biodra, talia-wzrost, % tkanki tłuszczowej i budowę ciała oraz korzysta z nich przy ponownym obliczaniu celów i w Trenerze."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opcional. O Fud AI os converte em relação cintura-quadril, cintura-altura, % de gordura corporal e estrutura corporal, e os usa ao recalcular suas metas e no Coach."
+            "value": "Opcional. O JL Physical os converte em relação cintura-quadril, cintura-altura, % de gordura corporal e estrutura corporal, e os usa ao recalcular suas metas e no Coach."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opțional. Fud AI le transformă în raport talie-șold, talie-înălțime, % grăsime corporală și constituție și le folosește când îți recalculează obiectivele și în Coach."
+            "value": "Opțional. JL Physical le transformă în raport talie-șold, talie-înălțime, % grăsime corporală și constituție și le folosește când îți recalculează obiectivele și în Coach."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Необязательно. Fud AI превращает эти данные в соотношения талия/бёдра и талия/рост, процент жира и тип телосложения и использует их при пересчёте целей и в Коуче."
+            "value": "Необязательно. JL Physical превращает эти данные в соотношения талия/бёдра и талия/рост, процент жира и тип телосложения и использует их при пересчёте целей и в Коуче."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Необязательно. Fud AI превращает ети данние в соотношения талия/бёдра и талия/рост, процент жира и тип телосложения и використовує их при пересчёте целей и в Коуче."
+            "value": "Необязательно. JL Physical превращает ети данние в соотношения талия/бёдра и талия/рост, процент жира и тип телосложения и використовує их при пересчёте целей и в Коуче."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "可选。Fud AI 会将这些数据换算为腰臀比、腰高比、体脂率和体型，并在重新计算目标和教练功能中使用。"
+            "value": "可选。JL Physical 会将这些数据换算为腰臀比、腰高比、体脂率和体型，并在重新计算目标和教练功能中使用。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Volitelné. Fud AI z nich odvodí poměr pas/boky, pas/výška, tělesný tuk a konstituci a čte je při přepočtu cílů a v Kouči."
+            "value": "Volitelné. JL Physical z nich odvodí poměr pas/boky, pas/výška, tělesný tuk a konstituci a čte je při přepočtu cílů a v Kouči."
           }
         }
       }
@@ -35929,7 +35929,7 @@
       }
     },
     "Refresh Usage": {
-      "comment": "A button that refreshes the user's usage of Fud AI Premium.",
+      "comment": "A button that refreshes the user's usage of JL Physical Premium.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
@@ -38067,38 +38067,38 @@
         }
       }
     },
-    "Say these phrases to Siri to use Fud AI hands-free.": {
+    "Say these phrases to Siri to use JL Physical hands-free.": {
       "comment": "A description of the Siri phrases.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pronuncia queste frasi a Siri per usare Fud AI a mani libere."
+            "value": "Pronuncia queste frasi a Siri per usare JL Physical a mani libere."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Powiedz te frazy do Siri, aby używać Fud AI bez użycia rąk."
+            "value": "Powiedz te frazy do Siri, aby używać JL Physical bez użycia rąk."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Произнесите эти фразы Siri, чтобы пользоваться Fud AI без рук."
+            "value": "Произнесите эти фразы Siri, чтобы пользоваться JL Physical без рук."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Произнесите ети фрази Siri, чтоби пользоваться Fud AI без рук."
+            "value": "Произнесите ети фрази Siri, чтоби пользоваться JL Physical без рук."
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Říkej tyto fráze Siri a používej Fud AI bez rukou."
+            "value": "Říkej tyto fráze Siri a používej JL Physical bez rukou."
           }
         }
       }
@@ -45926,102 +45926,102 @@
         }
       }
     },
-    "When on, Fud AI uses Apple Health’s recent measured-energy window as your maintenance anchor when calculating goals instead of the formula estimate: measured total energy when enough days are available; otherwise, average measured active energy + formula BMR. No AI is used to read your burn. Requires Apple Health. Works with the Recalculate button and with Adaptive Goals.": {
+    "When on, JL Physical uses Apple Health’s recent measured-energy window as your maintenance anchor when calculating goals instead of the formula estimate: measured total energy when enough days are available; otherwise, average measured active energy + formula BMR. No AI is used to read your burn. Requires Apple Health. Works with the Recalculate button and with Adaptive Goals.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "عند التفعيل، يستخدم Fud AI نافذة بيانات الطاقة المقاسة الحديثة من Apple Health كمرجع لسعرات الحفاظ عند حساب الأهداف بدلًا من تقدير المعادلة: إجمالي الطاقة المقاس عند توفر أيام كافية، وإلا فمتوسط الطاقة النشطة المقاسة + BMR المحسوب بالمعادلة. لا يُستخدم الذكاء الاصطناعي لقراءة بيانات الحرق. يتطلب Apple Health. يعمل مع زر إعادة الحساب ومع Adaptive Goals."
+            "value": "عند التفعيل، يستخدم JL Physical نافذة بيانات الطاقة المقاسة الحديثة من Apple Health كمرجع لسعرات الحفاظ عند حساب الأهداف بدلًا من تقدير المعادلة: إجمالي الطاقة المقاس عند توفر أيام كافية، وإلا فمتوسط الطاقة النشطة المقاسة + BMR المحسوب بالمعادلة. لا يُستخدم الذكاء الاصطناعي لقراءة بيانات الحرق. يتطلب Apple Health. يعمل مع زر إعادة الحساب ومع Adaptive Goals."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktiv olduqda Fud AI hədəfləri hesablayarkən düstur təxmini əvəzinə Apple Health-də son ölçülmüş enerji məlumatları dövrünü saxlama istinadı kimi istifadə edir: kifayət qədər gün olduqda ölçülmüş ümumi enerji, əks halda ölçülmüş aktiv enerjinin ortalaması + düsturla hesablanan BMR. Sərfiyyatınızı oxumaq üçün Sİ istifadə olunmur. Apple Health tələb olunur. Yenidən Hesabla düyməsi və Adaptive Goals ilə işləyir."
+            "value": "Aktiv olduqda JL Physical hədəfləri hesablayarkən düstur təxmini əvəzinə Apple Health-də son ölçülmüş enerji məlumatları dövrünü saxlama istinadı kimi istifadə edir: kifayət qədər gün olduqda ölçülmüş ümumi enerji, əks halda ölçülmüş aktiv enerjinin ortalaması + düsturla hesablanan BMR. Sərfiyyatınızı oxumaq üçün Sİ istifadə olunmur. Apple Health tələb olunur. Yenidən Hesabla düyməsi və Adaptive Goals ilə işləyir."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wenn aktiviert, verwendet Fud AI das jüngste Messfenster für Energiedaten aus Apple Health als Erhaltungsanker bei der Zielberechnung anstelle der Formelschätzung: den gemessenen Gesamtenergieverbrauch, wenn genügend Tage verfügbar sind, andernfalls den durchschnittlichen gemessenen aktiven Energieverbrauch + den Formel-BMR. Zum Auslesen deines Verbrauchs wird keine KI verwendet. Erfordert Apple Health. Funktioniert mit der Schaltfläche „Neu berechnen“ und mit Adaptive Goals."
+            "value": "Wenn aktiviert, verwendet JL Physical das jüngste Messfenster für Energiedaten aus Apple Health als Erhaltungsanker bei der Zielberechnung anstelle der Formelschätzung: den gemessenen Gesamtenergieverbrauch, wenn genügend Tage verfügbar sind, andernfalls den durchschnittlichen gemessenen aktiven Energieverbrauch + den Formel-BMR. Zum Auslesen deines Verbrauchs wird keine KI verwendet. Erfordert Apple Health. Funktioniert mit der Schaltfläche „Neu berechnen“ und mit Adaptive Goals."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cuando está activado, Fud AI usa la ventana reciente de energía medida de Apple Health como referencia de mantenimiento al calcular objetivos, en lugar de la estimación de la fórmula: energía total medida cuando hay suficientes días; de lo contrario, energía activa medida promedio + BMR de la fórmula. No se usa IA para leer tu gasto. Requiere Apple Health. Funciona con el botón Recalcular y con Adaptive Goals."
+            "value": "Cuando está activado, JL Physical usa la ventana reciente de energía medida de Apple Health como referencia de mantenimiento al calcular objetivos, en lugar de la estimación de la fórmula: energía total medida cuando hay suficientes días; de lo contrario, energía activa medida promedio + BMR de la fórmula. No se usa IA para leer tu gasto. Requiere Apple Health. Funciona con el botón Recalcular y con Adaptive Goals."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lorsqu’il est activé, Fud AI utilise la fenêtre récente de données énergétiques mesurées de Apple Health comme référence de maintenance lors du calcul des objectifs, au lieu de l’estimation par formule : dépense énergétique totale mesurée lorsque suffisamment de jours sont disponibles ; sinon, moyenne de l’énergie active mesurée + BMR calculé par la formule. Aucune IA n’est utilisée pour lire votre dépense. Nécessite Apple Health. Fonctionne avec le bouton Recalculer et avec Adaptive Goals."
+            "value": "Lorsqu’il est activé, JL Physical utilise la fenêtre récente de données énergétiques mesurées de Apple Health comme référence de maintenance lors du calcul des objectifs, au lieu de l’estimation par formule : dépense énergétique totale mesurée lorsque suffisamment de jours sont disponibles ; sinon, moyenne de l’énergie active mesurée + BMR calculé par la formule. Aucune IA n’est utilisée pour lire votre dépense. Nécessite Apple Health. Fonctionne avec le bouton Recalculer et avec Adaptive Goals."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "चालू होने पर, Fud AI लक्ष्य कैलकुलेट करते समय फ़ॉर्मूला अनुमान की जगह Apple Health के हाल में मापे गए ऊर्जा डेटा की अवधि को मेंटेनेंस आधार के रूप में इस्तेमाल करता है: पर्याप्त दिनों का डेटा होने पर मापी गई कुल ऊर्जा; अन्यथा, मापी गई सक्रिय ऊर्जा का औसत + फ़ॉर्मूला BMR। बर्न पढ़ने के लिए कोई AI इस्तेमाल नहीं होता। Apple Health ज़रूरी है। पुनः गणना करें बटन और Adaptive Goals के साथ काम करता है।"
+            "value": "चालू होने पर, JL Physical लक्ष्य कैलकुलेट करते समय फ़ॉर्मूला अनुमान की जगह Apple Health के हाल में मापे गए ऊर्जा डेटा की अवधि को मेंटेनेंस आधार के रूप में इस्तेमाल करता है: पर्याप्त दिनों का डेटा होने पर मापी गई कुल ऊर्जा; अन्यथा, मापी गई सक्रिय ऊर्जा का औसत + फ़ॉर्मूला BMR। बर्न पढ़ने के लिए कोई AI इस्तेमाल नहीं होता। Apple Health ज़रूरी है। पुनः गणना करें बटन और Adaptive Goals के साथ काम करता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quando è attivo, Fud AI usa la finestra recente dei dati energetici misurati da Apple Health come riferimento di mantenimento nel calcolo degli obiettivi, invece della stima con formula: energia totale misurata quando sono disponibili abbastanza giorni; altrimenti, media dell’energia attiva misurata + BMR calcolato con la formula. Nessuna IA viene usata per leggere il tuo consumo. Richiede Apple Health. Funziona con il pulsante Ricalcola e con Adaptive Goals."
+            "value": "Quando è attivo, JL Physical usa la finestra recente dei dati energetici misurati da Apple Health come riferimento di mantenimento nel calcolo degli obiettivi, invece della stima con formula: energia totale misurata quando sono disponibili abbastanza giorni; altrimenti, media dell’energia attiva misurata + BMR calcolato con la formula. Nessuna IA viene usata per leggere il tuo consumo. Richiede Apple Health. Funziona con il pulsante Ricalcola e con Adaptive Goals."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "オンにすると、Fud AIは目標計算で、式による推定値の代わりにApple Healthの最近の実測エネルギーデータ期間を維持カロリーの基準として使います。十分な日数がある場合は実測の総エネルギー、そうでない場合は実測アクティブエネルギーの平均＋式で求めたBMRを使います。消費データの読み取りにAIは使いません。Apple Healthが必要です。「再計算」ボタンおよびAdaptive Goalsと連動します。"
+            "value": "オンにすると、JL Physicalは目標計算で、式による推定値の代わりにApple Healthの最近の実測エネルギーデータ期間を維持カロリーの基準として使います。十分な日数がある場合は実測の総エネルギー、そうでない場合は実測アクティブエネルギーの平均＋式で求めたBMRを使います。消費データの読み取りにAIは使いません。Apple Healthが必要です。「再計算」ボタンおよびAdaptive Goalsと連動します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "켜면 Fud AI가 목표를 계산할 때 공식 추정치 대신 Apple Health의 최근 측정 에너지 구간을 유지 칼로리 기준으로 사용합니다. 충분한 날짜가 있으면 측정된 총에너지를, 그렇지 않으면 측정된 활동 에너지 평균 + 공식 BMR을 사용합니다. 소모 데이터를 읽는 데 AI는 사용되지 않습니다. Apple Health가 필요합니다. 다시 계산 버튼 및 Adaptive Goals와 함께 작동합니다."
+            "value": "켜면 JL Physical가 목표를 계산할 때 공식 추정치 대신 Apple Health의 최근 측정 에너지 구간을 유지 칼로리 기준으로 사용합니다. 충분한 날짜가 있으면 측정된 총에너지를, 그렇지 않으면 측정된 활동 에너지 평균 + 공식 BMR을 사용합니다. 소모 데이터를 읽는 데 AI는 사용되지 않습니다. Apple Health가 필요합니다. 다시 계산 버튼 및 Adaptive Goals와 함께 작동합니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wanneer ingeschakeld gebruikt Fud AI het recente meetvenster voor energie uit Apple Health als onderhoudsbasis bij het berekenen van doelen, in plaats van de formuleschatting: gemeten totale energie wanneer er genoeg dagen beschikbaar zijn; anders de gemiddelde gemeten actieve energie + de formule-BMR. Er wordt geen AI gebruikt om je verbruik te lezen. Vereist Apple Health. Werkt met de knop Opnieuw berekenen en met Adaptive Goals."
+            "value": "Wanneer ingeschakeld gebruikt JL Physical het recente meetvenster voor energie uit Apple Health als onderhoudsbasis bij het berekenen van doelen, in plaats van de formuleschatting: gemeten totale energie wanneer er genoeg dagen beschikbaar zijn; anders de gemiddelde gemeten actieve energie + de formule-BMR. Er wordt geen AI gebruikt om je verbruik te lezen. Vereist Apple Health. Werkt met de knop Opnieuw berekenen en met Adaptive Goals."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Po włączeniu Fud AI używa ostatniego okna zmierzonych danych energii z Apple Health jako podstawy zapotrzebowania na utrzymanie podczas obliczania celów zamiast oszacowania ze wzoru: gdy dostępna jest wystarczająca liczba dni, używa zmierzonej energii całkowitej; w przeciwnym razie średniej zmierzonej energii aktywnej + BMR ze wzoru. AI nie jest używane do odczytywania spalania. Wymaga Apple Health. Działa z przyciskiem Przelicz oraz z Celami adaptacyjnymi."
+            "value": "Po włączeniu JL Physical używa ostatniego okna zmierzonych danych energii z Apple Health jako podstawy zapotrzebowania na utrzymanie podczas obliczania celów zamiast oszacowania ze wzoru: gdy dostępna jest wystarczająca liczba dni, używa zmierzonej energii całkowitej; w przeciwnym razie średniej zmierzonej energii aktywnej + BMR ze wzoru. AI nie jest używane do odczytywania spalania. Wymaga Apple Health. Działa z przyciskiem Przelicz oraz z Celami adaptacyjnymi."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quando ativado, o Fud AI usa a janela recente de energia medida do Apple Health como referência de manutenção ao calcular metas, em vez da estimativa por fórmula: energia total medida quando houver dias suficientes; caso contrário, média da energia ativa medida + BMR da fórmula. Nenhuma IA é usada para ler seu gasto. Requer Apple Health. Funciona com o botão Recalcular e com o Adaptive Goals."
+            "value": "Quando ativado, o JL Physical usa a janela recente de energia medida do Apple Health como referência de manutenção ao calcular metas, em vez da estimativa por fórmula: energia total medida quando houver dias suficientes; caso contrário, média da energia ativa medida + BMR da fórmula. Nenhuma IA é usada para ler seu gasto. Requer Apple Health. Funciona com o botão Recalcular e com o Adaptive Goals."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Când este activat, Fud AI folosește intervalul recent de energie măsurată din Apple Health ca bază de menținere la calcularea obiectivelor, în locul estimării prin formulă: energia totală măsurată când sunt disponibile suficiente zile; altfel, media energiei active măsurate + BMR calculat prin formulă. Nu se folosește IA pentru citirea consumului. Necesită Apple Health. Funcționează cu butonul Recalculează și cu Adaptive Goals."
+            "value": "Când este activat, JL Physical folosește intervalul recent de energie măsurată din Apple Health ca bază de menținere la calcularea obiectivelor, în locul estimării prin formulă: energia totală măsurată când sunt disponibile suficiente zile; altfel, media energiei active măsurate + BMR calculat prin formulă. Nu se folosește IA pentru citirea consumului. Necesită Apple Health. Funcționează cu butonul Recalculează și cu Adaptive Goals."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Когда функция включена, Fud AI использует данные об энергии из Apple Health за недавний период как ориентир поддержания при расчёте целей вместо оценки по формуле: измеренный общий расход энергии, если доступно достаточно дней; иначе среднее измеренной активной энергии + BMR по формуле. ИИ не используется для чтения данных о расходе. Требуется Apple Health. Работает с кнопкой «Пересчитать» и с Adaptive Goals."
+            "value": "Когда функция включена, JL Physical использует данные об энергии из Apple Health за недавний период как ориентир поддержания при расчёте целей вместо оценки по формуле: измеренный общий расход энергии, если доступно достаточно дней; иначе среднее измеренной активной энергии + BMR по формуле. ИИ не используется для чтения данных о расходе. Требуется Apple Health. Работает с кнопкой «Пересчитать» и с Adaptive Goals."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Когда функция включена, Fud AI використовує данние об енергии из Apple Health за недавний период как ориентир поддержания при расчёте целей вместо оценки по формуле: измеренний общий расход енергии, если доступно достаточно дней; иначе среднее измеренной активной енергии + BMR по формуле. ШІ не використовується для чтения данних о расходе. Потрібен Apple Health. Работает с кнопкой «Пересчитать» и с Adaptive Goals."
+            "value": "Когда функция включена, JL Physical використовує данние об енергии из Apple Health за недавний период как ориентир поддержания при расчёте целей вместо оценки по формуле: измеренний общий расход енергии, если доступно достаточно дней; иначе среднее измеренной активной енергии + BMR по формуле. ШІ не використовується для чтения данних о расходе. Потрібен Apple Health. Работает с кнопкой «Пересчитать» и с Adaptive Goals."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开启后，Fud AI 会在计算目标时使用 Apple Health 的近期实测能量窗口作为维持热量基准，而不是公式估算：有足够天数时使用实测总能量，否则使用实测活动能量平均值 + 公式 BMR。读取消耗数据不使用 AI。需要 Apple Health。与“重新计算”按钮及 Adaptive Goals 配合使用。"
+            "value": "开启后，JL Physical 会在计算目标时使用 Apple Health 的近期实测能量窗口作为维持热量基准，而不是公式估算：有足够天数时使用实测总能量，否则使用实测活动能量平均值 + 公式 BMR。读取消耗数据不使用 AI。需要 Apple Health。与“重新计算”按钮及 Adaptive Goals 配合使用。"
           }
         }
       }
@@ -47115,109 +47115,109 @@
         }
       }
     },
-    "Your API key, weight history, body fat history, and food log all stay on this device. Fud AI's developer never receives any of your data — requests go directly from your device to the provider.": {
+    "Your API key, weight history, body fat history, and food log all stay on this device. JL Physical's developer never receives any of your data — requests go directly from your device to the provider.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "مفتاح API الخاص بك، وسجل الوزن، وسجل نسبة الدهون في الجسم، وسجل الطعام — كلها تبقى على هذا الجهاز. لا يتلقّى مطوّر Fud AI أيًا من بياناتك أبدًا — تذهب الطلبات مباشرةً من جهازك إلى المزوّد."
+            "value": "مفتاح API الخاص بك، وسجل الوزن، وسجل نسبة الدهون في الجسم، وسجل الطعام — كلها تبقى على هذا الجهاز. لا يتلقّى مطوّر JL Physical أيًا من بياناتك أبدًا — تذهب الطلبات مباشرةً من جهازك إلى المزوّد."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "API açarınız, çəki tarixçəsi, bədən yağı tarixçəsi və yemək jurnalı — hamısı bu cihazda qalır. Fud AI tərtibatçısı sizin məlumatlarınızdan heç birini almır — sorğular cihazınızdan birbaşa provayderə gedir."
+            "value": "API açarınız, çəki tarixçəsi, bədən yağı tarixçəsi və yemək jurnalı — hamısı bu cihazda qalır. JL Physical tərtibatçısı sizin məlumatlarınızdan heç birini almır — sorğular cihazınızdan birbaşa provayderə gedir."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dein API-Schlüssel, dein Gewichtsverlauf, dein Körperfettverlauf und dein Ernährungstagebuch bleiben alle auf diesem Gerät. Der Entwickler von Fud AI erhält keine deiner Daten — Anfragen gehen direkt von deinem Gerät an den Anbieter."
+            "value": "Dein API-Schlüssel, dein Gewichtsverlauf, dein Körperfettverlauf und dein Ernährungstagebuch bleiben alle auf diesem Gerät. Der Entwickler von JL Physical erhält keine deiner Daten — Anfragen gehen direkt von deinem Gerät an den Anbieter."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tu clave de API, tu historial de peso, tu historial de grasa corporal y tu registro de comidas permanecen en este dispositivo. El desarrollador de Fud AI nunca recibe ninguno de tus datos: las solicitudes van directamente desde tu dispositivo al proveedor."
+            "value": "Tu clave de API, tu historial de peso, tu historial de grasa corporal y tu registro de comidas permanecen en este dispositivo. El desarrollador de JL Physical nunca recibe ninguno de tus datos: las solicitudes van directamente desde tu dispositivo al proveedor."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre clé API, votre historique de poids, votre historique de masse grasse et votre journal alimentaire restent tous sur cet appareil. Le développeur de Fud AI ne reçoit jamais aucune de vos données — les requêtes vont directement de votre appareil au fournisseur."
+            "value": "Votre clé API, votre historique de poids, votre historique de masse grasse et votre journal alimentaire restent tous sur cet appareil. Le développeur de JL Physical ne reçoit jamais aucune de vos données — les requêtes vont directement de votre appareil au fournisseur."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "आपकी API कुंजी, वजन का इतिहास, बॉडी फैट का इतिहास और फूड लॉग — सब कुछ इसी डिवाइस पर रहता है। Fud AI के डेवलपर को आपका कोई भी डेटा कभी नहीं मिलता — अनुरोध सीधे आपके डिवाइस से प्रदाता को जाते हैं।"
+            "value": "आपकी API कुंजी, वजन का इतिहास, बॉडी फैट का इतिहास और फूड लॉग — सब कुछ इसी डिवाइस पर रहता है। JL Physical के डेवलपर को आपका कोई भी डेटा कभी नहीं मिलता — अनुरोध सीधे आपके डिवाइस से प्रदाता को जाते हैं।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La tua chiave API, lo storico del peso, lo storico della massa grassa e il diario alimentare restano tutti su questo dispositivo. Lo sviluppatore di Fud AI non riceve mai nessuno dei tuoi dati — le richieste vanno direttamente dal tuo dispositivo al fornitore."
+            "value": "La tua chiave API, lo storico del peso, lo storico della massa grassa e il diario alimentare restano tutti su questo dispositivo. Lo sviluppatore di JL Physical non riceve mai nessuno dei tuoi dati — le richieste vanno direttamente dal tuo dispositivo al fornitore."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "APIキー、体重履歴、体脂肪履歴、食事記録はすべてこの端末に残ります。Fud AIの開発者があなたのデータを受け取ることは一切ありません。リクエストは端末から直接プロバイダーへ送信されます。"
+            "value": "APIキー、体重履歴、体脂肪履歴、食事記録はすべてこの端末に残ります。JL Physicalの開発者があなたのデータを受け取ることは一切ありません。リクエストは端末から直接プロバイダーへ送信されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "API 키, 체중 기록, 체지방 기록, 식사 일지는 모두 이 기기에 보관됩니다. Fud AI 개발자는 어떠한 데이터도 받지 않습니다 — 요청은 기기에서 제공업체로 직접 전송됩니다."
+            "value": "API 키, 체중 기록, 체지방 기록, 식사 일지는 모두 이 기기에 보관됩니다. JL Physical 개발자는 어떠한 데이터도 받지 않습니다 — 요청은 기기에서 제공업체로 직접 전송됩니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Je API-sleutel, gewichtsgeschiedenis, vetpercentage-geschiedenis en voedingslogboek blijven allemaal op dit apparaat. De ontwikkelaar van Fud AI ontvangt nooit een van je gegevens — verzoeken gaan rechtstreeks van je apparaat naar de provider."
+            "value": "Je API-sleutel, gewichtsgeschiedenis, vetpercentage-geschiedenis en voedingslogboek blijven allemaal op dit apparaat. De ontwikkelaar van JL Physical ontvangt nooit een van je gegevens — verzoeken gaan rechtstreeks van je apparaat naar de provider."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Twój klucz API, historia wagi, historia tkanki tłuszczowej i dziennik jedzenia zostają na tym urządzeniu. Deweloper Fud AI nigdy nie otrzymuje Twoich danych — żądania idą bezpośrednio z urządzenia do dostawcy."
+            "value": "Twój klucz API, historia wagi, historia tkanki tłuszczowej i dziennik jedzenia zostają na tym urządzeniu. Deweloper JL Physical nigdy nie otrzymuje Twoich danych — żądania idą bezpośrednio z urządzenia do dostawcy."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sua chave de API, histórico de peso, histórico de gordura corporal e diário alimentar ficam todos neste dispositivo. O desenvolvedor do Fud AI nunca recebe nenhum dos seus dados — as solicitações vão direto do seu dispositivo para o provedor."
+            "value": "Sua chave de API, histórico de peso, histórico de gordura corporal e diário alimentar ficam todos neste dispositivo. O desenvolvedor do JL Physical nunca recebe nenhum dos seus dados — as solicitações vão direto do seu dispositivo para o provedor."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cheia ta API, istoricul greutății, istoricul grăsimii corporale și jurnalul alimentar rămân toate pe acest dispozitiv. Dezvoltatorul Fud AI nu primește niciodată vreuna dintre datele tale — solicitările merg direct de pe dispozitivul tău la furnizor."
+            "value": "Cheia ta API, istoricul greutății, istoricul grăsimii corporale și jurnalul alimentar rămân toate pe acest dispozitiv. Dezvoltatorul JL Physical nu primește niciodată vreuna dintre datele tale — solicitările merg direct de pe dispozitivul tău la furnizor."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваш API-ключ, история веса, история процента жира и журнал питания остаются на этом устройстве. Разработчик Fud AI никогда не получает ваших данных — запросы идут напрямую с вашего устройства к провайдеру."
+            "value": "Ваш API-ключ, история веса, история процента жира и журнал питания остаются на этом устройстве. Разработчик JL Physical никогда не получает ваших данных — запросы идут напрямую с вашего устройства к провайдеру."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваш API-ключ, история веса, история процента жира и журнал питания остаются на етом устройстве. Разработчик Fud AI никогда не получает ваших данних — запроси идут напрямую с вашего устройства к провайдеру."
+            "value": "Ваш API-ключ, история веса, история процента жира и журнал питания остаются на етом устройстве. Разработчик JL Physical никогда не получает ваших данних — запроси идут напрямую с вашего устройства к провайдеру."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的 API 密钥、体重记录、体脂记录和饮食日志都保留在本设备上。Fud AI 开发者永远不会收到你的任何数据 — 请求直接从你的设备发送到提供商。"
+            "value": "你的 API 密钥、体重记录、体脂记录和饮食日志都保留在本设备上。JL Physical 开发者永远不会收到你的任何数据 — 请求直接从你的设备发送到提供商。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tvůj API klíč, historie váhy, historie tělesného tuku i deník jídel zůstávají v tomto zařízení. Vývojář Fud AI žádná tvoje data nedostává — požadavky jdou přímo z tvého zařízení k poskytovateli."
+            "value": "Tvůj API klíč, historie váhy, historie tělesného tuku i deník jídel zůstávají v tomto zařízení. Vývojář JL Physical žádná tvoje data nedostává — požadavky jdou přímo z tvého zařízení k poskytovateli."
           }
         }
       }
@@ -47744,104 +47744,104 @@
         }
       }
     },
-    "Your daily calorie and macro targets are set by AI. When you tap Recalculate Goals — or automatically about once a week if Adaptive Goals is on — Fud AI sends your profile, the reference equations below, privacy-safe daily nutrition totals, exact dated weight, body-fat, and tape measurements, aggregate workout counts, duration, sets, and reps, and optional Apple Health energy to your AI provider. Food names, notes, photos, ingredients, and exercise names are not sent for this calculation. It starts from these peer-reviewed formulas, then adjusts them to your real data to estimate your true maintenance and targets.": {
-      "comment": "A description of how Fud AI calculates your daily calorie and macro targets.",
+    "Your daily calorie and macro targets are set by AI. When you tap Recalculate Goals — or automatically about once a week if Adaptive Goals is on — JL Physical sends your profile, the reference equations below, privacy-safe daily nutrition totals, exact dated weight, body-fat, and tape measurements, aggregate workout counts, duration, sets, and reps, and optional Apple Health energy to your AI provider. Food names, notes, photos, ingredients, and exercise names are not sent for this calculation. It starts from these peer-reviewed formulas, then adjusts them to your real data to estimate your true maintenance and targets.": {
+      "comment": "A description of how JL Physical calculates your daily calorie and macro targets.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يحدد الذكاء الاصطناعي أهدافك اليومية للسعرات الحرارية والمغذيات الكبرى. عند الضغط على «إعادة حساب الأهداف» — أو تلقائيًا مرة كل أسبوع تقريبًا إذا كانت الأهداف التكيفية مفعّلة — يرسل Fud AI إلى مزوّد الذكاء الاصطناعي ملفك الشخصي، والمعادلات المرجعية أدناه، وإجماليات التغذية اليومية المجمّعة بطريقة تحمي الخصوصية، وقياسات الوزن ونسبة دهون الجسم ومحيطات الجسم الدقيقة والمؤرخة، وإجماليات التمارين من حيث العدد والمدة والمجموعات والتكرارات، وبيانات الطاقة الاختيارية من Apple Health. لا تُرسل أسماء الأطعمة أو الملاحظات أو الصور أو المكوّنات أو أسماء التمارين لهذا الحساب. يبدأ الذكاء الاصطناعي بهذه المعادلات التي راجعها الأقران، ثم يعدّلها وفق بياناتك الفعلية لتقدير سعرات الحفاظ الفعلية وأهدافك."
+            "value": "يحدد الذكاء الاصطناعي أهدافك اليومية للسعرات الحرارية والمغذيات الكبرى. عند الضغط على «إعادة حساب الأهداف» — أو تلقائيًا مرة كل أسبوع تقريبًا إذا كانت الأهداف التكيفية مفعّلة — يرسل JL Physical إلى مزوّد الذكاء الاصطناعي ملفك الشخصي، والمعادلات المرجعية أدناه، وإجماليات التغذية اليومية المجمّعة بطريقة تحمي الخصوصية، وقياسات الوزن ونسبة دهون الجسم ومحيطات الجسم الدقيقة والمؤرخة، وإجماليات التمارين من حيث العدد والمدة والمجموعات والتكرارات، وبيانات الطاقة الاختيارية من Apple Health. لا تُرسل أسماء الأطعمة أو الملاحظات أو الصور أو المكوّنات أو أسماء التمارين لهذا الحساب. يبدأ الذكاء الاصطناعي بهذه المعادلات التي راجعها الأقران، ثم يعدّلها وفق بياناتك الفعلية لتقدير سعرات الحفاظ الفعلية وأهدافك."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gündəlik kalori və makro hədəflərinizi AI təyin edir. «Hədəfləri yenidən hesabla» düyməsinə toxunduqda — və ya Adaptiv Hədəflər aktivdirsə, təxminən həftədə bir dəfə avtomatik — Fud AI profilinizi, aşağıdakı istinad tənliklərini, məxfiliyi qoruyan ümumiləşdirilmiş gündəlik qidalanma yekunlarını, tarixlə göstərilən dəqiq çəki, bədən yağı və lentlə bədən ölçülərini, məşqlərin ümumiləşdirilmiş sayını, müddətini, set və təkrarlarını, həmçinin Apple Health-dən ixtiyari enerji məlumatlarını AI provayderinizə göndərir. Qida adları, qeydlər, fotolar, inqrediyentlər və məşq adları bu hesablama üçün göndərilmir. AI bu elmi cəhətdən təsdiqlənmiş düsturlardan başlayır, sonra həqiqi saxlama səviyyənizi və hədəflərinizi qiymətləndirmək üçün onları real məlumatlarınıza uyğunlaşdırır."
+            "value": "Gündəlik kalori və makro hədəflərinizi AI təyin edir. «Hədəfləri yenidən hesabla» düyməsinə toxunduqda — və ya Adaptiv Hədəflər aktivdirsə, təxminən həftədə bir dəfə avtomatik — JL Physical profilinizi, aşağıdakı istinad tənliklərini, məxfiliyi qoruyan ümumiləşdirilmiş gündəlik qidalanma yekunlarını, tarixlə göstərilən dəqiq çəki, bədən yağı və lentlə bədən ölçülərini, məşqlərin ümumiləşdirilmiş sayını, müddətini, set və təkrarlarını, həmçinin Apple Health-dən ixtiyari enerji məlumatlarını AI provayderinizə göndərir. Qida adları, qeydlər, fotolar, inqrediyentlər və məşq adları bu hesablama üçün göndərilmir. AI bu elmi cəhətdən təsdiqlənmiş düsturlardan başlayır, sonra həqiqi saxlama səviyyənizi və hədəflərinizi qiymətləndirmək üçün onları real məlumatlarınıza uyğunlaşdırır."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deine täglichen Kalorien- und Makroziele werden von KI festgelegt. Wenn du auf „Ziele neu berechnen“ tippst — oder etwa einmal pro Woche automatisch, wenn Adaptive Ziele aktiviert ist — sendet Fud AI dein Profil, die unten stehenden Referenzformeln, datenschutzschonende aggregierte tägliche Nährwertsummen, genaue datierte Gewichts-, Körperfett- und Umfangsmessungen, zusammengefasste Trainingszahlen, -dauer, Sätze und Wiederholungen sowie optionale Energiedaten aus Apple Health an deinen KI-Anbieter. Lebensmittelnamen, Notizen, Fotos, Zutaten und Übungsnamen werden für diese Berechnung nicht gesendet. Die KI geht von diesen wissenschaftlich geprüften Formeln aus und passt sie an deine echten Daten an, um deinen tatsächlichen Erhaltungsbedarf und deine Ziele zu schätzen."
+            "value": "Deine täglichen Kalorien- und Makroziele werden von KI festgelegt. Wenn du auf „Ziele neu berechnen“ tippst — oder etwa einmal pro Woche automatisch, wenn Adaptive Ziele aktiviert ist — sendet JL Physical dein Profil, die unten stehenden Referenzformeln, datenschutzschonende aggregierte tägliche Nährwertsummen, genaue datierte Gewichts-, Körperfett- und Umfangsmessungen, zusammengefasste Trainingszahlen, -dauer, Sätze und Wiederholungen sowie optionale Energiedaten aus Apple Health an deinen KI-Anbieter. Lebensmittelnamen, Notizen, Fotos, Zutaten und Übungsnamen werden für diese Berechnung nicht gesendet. Die KI geht von diesen wissenschaftlich geprüften Formeln aus und passt sie an deine echten Daten an, um deinen tatsächlichen Erhaltungsbedarf und deine Ziele zu schätzen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tus objetivos diarios de calorías y macros los establece la IA. Cuando tocas «Recalcular objetivos» — o automáticamente una vez a la semana si los Objetivos adaptativos están activados — Fud AI envía a tu proveedor de IA tu perfil, las ecuaciones de referencia de abajo, totales nutricionales diarios agregados que protegen tu privacidad, mediciones exactas y fechadas de peso, grasa corporal y perímetros corporales, datos agregados de entrenamientos —cantidad, duración, series y repeticiones— y datos opcionales de energía de Apple Health. Para este cálculo no se envían nombres de alimentos, notas, fotos, ingredientes ni nombres de ejercicios. La IA parte de estas fórmulas revisadas por pares y luego las ajusta a tus datos reales para estimar tu mantenimiento y objetivos verdaderos."
+            "value": "Tus objetivos diarios de calorías y macros los establece la IA. Cuando tocas «Recalcular objetivos» — o automáticamente una vez a la semana si los Objetivos adaptativos están activados — JL Physical envía a tu proveedor de IA tu perfil, las ecuaciones de referencia de abajo, totales nutricionales diarios agregados que protegen tu privacidad, mediciones exactas y fechadas de peso, grasa corporal y perímetros corporales, datos agregados de entrenamientos —cantidad, duración, series y repeticiones— y datos opcionales de energía de Apple Health. Para este cálculo no se envían nombres de alimentos, notas, fotos, ingredientes ni nombres de ejercicios. La IA parte de estas fórmulas revisadas por pares y luego las ajusta a tus datos reales para estimar tu mantenimiento y objetivos verdaderos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vos objectifs quotidiens de calories et de macros sont définis par l’IA. Quand vous touchez « Recalculer les objectifs » — ou automatiquement environ une fois par semaine si les Objectifs adaptatifs sont activés — Fud AI envoie à votre fournisseur d’IA votre profil, les équations de référence ci-dessous, des totaux nutritionnels quotidiens agrégés respectueux de la vie privée, les mesures exactes et datées du poids, de la masse grasse et des mensurations au ruban, des données agrégées sur le nombre et la durée des entraînements, les séries et les répétitions, ainsi que les données énergétiques facultatives de Apple Health. Les noms d’aliments, notes, photos, ingrédients et noms d’exercices ne sont pas envoyés pour ce calcul. L’IA part de ces formules validées scientifiquement, puis les ajuste à vos données réelles pour estimer votre maintenance et vos objectifs réels."
+            "value": "Vos objectifs quotidiens de calories et de macros sont définis par l’IA. Quand vous touchez « Recalculer les objectifs » — ou automatiquement environ une fois par semaine si les Objectifs adaptatifs sont activés — JL Physical envoie à votre fournisseur d’IA votre profil, les équations de référence ci-dessous, des totaux nutritionnels quotidiens agrégés respectueux de la vie privée, les mesures exactes et datées du poids, de la masse grasse et des mensurations au ruban, des données agrégées sur le nombre et la durée des entraînements, les séries et les répétitions, ainsi que les données énergétiques facultatives de Apple Health. Les noms d’aliments, notes, photos, ingrédients et noms d’exercices ne sont pas envoyés pour ce calcul. L’IA part de ces formules validées scientifiquement, puis les ajuste à vos données réelles pour estimer votre maintenance et vos objectifs réels."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "आपके दैनिक कैलोरी और मैक्रो लक्ष्य AI तय करता है। जब आप ‘लक्ष्य दोबारा कैलकुलेट करें’ पर टैप करते हैं — या अडैप्टिव लक्ष्य चालू होने पर हफ़्ते में लगभग एक बार अपने आप — Fud AI आपके AI प्रोवाइडर को आपकी प्रोफ़ाइल, नीचे दिए संदर्भ समीकरण, गोपनीयता-सुरक्षित समेकित दैनिक पोषण कुल, तारीख सहित सटीक वज़न, बॉडी-फैट और टेप से लिए गए माप, वर्कआउट की समेकित संख्या, अवधि, सेट और रेप्स, और वैकल्पिक Apple Health ऊर्जा डेटा भेजता है। इस गणना के लिए भोजन के नाम, नोट्स, फ़ोटो, सामग्री और व्यायाम के नाम नहीं भेजे जाते। AI इन समीक्षित फ़ॉर्मूलों से शुरू करता है, फिर आपके वास्तविक डेटा के अनुसार उन्हें समायोजित करके आपकी असली मेंटेनेंस और लक्ष्यों का अनुमान लगाता है।"
+            "value": "आपके दैनिक कैलोरी और मैक्रो लक्ष्य AI तय करता है। जब आप ‘लक्ष्य दोबारा कैलकुलेट करें’ पर टैप करते हैं — या अडैप्टिव लक्ष्य चालू होने पर हफ़्ते में लगभग एक बार अपने आप — JL Physical आपके AI प्रोवाइडर को आपकी प्रोफ़ाइल, नीचे दिए संदर्भ समीकरण, गोपनीयता-सुरक्षित समेकित दैनिक पोषण कुल, तारीख सहित सटीक वज़न, बॉडी-फैट और टेप से लिए गए माप, वर्कआउट की समेकित संख्या, अवधि, सेट और रेप्स, और वैकल्पिक Apple Health ऊर्जा डेटा भेजता है। इस गणना के लिए भोजन के नाम, नोट्स, फ़ोटो, सामग्री और व्यायाम के नाम नहीं भेजे जाते। AI इन समीक्षित फ़ॉर्मूलों से शुरू करता है, फिर आपके वास्तविक डेटा के अनुसार उन्हें समायोजित करके आपकी असली मेंटेनेंस और लक्ष्यों का अनुमान लगाता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "I tuoi obiettivi giornalieri di calorie e macro sono impostati dall’IA. Quando tocchi «Ricalcola obiettivi» — o automaticamente circa una volta a settimana se Obiettivi adattivi è attivo — Fud AI invia al tuo provider IA il tuo profilo, le equazioni di riferimento qui sotto, i totali nutrizionali giornalieri aggregati nel rispetto della privacy, le misurazioni esatte e datate di peso, grasso corporeo e circonferenze rilevate con il metro, i dati aggregati sugli allenamenti — numero, durata, serie e ripetizioni — e i dati energetici facoltativi di Apple Health. Per questo calcolo non vengono inviati nomi degli alimenti, note, foto, ingredienti o nomi degli esercizi. L’IA parte da queste formule validate scientificamente e poi le adatta ai tuoi dati reali per stimare il tuo vero mantenimento e i tuoi obiettivi."
+            "value": "I tuoi obiettivi giornalieri di calorie e macro sono impostati dall’IA. Quando tocchi «Ricalcola obiettivi» — o automaticamente circa una volta a settimana se Obiettivi adattivi è attivo — JL Physical invia al tuo provider IA il tuo profilo, le equazioni di riferimento qui sotto, i totali nutrizionali giornalieri aggregati nel rispetto della privacy, le misurazioni esatte e datate di peso, grasso corporeo e circonferenze rilevate con il metro, i dati aggregati sugli allenamenti — numero, durata, serie e ripetizioni — e i dati energetici facoltativi di Apple Health. Per questo calcolo non vengono inviati nomi degli alimenti, note, foto, ingredienti o nomi degli esercizi. L’IA parte da queste formule validate scientificamente e poi le adatta ai tuoi dati reali per stimare il tuo vero mantenimento e i tuoi obiettivi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "1日のカロリーとマクロの目標はAIが設定します。「目標を再計算」をタップすると（アダプティブ目標がオンの場合は週1回程度自動で）、Fud AIはプロフィール、下記の参照式、プライバシーに配慮した日ごとの栄養合計、日付付きの正確な体重・体脂肪率・メジャー採寸値、ワークアウトの集計値（回数、時間、セット数、レップ数）、および任意のApple HealthエネルギーデータをAIプロバイダーに送信します。この計算では、食品名、メモ、写真、材料、運動名は送信されません。査読済みの計算式をもとに、実際のデータに合わせて調整し、真の維持カロリーと目標を推定します。"
+            "value": "1日のカロリーとマクロの目標はAIが設定します。「目標を再計算」をタップすると（アダプティブ目標がオンの場合は週1回程度自動で）、JL Physicalはプロフィール、下記の参照式、プライバシーに配慮した日ごとの栄養合計、日付付きの正確な体重・体脂肪率・メジャー採寸値、ワークアウトの集計値（回数、時間、セット数、レップ数）、および任意のApple HealthエネルギーデータをAIプロバイダーに送信します。この計算では、食品名、メモ、写真、材料、運動名は送信されません。査読済みの計算式をもとに、実際のデータに合わせて調整し、真の維持カロリーと目標を推定します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "일일 칼로리와 매크로 목표는 AI가 설정합니다. ‘목표 다시 계산’을 탭하면 — 또는 적응형 목표가 켜져 있으면 약 일주일에 한 번 자동으로 — Fud AI가 프로필, 아래의 참조 공식, 개인정보를 보호하도록 집계된 일일 영양 합계, 날짜가 포함된 정확한 체중·체지방·줄자 측정값, 운동 횟수·시간·세트·반복 횟수의 집계값, 선택 사항인 Apple Health 에너지 데이터를 AI 제공자에게 전송합니다. 이 계산에는 음식 이름, 메모, 사진, 재료, 운동 이름이 전송되지 않습니다. 동료 검증을 거친 공식에서 출발해 실제 데이터에 맞게 조정하여 진짜 유지 칼로리와 목표를 추정합니다."
+            "value": "일일 칼로리와 매크로 목표는 AI가 설정합니다. ‘목표 다시 계산’을 탭하면 — 또는 적응형 목표가 켜져 있으면 약 일주일에 한 번 자동으로 — JL Physical가 프로필, 아래의 참조 공식, 개인정보를 보호하도록 집계된 일일 영양 합계, 날짜가 포함된 정확한 체중·체지방·줄자 측정값, 운동 횟수·시간·세트·반복 횟수의 집계값, 선택 사항인 Apple Health 에너지 데이터를 AI 제공자에게 전송합니다. 이 계산에는 음식 이름, 메모, 사진, 재료, 운동 이름이 전송되지 않습니다. 동료 검증을 거친 공식에서 출발해 실제 데이터에 맞게 조정하여 진짜 유지 칼로리와 목표를 추정합니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Je dagelijkse calorie- en macrodoelen worden door AI bepaald. Wanneer je op ‘Doelen herberekenen’ tikt — of automatisch ongeveer één keer per week als Adaptieve doelen aanstaat — stuurt Fud AI je profiel, de onderstaande referentieformules, geaggregeerde privacyvriendelijke dagelijkse voedingstotalen, nauwkeurige gedateerde metingen van gewicht, lichaamsvet en lichaamsomtrek, geaggregeerde aantallen trainingen, duur, sets en herhalingen, en optionele energiegegevens uit Apple Health naar je AI-provider. Namen van voedingsmiddelen, notities, foto’s, ingrediënten en namen van oefeningen worden niet voor deze berekening verstuurd. De AI begint bij deze wetenschappelijk onderbouwde formules en past ze aan je echte gegevens aan om je werkelijke onderhoudsbehoefte en doelen te schatten."
+            "value": "Je dagelijkse calorie- en macrodoelen worden door AI bepaald. Wanneer je op ‘Doelen herberekenen’ tikt — of automatisch ongeveer één keer per week als Adaptieve doelen aanstaat — stuurt JL Physical je profiel, de onderstaande referentieformules, geaggregeerde privacyvriendelijke dagelijkse voedingstotalen, nauwkeurige gedateerde metingen van gewicht, lichaamsvet en lichaamsomtrek, geaggregeerde aantallen trainingen, duur, sets en herhalingen, en optionele energiegegevens uit Apple Health naar je AI-provider. Namen van voedingsmiddelen, notities, foto’s, ingrediënten en namen van oefeningen worden niet voor deze berekening verstuurd. De AI begint bij deze wetenschappelijk onderbouwde formules en past ze aan je echte gegevens aan om je werkelijke onderhoudsbehoefte en doelen te schatten."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Twoje dzienne cele kalorii i makroskładników ustala AI. Gdy stukniesz „Przelicz cele ponownie” — lub automatycznie mniej więcej raz w tygodniu, jeśli włączone są Cele adaptacyjne — Fud AI wysyła do Twojego dostawcy AI profil, poniższe równania referencyjne, zagregowane dzienne podsumowania żywieniowe chroniące prywatność, dokładne i opatrzone datą pomiary masy ciała, poziomu tkanki tłuszczowej i obwodów ciała, zagregowane dane o treningach — ich liczbę, czas trwania, serie i powtórzenia — oraz opcjonalne dane o energii z Apple Health. Nazwy produktów, notatki, zdjęcia, składniki ani nazwy ćwiczeń nie są wysyłane do tego obliczenia. AI zaczyna od tych zweryfikowanych naukowo wzorów, a następnie dopasowuje je do Twoich rzeczywistych danych, aby oszacować faktyczne zapotrzebowanie na utrzymanie masy i cele."
+            "value": "Twoje dzienne cele kalorii i makroskładników ustala AI. Gdy stukniesz „Przelicz cele ponownie” — lub automatycznie mniej więcej raz w tygodniu, jeśli włączone są Cele adaptacyjne — JL Physical wysyła do Twojego dostawcy AI profil, poniższe równania referencyjne, zagregowane dzienne podsumowania żywieniowe chroniące prywatność, dokładne i opatrzone datą pomiary masy ciała, poziomu tkanki tłuszczowej i obwodów ciała, zagregowane dane o treningach — ich liczbę, czas trwania, serie i powtórzenia — oraz opcjonalne dane o energii z Apple Health. Nazwy produktów, notatki, zdjęcia, składniki ani nazwy ćwiczeń nie są wysyłane do tego obliczenia. AI zaczyna od tych zweryfikowanych naukowo wzorów, a następnie dopasowuje je do Twoich rzeczywistych danych, aby oszacować faktyczne zapotrzebowanie na utrzymanie masy i cele."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Suas metas diárias de calorias e macros são definidas por IA. Quando você toca em «Recalcular metas» — ou automaticamente cerca de uma vez por semana se Metas adaptativas estiver ativado — o Fud AI envia ao seu provedor de IA seu perfil, as equações de referência abaixo, totais nutricionais diários agregados com proteção de privacidade, medições exatas e datadas de peso, gordura corporal e circunferências feitas com fita métrica, dados agregados dos treinos — quantidade, duração, séries e repetições — e dados opcionais de energia do Apple Health. Nomes de alimentos, notas, fotos, ingredientes e nomes de exercícios não são enviados para este cálculo. A IA parte dessas fórmulas revisadas por pares e as ajusta aos seus dados reais para estimar sua verdadeira manutenção e suas metas."
+            "value": "Suas metas diárias de calorias e macros são definidas por IA. Quando você toca em «Recalcular metas» — ou automaticamente cerca de uma vez por semana se Metas adaptativas estiver ativado — o JL Physical envia ao seu provedor de IA seu perfil, as equações de referência abaixo, totais nutricionais diários agregados com proteção de privacidade, medições exatas e datadas de peso, gordura corporal e circunferências feitas com fita métrica, dados agregados dos treinos — quantidade, duração, séries e repetições — e dados opcionais de energia do Apple Health. Nomes de alimentos, notas, fotos, ingredientes e nomes de exercícios não são enviados para este cálculo. A IA parte dessas fórmulas revisadas por pares e as ajusta aos seus dados reais para estimar sua verdadeira manutenção e suas metas."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Obiectivele tale zilnice de calorii și macronutrienți sunt stabilite de AI. Când atingi „Recalculează obiectivele” — sau automat cam o dată pe săptămână dacă Obiectivele adaptive sunt activate — Fud AI trimite furnizorului tău de AI profilul, ecuațiile de referință de mai jos, totalurile nutriționale zilnice agregate care protejează confidențialitatea, măsurători exacte și datate ale greutății, grăsimii corporale și circumferințelor măsurate cu banda, date agregate despre antrenamente — număr, durată, seturi și repetări — și date energetice opționale din Apple Health. Numele alimentelor, notele, fotografiile, ingredientele și numele exercițiilor nu sunt trimise pentru acest calcul. AI pornește de la aceste formule validate științific, apoi le ajustează la datele tale reale pentru a estima menținerea și obiectivele tale reale."
+            "value": "Obiectivele tale zilnice de calorii și macronutrienți sunt stabilite de AI. Când atingi „Recalculează obiectivele” — sau automat cam o dată pe săptămână dacă Obiectivele adaptive sunt activate — JL Physical trimite furnizorului tău de AI profilul, ecuațiile de referință de mai jos, totalurile nutriționale zilnice agregate care protejează confidențialitatea, măsurători exacte și datate ale greutății, grăsimii corporale și circumferințelor măsurate cu banda, date agregate despre antrenamente — număr, durată, seturi și repetări — și date energetice opționale din Apple Health. Numele alimentelor, notele, fotografiile, ingredientele și numele exercițiilor nu sunt trimise pentru acest calcul. AI pornește de la aceste formule validate științific, apoi le ajustează la datele tale reale pentru a estima menținerea și obiectivele tale reale."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваши дневные цели по калориям и макронутриентам задаёт ИИ. Когда вы нажимаете «Пересчитать цели» — или автоматически примерно раз в неделю, если включены адаптивные цели, — Fud AI отправляет вашему ИИ-провайдеру профиль, приведённые ниже эталонные формулы, безопасные агрегированные суточные показатели питания, точные измерения веса, процента жира и обхватов тела с датами, агрегированные показатели тренировок — их количество, продолжительность, подходы и повторения — и, при наличии, данные об энергозатратах из Apple Health. Названия еды, заметки, фотографии, ингредиенты и названия упражнений для этого расчёта не отправляются. ИИ берёт за основу эти научно проверенные формулы и подстраивает их под ваши реальные данные, чтобы оценить фактическую норму и цели."
+            "value": "Ваши дневные цели по калориям и макронутриентам задаёт ИИ. Когда вы нажимаете «Пересчитать цели» — или автоматически примерно раз в неделю, если включены адаптивные цели, — JL Physical отправляет вашему ИИ-провайдеру профиль, приведённые ниже эталонные формулы, безопасные агрегированные суточные показатели питания, точные измерения веса, процента жира и обхватов тела с датами, агрегированные показатели тренировок — их количество, продолжительность, подходы и повторения — и, при наличии, данные об энергозатратах из Apple Health. Названия еды, заметки, фотографии, ингредиенты и названия упражнений для этого расчёта не отправляются. ИИ берёт за основу эти научно проверенные формулы и подстраивает их под ваши реальные данные, чтобы оценить фактическую норму и цели."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваши дневние цели по калориям и макронутриентам задаёт ШІ. Когда ви нажимаете «Пересчитать цели» — или автоматически примерно раз в неделю, если включени адаптивние цели, — Fud AI отправляет вашему ШІ-провайдеру профиль, приведённие ниже еталонние формули, безопасние агрегированние суточние показатели питания, точние измерения веса, процента жира и обхватов тела с датами, агрегированние показатели тренировок — их количество, продолжительность, подходи и повторения — и, при наличии, данние об енергозатратах из Apple Health. Названия еди, заметки, фотографии, ингредиенти и названия упражнений для етого расчёта не отправляются. ШІ берёт за основу ети научно проверенние формули и подстраивает их под ваши реальние данние, чтоби оценить фактическую норму и цели."
+            "value": "Ваши дневние цели по калориям и макронутриентам задаёт ШІ. Когда ви нажимаете «Пересчитать цели» — или автоматически примерно раз в неделю, если включени адаптивние цели, — JL Physical отправляет вашему ШІ-провайдеру профиль, приведённие ниже еталонние формули, безопасние агрегированние суточние показатели питания, точние измерения веса, процента жира и обхватов тела с датами, агрегированние показатели тренировок — их количество, продолжительность, подходи и повторения — и, при наличии, данние об енергозатратах из Apple Health. Названия еди, заметки, фотографии, ингредиенти и названия упражнений для етого расчёта не отправляются. ШІ берёт за основу ети научно проверенние формули и подстраивает их под ваши реальние данние, чтоби оценить фактическую норму и цели."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的每日热量和宏量营养素目标由 AI 设定。当你点按“重新计算目标”时（若开启了自适应目标，则大约每周自动一次），Fud AI 会将你的资料、下方的参考公式、保护隐私的每日营养汇总、带日期的准确体重、体脂和围度测量值、汇总的训练次数、时长、组数和重复次数，以及可选的 Apple Health 能量数据发送给你的 AI 服务商。此计算不会发送食物名称、备注、照片、配料或运动名称。它以这些经同行评审的公式为基础，再根据你的真实数据进行调整，以估算你真正的维持热量和目标。"
+            "value": "你的每日热量和宏量营养素目标由 AI 设定。当你点按“重新计算目标”时（若开启了自适应目标，则大约每周自动一次），JL Physical 会将你的资料、下方的参考公式、保护隐私的每日营养汇总、带日期的准确体重、体脂和围度测量值、汇总的训练次数、时长、组数和重复次数，以及可选的 Apple Health 能量数据发送给你的 AI 服务商。此计算不会发送食物名称、备注、照片、配料或运动名称。它以这些经同行评审的公式为基础，再根据你的真实数据进行调整，以估算你真正的维持热量和目标。"
           }
         }
       }
@@ -48466,114 +48466,114 @@
         }
       }
     },
-    "Send this meal to a friend — they can add it to their Fud AI in one tap.": {
+    "Send this meal to a friend — they can add it to their JL Physical in one tap.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أرسِل هذه الوجبة إلى صديق — يمكنه إضافتها إلى Fud AI الخاص به بنقرة واحدة."
+            "value": "أرسِل هذه الوجبة إلى صديق — يمكنه إضافتها إلى JL Physical الخاص به بنقرة واحدة."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bu yeməyi bir dosta göndərin — o, bir toxunuşla öz Fud AI-yə əlavə edə bilər."
+            "value": "Bu yeməyi bir dosta göndərin — o, bir toxunuşla öz JL Physical-yə əlavə edə bilər."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sende diese Mahlzeit an eine Freundin oder einen Freund – sie lässt sich mit einem Tippen zu Fud AI hinzufügen."
+            "value": "Sende diese Mahlzeit an eine Freundin oder einen Freund – sie lässt sich mit einem Tippen zu JL Physical hinzufügen."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Send this meal to a friend — they can add it to their Fud AI in one tap."
+            "value": "Send this meal to a friend — they can add it to their JL Physical in one tap."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Envía esta comida a un amigo: puede añadirla a su Fud AI con un solo toque."
+            "value": "Envía esta comida a un amigo: puede añadirla a su JL Physical con un solo toque."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Envoyez ce repas à un ami — il peut l'ajouter à son Fud AI en un seul geste."
+            "value": "Envoyez ce repas à un ami — il peut l'ajouter à son JL Physical en un seul geste."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "यह भोजन किसी मित्र को भेजें — वे इसे एक टैप में अपने Fud AI में जोड़ सकते हैं।"
+            "value": "यह भोजन किसी मित्र को भेजें — वे इसे एक टैप में अपने JL Physical में जोड़ सकते हैं।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Invia questo pasto a un amico: può aggiungerlo al suo Fud AI con un tocco."
+            "value": "Invia questo pasto a un amico: può aggiungerlo al suo JL Physical con un tocco."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この食事を友だちに送信 — 相手はワンタップで自分のFud AIに追加できます。"
+            "value": "この食事を友だちに送信 — 相手はワンタップで自分のJL Physicalに追加できます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 식사를 친구에게 보내세요 — 친구는 한 번의 탭으로 자신의 Fud AI에 추가할 수 있습니다."
+            "value": "이 식사를 친구에게 보내세요 — 친구는 한 번의 탭으로 자신의 JL Physical에 추가할 수 있습니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stuur deze maaltijd naar een vriend — met één tik voegt hij deze toe aan zijn Fud AI."
+            "value": "Stuur deze maaltijd naar een vriend — met één tik voegt hij deze toe aan zijn JL Physical."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wyślij ten posiłek znajomemu — może dodać go do swojego Fud AI jednym dotknięciem."
+            "value": "Wyślij ten posiłek znajomemu — może dodać go do swojego JL Physical jednym dotknięciem."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Envie esta refeição para um amigo — ele pode adicioná-la ao Fud AI dele com um toque."
+            "value": "Envie esta refeição para um amigo — ele pode adicioná-la ao JL Physical dele com um toque."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Trimite această masă unui prieten — o poate adăuga în Fud AI-ul lui dintr-o atingere."
+            "value": "Trimite această masă unui prieten — o poate adăuga în JL Physical-ul lui dintr-o atingere."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отправьте этот приём пищи другу — он добавит его в свой Fud AI одним касанием."
+            "value": "Отправьте этот приём пищи другу — он добавит его в свой JL Physical одним касанием."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отправьте етот приём пищи другу — он добавит его в свой Fud AI одним касанием."
+            "value": "Отправьте етот приём пищи другу — он добавит его в свой JL Physical одним касанием."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将这份餐食发送给好友——只需轻点一下即可添加到他的 Fud AI 中。"
+            "value": "将这份餐食发送给好友——只需轻点一下即可添加到他的 JL Physical 中。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pošli tohle jídlo kamarádovi — jedním klepnutím si ho přidá do svého Fud AI."
+            "value": "Pošli tohle jídlo kamarádovi — jedním klepnutím si ho přidá do svého JL Physical."
           }
         }
       }
@@ -49462,108 +49462,108 @@
         }
       }
     },
-    "Your support keeps Fud AI free for everyone.": {
+    "Your support keeps JL Physical free for everyone.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "دعمك يُبقي Fud AI مجانيًا للجميع."
+            "value": "دعمك يُبقي JL Physical مجانيًا للجميع."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dəstəyiniz Fud AI-ni hamı üçün pulsuz saxlayır."
+            "value": "Dəstəyiniz JL Physical-ni hamı üçün pulsuz saxlayır."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deine Unterstützung hält Fud AI für alle kostenlos."
+            "value": "Deine Unterstützung hält JL Physical für alle kostenlos."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tu apoyo mantiene Fud AI gratis para todos."
+            "value": "Tu apoyo mantiene JL Physical gratis para todos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre soutien garde Fud AI gratuit pour tous."
+            "value": "Votre soutien garde JL Physical gratuit pour tous."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "आपका सहयोग Fud AI को सबके लिए मुफ़्त रखता है।"
+            "value": "आपका सहयोग JL Physical को सबके लिए मुफ़्त रखता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il tuo supporto mantiene Fud AI gratuita per tutti."
+            "value": "Il tuo supporto mantiene JL Physical gratuita per tutti."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "あなたのサポートがFud AIをみんなの無料アプリに保ちます。"
+            "value": "あなたのサポートがJL Physicalをみんなの無料アプリに保ちます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "여러분의 후원이 Fud AI를 모두에게 무료로 유지해 줍니다."
+            "value": "여러분의 후원이 JL Physical를 모두에게 무료로 유지해 줍니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jouw steun houdt Fud AI gratis voor iedereen."
+            "value": "Jouw steun houdt JL Physical gratis voor iedereen."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Twoje wsparcie utrzymuje Fud AI darmowym dla wszystkich."
+            "value": "Twoje wsparcie utrzymuje JL Physical darmowym dla wszystkich."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seu apoio mantém o Fud AI gratuito para todos."
+            "value": "Seu apoio mantém o JL Physical gratuito para todos."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sprijinul tău menține Fud AI gratuită pentru toți."
+            "value": "Sprijinul tău menține JL Physical gratuită pentru toți."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваша поддержка сохраняет Fud AI бесплатным для всех."
+            "value": "Ваша поддержка сохраняет JL Physical бесплатным для всех."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ваша поддержка зберігає Fud AI бесплатним для всех."
+            "value": "Ваша поддержка зберігає JL Physical бесплатним для всех."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的支持让 Fud AI 对所有人保持免费。"
+            "value": "你的支持让 JL Physical 对所有人保持免费。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tvoje podpora drží Fud AI zdarma pro všechny."
+            "value": "Tvoje podpora drží JL Physical zdarma pro všechny."
           }
         }
       }
@@ -49674,108 +49674,108 @@
         }
       }
     },
-    "Share any meal as a link that opens straight in Fud AI.": {
+    "Share any meal as a link that opens straight in JL Physical.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "شارك أي وجبة كرابط يفتح مباشرة في Fud AI."
+            "value": "شارك أي وجبة كرابط يفتح مباشرة في JL Physical."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "İstənilən yeməyi birbaşa Fud AI-da açılan link kimi paylaşın."
+            "value": "İstənilən yeməyi birbaşa JL Physical-da açılan link kimi paylaşın."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Teile jede Mahlzeit als Link, der direkt in Fud AI öffnet."
+            "value": "Teile jede Mahlzeit als Link, der direkt in JL Physical öffnet."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comparte cualquier comida como un enlace que se abre directamente en Fud AI."
+            "value": "Comparte cualquier comida como un enlace que se abre directamente en JL Physical."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Partage n'importe quel repas via un lien qui s'ouvre directement dans Fud AI."
+            "value": "Partage n'importe quel repas via un lien qui s'ouvre directement dans JL Physical."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "किसी भी भोजन को लिंक के रूप में साझा करें जो सीधे Fud AI में खुलता है।"
+            "value": "किसी भी भोजन को लिंक के रूप में साझा करें जो सीधे JL Physical में खुलता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Condividi qualsiasi pasto come link che si apre direttamente in Fud AI."
+            "value": "Condividi qualsiasi pasto come link che si apre direttamente in JL Physical."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "どの食事もリンクとして共有でき、Fud AIで直接開きます。"
+            "value": "どの食事もリンクとして共有でき、JL Physicalで直接開きます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "어떤 식사든 링크로 공유하면 Fud AI에서 바로 열립니다."
+            "value": "어떤 식사든 링크로 공유하면 JL Physical에서 바로 열립니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deel elke maaltijd als een link die direct in Fud AI opent."
+            "value": "Deel elke maaltijd als een link die direct in JL Physical opent."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Udostępnij dowolny posiłek jako link otwierający się bezpośrednio w Fud AI."
+            "value": "Udostępnij dowolny posiłek jako link otwierający się bezpośrednio w JL Physical."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Compartilhe qualquer refeição como um link que abre direto no Fud AI."
+            "value": "Compartilhe qualquer refeição como um link que abre direto no JL Physical."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Trimite orice masă ca link care se deschide direct în Fud AI."
+            "value": "Trimite orice masă ca link care se deschide direct în JL Physical."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Делитесь любым приёмом пищи ссылкой, которая открывается прямо в Fud AI."
+            "value": "Делитесь любым приёмом пищи ссылкой, которая открывается прямо в JL Physical."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Делитесь любим приёмом пищи ссилкой, которая откривается прямо в Fud AI."
+            "value": "Делитесь любим приёмом пищи ссилкой, которая откривается прямо в JL Physical."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将任意餐食分享为链接，直接在 Fud AI 中打开。"
+            "value": "将任意餐食分享为链接，直接在 JL Physical 中打开。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sdílej jakékoli jídlo jako odkaz, který se otevře přímo ve Fud AI."
+            "value": "Sdílej jakékoli jídlo jako odkaz, který se otevře přímo ve JL Physical."
           }
         }
       }
@@ -53416,108 +53416,108 @@
         }
       }
     },
-    "Support Fud AI": {
+    "Support JL Physical": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "دعم Fud AI"
+            "value": "دعم JL Physical"
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI-ni Dəstəklə"
+            "value": "JL Physical-ni Dəstəklə"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI unterstützen"
+            "value": "JL Physical unterstützen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Support Fud AI"
+            "value": "Support JL Physical"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apoya Fud AI"
+            "value": "Apoya JL Physical"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Soutenir Fud AI"
+            "value": "Soutenir JL Physical"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI का समर्थन करें"
+            "value": "JL Physical का समर्थन करें"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sostieni Fud AI"
+            "value": "Sostieni JL Physical"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIをサポート"
+            "value": "JL Physicalをサポート"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI 지원"
+            "value": "JL Physical 지원"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steun Fud AI"
+            "value": "Steun JL Physical"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wesprzyj Fud AI"
+            "value": "Wesprzyj JL Physical"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apoie o Fud AI"
+            "value": "Apoie o JL Physical"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Susține Fud AI"
+            "value": "Susține JL Physical"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Поддержать Fud AI"
+            "value": "Поддержать JL Physical"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Підтримати Fud AI"
+            "value": "Підтримати JL Physical"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "支持 Fud AI"
+            "value": "支持 JL Physical"
           }
         }
       }
@@ -56478,108 +56478,108 @@
         }
       }
     },
-    "Only workout burns calculated in Fud AI are shown. Workouts without a burn estimate are not included.": {
+    "Only workout burns calculated in JL Physical are shown. Workouts without a burn estimate are not included.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يتم عرض حرق السعرات الذي حسبه Fud AI فقط. لا تُدرج التمارين التي لا يتوفر لها تقدير للحرق."
+            "value": "يتم عرض حرق السعرات الذي حسبه JL Physical فقط. لا تُدرج التمارين التي لا يتوفر لها تقدير للحرق."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yalnız Fud AI-da hesablanmış məşq sərfiyyatları göstərilir. Sərfiyyat təxmini olmayan məşqlər daxil edilmir."
+            "value": "Yalnız JL Physical-da hesablanmış məşq sərfiyyatları göstərilir. Sərfiyyat təxmini olmayan məşqlər daxil edilmir."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Es wird nur der in Fud AI berechnete Trainingsverbrauch angezeigt. Trainings ohne Verbrauchsschätzung werden nicht berücksichtigt."
+            "value": "Es wird nur der in JL Physical berechnete Trainingsverbrauch angezeigt. Trainings ohne Verbrauchsschätzung werden nicht berücksichtigt."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only workout burns calculated in Fud AI are shown. Workouts without a burn estimate are not included."
+            "value": "Only workout burns calculated in JL Physical are shown. Workouts without a burn estimate are not included."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Solo se muestran las calorías de entrenamiento calculadas en Fud AI. No se incluyen los entrenamientos sin una estimación de gasto."
+            "value": "Solo se muestran las calorías de entrenamiento calculadas en JL Physical. No se incluyen los entrenamientos sin una estimación de gasto."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seules les dépenses d’entraînement calculées dans Fud AI sont affichées. Les entraînements sans estimation ne sont pas inclus."
+            "value": "Seules les dépenses d’entraînement calculées dans JL Physical sont affichées. Les entraînements sans estimation ne sont pas inclus."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "केवल Fud AI में गणना की गई वर्कआउट कैलोरी दिखाई जाती हैं। जिन वर्कआउट के लिए बर्न का अनुमान नहीं है, वे शामिल नहीं होते।"
+            "value": "केवल JL Physical में गणना की गई वर्कआउट कैलोरी दिखाई जाती हैं। जिन वर्कआउट के लिए बर्न का अनुमान नहीं है, वे शामिल नहीं होते।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Viene mostrato solo il consumo degli allenamenti calcolato in Fud AI. Gli allenamenti senza una stima non sono inclusi."
+            "value": "Viene mostrato solo il consumo degli allenamenti calcolato in JL Physical. Gli allenamenti senza una stima non sono inclusi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIで計算されたワークアウトの消費量のみ表示されます。消費量の推定がないワークアウトは含まれません。"
+            "value": "JL Physicalで計算されたワークアウトの消費量のみ表示されます。消費量の推定がないワークアウトは含まれません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI에서 계산한 운동 소모량만 표시됩니다. 소모량 추정치가 없는 운동은 포함되지 않습니다."
+            "value": "JL Physical에서 계산한 운동 소모량만 표시됩니다. 소모량 추정치가 없는 운동은 포함되지 않습니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alleen het trainingsverbruik dat in Fud AI is berekend, wordt getoond. Trainingen zonder schatting worden niet meegenomen."
+            "value": "Alleen het trainingsverbruik dat in JL Physical is berekend, wordt getoond. Trainingen zonder schatting worden niet meegenomen."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wyświetlane jest tylko spalanie treningowe obliczone w Fud AI. Treningi bez oszacowanego spalania nie są uwzględniane."
+            "value": "Wyświetlane jest tylko spalanie treningowe obliczone w JL Physical. Treningi bez oszacowanego spalania nie są uwzględniane."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apenas o gasto dos treinos calculado no Fud AI é exibido. Treinos sem estimativa de gasto não são incluídos."
+            "value": "Apenas o gasto dos treinos calculado no JL Physical é exibido. Treinos sem estimativa de gasto não são incluídos."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sunt afișate doar consumurile antrenamentelor calculate în Fud AI. Antrenamentele fără estimare nu sunt incluse."
+            "value": "Sunt afișate doar consumurile antrenamentelor calculate în JL Physical. Antrenamentele fără estimare nu sunt incluse."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отображается только расход на тренировках, рассчитанный в Fud AI. Тренировки без оценки расхода не учитываются."
+            "value": "Отображается только расход на тренировках, рассчитанный в JL Physical. Тренировки без оценки расхода не учитываются."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отображается только расход на тренировках, рассчитанний в Fud AI. Тренировки без оценки расхода не учитиваются."
+            "value": "Отображается только расход на тренировках, рассчитанний в JL Physical. Тренировки без оценки расхода не учитиваются."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "仅显示 Fud AI 计算出的锻炼消耗。没有消耗估算的锻炼不会包含在内。"
+            "value": "仅显示 JL Physical 计算出的锻炼消耗。没有消耗估算的锻炼不会包含在内。"
           }
         }
       }
@@ -58179,24 +58179,24 @@
         }
       }
     },
-    "Hold the Fud AI app icon to use these shortcuts. Each slot opens its selected action directly. On iPhone, Quick Action 1–3 can also be assigned in Shortcuts to the Action Button or Back Tap.": {
+    "Hold the JL Physical app icon to use these shortcuts. Each slot opens its selected action directly. On iPhone, Quick Action 1–3 can also be assigned in Shortcuts to the Action Button or Back Tap.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hold the Fud AI app icon to use these shortcuts. Each slot opens its selected action directly. On iPhone, Quick Action 1–3 can also be assigned in Shortcuts to the Action Button or Back Tap."
+            "value": "Hold the JL Physical app icon to use these shortcuts. Each slot opens its selected action directly. On iPhone, Quick Action 1–3 can also be assigned in Shortcuts to the Action Button or Back Tap."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tieni premuta l'icona dell'app Fud AI per usare queste abbreviazioni. Ogni posizione apre direttamente l'azione selezionata. Su iPhone, le Azioni rapide 1–3 possono anche essere assegnate in Comandi Rapidi al Tasto Azione o al Tocco posteriore."
+            "value": "Tieni premuta l'icona dell'app JL Physical per usare queste abbreviazioni. Ogni posizione apre direttamente l'azione selezionata. Su iPhone, le Azioni rapide 1–3 possono anche essere assegnate in Comandi Rapidi al Tasto Azione o al Tocco posteriore."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Утримуйте значок застосунку Fud AI, щоб використати ці швидкі дії. Кожен слот безпосередньо відкриває обрану дію. На iPhone швидкі дії 1–3 також можна призначити в «Команди» для кнопки «Дія» або «Торкання ззаду»."
+            "value": "Утримуйте значок застосунку JL Physical, щоб використати ці швидкі дії. Кожен слот безпосередньо відкриває обрану дію. На iPhone швидкі дії 1–3 також можна призначити в «Команди» для кнопки «Дія» або «Торкання ззаду»."
           }
         }
       }
@@ -59851,109 +59851,109 @@
         }
       }
     },
-    "Choose how you want to power AI in Fud AI. The app stays free either way.": {
+    "Choose how you want to power AI in JL Physical. The app stays free either way.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "اختر كيف تريد تشغيل الذكاء الاصطناعي في Fud AI. التطبيق يبقى مجانيًا في كلتا الحالتين."
+            "value": "اختر كيف تريد تشغيل الذكاء الاصطناعي في JL Physical. التطبيق يبقى مجانيًا في كلتا الحالتين."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI-da AI-ni necə işlətmək istədiyinizi seçin. Tətbiq hər iki halda pulsuz qalır."
+            "value": "JL Physical-da AI-ni necə işlətmək istədiyinizi seçin. Tətbiq hər iki halda pulsuz qalır."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wähle, wie du KI in Fud AI nutzen möchtest. Die App bleibt in beiden Fällen kostenlos."
+            "value": "Wähle, wie du KI in JL Physical nutzen möchtest. Die App bleibt in beiden Fällen kostenlos."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Elige cómo quieres usar la IA en Fud AI. La app sigue siendo gratis de cualquier forma."
+            "value": "Elige cómo quieres usar la IA en JL Physical. La app sigue siendo gratis de cualquier forma."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisis comment alimenter l'IA dans Fud AI. L'app reste gratuite dans les deux cas."
+            "value": "Choisis comment alimenter l'IA dans JL Physical. L'app reste gratuite dans les deux cas."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "चुनें कि Fud AI में AI कैसे चलाना है। दोनों तरीकों में ऐप मुफ़्त रहता है।"
+            "value": "चुनें कि JL Physical में AI कैसे चलाना है। दोनों तरीकों में ऐप मुफ़्त रहता है।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scegli come alimentare l'IA in Fud AI. L'app resta gratuita in entrambi i casi."
+            "value": "Scegli come alimentare l'IA in JL Physical. L'app resta gratuita in entrambi i casi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AIでAIをどう使うか選びましょう。どちらの方法でもアプリは無料のままです。"
+            "value": "JL PhysicalでAIをどう使うか選びましょう。どちらの方法でもアプリは無料のままです。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fud AI에서 AI를 어떻게 사용할지 선택하세요. 두 방법 모두 앱은 무료입니다."
+            "value": "JL Physical에서 AI를 어떻게 사용할지 선택하세요. 두 방법 모두 앱은 무료입니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kies hoe je AI in Fud AI wilt gebruiken. De app blijft in beide gevallen gratis."
+            "value": "Kies hoe je AI in JL Physical wilt gebruiken. De app blijft in beide gevallen gratis."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wybierz, jak chcesz korzystać z AI w Fud AI. Aplikacja pozostaje darmowa w obu przypadkach."
+            "value": "Wybierz, jak chcesz korzystać z AI w JL Physical. Aplikacja pozostaje darmowa w obu przypadkach."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Escolha como quer usar a IA no Fud AI. O app continua gratuito de qualquer forma."
+            "value": "Escolha como quer usar a IA no JL Physical. O app continua gratuito de qualquer forma."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alege cum vrei să folosești AI în Fud AI. Aplicația rămâne gratuită oricum."
+            "value": "Alege cum vrei să folosești AI în JL Physical. Aplicația rămâne gratuită oricum."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Выбери, как использовать ИИ в Fud AI. Приложение остаётся бесплатным в любом случае."
+            "value": "Выбери, как использовать ИИ в JL Physical. Приложение остаётся бесплатным в любом случае."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Обери, як використовувати ШІ у Fud AI. Застосунок залишається безкоштовним у будь-якому разі."
+            "value": "Обери, як використовувати ШІ у JL Physical. Застосунок залишається безкоштовним у будь-якому разі."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择如何在 Fud AI 中使用 AI。无论哪种方式，应用都保持免费。"
+            "value": "选择如何在 JL Physical 中使用 AI。无论哪种方式，应用都保持免费。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vyber, jak chceš v Fud AI používat AI. Aplikace zůstane v obou případech zdarma."
+            "value": "Vyber, jak chceš v JL Physical používat AI. Aplikace zůstane v obou případech zdarma."
           }
         }
       }
@@ -61028,109 +61028,109 @@
         }
       }
     },
-    "Food photos, voice transcripts, and typed meals are processed through Fud AI's hosted service.": {
+    "Food photos, voice transcripts, and typed meals are processed through JL Physical's hosted service.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تتم معالجة صور الطعام ونصوص الصوت والوجبات المكتوبة عبر خدمة Fud AI المستضافة."
+            "value": "تتم معالجة صور الطعام ونصوص الصوت والوجبات المكتوبة عبر خدمة JL Physical المستضافة."
           }
         },
         "az": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yemək fotoşəkilləri, səs transkriptləri və yazılmış yeməklər Fud AI-nin host xidməti vasitəsilə emal olunur."
+            "value": "Yemək fotoşəkilləri, səs transkriptləri və yazılmış yeməklər JL Physical-nin host xidməti vasitəsilə emal olunur."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Essensfotos, Sprachtranskripte und eingegebene Mahlzeiten werden über Fud AIs gehosteten Dienst verarbeitet."
+            "value": "Essensfotos, Sprachtranskripte und eingegebene Mahlzeiten werden über JL Physicals gehosteten Dienst verarbeitet."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Las fotos de comida, transcripciones de voz y comidas escritas se procesan a través del servicio alojado de Fud AI."
+            "value": "Las fotos de comida, transcripciones de voz y comidas escritas se procesan a través del servicio alojado de JL Physical."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les photos de repas, transcriptions vocales et repas saisis sont traités via le service hébergé de Fud AI."
+            "value": "Les photos de repas, transcriptions vocales et repas saisis sont traités via le service hébergé de JL Physical."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "भोजन की फ़ोटो, वॉइस ट्रांसक्रिप्ट और लिखे गए भोजन Fud AI की होस्टेड सेवा से प्रोसेस होते हैं।"
+            "value": "भोजन की फ़ोटो, वॉइस ट्रांसक्रिप्ट और लिखे गए भोजन JL Physical की होस्टेड सेवा से प्रोसेस होते हैं।"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Foto dei pasti, trascrizioni vocali e pasti digitati vengono elaborati tramite il servizio ospitato di Fud AI."
+            "value": "Foto dei pasti, trascrizioni vocali e pasti digitati vengono elaborati tramite il servizio ospitato di JL Physical."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "食事の写真、音声文字起こし、入力された食事はFud AIのホスト型サービス経由で処理されます。"
+            "value": "食事の写真、音声文字起こし、入力された食事はJL Physicalのホスト型サービス経由で処理されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "음식 사진, 음성 전사, 입력한 식사는 Fud AI 호스팅 서비스를 통해 처리됩니다."
+            "value": "음식 사진, 음성 전사, 입력한 식사는 JL Physical 호스팅 서비스를 통해 처리됩니다."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eetfoto's, spraaktranscripten en getypte maaltijden worden verwerkt via de gehoste service van Fud AI."
+            "value": "Eetfoto's, spraaktranscripten en getypte maaltijden worden verwerkt via de gehoste service van JL Physical."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zdjęcia posiłków, transkrypcje głosu i wpisane posiłki są przetwarzane przez hostowaną usługę Fud AI."
+            "value": "Zdjęcia posiłków, transkrypcje głosu i wpisane posiłki są przetwarzane przez hostowaną usługę JL Physical."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fotos de comida, transcrições de voz e refeições digitadas são processadas pelo serviço hospedado do Fud AI."
+            "value": "Fotos de comida, transcrições de voz e refeições digitadas são processadas pelo serviço hospedado do JL Physical."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fotografiile cu mâncare, transcrierile vocale și mesele tastate sunt procesate prin serviciul găzduit Fud AI."
+            "value": "Fotografiile cu mâncare, transcrierile vocale și mesele tastate sunt procesate prin serviciul găzduit JL Physical."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Фото еды, голосовые расшифровки и введённые приёмы пищи обрабатываются через хостинг-сервис Fud AI."
+            "value": "Фото еды, голосовые расшифровки и введённые приёмы пищи обрабатываются через хостинг-сервис JL Physical."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Фото їжі, голосові розшифровки та введені прийоми їжі обробляються через хостинг-сервіс Fud AI."
+            "value": "Фото їжі, голосові розшифровки та введені прийоми їжі обробляються через хостинг-сервіс JL Physical."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "食物照片、语音转录和输入的餐食通过 Fud AI 托管服务处理。"
+            "value": "食物照片、语音转录和输入的餐食通过 JL Physical 托管服务处理。"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fotky jídla, přepisy hlasu a zadaná jídla se zpracovávají přes hostovanou službu Fud AI."
+            "value": "Fotky jídla, přepisy hlasu a zadaná jídla se zpracovávají přes hostovanou službu JL Physical."
           }
         }
       }
