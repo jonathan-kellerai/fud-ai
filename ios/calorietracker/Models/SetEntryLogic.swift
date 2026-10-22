@@ -84,17 +84,15 @@ enum SetEntryLogic {
                                             in: block, sets: sets)
     }
 
-    /// Rest to (re)start whenever a set is logged. Nil only between superset
-    /// members, where the next member follows without rest.
+    /// Rest to (re)start whenever a set is logged. Nil only inside an incomplete
+    /// superset round, where the next member follows without rest.
     static func restOnLog(exerciseName: String, setIndex: Int, block: ExerciseBlock,
                           sets: [String: [LoggedSet]]) -> Int? {
         if let seconds = restAfterLogging(exerciseName: exerciseName, setIndex: setIndex, block: block, sets: sets) {
             return seconds
         }
-        if block.isSuperset {
-            guard block.exercises.last?.name == exerciseName else { return nil }
-            return SupersetGrouping.supersetRestSeconds(for: block)
-        }
+        // Supersets rest only after a complete round; otherwise the next member follows.
+        if block.isSuperset { return nil }
         let rest = block.exercises.first { $0.name == exerciseName }?.restSeconds.lowerBound ?? 0
         return rest > 0 ? rest : SupersetGrouping.defaultSupersetRestSeconds
     }

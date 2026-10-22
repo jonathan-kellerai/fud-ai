@@ -32,21 +32,22 @@ extension WorkoutDraftStoreTests {
         #expect(home.components(separatedBy: ".sheet(item: $workoutLoggingDay)").count == 2)
     }
 
-    @Test func loggingTheLastSupersetMemberAlwaysRestartsRest() throws {
+    @Test func everyLoggedStraightSetRestartsRestFromFull() throws {
         let directory = tempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let day = ProgramV2Templates.day4UpperPhysique
         let store = WorkoutDraftStore(directory: directory)
         let entry = WorkoutSetEntry(day: day)
         let rest = RestSession()
-        let pair = try #require(entry.order(in: store).blocks.first { $0.isSuperset })
-        let last = try #require(pair.exercises.last)
-        rest.start(seconds: 5) // a stale countdown from an earlier set
-        // Partner skipped: the round is incomplete, but a set was logged.
-        let index = try #require(entry.log(last, at: 0, in: store, startedAt: Date(),
-            value: LoggedSet(weight: 25, reps: 12, rir: 2, rpeText: "")))
-        entry.startRestAfterLogging(last, at: index, in: store, rest: rest)
-        #expect(rest.duration == SupersetGrouping.supersetRestSeconds(for: pair))
+        let straight = try #require(entry.order(in: store).blocks.first { !$0.isSuperset }?.exercises.first)
+        let value = LoggedSet(weight: 25, reps: 12, rir: 2, rpeText: "")
+        let first = try #require(entry.log(straight, at: 0, in: store, startedAt: Date(), value: value))
+        entry.startRestAfterLogging(straight, at: first, in: store, rest: rest)
+        rest.adjust(by: -30) // part-way through the rest
+        let second = try #require(entry.log(straight, at: 1, in: store, startedAt: Date(), value: value))
+        entry.startRestAfterLogging(straight, at: second, in: store, rest: rest)
+        #expect(rest.duration == straight.restSeconds.lowerBound)
+        #expect(rest.remainingSeconds >= straight.restSeconds.lowerBound - 1)
     }
 
     @Test func loggingAFirstSupersetMemberStopsAStaleRest() throws {
