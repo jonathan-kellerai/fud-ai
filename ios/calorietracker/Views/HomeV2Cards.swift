@@ -72,6 +72,10 @@ enum HomeCardLayout {
 struct HomeV2Cards: View {
     @Binding var selectedDate: Date
     var refreshToken: Int
+    /// Owned by the host List, not by these cards: a `.sheet` on this ForEach is
+    /// copied onto every card section, and the Today section changes shape as soon
+    /// as the first set creates a draft, which dismissed the logger (build 71).
+    @Binding var loggingDay: ProgramV2Day?
     var onViewNutrition: () -> Void
 
     @Environment(FoodStore.self) private var foodStore
@@ -106,7 +110,6 @@ struct HomeV2Cards: View {
     @State private var restingHeartRate: Double?
     @State private var hrvSamples: [HealthSampleReading] = []
     @State private var recoveryLoaded = false
-    @State private var loggingDay: ProgramV2Day?
 
     private let bridge = NeonBridgeService.shared
     private let trainProgress = TrainProgressStore.shared
@@ -153,9 +156,6 @@ struct HomeV2Cards: View {
                 HomeCardLayout.save(order: newOrder, hidden: newHidden)
             }
         }
-        .sheet(item: $loggingDay) { day in
-            ProgramV2WorkoutLogView(day: day)
-        }
     }
 
     private var availableCards: [HomeCardID] {
@@ -180,12 +180,14 @@ struct HomeV2Cards: View {
         case .today:
             Section {
                 if let draft = workoutDraftStore.draft {
-                    ResumeWorkoutCard(draft: draft) {
+                    ResumeWorkoutCard(draft: draft, onResume: {
                         loggingDay = draft.programV2Day
-                    }
+                    }, onStartOver: todayAction == .resume ? { startOver(draft) } : nil)
                     .listRowBackground(IronTheme.surface)
                 }
-                todayCard.listRowBackground(todaySurface)
+                if todayAction != .resume {
+                    todayCard.listRowBackground(todaySurface)
+                }
             } header: {
                 IronSectionTitle(title: "Today")
             }
@@ -388,7 +390,7 @@ struct HomeV2Cards: View {
             } else if let programBody {
                 plannedSession(programBody)
             } else {
-                Text("No active program. Home loads it from the bridge.")
+                Text("No active program. Set one in Settings › Training.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(IronTheme.textSecondary)
             }
@@ -407,6 +409,29 @@ struct HomeV2Cards: View {
                     .padding(.vertical, -12)
                     .padding(.leading, -16)
             }
+        }
+    }
+
+    /// Resume replaces Start when the unsaved draft is the day planned for the selected date.
+    private var todayAction: TodayWorkoutAction {
+        let key = SessionDateFormatting.calendarDateString(from: selectedDate, calendar: calendar)
+        if workouts.contains(where: { String($0.sessionDate.prefix(10)) == key }) { return .start }
+        let planned: String? = programBody.flatMap { body in
+            selectedResolution.flatMap { TrainingProgramSchedule.programDay(in: body, matching: $0) }?.asProgramV2Day().id
+        }
+        return TodayWorkoutAction.decide(draft: workoutDraftStore.draft, plannedDayID: planned)
+    }
+
+    /// Discards the unsaved draft, then opens a fresh logger for the same day.
+    private func startOver(_ draft: WorkoutDraft) {
+        let day = draft.programV2Day
+        workoutDraftStore.discard()
+        if let programBody,
+           let resolved = selectedResolution,
+           let planned = TrainingProgramSchedule.programDay(in: programBody, matching: resolved) {
+            loggingDay = programBody.programV2Day(for: planned, on: selectedDate)
+        } else {
+            loggingDay = day
         }
     }
 
@@ -839,27 +864,11 @@ struct HomeV2Cards: View {
         await reloadHealth()
     }
 
+    /// Programs are on this phone (build 73); nothing is fetched from the bridge.
     private func reloadProgram() async {
-        do {
-            let record = try await bridge.activeProgram()
-            if record.body != nil {
-                ActiveProgramCache.save(record)
-                programRecord = record
-                allowCachedProgram = true
-                programNotice = nil
-                return
-            }
-        } catch let error as NeonBridgeError where error.isNotFound {
-            programRecord = nil
-            allowCachedProgram = false
-            programNotice = "No active program on the bridge."
-        } catch {
-            programNotice = "Bridge unavailable"
-            allowCachedProgram = true
-            if programRecord == nil, let cached = ActiveProgramCache.load() {
-                programRecord = cached
-            }
-        }
+        programRecord = LocalProgramStore.shared.activeProgramNow()
+        allowCachedProgram = true
+        programNotice = programRecord == nil ? "No active program on this phone." : nil
     }
 
     /// Next-in-cycle follows the workouts saved on this phone.

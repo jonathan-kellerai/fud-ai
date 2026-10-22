@@ -225,6 +225,23 @@ enum WorkoutHandoffDecision {
     }
 }
 
+/// What Today offers for the planned workout. One unsaved session at a time:
+/// a draft of the planned day replaces Start with Resume (plus Start over).
+enum TodayWorkoutAction: Equatable {
+    /// No draft: Start only.
+    case start
+    /// The draft is the planned day: Resume only, with an explicit Start over.
+    case resume
+    /// The draft is another day: Resume that one, or Start (which asks to discard it).
+    case resumeOtherOrStart
+
+    static func decide(draft: WorkoutDraft?, plannedDayID: String?) -> TodayWorkoutAction {
+        guard let draft else { return .start }
+        if let plannedDayID, draft.programDay == plannedDayID { return .resume }
+        return .resumeOtherOrStart
+    }
+}
+
 @Observable
 final class WorkoutDraftStore {
     static let fileName = "jl-workout-draft.json"

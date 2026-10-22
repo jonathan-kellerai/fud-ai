@@ -1891,6 +1891,8 @@ enum VisualQAFixtures {
             ((try? encoder.encode(value)).map { (200, $0) }) ?? (500, Data())
         }
         let program = TrainingProgramRecord.bundledV2()
+        // Programs are read on device since build 73; pin the fixture program there.
+        LocalProgramStore.visualQAOverride = program
         return [
             "/api/programs": json(TrainingProgramListResponse(programs: [program])),
             "/api/programs/active": json(program),
@@ -2090,6 +2092,7 @@ extension VisualQAFixtures {
         }
         var program = TrainingProgramRecord.bundledV2()
         program.body = build62Body()
+        LocalProgramStore.visualQAOverride = program
         responses["/api/programs"] = json(TrainingProgramListResponse(programs: [program]))
         responses["/api/programs/active"] = json(program)
         responses["/api/programs/\(program.id)"] = json(program)

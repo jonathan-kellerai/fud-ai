@@ -11,10 +11,14 @@ struct RestNextSetCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("NEXT · SET \(next.step.setIndex + 1) OF \(next.exercise.sets)")
-                .font(.caption.bold()).fontWidth(.condensed).foregroundStyle(IronTheme.bloodText)
-            Text(next.exercise.name).font(.title2.bold()).fontWidth(.condensed).textCase(.uppercase)
+            Text(next.modeLabel)
+                .font(.caption.bold()).fontWidth(.condensed)
+                .foregroundStyle(next.isEditing ? IronTheme.brass : IronTheme.bloodText)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("rest-entry-mode")
+            Text(next.headline).font(.title2.bold()).fontWidth(.condensed).textCase(.uppercase)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("rest-entry-headline")
             if !next.reference.isEmpty {
                 Text(next.reference).font(.subheadline.monospacedDigit()).foregroundStyle(IronTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

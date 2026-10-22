@@ -9,12 +9,25 @@ struct RestNextSet {
     let referenceLoad: Double?
     let reason: String
     let isHold: Bool
+    /// True when the row this entry writes already holds a logged set, so
+    /// logging replaces that set instead of adding the next one.
+    var isEditing: Bool = false
+    var setNumber: Int { step.setIndex + 1 }
+    /// "Chest Press · Set 2 of 2"
+    var headline: String { "\(exercise.name) · Set \(setNumber) of \(max(exercise.sets, setNumber))" }
+    var modeLabel: String {
+        isEditing ? "EDITING SET \(setNumber) · ALREADY LOGGED · SAVING REPLACES IT"
+                  : "ADDING SET \(setNumber) · NEW SET"
+    }
     var canLog: Bool { value.reps > 0 && (value.weight > 0 || exercise.startLoadLb == 0) }
     var repChoices: [Int] {
         guard let range = ProgressionRule.repRange(exercise.reps), range.high - range.low <= 12 else { return [] }
         return Array(range.low...range.high)
     }
-    var logLabel: String { "Set done · Log \(LoggerFormatting.load(value.weight)) × \(value.reps)" }
+    var logLabel: String {
+        isEditing ? "Save Set \(setNumber) · \(LoggerFormatting.load(value.weight)) × \(value.reps)"
+                  : "Log Set \(setNumber) · \(LoggerFormatting.load(value.weight)) × \(value.reps)"
+    }
     func quickLoad(_ offset: Int) -> LoggedSet {
         var result = value
         result.weight = max(0, (referenceLoad ?? value.weight) + Double(offset))

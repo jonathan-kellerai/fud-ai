@@ -656,6 +656,10 @@ struct ProgramV2WorkoutLogView: View {
 struct ResumeWorkoutCard: View {
     let draft: WorkoutDraft
     let onResume: () -> Void
+    /// Set when this draft is today's planned workout, so Start is hidden and
+    /// starting fresh is an explicit, confirmed discard.
+    var onStartOver: (() -> Void)? = nil
+    @State private var confirmingStartOver = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -673,12 +677,27 @@ struct ResumeWorkoutCard: View {
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(IronTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(action: onResume) {
-                Label("Resume", systemImage: "play.fill")
+            HStack(spacing: 12) {
+                Button(action: onResume) {
+                    Label("Resume", systemImage: "play.fill")
+                }
+                .buttonStyle(IronCompactButtonStyle())
+                if onStartOver != nil {
+                    Button("Discard & start over", role: .destructive) { confirmingStartOver = true }
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(IronTheme.textSecondary)
+                        .buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                }
             }
-            .buttonStyle(IronCompactButtonStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .confirmationDialog("Discard \(draft.loggedSetCount) logged sets?", isPresented: $confirmingStartOver, titleVisibility: .visible) {
+            Button("Discard and start over", role: .destructive) { onStartOver?() }
+            Button("Keep and resume", role: .cancel) {}
+        } message: {
+            Text("The unsaved \(draft.title) session is deleted from this phone.")
+        }
     }
 }
 

@@ -183,6 +183,7 @@ struct HomeView: View {
     @State private var showNutritionDetail = false
     @State private var showCustomWaterLog = false
     @State private var showFastingStart = false
+    @State private var workoutLoggingDay: ProgramV2Day?
     @State private var editingFastingSession: FastingSession?
     @State private var showFastingQuickActionDisabled = false
     @State private var showFoodLoggingBlocked = false
@@ -484,7 +485,7 @@ struct HomeView: View {
 
     private var homeDiaryList: some View {
             List {
-                HomeV2Cards(selectedDate: $selectedDate, refreshToken: homeRefreshToken) {
+                HomeV2Cards(selectedDate: $selectedDate, refreshToken: homeRefreshToken, loggingDay: $workoutLoggingDay) {
                     showNutritionDetail = true
                 }
 
@@ -651,6 +652,10 @@ struct HomeView: View {
                         }
                     }
                 }
+            }
+            // One presenter for the workout logger, outside the card ForEach (see HomeV2Cards.loggingDay).
+            .sheet(item: $workoutLoggingDay) { day in
+                ProgramV2WorkoutLogView(day: day)
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.appBackground)

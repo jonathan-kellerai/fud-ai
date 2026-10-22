@@ -135,8 +135,7 @@ struct RestTimerSheet: View {
                 if let next {
                     ViewThatFits(in: .horizontal) {
                         Text(next.logLabel).fixedSize()
-                        Text("Set done · \(LoggerFormatting.load(next.value.weight)) × \(next.value.reps)").fixedSize()
-                        Text("Set done").fixedSize(horizontal: false, vertical: true)
+                        Text("\(next.isEditing ? "Save" : "Log") Set \(next.setNumber)").fixedSize(horizontal: false, vertical: true)
                     }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 } else {
                     Text(ownsSession ? "Done" : "Finish → list")

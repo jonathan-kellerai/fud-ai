@@ -31,10 +31,14 @@ final class WorkoutSetEntry {
             setIndex: cursor.logicalIndex(exerciseName: exercise.name, storageIndex: index))
         let sets = cursor.projectedSets(store.existingDraft(for: day)?.sets ?? [:], skippedReps: 0)
         if let block = order(in: store).blocks.first(where: { $0.exercises.contains { $0.name == exercise.name } }),
-           let seconds = SetEntryLogic.restAfterLogging(exerciseName: exercise.name, setIndex: step.setIndex,
-                                                        block: block, sets: sets) {
+           let seconds = SetEntryLogic.restOnLog(exerciseName: exercise.name, setIndex: step.setIndex,
+                                                 block: block, sets: sets) {
+            // Every logged set restarts the countdown from full, even mid-rest.
             rest.start(seconds: seconds)
             rest.rangeLabel = LoggerFormatting.restRange(exercise.restSeconds)
+        } else {
+            // Between superset members there is no rest; a stale countdown must not keep running.
+            rest.stop()
         }
         prepareNext(after: step, in: store)
         rest.stepLabel = restStep.map { "Next: \($0.exerciseName) S\($0.setIndex + 1)" } ?? "Finish → list"
@@ -77,11 +81,13 @@ final class WorkoutSetEntry {
         let previous = rows.last { $0.reps > 0 }
         let last = lastPerformance(for: exercise)
         let reference = previous.map { WorkingSetSummary(load: $0.weight, reps: $0.reps, rir: $0.rir) } ?? last?.firstSet
+        let storage = cursor.storageIndex(for: step)
         return RestNextSet(step: step, exercise: exercise, value: value,
             targetChips: SetEntryLogic.targetChips(for: exercise, at: step.setIndex),
             reference: LoggerFormatting.nextSetReference(sets: rows, last: last, at: step.setIndex),
             referenceLoad: reference?.load ?? exercise.startLoadLb,
-            reason: LoggerFormatting.progressionReason(decision, exercise: exercise, reference: reference), isHold: isHold)
+            reason: LoggerFormatting.progressionReason(decision, exercise: exercise, reference: reference), isHold: isHold,
+            isEditing: rows.indices.contains(storage) && rows[storage].reps > 0)
     }
 
     func editNext(_ change: (inout LoggedSet) -> Void) {

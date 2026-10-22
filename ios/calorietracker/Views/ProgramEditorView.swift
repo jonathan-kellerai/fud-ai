@@ -36,7 +36,7 @@ struct ProgramLibraryView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
 
-    private let bridge = NeonBridgeService.shared
+    private let bridge = LocalProgramStore.shared // on-device (build 73)
 
     var body: some View {
         List {
@@ -272,7 +272,7 @@ struct ProgramEditorView: View {
     @State private var activateOnRevise = true
     @State private var loadFailed = false
 
-    private let bridge = NeonBridgeService.shared
+    private let bridge = LocalProgramStore.shared // on-device (build 73)
 
     private var isReadOnly: Bool {
         if loadFailed { return true }
