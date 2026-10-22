@@ -246,3 +246,123 @@ struct JLPhysicalTabView: View {
             ?? ActiveProgramCache.load()?.body ?? .bundledV2()
     }
 }
+
+struct QuickActionButton: View {
+    let icon: String
+    let title: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(color)
+            
+            // Explicit bone-grey: `.secondary` inherits the NavigationLink tint
+            // and rendered as low-contrast reddish-brown on iron black.
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(IronTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical)
+        .padding(.horizontal, 8)
+        .ironCard()
+    }
+}
+
+struct RecentWorkoutRow: View {
+    let workout: RemoteWorkout
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(workout.programDay)
+                    .font(.subheadline.bold())
+                
+                Text(SessionDateFormatting.displayString(from: workout.sessionDate))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            if let conditioning = workout.conditioning {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(IronTheme.bloodText)
+                    .font(.caption)
+            }
+        }
+        .padding()
+        .ironCard()
+    }
+}
+
+struct WorkoutHistoryListView: View {
+    @Environment(WorkoutLogStore.self) private var workoutLog
+    @State private var deleteError: String?
+
+    var body: some View {
+        Group {
+            if workoutLog.workouts.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "figure.strengthtraining.traditional")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("No workouts yet")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                List {
+                    ForEach(workoutLog.workouts) { workout in
+                        NavigationLink {
+                            WorkoutHistoryEditView(workoutID: workout.id, onChanged: {})
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(workout.title)
+                                    .font(.headline)
+                                
+                                Text(SessionDateFormatting.displayString(from: workout.sessionDate))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                
+                                if let conditioning = workout.conditioning {
+                                    Text("Conditioning: \(conditioning)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                deleteWorkout(workout.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Workout History")
+        .alert("Could Not Delete", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK") { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private func deleteWorkout(_ id: String) {
+        do {
+            try workoutLog.delete(id: id)
+        } catch {
+            deleteError = error.localizedDescription
+        }
+    }
+}
