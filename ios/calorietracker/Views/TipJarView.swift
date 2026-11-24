@@ -46,7 +46,7 @@ struct TipJarSettingsSection: View {
         .alert("Thank you!", isPresented: $didTip) {
             Button("Done", role: .cancel) {}
         } message: {
-            Text("Your support keeps Fud AI free for everyone.")
+            Text("Your support keeps JL Physical free for everyone.")
         }
     }
 

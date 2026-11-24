@@ -718,7 +718,7 @@
 		BA8E0E1B2F33F198007DD537 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI Debug";
+				APP_DISPLAY_NAME = "JL Physical Debug";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical.debug;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconRed AppIconOrange AppIconGreen AppIconMint AppIconTeal AppIconBlue AppIconPurple AppIconYellow AppIconCoral AppIconRoseGold AppIconMochaBrown AppIconIndigo AppIconLavender AppIconSkyCyan AppIconGraphite AppIconBabyPink AppIconLime";
@@ -736,12 +736,12 @@
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
 				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Fud AI uses the camera to scan food and barcodes.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Read your weight, height, body composition, nutrition, daily steps, and Fud AI workout calories to keep your history in sync.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "JL Physical uses the camera to scan food and barcodes.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Read your weight, height, body composition, nutrition, daily steps, and JL Physical workout calories to keep your history in sync.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Write, update, or remove your nutrition, body measurements, and calculated workout calories when you change your logs.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Fud AI needs microphone access so you can log food by voice.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Fud AI saves meal photos to your photo library when you tap Save.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Fud AI uses speech recognition to convert your voice into text for food logging.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "JL Physical needs microphone access so you can log food by voice.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "JL Physical saves meal photos to your photo library when you tap Save.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "JL Physical uses speech recognition to convert your voice into text for food logging.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -772,7 +772,7 @@
 		BA8E0E1C2F33F198007DD537 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconRed AppIconOrange AppIconGreen AppIconMint AppIconTeal AppIconBlue AppIconPurple AppIconYellow AppIconCoral AppIconRoseGold AppIconMochaBrown AppIconIndigo AppIconLavender AppIconSkyCyan AppIconGraphite AppIconBabyPink AppIconLime";
@@ -790,12 +790,12 @@
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
 				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Fud AI uses the camera to scan food and barcodes.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Read your weight, height, body composition, nutrition, daily steps, and Fud AI workout calories to keep your history in sync.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "JL Physical uses the camera to scan food and barcodes.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Read your weight, height, body composition, nutrition, daily steps, and JL Physical workout calories to keep your history in sync.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Write, update, or remove your nutrition, body measurements, and calculated workout calories when you change your logs.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Fud AI needs microphone access so you can log food by voice.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Fud AI saves meal photos to your photo library when you tap Save.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Fud AI uses speech recognition to convert your voice into text for food logging.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "JL Physical needs microphone access so you can log food by voice.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "JL Physical saves meal photos to your photo library when you tap Save.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "JL Physical uses speech recognition to convert your voice into text for food logging.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -1035,7 +1035,7 @@
 		BA8E0E302F33F198007DD537 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI Debug";
+				APP_DISPLAY_NAME = "JL Physical Debug";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical.debug;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -1074,7 +1074,7 @@
 		BA8E0E312F33F198007DD537 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
@@ -1113,7 +1113,7 @@
 		BA8E0E3F2F33F198007DD537 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI Debug";
+				APP_DISPLAY_NAME = "JL Physical Debug";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical.debug;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = calorietrackerShare/calorietrackerShare.entitlements;
@@ -1151,7 +1151,7 @@
 		BA8E0E402F33F198007DD537 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = calorietrackerShare/calorietrackerShare.entitlements;
@@ -1189,7 +1189,7 @@
 		F00D10000000000000000017 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical.debug;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1229,7 +1229,7 @@
 		F00D10000000000000000018 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1271,7 +1271,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical.debug;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FudAIWatchWidgets/FudAIWatchWidgets.entitlements;
@@ -1310,7 +1310,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				APP_DISPLAY_NAME = "Fud AI";
+				APP_DISPLAY_NAME = "JL Physical";
 				APP_GROUP_IDENTIFIER = group.com.jonathanbowe.jlphysical;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FudAIWatchWidgets/FudAIWatchWidgets.entitlements;

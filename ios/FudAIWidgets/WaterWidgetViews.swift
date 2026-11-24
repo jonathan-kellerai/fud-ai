@@ -83,7 +83,7 @@ private struct DisabledWaterView: View {
                 .foregroundStyle(WidgetPalette.calorieGradient)
             Text("Water Tracking")
                 .font(.system(.headline, design: .rounded, weight: .bold))
-            Text("Enable in Fud AI")
+            Text("Enable in JL Physical")
                 .font(.system(.caption, design: .rounded, weight: .medium))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -140,7 +140,7 @@ private struct RectangularWaterView: View {
                 Label("Water Tracking", systemImage: "drop.fill")
                     .font(.system(.headline, design: .rounded, weight: .semibold))
                     .widgetAccentable()
-                Text("Enable Water Tracking in Fud AI")
+                Text("Enable Water Tracking in JL Physical")
                     .font(.system(.caption, design: .rounded, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -155,7 +155,7 @@ private struct InlineWaterView: View {
         if snapshot.waterIsEnabled {
             Text("Water \(snapshot.waterDisplayValue(snapshot.waterCurrent)) / \(snapshot.waterDisplayValue(snapshot.waterGoal)) \(snapshot.waterUnitSymbol)")
         } else {
-            Text("Enable Water Tracking in Fud AI")
+            Text("Enable Water Tracking in JL Physical")
         }
     }
 }

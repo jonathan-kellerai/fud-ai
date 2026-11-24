@@ -75,6 +75,7 @@ struct FoodResultView: View {
     let weightMetric: Bool
     var onLog: (FoodEntry) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // Scaling factor based on user-adjusted serving size
     private var scale: Double {
@@ -463,9 +464,16 @@ struct FoodResultView: View {
                     }
 
                     Section("Serving") {
-                        HStack {
+                        // Stack label over editor at accessibility sizes; side by
+                        // side, "Quantity" broke mid-word ("Quan- / tity").
+                        let quantityLayout = dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                            : AnyLayout(HStackLayout())
+                        quantityLayout {
                             Text("Quantity")
-                            Spacer()
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Spacer()
+                            }
                             ServingUnitEditor(
                                 quantityText: $servingSizeText,
                                 servingSizeGrams: $servingSizeGrams,
@@ -1580,7 +1588,11 @@ private struct ReviewNutritionValueRow: View {
             }
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                // 36pt minimum keeps the default column; grows instead of
+                // wrapping "kcal" to "k / c" at accessibility sizes.
+                .frame(minWidth: 36, alignment: .leading)
+                .fixedSize()
         }
     }
 }
@@ -1598,7 +1610,11 @@ struct NutritionDisplayRow: View {
                 .fontWeight(.medium)
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                // 36pt minimum keeps the default column; grows instead of
+                // wrapping "kcal" to "k / c" at accessibility sizes.
+                .frame(minWidth: 36, alignment: .leading)
+                .fixedSize()
         }
     }
 }
@@ -1617,7 +1633,11 @@ struct OptionalNutritionDisplayRow: View {
                 .fontWeight(.medium)
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
+                .lineLimit(1)
+                // 36pt minimum keeps the default column; grows instead of
+                // wrapping "kcal" to "k / c" at accessibility sizes.
+                .frame(minWidth: 36, alignment: .leading)
+                .fixedSize()
         }
     }
 }

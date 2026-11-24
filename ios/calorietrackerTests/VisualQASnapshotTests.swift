@@ -258,6 +258,19 @@ final class VisualQASnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - AI providers
+
+    func test23AIProvidersOnDeviceModel() async throws {
+        // ProfileView (which hosts the full AI Providers & Fallbacks list) has a
+        // file-private init in ContentView, so render its On-Device Model section
+        // with the real Gemma4ModelSettingsView in the download-in-progress state.
+        try await eachSize("23-ai-providers-on-device-download") { _ in
+            VisualQATabShell(selected: .more) {
+                VisualQAPushed(rootTitle: "More") { VisualQAOnDeviceModelSection() }
+            }
+        }
+    }
+
     // MARK: - Rendering
 
     private func eachSize<Content: View>(
@@ -580,6 +593,39 @@ struct VisualQAStepsEdgeCases: View {
             .padding()
         }
         .background(IronTheme.canvas)
+    }
+}
+
+/// Mirrors the "On-Device Model" block of Settings > AI Providers & Fallbacks.
+struct VisualQAOnDeviceModelSection: View {
+    var body: some View {
+        List {
+            Section {
+                onDeviceHeader
+                Gemma4ModelSettingsView(previewState: .downloading(0.42)) {}
+            }
+            .listRowBackground(AppColors.appCard)
+
+            Section {
+                onDeviceHeader
+                Gemma4ModelSettingsView(previewState: .notDownloaded) {}
+            }
+            .listRowBackground(AppColors.appCard)
+        }
+        .scrollContentBackground(.hidden)
+        .background(IronTheme.canvas)
+        .navigationTitle("AI Providers & Fallbacks")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var onDeviceHeader: some View {
+        Label(
+            LocalModelStrings.text("settings.onDeviceModel", defaultValue: "On-Device Model"),
+            systemImage: "iphone.gen3.radiowaves.left.and.right"
+        )
+        .font(.system(.subheadline, design: .rounded, weight: .bold))
+        .foregroundStyle(AppColors.calorie)
+        .textCase(.uppercase)
     }
 }
 

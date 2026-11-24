@@ -8,7 +8,7 @@ enum FudAIFocusFilterCriteria {
 struct MealReminderFocusFilterIntent: SetFocusFilterIntent {
     static let title: LocalizedStringResource = "Meal Reminder Filter"
     static let description = IntentDescription(
-        "Hide Fud AI meal reminders while a Focus is active.",
+        "Hide JL Physical meal reminders while a Focus is active.",
         categoryName: "Notifications"
     )
 

@@ -279,6 +279,10 @@ struct HomeV2Cards: View {
             .accessibilityLabel("Next week")
         }
         .foregroundStyle(AppColors.calorie)
+        // Nine fixed-width columns cannot grow with accessibility text: the
+        // 32pt day circles truncated "28" to "…". Cap the compact strip; each
+        // day still carries a full VoiceOver label.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private var isFutureWeek: Bool {
@@ -298,7 +302,9 @@ struct HomeV2Cards: View {
                 Text(date.formatted(.dateTime.weekday(.narrow)))
                     .font(.system(.caption2, design: .rounded, weight: .medium))
                 Text(date.formatted(.dateTime.day()))
-                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .font(.system(.body, design: .rounded, weight: .semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .foregroundStyle(isSelected ? .white : .primary)
                     .frame(width: 32, height: 32)
                     .background { if isSelected { Circle().fill(AppColors.calorie) } }

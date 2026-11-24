@@ -289,7 +289,7 @@ struct WorkoutBurnChartSection: View {
                 .frame(height: 190)
             }
 
-            Text("Only workout burns calculated in Fud AI are shown. Workouts without a burn estimate are not included.")
+            Text("Only workout burns calculated in JL Physical are shown. Workouts without a burn estimate are not included.")
                 .font(.system(.caption2, design: .rounded))
                 .foregroundStyle(.secondary)
         }

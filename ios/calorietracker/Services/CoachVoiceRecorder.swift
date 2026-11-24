@@ -42,6 +42,15 @@ final class CoachVoiceRecorder {
     private var timer: Timer?
     private var startDate: Date?
 
+    /// Explicit nonisolated deinit: the synthesized main-actor-isolated deinit
+    /// double-frees a TaskLocal scope on iOS <= 26.2 (swiftlang/swift#88036)
+    /// when ChatView is torn down during a SwiftUI graph update. Crash
+    /// reports: CoachVoiceRecorder.__deallocating_deinit ->
+    /// swift_task_deinitOnExecutorMainActorBackDeploy ->
+    /// TaskLocal::StopLookupScope::~StopLookupScope -> "pointer being freed
+    /// was not allocated". Nothing here needs main-actor teardown.
+    nonisolated deinit {}
+
     // MARK: - Gesture entry points
 
     func begin() {

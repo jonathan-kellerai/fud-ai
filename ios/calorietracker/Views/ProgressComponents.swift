@@ -116,7 +116,9 @@ private struct TrendXAxis {
 
     var strideDays: Int {
         if showsYear { return max(75, spanDays / 4) }
-        if spanDays <= 8 { return 1 }
+        // Every-other-day labels for a week: seven "Sep 22" labels did not
+        // fit a phone-width plot and the last one truncated to "Sep…".
+        if spanDays <= 8 { return 2 }
         if spanDays <= 35 { return 5 }
         if spanDays <= 100 { return 14 }
         if spanDays <= 200 { return 30 }
@@ -285,6 +287,9 @@ struct WeightChartSection: View {
                     )
                 }
                 .frame(height: 190)
+                // Axis labels in a fixed-height plot overlapped ("SepS26S28")
+                // at accessibility sizes; cap only the chart's type size.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .clipped()
                 .chartOverlay { proxy in
                     GeometryReader { geometry in
@@ -470,6 +475,9 @@ struct CalorieChartSection: View {
                     )
                 }
                 .frame(height: 190)
+                // Axis labels in a fixed-height plot overlapped ("SepS26S28")
+                // at accessibility sizes; cap only the chart's type size.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             }
         }
         .padding()
@@ -478,7 +486,8 @@ struct CalorieChartSection: View {
 
     private var calorieXStride: Int {
         let count = dailyCalories.count
-        if count <= 7 { return 1 }
+        // Same every-other-day rule as TrendXAxis: seven day labels truncate.
+        if count <= 7 { return 2 }
         if count <= 30 { return 5 }
         if count <= 90 { return 14 }
         if count <= 180 { return 30 }
@@ -768,15 +777,18 @@ struct StatBadge: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .font(.system(.subheadline, design: .rounded, weight: .semibold).monospacedDigit())
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.5)
             Text(LocalizedDisplayText.text(label))
                 .font(.system(.caption2, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.5)
         }
+        // Three badges share one row; beyond accessibility1 the values were
+        // truncating to "202.3…" / "Net Ch…" even at the minimum scale.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
         .padding(.vertical, 8)
@@ -1364,6 +1376,9 @@ struct BodyFatChartSection: View {
                     )
                 }
                 .frame(height: 190)
+                // Axis labels in a fixed-height plot overlapped ("SepS26S28")
+                // at accessibility sizes; cap only the chart's type size.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .clipped()
                 .chartOverlay { proxy in
                     GeometryReader { geometry in
@@ -1656,7 +1671,7 @@ struct BodyMeasurementsDetailView: View {
             } header: {
                 Text("Measurements")
             } footer: {
-                Text("Optional. Fud AI turns these into waist-to-hip, waist-to-height, body-fat %, and frame size, and reads them when it recalculates your goals and in Coach.")
+                Text("Optional. JL Physical turns these into waist-to-hip, waist-to-height, body-fat %, and frame size, and reads them when it recalculates your goals and in Coach.")
             }
             .listRowBackground(AppColors.appCard)
 

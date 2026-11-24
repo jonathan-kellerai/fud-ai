@@ -94,9 +94,9 @@ struct CalculationMethodsView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("How Fud AI sets your numbers")
+            Text("How JL Physical sets your numbers")
                 .font(.system(.title3, design: .rounded, weight: .bold))
-            Text("Your daily calorie and macro targets are set by AI. When you tap Recalculate Goals — or automatically about once a week if Adaptive Goals is on — Fud AI sends your profile, the reference equations below, privacy-safe daily nutrition totals, exact dated weight, body-fat, and tape measurements, aggregate workout counts, duration, sets, and reps, and optional Apple Health energy to your AI provider. Food names, notes, photos, ingredients, and exercise names are not sent for this calculation. It starts from these peer-reviewed formulas, then adjusts them to your real data to estimate your true maintenance and targets.")
+            Text("Your daily calorie and macro targets are set by AI. When you tap Recalculate Goals — or automatically about once a week if Adaptive Goals is on — JL Physical sends your profile, the reference equations below, privacy-safe daily nutrition totals, exact dated weight, body-fat, and tape measurements, aggregate workout counts, duration, sets, and reps, and optional Apple Health energy to your AI provider. Food names, notes, photos, ingredients, and exercise names are not sent for this calculation. It starts from these peer-reviewed formulas, then adjusts them to your real data to estimate your true maintenance and targets.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -108,7 +108,7 @@ struct CalculationMethodsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Not medical advice")
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            Text("Fud AI is an estimation tool, not a clinical instrument. Predictive equations carry inherent error (typically ±10% for BMR). Consult a registered dietitian, physician, or sports medicine professional before significant diet changes — especially if you have a medical condition, are pregnant or breastfeeding, are under 18, or are managing an eating disorder.")
+            Text("JL Physical is an estimation tool, not a clinical instrument. Predictive equations carry inherent error (typically ±10% for BMR). Consult a registered dietitian, physician, or sports medicine professional before significant diet changes — especially if you have a medical condition, are pregnant or breastfeeding, are under 18, or are managing an eating disorder.")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
